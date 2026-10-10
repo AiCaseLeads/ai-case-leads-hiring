@@ -1,0 +1,68 @@
+/* Native anchors avoid the reproduced Vinext production Link runtime failure. */
+/* eslint-disable @next/next/no-html-link-for-pages */
+import { getHubMember } from "@/lib/hub/auth";
+import {
+  chatGPTSignInPath,
+  chatGPTSignOutPath,
+  getChatGPTUser,
+  usesGoogleStaffAuth,
+} from "@/app/chatgpt-auth";
+import { HiringDashboard } from "@/components/hub/dashboard";
+import { PageChrome } from "@/components/careers/chrome";
+import "@/components/hub/hub.css";
+
+export const dynamic = "force-dynamic";
+export const metadata = {
+  title: "Hiring workspace | AI Case Leads",
+  robots: "noindex,nofollow",
+  referrer: "no-referrer",
+};
+export default async function TeamPage({ searchParams }: { searchParams?: Promise<Record<string, string | string[] | undefined>> }) {
+  const query = await searchParams;
+  const notices: Record<string, string> = {
+    expired: "Your sign-in link expired or has already been used. Start a new sign-in below.",
+    failed: "Sign-in could not be completed. Please try again with your hiring-team Google account.",
+    not_authorized: "This Google account does not have hiring-team access. Use the owner account or ask an administrator to add your email.",
+    unavailable: "Google sign-in is temporarily unavailable. Please try again shortly.",
+  };
+  const notice = usesGoogleStaffAuth() && typeof query?.auth === "string" && Object.hasOwn(notices, query.auth) ? notices[query.auth] : undefined;
+  const member = await getHubMember();
+  if (member)
+    return (
+      <HiringDashboard
+        member={member}
+        signOutHref={chatGPTSignOutPath("/team")}
+      />
+    );
+  const identity = await getChatGPTUser();
+  return (
+    <PageChrome>
+      <main id="main" className="site-width team-page">
+        <p className="eyebrow dark">PRIVATE HIRING WORKSPACE</p>
+        <h1>Your team’s hiring hub.</h1>
+        <p className="team-lead">
+          {identity
+            ? "This account does not have hiring-team access. Ask the AI Case Leads owner to add your email as an administrator or recruiter."
+            : "Sign in to review applications, manage your roles, and coordinate hiring."}
+        </p>
+        {notice && <p className="team-boundary" role="alert">{notice}</p>}
+        {identity ? (
+          <p className="team-boundary">
+            Signed in as {identity.email}. Candidate records are available only
+            to authorized team members.
+          </p>
+        ) : (
+          <a className="button ink" href={chatGPTSignInPath("/team")}>
+            {usesGoogleStaffAuth() ? "Sign in with Google" : "Sign in to the hiring hub"}
+          </a>
+        )}
+        {usesGoogleStaffAuth() && <p className="team-boundary">Staff sign-in gives access to your hiring workspace. Recruiting email, Calendar, and Drive are connected separately by an administrator in Settings.</p>}
+        <p>
+          <a className="back-link" href="/">
+            Back to the applicant website
+          </a>
+        </p>
+      </main>
+    </PageChrome>
+  );
+}

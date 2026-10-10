@@ -1,0 +1,1 @@
+CREATE INDEX `hub_file_expiry_idx` ON `hub_files` (`application_id`,`expires_at`);

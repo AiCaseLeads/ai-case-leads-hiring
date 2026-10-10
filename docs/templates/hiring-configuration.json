@@ -1,0 +1,103 @@
+{
+  "format": "custom-hiring-configuration-worksheet-v2",
+  "status": "draft-not-applied",
+  "organization": "AI Case Leads",
+  "language": "English",
+  "applicants": "international",
+  "applications": "new-only",
+  "setupPath": "/team",
+  "authority": "Sites D1",
+  "files": "private Sites R2 BUCKET",
+  "integrations": [
+    "Google Gmail",
+    "Google Calendar and Meet",
+    "Google Drive",
+    "team-owned Google Apps Script scheduler"
+  ],
+  "launch": {
+    "siteAudience": "owner-private",
+    "intakeEnabled": false,
+    "liveGoogleValidated": false,
+    "schedulerValidated": false,
+    "domainConnected": false
+  },
+  "access": {
+    "owner": "admin",
+    "managers": "admin",
+    "recruiters": "recruiter",
+    "applicants": "no-account; private assessment and interview links only"
+  },
+  "pipeline": [
+    "Application Review",
+    "Screening",
+    "Assessment",
+    "Interview",
+    "Offer",
+    "Hired",
+    "Rejected",
+    "Withdrawn"
+  ],
+  "automation": {
+    "autoReject": false,
+    "rules": [],
+    "missingInformation": "recruiter-review",
+    "recruiterInitiatesAssessments": true,
+    "recruiterInitiatesInterviews": true,
+    "aiRankingImplemented": false,
+    "aiRejectionImplemented": false,
+    "automaticReminderEmailImplemented": true,
+    "interviewRemindersEnabled": false
+  },
+  "jobs": [
+    {
+      "title": "Full-stack Engineer",
+      "slug": "full-stack-engineer",
+      "status": "draft",
+      "descriptionHtml": "",
+      "fields": [],
+      "rules": [],
+      "autoReject": false,
+      "rejectionTemplate": "Hi {{name}},\n\nThank you for applying for {{jobTitle}} at AI Case Leads. We appreciate your interest. We will not be moving forward with your application for this role.\n\nAI Case Leads Hiring Team",
+      "assessmentPrompt": ""
+    },
+    {
+      "title": "Creative Strategist",
+      "slug": "creative-strategist",
+      "status": "draft",
+      "descriptionHtml": "",
+      "fields": [],
+      "rules": [],
+      "autoReject": false,
+      "rejectionTemplate": "Hi {{name}},\n\nThank you for applying for {{jobTitle}} at AI Case Leads. We appreciate your interest. We will not be moving forward with your application for this role.\n\nAI Case Leads Hiring Team",
+      "assessmentPrompt": ""
+    }
+  ],
+  "requiredBeforeOpening": [
+    "approved description and hiring criteria",
+    "required Name and Email questions",
+    "approved privacy and retention notice",
+    "Google sender authorization",
+    "explicit Calendar ID and approved availability/time zone",
+    "private Drive root",
+    "controlled end-to-end test",
+    "verified unattended processing",
+    "production build review and DNS/TLS"
+  ],
+  "reportsImplemented": [
+    "Applications",
+    "Qualification rate",
+    "Current hiring stages",
+    "Stage conversion",
+    "Interview attendance",
+    "Application sources: counts, qualifications, interviews, hires, qualification rate",
+    "Average time in stage",
+    "Reviewer workload"
+  ],
+  "offerTracking": "manual stage and notes",
+  "notes": [
+    "This is a configuration worksheet, not an automatic import.",
+    "Draft seeding creates only role titles/URLs and no mandatory hiring qualifications.",
+    "Configure questions, assessments and requirements in Roles & forms; keep automatic rejection off until explicitly approved.",
+    "No seniority, compensation, work arrangement, or assessment requirements have been invented."
+  ]
+}

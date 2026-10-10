@@ -1,0 +1,105 @@
+// Real built Vinext Node server + production SQLite/files. Google remains disconnected.
+// Staff identity is seeded ONLY in this isolated test database, never via an app bypass.
+import assert from 'node:assert/strict';
+import {mkdtempSync,realpathSync,rmSync,existsSync} from 'node:fs';
+import {tmpdir} from 'node:os';
+import path from 'node:path';
+import {spawn,execFile} from 'node:child_process';
+import {promisify} from 'node:util';
+import {createServer} from 'node:net';
+import {randomBytes,createHash} from 'node:crypto';
+import {performance} from 'node:perf_hooks';
+import {DatabaseSync} from 'node:sqlite';
+import {chromium} from 'playwright';
+import {SQLiteD1Database} from '../lib/railway/sqlite.ts';
+
+assert.ok(existsSync('dist/server/index.js'),'Run npm run build:railway first.');
+const dataDir=mkdtempSync(path.join(realpathSync(tmpdir()),'aicl-railway-http-'));
+const reservation=createServer();await new Promise(resolve=>reservation.listen(0,'127.0.0.1',resolve));
+const port=reservation.address().port;await new Promise(resolve=>reservation.close(resolve));
+const origin=`http://127.0.0.1:${port}`,rawSession=randomBytes(32).toString('hex');
+const ownerCookie=`aicl_staff_session=${rawSession}`;
+const sqlite=new SQLiteD1Database(path.join(dataDir,'hiring.sqlite'));sqlite.migrate(path.resolve('drizzle'));
+sqlite.connection.prepare('INSERT INTO staff_sessions(token_hash,user_id,email,full_name,created_at,expires_at) VALUES(?,?,?,?,?,?)').run(createHash('sha256').update(rawSession).digest('hex'),'isolated-test-owner','sales@aicaseleads.com','Isolated test owner',Date.now(),Date.now()+3600_000);sqlite.close();
+let child,logs='',browser;
+async function start(enabled){
+ logs='';child=spawn(process.execPath,['scripts/start-railway.mjs'],{env:{...process.env,NODE_ENV:'development',DATA_DIR:dataDir,RAILWAY_DEPLOYMENT_ID:'synthetic-isolated',RAILWAY_VOLUME_MOUNT_PATH:dataDir,PUBLIC_SITE_ORIGIN:origin,PORT:String(port),ADMIN_EMAILS:'sales@aicaseleads.com',GOOGLE_CLIENT_ID:'synthetic.apps.googleusercontent.com',GOOGLE_CLIENT_SECRET:'synthetic-only',GOOGLE_TOKEN_KEY:'1'.repeat(64),EXPECTED_RECRUITING_EMAIL:'mariam@aicaseleads.com',BACKGROUND_ENABLED:'false',APPLICATIONS_ENABLED:String(enabled)},stdio:['ignore','pipe','pipe']});
+ child.stdout.on('data',value=>{logs+=value;});child.stderr.on('data',value=>{logs+=value;});
+ const began=Date.now();while(!logs.includes('[railway] http_ready')){assert.ok(Date.now()-began<30000&&child.exitCode===null,`Node server failed: ${logs.slice(-2500)}`);await new Promise(resolve=>setTimeout(resolve,100));}
+ assert.equal((await fetch(origin+'/api/health')).status,200);
+}
+async function stop(){if(!child||child.exitCode!==null)return;const processDone=new Promise(resolve=>child.once('exit',resolve));child.kill('SIGTERM');const timer=setTimeout(()=>child.kill('SIGKILL'),55000);await processDone;clearTimeout(timer);assert.equal(child.exitCode,0,logs.slice(-2500));}
+async function api(url,method='GET',body,staff=true,extra={}){
+ const response=await fetch(origin+url,{method,headers:{...(staff?{Cookie:ownerCookie}:{}),...(body!==undefined?{'Content-Type':'application/json',Origin:origin}:{}),...extra},...(body!==undefined?{body:JSON.stringify(body)}:{})});
+ const value=await response.json();assert.equal(response.status,200,JSON.stringify({url,status:response.status,value}));return value.data;
+}
+function syntheticResume(){
+ const content='BT /F1 12 Tf 72 720 Td (Synthetic isolated resume) Tj ET\n';
+ const objects=['<< /Type /Catalog /Pages 2 0 R >>','<< /Type /Pages /Kids [3 0 R] /Count 1 >>','<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>',`<< /Length ${Buffer.byteLength(content)} >>\nstream\n${content}endstream`,'<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>'];
+ let pdf='%PDF-1.7\n',offsets=[0];for(const [index,object] of objects.entries()){offsets.push(Buffer.byteLength(pdf));pdf+=`${index+1} 0 obj\n${object}\nendobj\n`;}
+ pdf+='% Synthetic isolated verification padding.\n'.repeat(20000);
+ const xref=Buffer.byteLength(pdf);pdf+=`xref\n0 ${offsets.length}\n0000000000 65535 f \n`+offsets.slice(1).map(offset=>String(offset).padStart(10,'0')+' 00000 n \n').join('')+`trailer\n<< /Size ${offsets.length} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`;
+ return Buffer.from(pdf);
+}
+const sample=syntheticResume();assert.ok(sample.length>512*1024);
+const started=performance.now(),latencies=[];
+function verifyOneApplication(receipts){
+ const db=new DatabaseSync(path.join(dataDir,'hiring.sqlite'),{readOnly:true});
+ try{
+  const lookup=db.prepare('SELECT application_id FROM hiring_submissions WHERE receipt_hash=? OR key_hash IN (SELECT submission_key_hash FROM hiring_receipts WHERE receipt_hash=?)');
+  const ids=receipts.map(receipt=>{const hash=createHash('sha256').update(receipt).digest('hex');return lookup.get(hash,hash)?.application_id;});
+  assert.ok(ids.every(Boolean));assert.equal(new Set(ids).size,1);
+  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM hub_tasks WHERE application_id=?').get(ids[0]).n,2);
+ }finally{db.close();}
+}
+try{
+ await start(false);
+ for(const url of ['/api/hub/overview','/api/hub/applications','/api/hub/settings','/api/files/unknown'])for(const forged of [false,true]){
+  const response=await fetch(origin+url,{headers:forged?{'oai-authenticated-user-id':'attacker','oai-authenticated-user-email':'sales@aicaseleads.com','x-openai-user-email':'sales@aicaseleads.com'}:{}});assert.equal(response.status,403);
+ }
+ assert.equal((await fetch(origin+'/team?auth=__proto__')).status,200);
+ const startResponse=await fetch(origin+'/api/auth/google/start?return_to=//attacker.invalid',{redirect:'manual'});assert.equal(startResponse.status,303);
+ const authorize=new URL(startResponse.headers.get('location'));assert.equal(authorize.origin,'https://accounts.google.com');assert.equal(authorize.searchParams.get('redirect_uri'),origin+'/api/auth/google/callback');assert.equal(authorize.searchParams.get('scope'),'openid email profile');assert.equal(authorize.searchParams.has('client_secret'),false);
+ const fixtureUi=await promisify(execFile)(process.execPath,['--test','tests/ui-flow.spec.mjs'],{env:{...process.env,TEST_BASE_URL:origin,TEST_HOSTING_PLATFORM:'railway',TEST_PRODUCTION_ASSETS:'true'},maxBuffer:1024*1024});
+ assert.match(fixtureUi.stdout,/tests 20/);assert.match(fixtureUi.stdout,/pass 20/);assert.match(fixtureUi.stdout,/skipped 0/);console.log('Existing production browser recovery suite: 20 passed.');
+ await stop();await start(true);
+ const executable='/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
+ browser=await chromium.launch({headless:true,...(existsSync(executable)?{executablePath:executable}:{})});
+ const staff=await browser.newContext({viewport:{width:1440,height:1000}});await staff.addCookies([{name:'aicl_staff_session',value:rawSession,url:origin,httpOnly:true,sameSite:'Lax'}]);
+ const team=await staff.newPage(),errors=[];team.on('pageerror',error=>errors.push(error.message));
+ await team.goto(origin+'/team');await team.getByRole('button',{name:'Roles & forms',exact:true}).click();await team.getByRole('button',{name:'Add role',exact:true}).click();
+ await team.getByLabel('Job title',{exact:true}).fill('Railway Test Engineer');await team.getByLabel('Page address',{exact:false}).fill('railway-test-engineer');await team.getByLabel('Job description',{exact:false}).fill('Isolated Railway verification role. No real applications or outreach.');await team.getByLabel('Publication status',{exact:true}).selectOption('open');await team.getByRole('checkbox',{name:'I approve this description',exact:false}).check();
+ await team.getByRole('button',{name:'Save role & configuration',exact:true}).click();await team.getByRole('heading',{name:'Roles & application forms',exact:true}).waitFor();
+ let jobs=await api('/api/hub/jobs');assert.equal(jobs.length,1);const engineer=jobs[0];assert.equal(engineer.title,'Railway Test Engineer');assert.equal(engineer.status,'open');
+ const creative=await api('/api/hub/jobs','POST',{title:'Railway Test Creative',slug:'railway-test-creative',department:'Isolated test',descriptionHtml:'<p>Isolated test role.</p>',status:'open',fields:engineer.fields,rules:[],autoReject:false,assessmentPrompt:'Isolated assessment',rejectionTemplate:'Isolated rejection for {{name}}.'});
+ let firstId,firstFile;
+ for(const [index,job] of [engineer,creative].entries()){
+  const applicant=await browser.newContext({viewport:index?{width:390,height:844}:{width:1440,height:1000}}),page=await applicant.newPage();page.on('pageerror',error=>errors.push(error.message));
+  await page.goto(origin+`/jobs/${job.slug}?utm_source=railway-verified`);await page.getByLabel('Full name',{exact:false}).fill(`Isolated Browser Candidate ${index}`);await page.getByLabel('Email address',{exact:false}).fill(`isolated-browser-${index}@example.invalid`);await page.locator('input[type=file]').setInputFiles({name:'isolated-resume.pdf',mimeType:'application/pdf',buffer:sample});
+  await page.getByRole('button',{name:'Submit application',exact:false}).click();await page.waitForURL(/\/applications\/[a-f0-9]{64}$/, {timeout:15000}).catch(async error=>{throw new Error(`${error.message}\n${(await page.locator('body').innerText()).slice(-2000)}`);});
+  assert.equal((await fetch(origin+'/api'+new URL(page.url()).pathname)).status,200);await applicant.close();
+ }
+ const applications=await api('/api/hub/applications');assert.equal(applications.total,2);firstId=applications.items[0].id;
+ const detail=await api('/api/hub/applications/'+firstId);assert.equal(detail.files.length,1);firstFile=detail.files[0].id;assert.equal(detail.source,'railway-verified');
+ const original=await fetch(origin+'/api/files/'+firstFile,{headers:{Cookie:ownerCookie}});assert.equal(original.status,200);assert.deepEqual(Buffer.from(await original.arrayBuffer()),sample);assert.equal((await fetch(origin+'/api/files/'+firstFile)).status,403);
+ await team.goto(origin+'/team?application='+firstId);await team.getByLabel('Action',{exact:true}).selectOption('scorecard');await team.getByLabel('Overall reviewer grade',{exact:false}).selectOption('4');await team.getByLabel('Evaluation criteria',{exact:false}).fill('Isolated job-specific rubric');await team.getByLabel('Review notes',{exact:true}).fill('Synthetic test evidence only.');await team.getByRole('button',{name:'Save action',exact:true}).click();await team.getByText('Saved to this application.',{exact:true}).waitFor();
+ const graded=await api('/api/hub/applications/'+firstId);assert.equal(graded.grade.scorePercent,80);assert.equal(graded.grade.reviewerCount,1);
+ await team.getByRole('button',{name:'Team & settings',exact:true}).click();await team.getByRole('heading',{name:'Team & settings',exact:true}).waitFor();await team.getByText('No Google Apps Script scheduler is needed.',{exact:false}).waitFor();assert.equal(await team.getByText('No Google Apps Script scheduler is needed.',{exact:false}).count(),1);assert.equal(await team.getByRole('button',{name:'Save Google client configuration',exact:true}).count(),0);
+ await staff.close();assert.deepEqual(errors,[]);await browser.close();browser=undefined;console.log('Seeded owner browser job posting, desktop/mobile application uploads, private files and grading passed.');
+ const payload=(job,seq)=>({jobPostingId:job.id,formVersion:job.formVersion,submissionKey:crypto.randomUUID(),fieldSubmissions:[{path:'_systemfield_name',value:`Isolated Load Candidate ${seq}`},{path:'_systemfield_email',value:`isolated-load-${seq}@example.invalid`}],utmData:{utm_source:'isolated-load'}});
+ const submit=async(job,seq,input=payload(job,seq),session=randomBytes(32).toString('hex'))=>{
+  const began=performance.now(),response=await fetch(origin+'/api/applications',{method:'POST',headers:{'Content-Type':'application/json',Origin:origin,Cookie:`hiring_session=${session}`,'x-real-ip':`198.18.${(seq>>8)&255}.${seq&255}`},body:JSON.stringify(input)}),value=await response.json();latencies.push(performance.now()-began);assert.equal(response.status,201,JSON.stringify(value));assert.equal(value.status,'accepted');return value;
+ };
+ for(let batch=0;batch<30;batch++)await Promise.all(Array.from({length:100},(_,index)=>{const seq=batch*100+index;return submit(seq%2?creative:engineer,seq);}));
+ const duplicate=payload(engineer,4000),session=randomBytes(32).toString('hex');const repeats=await Promise.all(Array.from({length:20},()=>submit(engineer,4000,duplicate,session)));verifyOneApplication(repeats.map(value=>value.receipt));
+ assert.equal((await api('/api/hub/reports')).applications,3003);
+ await stop();await start(false);
+ assert.equal((await api('/api/hub/reports')).applications,3003);assert.equal((await api('/api/hub/applications/'+firstId)).grade.scorePercent,80);
+ const after=await fetch(origin+'/api/files/'+firstFile,{headers:{Cookie:ownerCookie}});assert.deepEqual(Buffer.from(await after.arrayBuffer()),sample);
+ const replay=await submit(engineer,4000,duplicate,session);verifyOneApplication([repeats[0].receipt,replay.receipt]);assert.equal((await api('/api/hub/reports')).applications,3003);
+ for(const receipt of [repeats[0].receipt,replay.receipt]){const response=await fetch(origin+'/api/applications/'+receipt);assert.equal(response.status,200);assert.equal((await response.json()).status,'accepted');}
+ const logoutPage=await fetch(origin+'/api/auth/logout',{headers:{Cookie:ownerCookie}});assert.equal(logoutPage.status,200);assert.match(await logoutPage.text(),/form method="post"/);assert.ok(await api('/api/hub/overview'));
+ const logout=await fetch(origin+'/api/auth/logout',{method:'POST',redirect:'manual',headers:{Cookie:ownerCookie,Origin:origin}});assert.equal(logout.status,303);assert.equal((await fetch(origin+'/api/hub/overview',{headers:{Cookie:ownerCookie}})).status,403);
+ latencies.sort((a,b)=>a-b);
+ console.log(JSON.stringify({status:'passed',existingBrowserChecks:20,seededOwnerBrowserJobPosting:true,desktopAndMobileRealApplications:2,originalResumeBytes:sample.length,privateFiles:true,gradePersisted:80,syntheticLoadApplications:3000,concurrentRequests:100,duplicateHttpRequests:20,duplicateApplicationsCreated:1,persistedApplications:3003,restartAndPausedReplay:true,elapsedMs:Math.round(performance.now()-started),httpP95Ms:Math.round(latencies[Math.floor(latencies.length*.95)]),limits:'Real built Node server on local disk with production SQLite/files. Synthetic account session is seeded only in the isolated test database. Google grant/delivery, Docker image and Railway hosting/volume backups remain unverified.'},null,2));
+}finally{if(browser)await browser.close();await stop();rmSync(dataDir,{recursive:true,force:true});}

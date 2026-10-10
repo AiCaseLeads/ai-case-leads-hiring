@@ -1,0 +1,2 @@
+CREATE INDEX `hub_application_email_idx` ON `hub_applications` (`email`);--> statement-breakpoint
+CREATE INDEX `hub_scorecard_reviewer_idx` ON `hub_scorecards` (`application_id`,`actor`,`created_at`,`id`);

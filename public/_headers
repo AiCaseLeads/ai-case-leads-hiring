@@ -1,0 +1,4 @@
+# A Sites release can briefly serve the previous Worker while new assets propagate.
+# Do not retain an unavailable build asset as a year-long browser cache entry.
+/_next/static/*
+  Cache-Control: no-store
