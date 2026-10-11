@@ -41,7 +41,7 @@ function reject(response, code, status) {
   response.end(JSON.stringify({ error: { code, message: "The request could not be processed." } }));
 }
 /** Streams through a byte cap before any framework action or route may buffer it. */
-export function railwayRequestHandler(listeners, origin, legacyDomain = process.env.RAILWAY_PUBLIC_DOMAIN) {
+export function railwayRequestHandler(listeners, origin, legacyDomain = process.env.LEGACY_RAILWAY_DOMAIN) {
   const canonical = new URL(origin);
   // Only Railway's explicitly configured public hostname is a migration alias.
   // Never derive a redirect destination from Host or forwarded headers.
