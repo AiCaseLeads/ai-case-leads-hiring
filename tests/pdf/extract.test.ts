@@ -13,7 +13,7 @@ async function fixture(){
   const bytes=makePdf(),fileId=crypto.randomUUID().replaceAll("-","").repeat(2);
   await f.store.stmt("INSERT INTO hub_files(id,job_id,field_path,filename,content_type,size,object_key,uploaded_at,application_id,expires_at,session_hash) VALUES (?,?,?,?,?,?,?,?,?,?,?)",fileId,job.id,"resume","resume.pdf","application/pdf",bytes.length,`private/${fileId}`,Date.now(),app.id,Date.now()+100000,"a".repeat(64)).run();
   let reads=0,calls=0;
-  const bucket={get:async()=>{reads++;return {size:bytes.length,body:new Response(bytes.buffer as ArrayBuffer).body!};}} as unknown as R2Bucket;
+  const bucket={get:async()=>{reads++;return {size:bytes.length,customMetadata:{fileId},body:new Response(bytes.buffer as ArrayBuffer).body!};}} as unknown as R2Bucket;
   const deps={store:f.store,bucket,extract:async()=>{calls++;return pdfResult("ready","Built React applications for two years.",1);}};
   return {...f,deps,fileId,applicationId:app.id,counts:()=>({reads,calls})};
 }
@@ -73,4 +73,28 @@ test("two pending private reads cap the queue without reading a third file",asyn
   await assert.rejects(readResumeText(third.applicationId,third.fileId,third.deps),error=>error instanceof Error&&"code" in error&&error.code==="pdf_busy");
   assert.deepEqual(third.counts(),{reads:0,calls:0});release();await Promise.all([one,two]);
   first.database.close();second.database.close();third.database.close();
+});
+test("private object identity must match attached file before parsing",async()=>{
+  const f=await fixture();const bytes=makePdf();
+  const deps={...f.deps,bucket:{get:async()=>({size:bytes.length,customMetadata:{fileId:"different-applicant"},body:new Response(bytes.buffer as ArrayBuffer).body!})} as unknown as R2Bucket};
+  const result=await handleResumeText(req({applicationId:f.applicationId,fileId:f.fileId}),MANAGER,deps);
+  assert.equal(result.status,422);assert.equal(f.counts().calls,0);f.database.close();
+});
+test("storage get and body stalls release capacity and allow a later successful retry",async()=>{
+  const f=await fixture(),input={applicationId:f.applicationId,fileId:f.fileId};
+  const blocked={...f.deps,storageTimeoutMs:5,bucket:{get:()=>new Promise(()=>{})} as unknown as R2Bucket};
+  assert.equal((await handleResumeText(req(input),MANAGER,blocked)).status,503);
+  let cancelled=false;
+  const stalled={...f.deps,storageTimeoutMs:5,bucket:{get:async()=>({size:makePdf().length,customMetadata:{fileId:f.fileId},body:new ReadableStream<Uint8Array>({pull:()=>new Promise(()=>{}),cancel(){cancelled=true;}})})} as unknown as R2Bucket};
+  assert.equal((await handleResumeText(req(input),MANAGER,stalled)).status,503);assert.equal(cancelled,true);
+  assert.equal((await handleResumeText(req(input),MANAGER,f.deps)).status,200);f.database.close();
+});
+test("safe imported Gmail PDF identity supports automatic preview and review schema",async()=>{
+  const f=await fixture(),original=f.fileId,fileId=`gmail-${original}`,bytes=makePdf();
+  await f.store.stmt("UPDATE hub_files SET id=? WHERE id=?",fileId,original).run();
+  const deps={...f.deps,bucket:{get:async()=>({size:bytes.length,customMetadata:{fileId},body:new Response(bytes.buffer as ArrayBuffer).body!})} as unknown as R2Bucket};
+  const result=await handleResumeText(req({applicationId:f.applicationId,fileId}),MANAGER,deps);assert.equal(result.status,200);
+  const {reviewInput}=await import("../../lib/ai/review");
+  assert.equal(reviewInput.safeParse({applicationId:f.applicationId,expectedRevision:1,resumeFileId:fileId,resumeText:"",linkedinText:"",jobCriteria:"React experience",consent:true}).success,true);
+  f.database.close();
 });

@@ -4,11 +4,12 @@ import type { HubStore } from "../hub/store";
 import { HiringError } from "../hiring/errors";
 import { assertSameOrigin,errorResponse,jsonResponse } from "../hiring/http";
 import { boundedBytes } from "../hiring/files";
+import { withinDeadline, DeadlineError } from "../hiring/deadline";
 import { parse } from "../hub/validation";
 import { extractPdf,pdfResult } from "./extract";
 import { MAX_PDF_BYTES,type PdfResult,type ResumeText } from "./types";
-const inputSchema=z.object({applicationId:z.string().min(1).max(128),fileId:z.string().regex(/^[a-f0-9]{64}$/)}).strict();
-export type PdfDependencies={store:HubStore;bucket?:R2Bucket;extract?:(bytes:Uint8Array)=>Promise<PdfResult>};
+const inputSchema=z.object({applicationId:z.string().min(1).max(128),fileId:z.string().regex(/^(?:gmail-)?[a-f0-9]{64}$/)}).strict();
+export type PdfDependencies={store:HubStore;bucket?:R2Bucket;extract?:(bytes:Uint8Array)=>Promise<PdfResult>;storageTimeoutMs?:number};
 const inFlight=new Map<string,Promise<ResumeText>>();
 export async function readResumeText(applicationId:string,fileId:string,deps:PdfDependencies):Promise<ResumeText>{
   // Join guarantees the file is a completed original attached to this application.
@@ -25,17 +26,31 @@ export async function readResumeText(applicationId:string,fileId:string,deps:Pdf
   // Limit pending reads too: no thousand-file memory queue ahead of the process cap.
   if(inFlight.size>=2)throw new HiringError("pdf_busy",429,"Two PDFs are being read. Retry in a moment; applications can still be submitted.");
   const pending=(async()=>{
-    const object=await deps.bucket!.get(file.object_key);
+    const deadline=Date.now()+Math.max(1,Math.min(deps.storageTimeoutMs??5000,5000));
+    const object=await withinDeadline(()=>deps.bucket!.get(file.object_key),deadline,"pdf_storage_timeout");
     if(!object)throw new HiringError("file_not_found",404,"The original file is temporarily unavailable.");
-    if(object.size!==file.size||object.size>MAX_PDF_BYTES){await object.body.cancel();throw new HiringError("file_invalid",422,"The stored PDF does not match its upload record.");}
-    const bytes=await boundedBytes({headers:new Headers(),body:object.body} as Request,MAX_PDF_BYTES);
+    if(object.size!==file.size||object.size>MAX_PDF_BYTES||object.customMetadata?.fileId!==file.id){void object.body.cancel().catch(()=>undefined);throw new HiringError("file_invalid",422,"The stored PDF does not match its upload record.");}
+    const reader=object.body.getReader(),chunks:Uint8Array[]=[];let length=0;
+    try {
+      while(true){
+        const {done,value}=await withinDeadline(()=>reader.read(),deadline,"pdf_storage_timeout");if(done)break;
+        length+=value.byteLength;
+        if(length>MAX_PDF_BYTES)throw new HiringError("file_invalid",422,"The stored PDF exceeds its upload limit.");
+        chunks.push(value);
+      }
+    }catch(error){void reader.cancel().catch(()=>undefined);throw error;}
+    finally{reader.releaseLock();}
+    const bytes=new Uint8Array(length);let offset=0;
+    for(const chunk of chunks){bytes.set(chunk,offset);offset+=chunk.length;}
     if(bytes.length!==file.size)throw new HiringError("file_invalid",422,"The stored PDF is incomplete.");
     const data=await (deps.extract||extractPdf)(bytes);
     if(!["timeout","unavailable"].includes(data.status))await deps.store.setSetting(key,data);
     return wrap(data);
   })();
   inFlight.set(key,pending);
-  try{return await pending;}finally{inFlight.delete(key);}
+  try{return await pending;}
+  catch(error){if(error instanceof DeadlineError)throw new HiringError("pdf_storage_timeout",503,"Reading the private file took too long. Please retry; the original is unchanged.");throw error;}
+  finally{inFlight.delete(key);}
 }
 export async function handleResumeText(request:Request,member:HubMember|null,deps:PdfDependencies):Promise<Response>{
   try {

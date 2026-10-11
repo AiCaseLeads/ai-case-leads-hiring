@@ -7,7 +7,7 @@ export const reviewInput = z.object({
   applicationId: z.string().min(1).max(128),
   expectedRevision: z.number().int().positive().safe(),
   resumeText: z.string().trim().max(30000),
-  resumeFileId: z.string().regex(/^[a-f0-9]{64}$/).optional(),
+  resumeFileId: z.string().regex(/^(?:gmail-)?[a-f0-9]{64}$/).optional(),
   linkedinText: z.string().trim().max(20000),
   jobCriteria: z.string().trim().min(1).max(8000),
   consent: z.literal(true),

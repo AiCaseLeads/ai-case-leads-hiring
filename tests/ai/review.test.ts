@@ -130,7 +130,7 @@ test("selected original PDF is authoritative over browser text and must belong t
   const f=await fixture(async(_url,init)=>{calls++;const sent=JSON.parse(init!.body as string);assert.ok(sent.messages[1].content.includes(sources.resume));assert.ok(!sent.messages[1].content.includes("INVENTED BROWSER TEXT"));return response();});
   const fileId="a".repeat(64);
   await f.store.stmt("INSERT INTO hub_files(id,job_id,field_path,filename,content_type,size,object_key,uploaded_at,application_id,expires_at,session_hash) VALUES (?,?,?,?,?,?,?,?,?,?,?)",fileId,f.app.jobId,"resume","resume.pdf","application/pdf",bytes.length,"private/original",Date.now(),f.app.id,Date.now()+100000,"b".repeat(64)).run();
-  const deps={...f.deps,bucket:{get:async()=>({size:bytes.length,body:new Response(bytes.buffer as ArrayBuffer).body!})} as unknown as R2Bucket};
+  const deps={...f.deps,bucket:{get:async()=>({size:bytes.length,customMetadata:{fileId},body:new Response(bytes.buffer as ArrayBuffer).body!})} as unknown as R2Bucket};
   assert.equal((await handleAiReview(request("review",{...f.input,resumeFileId:"f".repeat(64)}),MANAGER,deps)).status,404);assert.equal(calls,0);
   const result=await handleAiReview(request("review",{...f.input,resumeFileId:fileId,resumeText:"INVENTED BROWSER TEXT"}),MANAGER,deps);
   assert.equal(result.status,200,await result.clone().text());assert.equal(calls,1);
