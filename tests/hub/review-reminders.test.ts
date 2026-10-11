@@ -131,3 +131,34 @@ test("worker uses Gmail outbox once, reconciles uncertain delivery without resen
   assert.equal(sends,1);const stale=(await f.store.tasks()).find(t=>t.id===extraId)!;assert.equal(stale.status,"done");assert.deepEqual(stale.result,{stale:true});
   f.database.close();
 });
+test("fast repeated worker ticks do not rescan applications after each daily digest exists",async()=>{
+  const f=await fixture();await enqueueReviewReminders(f.store,f.owners,now);
+  // All overdue applications are unassigned: the recruiter has no matching
+  // queue, but the already-queued manager no longer needs a candidate scan.
+  const original=f.store.stmt.bind(f.store);let recipientScans=0;
+  f.store.stmt=(sql,...values)=>{if(sql.includes("MIN(a.id) AS anchor"))recipientScans++;return original(sql,...values);};
+  for(let i=0;i<12;i++)assert.equal(await enqueueReviewReminders(f.store,f.owners,now+i*5000),0);
+  assert.equal(recipientScans,12); // Only the recruiter who has no digest yet.
+  f.database.close();
+});
+test("stage changes reset waiting time while notes and assignment leave the stage clock unchanged",async()=>{
+  const f=await fixture();let app=await f.store.getApplication(f.app.id);
+  app=await f.store.action(app.id,{action:"assign",assignee:RECRUITER.email,expectedRevision:app.revision},MANAGER);
+  assert.equal((await overdueQueue(f.store,f.config,now)).total,1);
+  app=await f.store.action(app.id,{action:"stage",stage:"Screening",expectedRevision:app.revision},MANAGER);
+  app=await f.store.action(app.id,{action:"stage",stage:"Application Review",expectedRevision:app.revision},MANAGER);
+  const row=f.database.prepare("SELECT stage_entered_at AS entered FROM hub_applications WHERE id=?").get(app.id) as {entered:number};
+  assert.equal((await overdueQueue(f.store,f.config,row.entered+48*3600000-1)).total,0);
+  assert.equal((await overdueQueue(f.store,f.config,row.entered+48*3600000)).total,1);
+  f.database.close();
+});
+test("a downgraded fallback manager receives only assigned applications, never an unassigned digest",async()=>{
+  const f=await fixture();await enqueueReviewReminders(f.store,f.owners,now);
+  const task=(await f.store.tasks()).find(t=>t.payload.reviewReminder)!;
+  f.database.prepare("INSERT INTO hub_members(id,email,role,active,created_at,updated_at) VALUES (?,?,?,1,?,?)").run("former-manager",MANAGER.email,"recruiter",now,now);
+  assert.equal(await reviewReminderMail(task,f.store,[],now),null);
+  f.database.prepare("UPDATE hub_applications SET assignee=?").run(MANAGER.email);
+  const ownMail=await reviewReminderMail(task,f.store,[],now);
+  assert.equal(ownMail!.to,MANAGER.email);assert.ok(!ownMail!.body.includes("manager fallback"));
+  f.database.close();
+});

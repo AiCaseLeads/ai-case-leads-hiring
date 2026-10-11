@@ -48,9 +48,12 @@ export async function enqueueReviewReminders(store:HubStore,owners:string[]=[],n
   const day=reminderDay(now);
   let queued=0;
   for(const person of staff){
+    const id=`review-reminder:${day}:${await sha256(person.email)}`;
+    // Fast worker ticks must not rescan every candidate after this person's
+    // daily digest already exists (including uncertain or failed deliveries).
+    if(await store.stmt("SELECT id FROM hub_tasks WHERE id=?",id).first())continue;
     const current=await recipientQueue(store,config,staff,person.email,now);
     if(!current?.count||!current.anchor)continue;
-    const id=`review-reminder:${day}:${await sha256(person.email)}`;
     const inserted=await store.taskStatement(id,current.anchor,"gmail",{reviewReminder:true,recipient:person.email,day,messageId:`<${await sha256(id)}@jobs.aicaseleads.com>`},now).run();
     queued+=inserted.meta?.changes||0;
   }
@@ -61,9 +64,11 @@ export async function reviewReminderMail(task:Task,store:HubStore,owners:string[
   // A delayed digest must not appear alongside the next day's digest.
   if(!config.enabled||task.payload.day!==reminderDay(now)||typeof task.payload.recipient!=="string"||typeof task.payload.messageId!=="string")return null;
   const recipient=task.payload.recipient;
-  const current=await recipientQueue(store,config,await activeStaff(store,owners),recipient,now);
+  const staff=await activeStaff(store,owners);
+  const fallback=config.fallbackAdmins.includes(recipient)&&staff.some(s=>s.email===recipient&&s.role==="admin");
+  const current=await recipientQueue(store,config,staff,recipient,now);
   if(!current?.count)return null;
   const origin=store.options.origin||"https://jobs.aicaseleads.com";
   const url=new URL("/team?reviews=overdue",origin).toString();
-  return {to:recipient,subject:"Hiring review reminder",messageId:task.payload.messageId,body:`You have ${current.count} application${current.count===1?"":"s"} waiting for an initial human review for at least ${config.dueHours} hours.\n\nOpen the overdue review queue: ${url}\n\nThis digest includes applications assigned to you${config.fallbackAdmins.includes(recipient)?" and unassigned applications covered by your manager fallback":""}. Record a scorecard or move the application out of Application Review after reviewing it. Notes and AI evidence summaries alone do not mark a human review complete.\n\nThis is an internal team reminder; no applicant was emailed.`};
+  return {to:recipient,subject:"Hiring review reminder",messageId:task.payload.messageId,body:`You have ${current.count} application${current.count===1?"":"s"} waiting for an initial human review for at least ${config.dueHours} hours.\n\nOpen the overdue review queue: ${url}\n\nThis digest includes applications assigned to you${fallback?" and unassigned applications covered by your manager fallback":""}. Record a scorecard or move the application out of Application Review after reviewing it. Notes and AI evidence summaries alone do not mark a human review complete.\n\nThis is an internal team reminder; no applicant was emailed.`};
 }
