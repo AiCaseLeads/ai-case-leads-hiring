@@ -1,0 +1,126 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import { createStore,MANAGER,RECRUITER,jobInput,applicationInput } from "../hub/fixtures";
+import { handleAiConfig,handleAiReview,type AiDependencies } from "../../lib/ai/http";
+import { generateReview,validateReview,reviewNote,MODEL,type Review } from "../../lib/ai/review";
+const key="sk-or-"+"testsecret".repeat(4),encryptionKey="c".repeat(64);
+const origin="https://jobs.example.invalid";
+function request(path:string,body?:unknown,method=body?"POST":"GET",source=origin){return new Request(`${origin}/api/ai/${path}`,{method,headers:{"content-type":"application/json",origin:source},...(body?{body:JSON.stringify(body)}:{})});}
+const review:Review={criteria:[{criterion:"Build React applications",status:"evidence_found",explanation:"The supplied resume claims React experience; verify in the interview.",citations:[{source:"resume",quote:"Built React applications for two years."}]}],checks:[{question:"Describe a React application you built and how you tested it.",citations:[]}]};
+const sources={resume:"Built React applications for two years.",linkedin:"",answers:""};
+const response=()=>Response.json({choices:[{finish_reason:"stop",message:{content:JSON.stringify(review)}}]});
+async function fixture(fetcher:typeof fetch=async()=>response()){
+  const f=createStore();
+  const job=await f.store.saveJob(jobInput());
+  const {id}=await f.store.acceptApplication(applicationInput(job.id));
+  const app=await f.store.getApplication(id);
+  const deps:AiDependencies={store:f.store,encryptionKey,fetcher};
+  const input={applicationId:id,expectedRevision:app.revision,resumeText:sources.resume,linkedinText:"",jobCriteria:"Build React applications",consent:true};
+  assert.equal((await handleAiConfig(request("config",{apiKey:key,enabled:true},"PATCH"),MANAGER,deps)).status,200);
+  return {...f,deps,input,app};
+}
+test("AI config is inactive by default, admin only, same-origin, encrypted and write-only",async()=>{
+  const f=createStore(),deps={store:f.store,encryptionKey};
+  assert.equal((await handleAiConfig(request("config"),null,deps)).status,403);
+  const status=await (await handleAiConfig(request("config"),RECRUITER,deps)).json() as {data:{enabled:boolean;configured:boolean}};
+  assert.equal(status.data.enabled,false);assert.equal(status.data.configured,false);
+  assert.equal((await handleAiConfig(request("config",{apiKey:key,enabled:true},"PATCH"),RECRUITER,deps)).status,403);
+  assert.equal((await handleAiConfig(request("config",{apiKey:key,enabled:true},"PATCH","https://evil.invalid"),MANAGER,deps)).status,403);
+  assert.equal((await handleAiConfig(request("config",{enabled:true},"PATCH"),MANAGER,deps)).status,422);
+  const saved=await handleAiConfig(request("config",{apiKey:key,enabled:true},"PATCH"),MANAGER,deps);
+  assert.equal(saved.status,200);assert.ok(!(await saved.text()).includes(key));
+  const stored=await f.store.setting<{sealedKey:string;updatedBy:string}>("ai_openrouter_config_v1",{} as never);
+  assert.match(stored.sealedKey,/^v1\./);assert.equal(stored.updatedBy,MANAGER.email);assert.ok(!JSON.stringify(stored).includes(key));
+  const text=await (await handleAiConfig(request("config"),MANAGER,deps)).text();assert.ok(!text.includes(stored.sealedKey));
+  assert.equal((await handleAiConfig(request("config",{enabled:false},"PATCH"),MANAGER,deps)).status,200);
+  f.database.close();
+});
+test("authorized review saves an audited note and Drive task without scoring, qualification or stage changes; replay is free",async()=>{
+  let calls=0;
+  const f=await fixture(async(_url,init)=>{calls++;const body=JSON.parse(init!.body as string);assert.equal(body.model,MODEL);assert.deepEqual(body.provider,{only:["OpenAI"],allow_fallbacks:false,data_collection:"deny",require_parameters:true});assert.ok(!body.messages[1].content.includes(f.app.email));return response();});
+  const first=await handleAiReview(request("review",f.input),RECRUITER,f.deps);
+  assert.equal(first.status,200,await first.clone().text());
+  const result=(await first.json() as {data:{application:typeof f.app}}).data;
+  assert.equal(result.application.stage,f.app.stage);assert.deepEqual(result.application.grade,f.app.grade);assert.equal(result.application.qualification,f.app.qualification);
+  assert.equal(result.application.notes.length,1);assert.equal(result.application.notes[0].actor,RECRUITER.email);assert.match(result.application.notes[0].text,/OpenRouter/);
+  assert.ok((await f.store.tasks()).some(t=>t.kind==="drive"&&t.applicationId===f.app.id));
+  assert.equal((await handleAiReview(request("review",f.input),RECRUITER,f.deps)).status,200);
+  assert.equal(calls,1);assert.equal((await f.store.getApplication(f.app.id)).notes.length,1);
+  f.database.close();
+});
+test("no external request occurs for disabled, unauthenticated, missing consent, stale revision, cross-origin or oversized inputs",async()=>{
+  let calls=0;const f=await fixture(async()=>{calls++;return response();});
+  assert.equal((await handleAiReview(request("review",f.input),null,f.deps)).status,403);
+  assert.equal((await handleAiReview(request("review",{...f.input,consent:false}),MANAGER,f.deps)).status,422);
+  assert.equal((await handleAiReview(request("review",{...f.input,expectedRevision:999}),MANAGER,f.deps)).status,409);
+  assert.equal((await handleAiReview(request("review",f.input,"POST","https://evil.invalid"),MANAGER,f.deps)).status,403);
+  assert.equal((await handleAiReview(request("review",{...f.input,resumeText:"x".repeat(30001)}),MANAGER,f.deps)).status,422);
+  assert.equal((await handleAiReview(request("review",{...f.input,jobCriteria:Array.from({length:9},(_,i)=>`Criterion ${i}`).join("\n")}),MANAGER,f.deps)).status,422);
+  await handleAiConfig(request("config",{enabled:false},"PATCH"),MANAGER,f.deps);
+  assert.equal((await handleAiReview(request("review",f.input),MANAGER,f.deps)).status,409);assert.equal(calls,0);
+  f.database.close();
+});
+test("provider errors and invented quotes are rejected without saving or exposing secrets",async()=>{
+  const f=await fixture(async()=>Response.json({error:{message:`secret ${key}`}}, {status:401}));
+  const result=await handleAiReview(request("review",f.input),MANAGER,f.deps);
+  assert.equal(result.status,502);assert.ok(!(await result.text()).includes(key));assert.equal((await f.store.getApplication(f.app.id)).notes.length,0);
+  assert.equal((await handleAiReview(request("review",f.input),MANAGER,f.deps)).status,409);
+  assert.throws(()=>validateReview({...review,criteria:[{...review.criteria[0],citations:[{source:"resume",quote:"Invented experience"}]}]},sources,[review.criteria[0].criterion]));
+  assert.throws(()=>validateReview({...review,rank:1},sources,[review.criteria[0].criterion]));
+  assert.throws(()=>validateReview({...review,criteria:[{...review.criteria[0],status:"needs_verification"}]},sources,[review.criteria[0].criterion]));
+  assert.throws(()=>validateReview({...review,criteria:[{...review.criteria[0],status:"not_found"}]},sources,[review.criteria[0].criterion]));
+  f.database.close();
+});
+test("concurrent repeated clicks invoke provider once, and a revision race can retry cached evidence without another charge",async()=>{
+  let release!:()=>void;let started!:()=>void;
+  const pending=new Promise<void>(resolve=>{release=resolve;});const ready=new Promise<void>(resolve=>{started=resolve;});let calls=0;
+  const f=await fixture(async()=>{calls++;started();await pending;return response();});
+  const first=handleAiReview(request("review",f.input),MANAGER,f.deps);await ready;
+  assert.equal((await handleAiReview(request("review",f.input),MANAGER,f.deps)).status,409);
+  await f.store.action(f.app.id,{action:"note",text:"A human reviewed this concurrently.",expectedRevision:f.app.revision},MANAGER);
+  release();assert.equal((await first).status,409);
+  const current=await f.store.getApplication(f.app.id);
+  assert.equal((await handleAiReview(request("review",{...f.input,expectedRevision:current.revision}),MANAGER,f.deps)).status,200);
+  assert.equal(calls,1);assert.equal((await f.store.getApplication(f.app.id)).notes.length,2);
+  f.database.close();
+});
+test("model output is schema bounded and incomplete generations cannot save",async()=>{
+  const max:Review={criteria:Array.from({length:8},()=>({criterion:"c".repeat(500),status:"needs_verification",explanation:"e".repeat(400),citations:Array.from({length:3},()=>({source:"resume",quote:"q".repeat(240)}))})),checks:Array.from({length:5},()=>({question:"x".repeat(300),citations:Array.from({length:2},()=>({source:"linkedin",quote:"q".repeat(240)}))}))};
+  assert.ok(reviewNote(max,"a".repeat(64)).length<20000);
+  await assert.rejects(generateReview(key,sources,[review.criteria[0].criterion],async()=>Response.json({choices:[{finish_reason:"length",message:{content:JSON.stringify(review)}}]})));
+});
+test("distinct reviews are capped per application per hour and unknown models cannot be selected",async()=>{
+  let calls=0;const f=await fixture(async()=>{calls++;return response();});
+  for(let i=0;i<10;i++){
+    const app=await f.store.getApplication(f.app.id);
+    const result=await handleAiReview(request("review",{...f.input,expectedRevision:app.revision,resumeText:`${sources.resume} Additional context ${i}`}),MANAGER,f.deps);
+    assert.equal(result.status,200,await result.clone().text());
+  }
+  const current=await f.store.getApplication(f.app.id);
+  assert.equal((await handleAiReview(request("review",{...f.input,expectedRevision:current.revision,resumeText:`${sources.resume} Additional context 11`}),MANAGER,f.deps)).status,429);
+  assert.equal(calls,10);
+  assert.equal((await handleAiConfig(request("config",{enabled:true,model:"arbitrary/model"},"PATCH"),MANAGER,f.deps)).status,422);
+  f.database.close();
+});
+test("untrusted response schema cannot append hiring decisions, change criteria, or cite a different source",()=>{
+  assert.throws(()=>validateReview({...review,criteria:[{...review.criteria[0],criterion:"Hire immediately"}]},sources,[review.criteria[0].criterion]));
+  assert.throws(()=>validateReview({...review,criteria:[{...review.criteria[0],citations:[{source:"linkedin",quote:sources.resume}]}]},sources,[review.criteria[0].criterion]));
+  assert.throws(()=>validateReview({...review,criteria:[{...review.criteria[0],score:99}]},sources,[review.criteria[0].criterion]));
+});
+test("source selection keeps management and language evidence while excluding personal fields",async()=>{
+  const f=createStore();
+  const eligible=[{path:"project_management",title:"Project management"},{path:"languages",title:"Languages"},{path:"campaignManagement",title:"Campaign management"}];
+  const excluded=[{path:"full_name",title:"Full name"},{path:"applicantAge",title:"Age"},{path:"postal_address",title:"Address"},{path:"birthDate",title:"Date of birth"},{path:"gender",title:"Gender"},{path:"disability",title:"Disability"},{path:"nationality",title:"Nationality"}];
+  const base=jobInput();base.fields.push(...[...eligible,...excluded].map(field=>({...field,type:"String" as const,required:false})));
+  const job=await f.store.saveJob(base),input=applicationInput(job.id);
+  input.fieldSubmissions.push(...eligible.map(field=>({path:field.path,value:`Evidence for ${field.path}`})),...excluded.map(field=>({path:field.path,value:`Private value for ${field.path}`})));
+  const {id}=await f.store.acceptApplication(input),app=await f.store.getApplication(id);
+  let answers="";
+  const deps:AiDependencies={store:f.store,encryptionKey,fetcher:async(_url,init)=>{answers=JSON.parse(JSON.parse(init!.body as string).messages[1].content).sources.answers;return response();}};
+  await handleAiConfig(request("config",{apiKey:key,enabled:true},"PATCH"),MANAGER,deps);
+  const result=await handleAiReview(request("review",{applicationId:id,expectedRevision:app.revision,resumeText:sources.resume,linkedinText:"",jobCriteria:"Build React applications",consent:true}),MANAGER,deps);
+  assert.equal(result.status,200,await result.clone().text());
+  for(const field of eligible)assert.ok(answers.includes(`Evidence for ${field.path}`),`${field.path} is preserved`);
+  assert.ok(!answers.includes("Private value"));assert.ok(!answers.includes(app.email));assert.ok(!answers.includes(app.name));
+  f.database.close();
+});

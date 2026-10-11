@@ -8,6 +8,8 @@ import {
   useHubResource,
 } from "./api";
 import { Badge, EmptyState, Feedback, Field, ResourceState } from "./shared";
+import { CandidateEvidence, useEvidenceDraft } from "./ai-review";
+import { jobGroup, jobLocation, jobBatch } from "./job-organization";
 import { applicationsCsv, downloadApplication, downloadFile } from "./export";
 import {
   stages,
@@ -222,6 +224,7 @@ export function Candidates({
   if (detailId)
     return (
       <CandidateDetail
+        key={detailId}
         id={detailId}
         back={() => setDetailId(null)}
         changed={changed}
@@ -251,12 +254,12 @@ export function Candidates({
             type="search"
           />
         </Field>
-        <Field label="Role">
+        <Field label="Job & batch">
           <select value={jobId} onChange={(e) => { setJobId(e.target.value); setGrade(""); setSort(""); }}>
-            <option value="">All roles</option>
+            <option value="">All jobs and batches</option>
             {jobs.map((job) => (
               <option key={job.id} value={job.id}>
-                {job.title}
+                {jobGroup(job)} · {jobLocation(job)} · {jobBatch(job)}
               </option>
             ))}
           </select>
@@ -266,7 +269,7 @@ export function Candidates({
             <option value="">All qualification results</option><option value="pass">Requirements met</option><option value="review">Needs review</option><option value="fail">Requirement not met</option>
           </select>
         </Field>
-        <Field label="Reviewer grades" hint={!jobId ? "Choose one role to compare reviewer grades." : "Qualification and reviewer grade are separate."}>
+        <Field label="Reviewer grades" hint={!jobId ? "Choose one batch to compare reviewer grades." : "Qualification and reviewer grade are separate."}>
           <select value={grade} disabled={!jobId} onChange={(e) => setGrade(e.target.value)}>
             <option value="">Graded and ungraded</option><option value="reviewed">Graded applications</option><option value="ungraded">Ungraded applications</option>
           </select>
@@ -472,6 +475,7 @@ export function CandidateDetail({
     [emailPending, setEmailPending] = useState(false),
     [newEmailApproved, setNewEmailApproved] = useState(false),
     [approve, setApprove] = useState(false);
+  const evidenceDraft = useEvidenceDraft();
   const emailRequest = useRef<{ action: string; subject: string; body: string; actionId: string; expectedRevision: number } | null>(null);
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -758,12 +762,13 @@ export function CandidateDetail({
             </aside>
             <div className="hub-detail-main">
               <section className="hub-card">
-                <h3>Reviewer grade</h3>
+                <h3>Manager score · how ranking works</h3>
                 <GradeSummary grade={detail.grade} />
-                <p className="hub-muted">Qualification is the result of approved application rules. The reviewer grade is a separate human evaluation: the latest overall score from each reviewer, weighted equally. Compare grades only within this role; no AI ranking is used.</p>
+                <p className="hub-muted">Qualification is the result of approved application rules. The reviewer grade is a separate human evaluation: the latest overall score from each reviewer, weighted equally. Compare grades only within this batch. A 4/5 average displays as 80/100; it is a reviewer score, not a probability of success. Ungraded applicants are not given a zero. Choose a job and batch in Applications, then sort by highest reviewer grade to see your shortlist. AI evidence reviews never change this score.</p>
                 {detail.grade?.latestReviews.map((review) => <article className="hub-history-item" key={review.actor}><strong>{review.actor} · {review.score}/5</strong><p>{review.criteria}</p><p className="hub-preserve">{review.text}</p><small>{displayDate(review.createdAt)}</small></article>)}
                 {detail.grade?.reviewerCount === 1 && <p className="hub-notice">One reviewer has graded this application. A second or third review can give you more evidence before deciding.</p>}
               </section>
+              <CandidateEvidence key={detail.id} detail={detail} draft={evidenceDraft} saved={() => { void resource.reload(); changed(); }} />
               <section className="hub-card">
                 <h3>Application answers</h3>
                 {detail.answers.length ? (

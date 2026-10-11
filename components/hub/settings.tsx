@@ -11,6 +11,8 @@ import { Badge, EmptyState, Feedback, Field, ResourceState } from "./shared";
 import type { Member, Settings, Task } from "./types";
 import { GoogleConfiguration } from "./google-setup";
 import { SchedulerSetup } from "./scheduler-setup";
+import { driveFolderId } from "./drive-folder";
+import { AiReviewSettings } from "./ai-review";
 
 export function HubSettings({
   member,
@@ -29,8 +31,7 @@ export function HubSettings({
           <p className="hub-kicker">ADMINISTRATION</p>
           <h2 id="settings-title">Team & settings</h2>
           <p>
-            Manage authorized reviewers, communication, scheduling, and Drive
-            archival.
+            Follow the three connection steps, then invite your hiring team.
           </p>
         </div>
       </div>
@@ -95,8 +96,22 @@ function SettingsForm({
     );
   const mutation = useHubMutation(),
     connection = useHubMutation();
+  const runtime = useHubResource<{
+    configured: boolean;
+    hostingPlatform?: string;
+    backgroundEnabled?: boolean;
+  }>("/api/google/status");
+  const [validationError, setValidationError] = useState("");
+  const savedDriveId = driveFolderId(initial.google.driveRootId || "");
+  const connectedAccount = initial.google.connected ? initial.google.sender : "";
   async function save(e: React.FormEvent) {
     e.preventDefault();
+    const folderId = driveFolderId(driveRootId);
+    if (folderId === null) {
+      setValidationError("Paste a Google Drive folder link (https://drive.google.com/drive/folders/…) or its folder ID.");
+      return;
+    }
+    setValidationError("");
     const result = await mutation.run(
       "/api/hub/settings",
       "PATCH",
@@ -107,7 +122,7 @@ function SettingsForm({
           role: value.role,
         })),
         calendarId: calendarId.trim(),
-        driveRootId: driveRootId.trim(),
+        driveRootId: folderId,
         rejectionTemplate,
         interviewTimeZone: timeZone,
         interviewStartHour: Number(startHour),
@@ -139,15 +154,26 @@ function SettingsForm({
   }
   return (
     <>
-      <GoogleConfiguration />
-      <SchedulerSetup />
+      <p className="hub-notice">
+        Start here: connect Google, choose the interview calendar, and choose where applicant files are saved.
+        Changes in steps 2 and 3 take effect when you click Save team & settings.
+      </p>
+      <ResourceState loading={runtime.loading} error={runtime.error} retry={() => void runtime.reload()} />
+      {runtime.data?.configured === false && <p className="hub-notice hub-error" role="alert">
+        Google client setup is missing. An administrator must complete Advanced admin setup below, then click Refresh setup checks before connecting an account.
+      </p>}
+      {runtime.data?.hostingPlatform === "railway" && !runtime.data.backgroundEnabled && <p className="hub-notice hub-error" role="alert">
+        Automatic email, calendar, and file processing is disabled. An administrator must enable it in Advanced admin setup before launch.
+      </p>}
+      {initial.queue.failed > 0 && <p className="hub-notice hub-error" role="alert">
+        {initial.queue.failed} integration task(s) need attention. Open Integration tasks to review the error and retry safely.
+      </p>}
       <section className="hub-card">
         <div className="hub-section-heading compact">
           <div>
-            <h3>Google Workspace</h3>
+            <h3>1. Connect your recruiting Google account</h3>
             <p>
-              Email, Calendar, Meet, and Drive use the authorized company
-              connection.
+              One shared connection sends recruiting emails, creates interviews with Meet, and saves applicant files.
             </p>
           </div>
           <Badge tone={initial.google.connected ? "success" : "warning"}>
@@ -156,10 +182,10 @@ function SettingsForm({
         </div>
         <dl className="hub-connection-details">
           <div>
-            <dt>Recruiting sender</dt>
-            <dd>{initial.google.sender || "Not configured"}</dd>
+            <dt>Connected account</dt>
+            <dd>{connectedAccount || "No active connection"}</dd>
           </div>
-          <div><dt>Account to authorize</dt><dd>{initial.google.expectedSender || "Check Google connection setup"}</dd></div>
+          <div><dt>Account allowed to connect</dt><dd>{initial.google.expectedSender || "Check Google connection setup"}</dd></div>
           <div>
             <dt>Applications</dt>
             <dd>
@@ -194,7 +220,7 @@ function SettingsForm({
         <button
           className="hub-button secondary"
           onClick={() => void connect()}
-          disabled={connection.busy}
+          disabled={connection.busy || runtime.loading || runtime.data?.configured === false}
         >
           {connection.busy
             ? "Connecting…"
@@ -203,101 +229,41 @@ function SettingsForm({
               : "Connect Google Workspace"}{" "}
           <ExternalLink size={15} />
         </button>
+        <button className="hub-text-button" type="button" onClick={() => void runtime.reload()} disabled={runtime.loading}>
+          Refresh setup checks
+        </button>
         <Feedback error={connection.error} success={connection.success} />
         <p className="hub-muted">
-          Configure the Google OAuth client above before connecting. Saved
-          client secrets are not returned to this page.
+          Choose {initial.google.expectedSender || "the configured recruiting account"} on the Google screen.
+          Your dashboard login is separate. To switch the recruiting account to Maria, an administrator must first change the allowed account in server configuration, then Maria must authorize Google here. This button cannot change that account restriction.
         </p>
       </section>
       <form onSubmit={save}>
         <fieldset disabled={mutation.busy}>
           <section className="hub-card">
-            <div className="hub-section-heading compact">
-              <div>
-                <h3>Team access</h3>
-                <p>
-                  Administrators manage configuration. Recruiters can operate
-                  hiring records.
-                </p>
-              </div>
-              <button
-                type="button"
-                className="hub-button secondary"
-                onClick={() =>
-                  setMembers((current) => [
-                    ...current,
-                    { email: "", role: "recruiter" },
-                  ])
-                }
-              >
-                <Plus size={16} /> Add teammate
-              </button>
-            </div>
-            <div className="hub-editor-list">
-              {members.map((value, index) => (
-                <div className="hub-member-row" key={index}>
-                  <Field label={"Teammate " + (index + 1) + " email"}>
-                    <input
-                      required
-                      type="email"
-                      value={value.email}
-                      onChange={(e) =>
-                        updateMember(index, { email: e.target.value })
-                      }
-                    />
-                  </Field>
-                  <Field label="Access level">
-                    <select
-                      value={value.role}
-                      onChange={(e) =>
-                        updateMember(index, {
-                          role: e.target.value as Member["role"],
-                        })
-                      }
-                    >
-                      <option value="admin">Administrator — full access</option>
-                      <option value="recruiter">
-                        Recruiter — hiring operations
-                      </option>
-                    </select>
-                  </Field>
-                  <button
-                    type="button"
-                    className="hub-icon-button"
-                    disabled={
-                      value.email.toLowerCase() === member.email.toLowerCase()
-                    }
-                    onClick={() =>
-                      setMembers((current) =>
-                        current.filter((_, i) => i !== index),
-                      )
-                    }
-                    aria-label={
-                      "Remove " + (value.email || "teammate " + (index + 1))
-                    }
-                  >
-                    <Trash2 size={17} />
-                  </button>
-                </div>
-              ))}
-            </div>
+            <h3>2. Choose the interview calendar</h3>
             <p className="hub-muted">
-              Your owner account keeps its server-configured administrative
-              access. Teammates sign in with their own approved account.
+              Use the connected account’s calendar now, or a calendar shared with that account.
+              Confirm the hours below, save, then send a test interview from an applicant’s profile.
             </p>
-          </section>
-          <section className="hub-card">
-            <h3>Calendar & booking availability</h3>
+            <button
+              type="button"
+              className="hub-button secondary"
+              disabled={!connectedAccount}
+              onClick={() => setCalendarId(connectedAccount)}
+            >
+              Use {connectedAccount || "connected account"} calendar
+            </button>
             <p className="hub-muted">
-              Save the actual recruiting calendar and interview availability
-              before sending invitations.
+              For Maria’s calendar, she can share it with {connectedAccount || "the connected recruiting account"} and grant permission to change events. Then enter her calendar ID below. A calendar selection alone does not grant access.
+              Active or unresolved interviews must be cancelled or reconciled before switching calendars.
             </p>
             <div className="hub-form-grid">
-              <Field label="Recruiting calendar ID">
+              <Field label="Interview calendar" hint="Usually the calendar owner’s email. For a shared calendar, copy its Calendar ID from Google Calendar → Settings → Integrate calendar.">
                 <input
                   value={calendarId}
                   onChange={(e) => setCalendarId(e.target.value)}
-                  placeholder="Calendar ID from Google Calendar settings"
+                  placeholder="For example sales@aicaseleads.com"
                 />
               </Field>
               <Field
@@ -390,28 +356,115 @@ function SettingsForm({
               tone={initial.scheduling?.configured ? "success" : "warning"}
             >
               {initial.scheduling?.configured
-                ? "Booking availability configured"
-                : "Save availability to enable interview invitations"}
+                ? "Calendar and availability saved"
+                : "Save calendar and availability to enable invitations"}
             </Badge>
+            <p className="hub-muted">Saved settings do not verify access. A completed test booking confirms calendar access and Meet creation; check Integration tasks for delivery errors.</p>
           </section>
           <section className="hub-card">
-            <h3>Drive archival</h3>
+            <h3>3. Choose the shared applicant folder</h3>
+            <p className="hub-muted">Open Google Drive, choose a shared company folder or Shared Drive, and paste its link below. Give the connected recruiting account permission to add files, and give hiring managers access.</p>
             <Field
-              label="Recruiting root folder ID"
-              hint="Use the shared company folder where Recruiting / Project or role / Country or market / Hiring round / Candidate–Application ID should be archived."
+              label="Shared Google Drive folder"
+              hint="Paste the folder link from your browser, or enter its folder ID. The folder stays private to people you share it with."
             >
               <input
                 value={driveRootId}
                 onChange={(e) => setDriveRootId(e.target.value)}
-                placeholder="Folder ID from the Google Drive URL"
+                placeholder="https://drive.google.com/drive/folders/…"
               />
             </Field>
+            <div className="hub-button-row">
+              <Badge tone={initial.google.driveRootId ? "success" : "warning"}>
+                {initial.google.driveRootId ? "Folder saved" : "Choose a folder"}
+              </Badge>
+              {savedDriveId && <a className="hub-button secondary" href={"https://drive.google.com/drive/folders/" + encodeURIComponent(savedDriveId)} target="_blank" rel="noopener noreferrer">
+                Open saved folder <ExternalLink size={15} />
+              </a>}
+            </div>
             <p className="hub-muted">
-              Each application gets its own archive; earlier rounds remain stored when you repost. Share the root folder with authorized hiring staff. Temporary Drive failures
-              remain visible in integration tasks and do not lose an accepted
-              application.
+              Files are organized automatically: Recruiting → Job → Location → Batch → Applicant.
+              Earlier batches remain stored when you hire again. Each application has a separate folder.
+              A saved folder is not proof of access: check a test application’s Drive link and Integration tasks to confirm files arrived.
+              Temporary Drive failures do not lose accepted applications.
             </p>
           </section>
+          <section className="hub-card">
+            <div className="hub-section-heading compact">
+              <div>
+                <h3>Team access</h3>
+                <p>
+                  Administrators manage configuration. Recruiters can operate
+                  hiring records.
+                </p>
+              </div>
+              <button
+                type="button"
+                className="hub-button secondary"
+                onClick={() =>
+                  setMembers((current) => [
+                    ...current,
+                    { email: "", role: "recruiter" },
+                  ])
+                }
+              >
+                <Plus size={16} /> Add teammate
+              </button>
+            </div>
+            <div className="hub-editor-list">
+              {members.map((value, index) => (
+                <div className="hub-member-row" key={index}>
+                  <Field label={"Teammate " + (index + 1) + " email"}>
+                    <input
+                      required
+                      type="email"
+                      value={value.email}
+                      onChange={(e) =>
+                        updateMember(index, { email: e.target.value })
+                      }
+                    />
+                  </Field>
+                  <Field label="Access level">
+                    <select
+                      value={value.role}
+                      onChange={(e) =>
+                        updateMember(index, {
+                          role: e.target.value as Member["role"],
+                        })
+                      }
+                    >
+                      <option value="admin">Administrator — full access</option>
+                      <option value="recruiter">
+                        Recruiter — hiring operations
+                      </option>
+                    </select>
+                  </Field>
+                  <button
+                    type="button"
+                    className="hub-icon-button"
+                    disabled={
+                      value.email.toLowerCase() === member.email.toLowerCase()
+                    }
+                    onClick={() =>
+                      setMembers((current) =>
+                        current.filter((_, i) => i !== index),
+                      )
+                    }
+                    aria-label={
+                      "Remove " + (value.email || "teammate " + (index + 1))
+                    }
+                  >
+                    <Trash2 size={17} />
+                  </button>
+                </div>
+              ))}
+            </div>
+            <p className="hub-muted">
+              Your owner account keeps its server-configured administrative
+              access. Teammates sign in with their own approved account.
+            </p>
+          </section>
+
           <section className="hub-card">
             <h3>Default rejection email for new roles</h3>
             <Field label="Approved template">
@@ -423,7 +476,7 @@ function SettingsForm({
             </Field>
             <p className="hub-muted">
               New roles use this default. Existing roles keep their approved
-              message, which you can edit in Roles & forms. Individual and
+              message, which you can edit in Jobs & batches. Individual and
               automatic rejection rules must be explicitly approved.
             </p>
           </section>
@@ -435,10 +488,17 @@ function SettingsForm({
             >
               {mutation.busy ? "Saving settings…" : "Save team & settings"}
             </button>
-            <Feedback error={mutation.error} success={mutation.success} />
+            <Feedback error={validationError || mutation.error} success={validationError ? "" : mutation.success} />
           </div>
         </fieldset>
       </form>
+      <AiReviewSettings />
+      <details className="hub-card hub-setup-details">
+        <summary>Advanced admin setup</summary>
+        <p className="hub-muted">Only needed when installing the app or changing its Google client or background processing. Day-to-day hiring uses the three steps above.</p>
+        <GoogleConfiguration />
+        <SchedulerSetup />
+      </details>
       {initial.accessAudit && <section className="hub-card"><h3>Recent access changes</h3><p className="hub-muted">Configuration changes record who made them and the previous and updated values. Most recent 50 events.</p>{initial.accessAudit.length ? initial.accessAudit.map((event) => <article key={event.id} className="hub-history-item"><strong>{event.type} · {event.actor}</strong><small>{displayDate(event.createdAt)}</small><details><summary>Review recorded change</summary><pre className="hub-preserve">{JSON.stringify({before:event.before,after:event.after},null,2)}</pre></details></article>) : <p className="hub-muted">No access changes recorded yet.</p>}</section>}
     </>
   );

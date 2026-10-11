@@ -25,7 +25,7 @@ type View =
 const navigation = [
   { id: "overview", label: "Overview", icon: LayoutDashboard },
   { id: "applications", label: "Applications", icon: ClipboardList },
-  { id: "jobs", label: "Roles & forms", icon: BriefcaseBusiness },
+  { id: "jobs", label: "Jobs & batches", icon: BriefcaseBusiness },
   { id: "reports", label: "Reports", icon: BarChart3 },
   { id: "tasks", label: "Integration tasks", icon: Workflow },
   { id: "settings", label: "Team & settings", icon: Settings2 },
@@ -74,7 +74,7 @@ export function HiringDashboard({
       "/api/hub/setup",
       "POST",
       {},
-      "The two draft roles were created. Open Roles & forms to configure them.",
+      "The two draft roles were created. Open Jobs & batches to configure them.",
     );
     if (result !== undefined) changed();
   }
@@ -144,6 +144,7 @@ export function HiringDashboard({
           {workspaceNotice && <p className="hub-notice" role="status">{workspaceNotice}</p>}
           {detailId ? (
             <CandidateDetail
+              key={detailId}
               id={detailId}
               back={() => setDetailId(null)}
               changed={changed}
@@ -214,7 +215,7 @@ export function HiringDashboard({
                     <div className="hub-setup-grid">
                       <div>
                         <span>01</span>
-                        <strong>Roles & forms</strong>
+                        <strong>Jobs & batches</strong>
                         <p>
                           {data.jobs.length} configured roles ·{" "}
                           {

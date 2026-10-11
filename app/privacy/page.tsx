@@ -15,7 +15,7 @@ export default function PrivacyPage() {
         <div className="privacy-copy">
           <h2>What you share</h2>
           <p>
-            When applications open, application forms collect the information
+            Application forms collect the information
             shown on each form, such as your name, contact details, resume,
             portfolio, and responses to job-specific questions. Application
             source information may also be recorded.
@@ -37,16 +37,27 @@ export default function PrivacyPage() {
             Google Drive location. Authorized recruiting
             staff and managers can access hiring records.
           </p>
+          <h2>Optional AI-assisted review</h2>
+          <p>
+            If enabled by the hiring team, a reviewer may send relevant application
+            answers and résumé or candidate-supplied professional profile excerpts
+            to OpenRouter and OpenAI to summarize evidence against job requirements
+            and suggest follow-up questions. A human reviews that evidence. This
+            feature does not assign candidate scores, automatically reject
+            applications, or determine whether text was written with AI.
+            Review notes become part of the hiring record. Contact us to correct
+            information or discuss how your information is used.
+          </p>
           <h2>Questions about your information</h2>
           <p>
-            Email <a href="mailto:mariam@aicaseleads.com">mariam@aicaseleads.com</a>
+            Email <a href="mailto:sales@aicaseleads.com">sales@aicaseleads.com</a>
             {" "}for questions about your application information, to correct
             information, withdraw an application, or request removal of your
             information. The recruiting team handles these requests.
           </p>
           <p className="privacy-note">
-            Applications remain closed while recruiting setup and the company’s
-            final applicant privacy notice are being completed.
+            Closing a job or starting another batch does not delete earlier
+            applications. Access is restricted to authorized hiring staff.
           </p>
         </div>
       </main>

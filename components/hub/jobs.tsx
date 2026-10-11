@@ -5,6 +5,7 @@ import type { ApplicationField, FieldType } from "@/lib/hiring/types";
 import { useHubMutation, useHubResource } from "./api";
 import { Badge, EmptyState, Feedback, Field, ResourceState } from "./shared";
 import type { HubJob, Rule, Settings } from "./types";
+import { availableJobSlug, jobBatch, jobChoices, jobGroup, jobLocation, matchingJobs, nextBatch, experienceQuestions, withExperienceQuestions } from "./job-organization";
 
 const fieldTypes: FieldType[] = [
   "String",
@@ -74,7 +75,13 @@ export function Jobs({
   const resource = useHubResource<HubJob[]>("/api/hub/jobs", refresh),
     mutation = useHubMutation();
   const [editing, setEditing] = useState<HubJob | "new" | { copy: HubJob } | null>(null),
-    [defaultTemplate, setDefaultTemplate] = useState("");
+    [defaultTemplate, setDefaultTemplate] = useState(""),
+    [groupFilter, setGroupFilter] = useState(""),
+    [locationFilter, setLocationFilter] = useState(""),
+    [batchFilter, setBatchFilter] = useState(""),
+    [saved, setSaved] = useState("");
+  const jobs = resource.data || [];
+  const matching = matchingJobs(jobs, groupFilter, locationFilter);
   async function createRole() {
     const result = await mutation.run<Settings>("/api/hub/settings", "GET", undefined, "");
     if (result) { setDefaultTemplate(result.templates.rejection); setEditing("new"); }
@@ -98,7 +105,10 @@ export function Jobs({
         job={editing === "new" || "copy" in editing ? undefined : editing}
         copyFrom={editing !== "new" && "copy" in editing ? editing.copy : undefined}
         defaultRejectionTemplate={defaultTemplate}
-        done={() => {
+        jobs={jobs}
+        done={(message) => {
+          setSaved(message);
+          setBatchFilter("");
           setEditing(null);
           changed();
           void resource.reload();
@@ -110,25 +120,23 @@ export function Jobs({
     <section aria-labelledby="roles-title">
       <div className="hub-section-heading">
         <div>
-          <p className="hub-kicker">EDITABLE ROLE TEMPLATES</p>
-          <h2 id="roles-title">Roles & application forms</h2>
+          <p className="hub-kicker">JOB → LOCATION → BATCH</p>
+          <h2 id="roles-title">Jobs & hiring batches</h2>
           <p>
-            Descriptions, questions, qualification rules, and assessment prompts
-            live here.
+            Choose a job, choose where you are hiring, then open an existing batch or create a new one.
           </p>
         </div>
         {admin && (
           <button className="hub-button" disabled={mutation.busy} onClick={() => void createRole()}>
-            <Plus size={16} /> Add role
+            <Plus size={16} /> Create job
           </button>
         )}
       </div>
-      <Feedback error={mutation.error} success={mutation.success} />
+      <Feedback error={mutation.error} success={saved || mutation.success} />
       <div className="hub-notice">
-        <strong>Post a role in three steps</strong>
-        <ol><li>Edit the role description and application questions.</li><li>Save as Draft while you review the form and approved qualification rules.</li><li>Choose Open, approve the description and form, and save. The applicant page becomes available; applications also require intake to be enabled in the platform’s launch configuration.</li></ol>
-        <p>Reviewer grades come from manager scorecards. Qualification rules explain requirements met or unmet. Automatic rejection remains off unless you explicitly approve it.</p>
-      </div>
+        <strong>A batch is one group of applications for a job and location.</strong>
+        <p>For example: Creative Strategist → Spain → October hiring. Open an existing batch to keep using its application page. Create a new batch when you want a fresh set of applications; earlier applicants and files stay saved.</p>
+            </div>
       <ResourceState
         loading={resource.loading}
         error={resource.error}
@@ -137,8 +145,14 @@ export function Jobs({
       {resource.data && !resource.loading && (
         <>
           {resource.data.length ? (
+            <>
+            <div className="hub-card hub-form-grid">
+              <Field label="Choose job"><select value={groupFilter} onChange={e => { setGroupFilter(e.target.value); setLocationFilter(""); setBatchFilter(""); }}><option value="">All jobs</option>{jobChoices(jobs.map(jobGroup)).map(value => <option key={value}>{value}</option>)}</select></Field>
+              <Field label="Choose location"><select value={locationFilter} onChange={e => { setLocationFilter(e.target.value); setBatchFilter(""); }}><option value="">All locations</option>{jobChoices(matchingJobs(jobs, groupFilter, "").map(jobLocation)).map(value => <option key={value}>{value}</option>)}</select></Field>
+              <Field label="Choose existing batch" hint="Selecting a batch shows its existing posting below."><select value={batchFilter} onChange={e => setBatchFilter(e.target.value)}><option value="">All matching batches</option>{matching.map(job => <option key={job.id} value={job.id}>{jobBatch(job)} · {jobGroup(job)} · {jobLocation(job)} · {job.status} · /jobs/{job.slug}</option>)}</select></Field>
+            </div>
             <div className="hub-job-grid">
-              {resource.data.map((job) => (
+              {matching.filter(job => !batchFilter || job.id === batchFilter).map((job) => (
                 <article className="hub-card hub-role-card" key={job.id}>
                   <div className="hub-status-line">
                     <Badge tone={job.status === "open" ? "success" : "neutral"}>
@@ -149,27 +163,27 @@ export function Jobs({
                     </Badge>
                   </div>
                   <p className="hub-kicker">
-                    {job.department || "No department set"}
+                    {jobLocation(job)}
                   </p>
-                  <h3>{job.title}</h3>
+                  <h3>{jobGroup(job)}</h3>
+                  <p><strong>{jobBatch(job)}</strong></p>
                   <p className="hub-muted">
-                    {job.fields.length} application questions · Form version{" "}
-                    {job.formVersion}
+                    {job.fields.length} application questions
                   </p>
                   <p className="hub-muted">
                     {job.rules.filter((rule) => rule.enabled).length} enabled
                     qualification rules
                   </p>
                   <p className="hub-muted">
-                    Archive: {job.archiveProject || job.title} / {job.archiveCountry || "International"} / {(job.hiringRound || job.title) + " (" + job.id + ")"}
+                    Applications and files stay with this batch.
                   </p>
                   {admin ? (
                     <>
                       <button className="hub-button secondary" onClick={() => setEditing(job)}>
-                        Edit role & form
+                        Open batch
                       </button>
                       <button className="hub-text-button" onClick={() => setEditing({ copy: job })}>
-                        Create new hiring round
+                        Create new batch
                       </button>
                     </>
                   ) : (
@@ -190,6 +204,7 @@ export function Jobs({
                 </article>
               ))}
             </div>
+            </>
           ) : (
             <EmptyState title="Start with your first two roles">
               <p>
@@ -220,19 +235,21 @@ function JobEditor({
   done,
   cancel,
   defaultRejectionTemplate,
+  jobs,
 }: {
   job?: HubJob;
   copyFrom?: HubJob;
-  done: () => void;
+  done: (message: string) => void;
   cancel: () => void;
   defaultRejectionTemplate: string;
+  jobs: HubJob[];
 }) {
   const source = job || copyFrom;
   const [archiveProject, setArchiveProject] = useState(source?.archiveProject || (copyFrom ? copyFrom.title : "")),
-    [archiveCountry, setArchiveCountry] = useState(source?.archiveCountry || ""),
-    [hiringRound, setHiringRound] = useState(copyFrom ? "" : job?.hiringRound || "");
+    [archiveCountry, setArchiveCountry] = useState(source ? jobLocation(source) : "International"),
+    [hiringRound, setHiringRound] = useState(copyFrom ? nextBatch(jobs, jobGroup(copyFrom), jobLocation(copyFrom)) : job?.hiringRound || (job ? "" : "Batch 1"));
   const [title, setTitle] = useState(source?.title || ""),
-    [slug, setSlug] = useState(() => copyFrom ? copyFrom.slug.slice(0, 60).replace(/-+$/, "") + "-" + crypto.randomUUID() : job?.slug || ""),
+    [customSlug, setCustomSlug] = useState<string | null>(job?.slug || null),
     [department, setDepartment] = useState(source?.department || ""),
     [location, setLocation] = useState(source?.location || ""),
     [status, setStatus] = useState(copyFrom ? "draft" : job?.status || "draft"),
@@ -253,6 +270,7 @@ function JobEditor({
     [assessmentPrompt, setAssessmentPrompt] = useState(
       source?.assessmentPrompt || "",
     );
+  const slug = customSlug ?? availableJobSlug(title, archiveCountry, hiringRound, jobs);
   const mutation = useHubMutation();
   function updateField(index: number, update: Partial<ApplicationField>) {
     setFields((current) =>
@@ -286,7 +304,7 @@ function JobEditor({
       autoReject,
       rejectionTemplate,
       assessmentPrompt,
-      archiveProject,
+      archiveProject: archiveProject.trim() || title.slice(0, 120),
       archiveCountry,
       hiringRound,
       ...(job ? { formVersion: job.formVersion } : {}),
@@ -297,66 +315,42 @@ function JobEditor({
       payload,
       "Role saved.",
     );
-    if (result !== undefined) done();
+    if (result !== undefined) done(status === "open" ? "Batch saved and published. Use View applicant page to check the application form." : status === "closed" ? "Batch closed. Its applications and files remain saved." : "Draft batch saved. Open it when you are ready to publish.");
   }
   return (
     <section aria-labelledby="role-editor-title">
       <button className="hub-text-button hub-back" onClick={cancel}>
-        <ArrowLeft size={16} /> Back to roles
+        <ArrowLeft size={16} /> Back to jobs
       </button>
       <div className="hub-section-heading">
         <div>
           <p className="hub-kicker">
-            {job ? "ROLE CONFIGURATION" : "NEW ROLE"}
+            {job ? "EDIT BATCH" : "JOB SETUP"}
           </p>
           <h2 id="role-editor-title">
-            {job ? "Edit " + job.title : copyFrom ? "Create a new hiring round" : "Create a role"}
+            {job ? "Edit " + job.title : copyFrom ? "Create a new batch" : "Create a job"}
           </h2>
           <p>
-            Keep qualifications specific and approved. Automatic rejection
-            starts off.
+            1. Choose the job and location. 2. Review the application. 3. Save a draft or publish.
           </p>
         </div>
       </div>
-      {copyFrom && <div className="hub-notice">This creates a separate draft with a new page address. The previous role and all its applications remain unchanged. Review the market and round below before publishing.</div>}
+      {copyFrom && <div className="hub-notice">This new batch starts as a draft, using the previous description and questions. Earlier batches and applicants stay saved. Automatic rejection starts off.</div>}
       <form onSubmit={save}>
         <fieldset disabled={mutation.busy}>
           <section className="hub-card">
-            <h3>Role details</h3>
+            <h3>1. Job, location & batch</h3>
             <div className="hub-form-grid">
-              <Field label="Job title">
-                <input
-                  required
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                />
+              <Field label="Job title" hint="Choose an existing job title or type a new one.">
+                <input required maxLength={160} list="existing-job-titles" value={title} onChange={e => setTitle(e.target.value)} />
+                <datalist id="existing-job-titles">{jobChoices(jobs.map(job => job.title)).map(value => <option key={value} value={value} />)}</datalist>
               </Field>
-              <Field
-                label="Page address"
-                hint="Use lowercase letters, numbers, and hyphens."
-              >
-                <div className="hub-input-prefix">
-                  <span>/jobs/</span>
-                  <input
-                    required
-                    pattern="[a-z0-9]+(?:-[a-z0-9]+)*"
-                    value={slug}
-                    onChange={(e) => setSlug(e.target.value)}
-                  />
-                </div>
+              <Field label="Hiring location" hint="Where you are hiring, such as Spain, USA, or International. This is not the applicant’s nationality.">
+                <input required maxLength={120} list="existing-job-locations" value={archiveCountry} onChange={e => { setArchiveCountry(e.target.value); setLocation(e.target.value); }} />
+                <datalist id="existing-job-locations">{jobChoices(matchingJobs(jobs, archiveProject || title, "").map(jobLocation)).map(value => <option key={value} value={value} />)}</datalist>
               </Field>
-              <Field label="Department">
-                <input
-                  value={department}
-                  onChange={(e) => setDepartment(e.target.value)}
-                />
-              </Field>
-              <Field label="Location / applicant region">
-                <input
-                  value={location}
-                  onChange={(e) => setLocation(e.target.value)}
-                  placeholder="Enter approved location wording"
-                />
+              <Field label="Batch name" hint={job ? "This is the existing batch. Earlier applications keep their saved folder." : "Give this new batch a short name, such as October hiring. To use a previous batch, go back and choose it."}>
+                <input required={!job} maxLength={120} value={hiringRound} onChange={e => setHiringRound(e.target.value)} placeholder="Original batch" />
               </Field>
               <Field label="Publication status">
                 <select
@@ -372,6 +366,7 @@ function JobEditor({
                 </select>
               </Field>
             </div>
+            <h3>2. What applicants see</h3>
             <Field label="Job description" hint="Enter the approved responsibilities and requirements. Plain text is supported; simple HTML can add paragraphs and lists. Do not add compensation or qualifications that have not been approved.">
               <textarea
                 rows={10}
@@ -383,6 +378,17 @@ function JobEditor({
                 required={status === "open"}
               />
             </Field>
+            <details>
+              <summary>Advanced: page address, department & saved folder labels</summary>
+              <p className="hub-muted">The page address is generated for new batches. Changing an existing address breaks links shared earlier.</p>
+              <div className="hub-form-grid">
+                <Field label="Page address"><div className="hub-input-prefix"><span>/jobs/</span><input required maxLength={160} pattern="[a-z0-9]+(?:-[a-z0-9]+)*" value={slug} onChange={e => setCustomSlug(e.target.value)} /></div></Field>
+                <Field label="Department"><input maxLength={160} value={department} onChange={e => setDepartment(e.target.value)} /></Field>
+                <Field label="Job group" hint="Leave blank to group by job title. Existing group names are preserved."><input maxLength={120} list="existing-job-groups" value={archiveProject} onChange={e => setArchiveProject(e.target.value)} /><datalist id="existing-job-groups">{jobChoices(jobs.map(jobGroup)).map(value => <option key={value} value={value} />)}</datalist></Field>
+                <Field label="Public location wording" hint="Optional wording on the job page."><input maxLength={200} value={location} onChange={e => setLocation(e.target.value)} /></Field>
+              </div>
+              <p className="hub-muted">Saved files use Job → Location → Batch → Applicant. Existing applicants keep their saved location when these labels change.</p>
+            </details>
             {status === "open" && (
               <label className="hub-checkbox">
                 <input
@@ -395,22 +401,6 @@ function JobEditor({
                 Intake also requires the platform’s launch setting.
               </label>
             )}
-          </section>
-          <section className="hub-card">
-            <h3>Shared Drive archive grouping</h3>
-            <p>Recruiting / Project or role / Country or market / Hiring round / Applicant. Use a separate role posting for each market, such as Spain and USA. This is the job’s hiring market, not the applicant’s nationality.</p>
-            <div className="hub-form-grid">
-              <Field label="Project or role" hint="Defaults to the job title.">
-                <input maxLength={120} value={archiveProject} onChange={(e) => setArchiveProject(e.target.value)} placeholder={title || "Job title"} />
-              </Field>
-              <Field label="Country or market" hint="Defaults to International.">
-                <input maxLength={120} value={archiveCountry} onChange={(e) => setArchiveCountry(e.target.value)} placeholder="International" />
-              </Field>
-              <Field label="Hiring round" hint="Leave blank for the job title. Every round folder also includes its unique job ID.">
-                <input maxLength={120} value={hiringRound} onChange={(e) => setHiringRound(e.target.value)} placeholder="For example: October 2026" />
-              </Field>
-            </div>
-            <p className="hub-muted">New applications use this grouping. Existing applicants keep their saved archive location. Reposting creates a new draft and keeps earlier applications.</p>
           </section>
           <section className="hub-card">
             <div className="hub-section-heading compact">
@@ -437,6 +427,13 @@ function JobEditor({
                 }
               >
                 <Plus size={16} /> Add question
+              </button>
+            </div>
+            <div className="hub-notice">
+              <strong>Collect evidence for a fair review</strong>
+              <p>Add an optional LinkedIn link, work history, personal contributions, and an accuracy confirmation. Applicants provide their own information; no LinkedIn account is required and profiles are not scraped. Reviewers can compare these answers with the resume.</p>
+              <button type="button" className="hub-button secondary" disabled={experienceQuestions.every(question => fields.some(field => field.path === question.path))} onClick={() => { setFields(withExperienceQuestions); setDescriptionApproved(false); }}>
+                {experienceQuestions.every(question => fields.some(field => field.path === question.path)) ? "Experience & profile questions added" : "Add experience & profile questions"}
               </button>
             </div>
             <div className="hub-editor-list">
@@ -492,7 +489,7 @@ function JobEditor({
                         ))}
                       </select>
                     </Field>
-                    <Field label="Question identifier">
+                    <details><summary>Advanced question identifier</summary><Field label="Question identifier">
                       <input
                         required
                         value={field.path}
@@ -501,7 +498,7 @@ function JobEditor({
                           updateField(index, { path: e.target.value })
                         }
                       />
-                    </Field>
+                    </Field></details>
                     <label className="hub-checkbox">
                       <input
                         type="checkbox"
@@ -536,7 +533,8 @@ function JobEditor({
               ))}
             </div>
           </section>
-          <section className="hub-card">
+          <details className="hub-card">
+            <summary>Optional: qualification rules & rejection email</summary>
             <div className="hub-section-heading compact">
               <div>
                 <h3>Qualification rules</h3>
@@ -694,8 +692,9 @@ function JobEditor({
                 }}
               />
             </Field>
-          </section>
-          <section className="hub-card">
+          </details>
+          <details className="hub-card">
+            <summary>Optional: assessment instructions</summary>
             <h3>Assessment prompt</h3>
             <p className="hub-muted">
               Recruiters explicitly send assessments after reviewing an
@@ -708,7 +707,7 @@ function JobEditor({
                 onChange={(e) => setAssessmentPrompt(e.target.value)}
               />
             </Field>
-          </section>
+          </details>
           <div className="hub-sticky-save">
             <button
               className="hub-button"
@@ -719,7 +718,7 @@ function JobEditor({
                 (status === "open" && !descriptionApproved)
               }
             >
-              {mutation.busy ? "Saving role…" : "Save role & configuration"}
+              {mutation.busy ? "Saving…" : status === "open" ? "Publish batch" : status === "closed" ? "Save closed batch" : "Save draft batch"}
             </button>
             <button
               className="hub-button secondary"
