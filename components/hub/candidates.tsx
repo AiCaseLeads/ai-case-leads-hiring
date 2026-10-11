@@ -120,22 +120,24 @@ export function Candidates({
   refresh,
   changed,
   reviewerEmail,
+  initialStage = "",
 }: {
   jobs: HubJob[];
   refresh: number;
   changed: () => void;
   reviewerEmail: string;
+  initialStage?: string;
 }) {
   const [q, setQ] = useState(""),
     [jobId, setJobId] = useState(""),
-    [stage, setStage] = useState(""),
+    [stage, setStage] = useState(initialStage),
     [assignee, setAssignee] = useState(""),
     [qualification, setQualification] = useState(""),
     [grade, setGrade] = useState(""),
     [sort, setSort] = useState(""),
     [duplicate, setDuplicate] = useState(false),
     [page, setPage] = useState(1),
-    [filter, setFilter] = useState(""),
+    [filter, setFilter] = useState(initialStage ? new URLSearchParams({stage:initialStage}).toString() : ""),
     [selected, setSelected] = useState<string[]>([]),
     [detailId, setDetailId] = useState<string | null>(null);
   const [queues, setQueues] = useState<{name: string; filter: string}[]>([]),
@@ -728,7 +730,7 @@ export function CandidateDetail({
               </form>
             </aside>
             <div className="hub-detail-main">
-              <div className="hub-button-row" role="tablist" aria-label="Applicant record">{([{id:"application",label:"Application & files"},{id:"review",label:"Review & scorecard"},{id:"activity",label:"Activity & messages"}] as const).map(tab=><button key={tab.id} type="button" role="tab" id={`candidate-tab-${tab.id}`} aria-selected={section===tab.id} aria-controls={`candidate-panel-${tab.id}`} className={"hub-button " + (section===tab.id ? "" : "secondary")} onClick={()=>setSection(tab.id)}>{tab.label}</button>)}</div>
+              <div className="hub-button-row" role="tablist" aria-label="Applicant record">{([{id:"application",label:"Application & files"},{id:"review",label:"Review & scorecard"},{id:"activity",label:"Activity & messages"}] as const).map(tab=><button key={tab.id} type="button" role="tab" id={`candidate-tab-${tab.id}`} aria-selected={section===tab.id} tabIndex={section===tab.id?0:-1} onKeyDown={event=>{const ids=["application","review","activity"] as const;const index=ids.indexOf(section);const next=event.key==="ArrowRight"?ids[(index+1)%3]:event.key==="ArrowLeft"?ids[(index+2)%3]:event.key==="Home"?ids[0]:event.key==="End"?ids[2]:null;if(next){event.preventDefault();setSection(next);document.getElementById(`candidate-tab-${next}`)?.focus();}}} aria-controls={`candidate-panel-${tab.id}`} className={"hub-button " + (section===tab.id ? "" : "secondary")} onClick={()=>setSection(tab.id)}>{tab.label}</button>)}</div>
               <div role="tabpanel" id="candidate-panel-review" aria-labelledby="candidate-tab-review" hidden={section!=="review"}>
               <section className="hub-card">
                 <h3>Reviewer grade</h3>
