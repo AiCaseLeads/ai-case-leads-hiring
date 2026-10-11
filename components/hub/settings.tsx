@@ -174,7 +174,7 @@ function SettingsForm({
     <>
       <p className="hub-notice">
         Start here: connect Google, choose the interview calendar, and choose where applicant files are saved.
-        Changes in steps 2 and 3 take effect when you click Save team & settings.
+        Changes in steps 2 and 3 take effect when you click Save settings.
       </p>
       <ResourceState loading={runtime.loading} error={runtime.error} retry={() => void runtime.reload()} />
       {runtime.data?.configured === false && <p className="hub-notice hub-error" role="alert">
@@ -505,7 +505,7 @@ function SettingsForm({
               type="submit"
               disabled={mutation.busy}
             >
-              {mutation.busy ? "Saving settings…" : "Save team & settings"}
+              {mutation.busy ? "Saving settings…" : "Save settings"}
             </button>
             <Feedback error={validationError || mutation.error} success={validationError ? "" : mutation.success} />
           </div>

@@ -115,7 +115,7 @@ export function CandidateEvidence({ detail, saved, draft }: { detail: Applicatio
     <details onToggle={event => setPanelOpen(event.currentTarget.open)}>
       <summary>Compare résumé, profile and application with AI</summary>
       <ResourceState loading={config.loading} error={config.error} retry={() => void config.reload()} />
-      {!config.loading && config.data && !ready && <p className="hub-notice">AI review is off. An administrator can connect OpenRouter under Team & settings → Optional AI evidence review. You can still review files and record manager scores.</p>}
+      {!config.loading && config.data && !ready && <p className="hub-notice">AI review is off. An administrator can connect OpenRouter under Settings → AI evidence review. You can still review files and record manager scores.</p>}
       <p className="hub-muted">PDFs are read locally when you open this panel, using OCR for scanned pages. Nothing is sent to AI until you confirm and request a review. Select the correct résumé below and compare its text with the original. LinkedIn is not scraped.</p>
       <Field label="Résumé source"><select value={fileId} disabled={mutation.busy} onChange={event => {setSelectedPdf(event.target.value);setConsent(false);}}>
         {pdfs.map(file => <option key={file.id} value={file.id}>{file.filename}</option>)}

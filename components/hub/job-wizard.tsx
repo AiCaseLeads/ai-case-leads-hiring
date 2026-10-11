@@ -672,7 +672,7 @@ function Editor({
         autoReject,
         ...(rejection.trim() ? { rejectionTemplate: rejection } : {}),
         assessmentPrompt: assessment,
-        archiveProject: job?.archiveProject || title.slice(0, 120),
+        archiveProject: job?.archiveProject || (source?.archiveProject && source.archiveProject !== source.title ? source.archiveProject : title.slice(0, 120)),
         archiveCountry,
         hiringRound: job?.hiringRound || postingLabel,
       },

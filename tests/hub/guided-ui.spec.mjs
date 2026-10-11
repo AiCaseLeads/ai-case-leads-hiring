@@ -54,11 +54,11 @@ test("guided connections save a pasted Drive folder and selected calendar withou
   assert.equal(await page.getByRole("link", { name: "Open saved folder" }).getAttribute("href"), "https://drive.google.com/drive/folders/0AFEhbfGTJcYhUk9PVA");
   await page.getByRole("button", { name: "Use sales@aicaseleads.com calendar" }).click();
   await page.getByLabel("Shared Google Drive folder", { exact: true }).fill("https://evil.example/drive/folders/0AFEhbfGTJcYhUk9PVA");
-  await page.getByRole("button", { name: "Save team & settings", exact: true }).click();
+  await page.getByRole("button", { name: "Save settings", exact: true }).click();
   await page.getByText("Paste a Google Drive folder link", { exact: false }).waitFor();
   assert.equal(writes.length, 0);
   await page.getByLabel("Shared Google Drive folder", { exact: true }).fill("https://drive.google.com/drive/u/0/folders/0AFEhbfGTJcYhUk9PVA?usp=sharing");
-  await page.getByRole("button", { name: "Save team & settings", exact: true }).click();
+  await page.getByRole("button", { name: "Save settings", exact: true }).click();
   await page.getByText("Settings changed. Refresh and try again.", { exact: true }).waitFor();
   assert.equal(writes.length, 1);
   assert.equal(writes[0].settingsVersion, 7);

@@ -726,3 +726,18 @@ test("archive grouping snapshots survive job edits and reposting keeps separate 
   assert.equal((await store.getApplication(accepted.id)).archiveCountry,"Spain");
   database.close();
 });
+
+
+test("partial job edits retain the posting archive grouping and prior application snapshot", async () => {
+  const {store,database}=createStore();
+  try {
+    const job=await store.saveJob({...jobInput(),archiveProject:"Creative Department",archiveCountry:"Spain",hiringRound:"Approved previous posting"});
+    const application=await store.acceptApplication(applicationInput(job.id),SESSION_HASH);
+    const response=await handleHubRequest(new Request("https://careers.example.invalid/api/hub/jobs/"+job.id,{method:"PATCH",headers:{"Content-Type":"application/json",Origin:"https://careers.example.invalid"},body:JSON.stringify({status:"closed",formVersion:job.formVersion})}),["jobs",job.id],MANAGER,store);
+    assert.equal(response.status,200,await response.clone().text());
+    const saved=await store.getJob(job.id);
+    assert.equal(saved.archiveProject,job.archiveProject);assert.equal(saved.archiveCountry,job.archiveCountry);assert.equal(saved.hiringRound,job.hiringRound);assert.equal(saved.status,"closed");
+    const original=await store.getApplication(application.id);assert.equal(original.jobId,job.id);
+    const row=await store.applicationRow(application.id);assert.equal(row.archive_project,"Creative Department");assert.equal(row.hiring_round,"Approved previous posting");
+  } finally {database.close();}
+});

@@ -91,6 +91,7 @@ async function setup(
     },
     scoreCatalog = scores,
     failFirst = false,
+    holdTemplateSave = null,
   } = {},
 ) {
   const { outputFiles } = await build({
@@ -145,6 +146,7 @@ async function setup(
     const input = req.postDataJSON();
     if (req.method() === "PATCH") {
       catalogWrites.push(input);
+      if(input.action === "template" && holdTemplateSave) await holdTemplateSave;
       catalog = { ...catalog, revision: catalog.revision + 1 };
       if (input.action === "request")
         catalog.requests = [
@@ -433,4 +435,19 @@ test("duplicating a posting visibly preserves its pinned rubric instead of silen
   await page.getByRole("button", { name: "Save draft", exact: true }).click();
   await page.getByText("Draft saved.", { exact: false }).waitFor();
   assert.equal(writes[0].scorecard.version, 1);
+});
+
+test("pending template saves lock every job flow action and preserve the selected source",async t=>{
+ let release;const held=new Promise(resolve=>release=resolve);t.after(()=>release());
+ const {page,catalogWrites}=await setup(t,{jobs:[prior,{...prior,id:"other-job",title:"Engineer",slug:"engineer"}],holdTemplateSave:held});
+ await page.getByRole("button",{name:"Save as template",exact:true}).first().click();await page.getByLabel("Template name",{exact:true}).fill("Approved first template");
+ const request=page.waitForRequest(r=>r.method()==="PATCH");await page.getByRole("button",{name:"Save template",exact:true}).click();await request;
+ assert.equal(await page.getByLabel("Template name",{exact:true}).isDisabled(),true);
+ for(const name of ["Create job","Edit job","Duplicate job","Save as template","Save template","Cancel"]){
+   const actions=page.getByRole("button",{name,exact:true});assert.ok(await actions.count(),name);for(const action of await actions.all())assert.equal(await action.isDisabled(),true,name);
+ }
+ assert.equal(await page.getByLabel("Template name",{exact:true}).inputValue(),"Approved first template");release();
+ await page.getByText("Job template saved. Choose it next time you create a job.",{exact:true}).waitFor();
+ assert.equal(catalogWrites[0].sourceJobId,prior.id);assert.equal(catalogWrites[0].name,"Approved first template");assert.equal(await page.getByLabel("Template name",{exact:true}).count(),0);
+ assert.equal(await page.getByRole("button",{name:"Create job",exact:true}).isDisabled(),false);
 });

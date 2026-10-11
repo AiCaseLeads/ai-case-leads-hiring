@@ -87,6 +87,7 @@ export function Jobs({
         {admin && (
           <button
             className="hub-button"
+            disabled={mutation.busy}
             onClick={() => {
               setStart(null);
               setCreating(true);
@@ -154,12 +155,14 @@ export function Jobs({
                   <>
                     <button
                       className="hub-button secondary"
+                      disabled={mutation.busy}
                       onClick={() => setEditing(j)}
                     >
                       Edit job
                     </button>
                     <button
                       className="hub-text-button"
+                      disabled={mutation.busy}
                       onClick={() => {
                         setStart({ kind: "duplicate", source: j });
                         setCreating(true);
@@ -169,7 +172,10 @@ export function Jobs({
                     </button>
                     <button
                       className="hub-text-button"
+                      disabled={mutation.busy}
                       onClick={() => {
+                        setSuccess("");
+                        mutation.clear();
                         setTemplateJob(j);
                         setTemplateName(j.title);
                       }}
@@ -238,6 +244,7 @@ export function Jobs({
             This copies the description, application questions, location and
             assigned scorecard. Applicants are never copied.
           </p>
+          <fieldset disabled={mutation.busy} style={{ border: 0, padding: 0, margin: 0 }}>
           <Field label="Template name">
             <input
               required
@@ -256,6 +263,7 @@ export function Jobs({
           >
             Cancel
           </button>
+          </fieldset>
         </form>
       )}
     </section>
