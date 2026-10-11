@@ -70,7 +70,7 @@ export async function handleAiReview(request:Request,member:HubMember|null,deps:
     if(pdf&&pdf.status!=="ready")throw new HiringError("pdf_not_readable",422,pdf.message);
     const sources:Sources={resume:pdf?pdf.text:input.resumeText,linkedin:input.linkedinText,answers:answerSource(application)};
     if(!sources.resume&&!sources.linkedin&&!sources.answers)throw new HiringError("ai_sources_required",422,"Add resume or candidate-supplied profile excerpts before reviewing.");
-    const provenance=pdf?`Original PDF: ${pdf.filename} (file ${pdf.fileId}), ${pdf.pages} pages. ${pdf.truncated?"PARTIAL: first 30,000 characters only; inspect the original for remaining evidence.":"Automatically extracted text; inspect the original for missed layout, images or text."}`:"Reviewer-supplied excerpts.";
+    const provenance=pdf?`Original PDF: ${pdf.filename} (file ${pdf.fileId}), ${pdf.pages} pages.${pdf.ocrPages?` Local OCR used on ${pdf.ocrPages} pages; recognition can misread text.`:""} ${(pdf.truncated||pdf.ocrIncomplete)?"PARTIAL: some text was not read; inspect the original for remaining evidence.":"Automatically extracted text; inspect the original for missed layout, images or text."}`:"Reviewer-supplied excerpts.";
     const hash=await sha256(JSON.stringify({applicationId:input.applicationId,model:MODEL,criteria,sources,provenance}));
     const cacheKey=`ai_review_v1_${hash}`;
     let cache=await deps.store.setting<Cache|null>(cacheKey,null);

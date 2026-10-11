@@ -16,7 +16,8 @@ export async function readResumeText(applicationId:string,fileId:string,deps:Pdf
   const file=await deps.store.stmt("SELECT id,filename,content_type,object_key,size,uploaded_at FROM hub_files WHERE id=? AND application_id=? AND uploaded_at>0",fileId,applicationId).first<{id:string;filename:string;content_type:string;object_key:string;size:number;uploaded_at:number}>();
   if(!file)throw new HiringError("file_not_found",404,"This file does not belong to this application or is unavailable.");
   if(file.content_type!=="application/pdf")throw new HiringError("pdf_required",422,"Choose an uploaded PDF. Other files remain available for manual review.");
-  const key=`pdf_text_v1_${file.id}_${file.uploaded_at}_${file.size}`;
+  // Version 2 retries scans previously cached as no_text before local OCR existed.
+  const key=`pdf_text_v2_${file.id}_${file.uploaded_at}_${file.size}`;
   const cached=await deps.store.setting<PdfResult|null>(key,null);
   const wrap=(data:PdfResult,cached=false):ResumeText=>({...data,fileId:file.id,filename:file.filename,cached});
   if(cached)return wrap(cached,true);
@@ -24,7 +25,7 @@ export async function readResumeText(applicationId:string,fileId:string,deps:Pdf
   if(!deps.bucket)throw new HiringError("storage_unavailable",503,"Private file storage is unavailable. Please retry shortly.");
   if(inFlight.has(key))return inFlight.get(key)!;
   // Limit pending reads too: no thousand-file memory queue ahead of the process cap.
-  if(inFlight.size>=2)throw new HiringError("pdf_busy",429,"Two PDFs are being read. Retry in a moment; applications can still be submitted.");
+  if(inFlight.size>=1)throw new HiringError("pdf_busy",429,"A PDF is being read. Retry in a moment; applications can still be submitted.");
   const pending=(async()=>{
     const deadline=Date.now()+Math.max(1,Math.min(deps.storageTimeoutMs??5000,5000));
     const object=await withinDeadline(()=>deps.bucket!.get(file.object_key),deadline,"pdf_storage_timeout");
@@ -44,7 +45,7 @@ export async function readResumeText(applicationId:string,fileId:string,deps:Pdf
     for(const chunk of chunks){bytes.set(chunk,offset);offset+=chunk.length;}
     if(bytes.length!==file.size)throw new HiringError("file_invalid",422,"The stored PDF is incomplete.");
     const data=await (deps.extract||extractPdf)(bytes);
-    if(!["timeout","unavailable"].includes(data.status))await deps.store.setSetting(key,data);
+    if(!["timeout","unavailable"].includes(data.status)&&!data.ocrIncomplete)await deps.store.setSetting(key,data);
     return wrap(data);
   })();
   inFlight.set(key,pending);

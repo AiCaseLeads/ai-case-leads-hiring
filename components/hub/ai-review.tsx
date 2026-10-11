@@ -31,7 +31,7 @@ export function AiReviewSettings() {
         <input type="password" autoComplete="new-password" value={apiKey} maxLength={500} onChange={e => setApiKey(e.target.value)} />
       </Field>
       <label className="hub-checkbox"><input type="checkbox" checked={enable ?? config.data.enabled} onChange={e => setEnable(e.target.checked)} /> Enable reviewer-requested AI evidence reviews</label>
-      <p className="hub-muted">Each review requires confirmation before sharing the selected application answers and selected résumé text/profile excerpts with OpenRouter and OpenAI. Uploaded text PDFs are read locally for preview; scans require manual text. Set a spending limit on the OpenRouter key.</p>
+      <p className="hub-muted">Each review requires confirmation before sharing the selected application answers and selected résumé text/profile excerpts with OpenRouter and OpenAI. PDFs are read locally, with OCR for scanned pages. Set a spending limit on the OpenRouter key.</p>
       <button className="hub-button secondary" disabled={mutation.busy || (!(config.data.configured || apiKey.trim()) && (enable ?? config.data.enabled))}>{mutation.busy ? "Saving…" : "Save AI connection"}</button>
       <Feedback error={mutation.error} success={mutation.success} />
     </form>}
@@ -116,7 +116,7 @@ export function CandidateEvidence({ detail, saved, draft }: { detail: Applicatio
       <summary>Compare résumé, profile and application with AI</summary>
       <ResourceState loading={config.loading} error={config.error} retry={() => void config.reload()} />
       {!config.loading && config.data && !ready && <p className="hub-notice">AI review is off. An administrator can connect OpenRouter under Team & settings → Optional AI evidence review. You can still review files and record manager scores.</p>}
-      <p className="hub-muted">Uploaded text PDFs are read locally when you open this panel. Nothing is sent to AI until you confirm and request a review. Select the correct résumé below and compare its text with the original. LinkedIn is not scraped.</p>
+      <p className="hub-muted">PDFs are read locally when you open this panel, using OCR for scanned pages. Nothing is sent to AI until you confirm and request a review. Select the correct résumé below and compare its text with the original. LinkedIn is not scraped.</p>
       <Field label="Résumé source"><select value={fileId} disabled={mutation.busy} onChange={event => {setSelectedPdf(event.target.value);setConsent(false);}}>
         {pdfs.map(file => <option key={file.id} value={file.id}>{file.filename}</option>)}
         <option value="">Enter résumé text manually</option>
@@ -125,8 +125,8 @@ export function CandidateEvidence({ detail, saved, draft }: { detail: Applicatio
         {pdfLoading && <p role="status">Reading the uploaded PDF… Applications remain available while this runs.</p>}
         {pdfError && <div role="alert"><p>{pdfError}</p><button className="hub-button secondary" onClick={() => setPdfRetry(value => value + 1)}>Retry PDF reading</button></div>}
         {currentPdf && <>
-          <p className={currentPdf.status === "ready" ? "hub-muted" : "hub-notice"}>{currentPdf.message}</p>
-          {!!currentPdf.pages && <p className="hub-muted">{currentPdf.pages} pages. {currentPdf.truncated ? "Partial text: the first 30,000 characters only. Review the rest in the original before grading." : "Check the original for layout, graphics, and any text the reader missed."}</p>}
+          <p className={currentPdf.status === "ready" && !currentPdf.ocrIncomplete ? "hub-muted" : "hub-notice"}>{currentPdf.message}</p>
+          {!!currentPdf.pages && <p className="hub-muted">{currentPdf.pages} pages. {(currentPdf.truncated || currentPdf.ocrIncomplete) ? "Partial text: some text was not read. Review the original before grading." : "Check the original for layout, graphics, and any text the reader missed."}</p>}
           {currentPdf.status === "ready" && <Field label="Text read from uploaded PDF"><textarea readOnly rows={8} value={currentPdf.text} /></Field>}
           <button className="hub-button secondary" disabled={mutation.busy} onClick={() => {setResumeText(currentPdf.text);setSelectedPdf("");setConsent(false);}}>Use editable text instead</button>
           {["timeout","unavailable"].includes(currentPdf.status) && <button className="hub-button secondary" onClick={() => setPdfRetry(value => value + 1)}>Retry PDF reading</button>}

@@ -59,19 +59,19 @@ test("missing, unsupported and mismatched private files never reach parser",asyn
 });
 test("parser hard deadline terminates child and releases bounded capacity",async()=>{
   assert.equal((await extractPdf(makePdf(),1)).status,"timeout");
-  const first=extractPdf(makePdf()),second=extractPdf(makePdf());
+  const first=extractPdf(makePdf());
   await assert.rejects(extractPdf(makePdf()),error=>error instanceof Error&&"code" in error&&error.code==="pdf_busy");
-  const results=await Promise.all([first,second]);assert.ok(results.every(result=>result.status==="ready"));
+  assert.equal((await first).status,"ready");assert.equal((await extractPdf(makePdf())).status,"ready");
 });
-test("two pending private reads cap the queue without reading a third file",async()=>{
+test("one pending private read caps the queue without reading another file",async()=>{
   const first=await fixture(),second=await fixture(),third=await fixture();
   let release!:()=>void;const held=new Promise<void>(resolve=>release=resolve);
   const extract=async()=>{await held;return pdfResult("ready","Read safely.",1);};
   const one=readResumeText(first.applicationId,first.fileId,{...first.deps,extract});
-  const two=readResumeText(second.applicationId,second.fileId,{...second.deps,extract});
   await new Promise(resolve=>setTimeout(resolve,10));
   await assert.rejects(readResumeText(third.applicationId,third.fileId,third.deps),error=>error instanceof Error&&"code" in error&&error.code==="pdf_busy");
-  assert.deepEqual(third.counts(),{reads:0,calls:0});release();await Promise.all([one,two]);
+  await assert.rejects(readResumeText(second.applicationId,second.fileId,second.deps),error=>error instanceof Error&&"code" in error&&error.code==="pdf_busy");
+  assert.deepEqual(third.counts(),{reads:0,calls:0});assert.deepEqual(second.counts(),{reads:0,calls:0});release();await one;
   first.database.close();second.database.close();third.database.close();
 });
 test("private object identity must match attached file before parsing",async()=>{
@@ -97,4 +97,13 @@ test("safe imported Gmail PDF identity supports automatic preview and review sch
   const {reviewInput}=await import("../../lib/ai/review");
   assert.equal(reviewInput.safeParse({applicationId:f.applicationId,expectedRevision:1,resumeFileId:fileId,resumeText:"",linkedinText:"",jobCriteria:"React experience",consent:true}).success,true);
   f.database.close();
+});
+test("OCR cache version retries old no-text scans and never caches incomplete OCR",async()=>{
+  const f=await fixture();const file=await f.store.stmt("SELECT uploaded_at,size FROM hub_files WHERE id=?",f.fileId).first<{uploaded_at:number;size:number}>();
+  await f.store.setSetting(`pdf_text_v1_${f.fileId}_${file!.uploaded_at}_${file!.size}`,pdfResult("no_text"));
+  const result=await readResumeText(f.applicationId,f.fileId,f.deps);assert.equal(result.status,"ready");assert.equal(result.cached,false);assert.equal(f.counts().calls,1);f.database.close();
+  const partial=await fixture();let calls=0;
+  const deps={...partial.deps,extract:async()=>{calls++;return pdfResult("ready","Some readable text",9,false,8,true);}};
+  await readResumeText(partial.applicationId,partial.fileId,deps);await readResumeText(partial.applicationId,partial.fileId,deps);
+  assert.equal(calls,2);partial.database.close();
 });
