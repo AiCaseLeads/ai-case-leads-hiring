@@ -17,6 +17,7 @@ import { CandidateDetail, CandidateTable, Candidates } from "./candidates";
 import { Jobs } from "./jobs";
 import { Reports, Metric } from "./reports";
 import { HubSettings, Tasks } from "./settings";
+import { ReviewReminderQueue } from "./review-reminders";
 import { Badge, EmptyState, Feedback, ResourceState } from "./shared";
 import type { Member, Overview } from "./types";
 
@@ -186,6 +187,7 @@ export function HiringDashboard({
                       value={data.counts.hired.toLocaleString()}
                     />
                   </div>
+                  <ReviewReminderQueue refresh={refresh} onSelect={setDetailId} />
                   <section className="hub-card hub-setup-card">
                     <div className="hub-section-heading compact">
                       <div>

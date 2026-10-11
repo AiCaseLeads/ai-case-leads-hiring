@@ -21,21 +21,43 @@ Click **Save team & settings** for calendar/folder changes. Changing to Maria's 
 
 ## Understand the shortlist
 
-Qualification rules report requirements met, not met or needing review. Manager scores are independent: each reviewer's latest1–5 score counts once with equal weight. A4/5 mean displays as80/100, not an80% prediction. Ungraded applicants remain ungraded. In Applications choose the job and batch, then **Highest reviewer grade first**. Use consistent job-related criteria and inspect supporting evidence.
+Qualification rules report requirements met, not met or needing review. Manager scores are independent: each reviewer's latest 1–5 score counts once with equal weight. A 4/5 mean displays as 80/100, not an 80% prediction. Ungraded applicants remain ungraded. In Applications choose the job and batch, then **Highest reviewer grade first**. Use consistent job-related criteria and inspect supporting evidence.
 
 ## Optional OpenRouter review
 
 Under **Team & settings → Optional AI evidence review**, paste an OpenRouter API key in the password field, enable manual reviews and save. The key is encrypted and never returned to the browser. Set a spending limit in OpenRouter. The fixed model is `openai/gpt-5-mini`, routed only to OpenAI without provider fallbacks. A saved key is not proof the provider accepts it.
 
-In an applicant record open **Evidence & verification → Compare résumé, profile and application with AI**. Paste relevant résumé/profile excerpts, enter up to8 job requirements (one per line), confirm sharing with OpenRouter/OpenAI, and generate. The app sends selected stored application answers too, excluding recognized personal-data fields. Review source excerpts before sharing; free-text material can still include personal information.
+In an applicant record open **Evidence & verification → Compare résumé, profile and application with AI**. The selected uploaded PDF is read automatically into a private preview. Confirm the correct file, inspect the text, enter up to 8 job requirements (one per line), confirm sharing with OpenRouter/OpenAI, and generate. Candidate-supplied profile excerpts remain optional. The app also sends selected application answers, excluding recognized personal-data fields. PDF text can still include personal information: use **Use editable text instead** to remove unrelated material before sharing.
 
-This version does not automatically parse PDFs or scrape LinkedIn. Use candidate-supplied About/Experience text and the original file. AI output includes source-labelled quotes and follow-up questions, saves as an audited note, and queues Drive archival. It does not assign scores, change stage, or reject anyone. Unsupported quotes fail validation; even exact quotes still need human interpretation. Sources remain editable after recoverable errors; refreshing the record preserves the draft. Navigating away or reloading the whole browser loses unsaved drafts.
+PDF reading supports text-based PDFs up to 10 MB and 30 pages. Only the first 30,000 characters are retained, with a visible partial-text notice if truncated. Scanned-image PDFs need a text-based replacement or manual excerpts; OCR is not enabled. Password-protected and unreadable files show recovery instructions. Originals remain private and unchanged. Two PDF reads can run at once; additional reviewers can retry. Extraction never blocks application submission. LinkedIn profiles are not scraped. AI output includes source-labelled quotes and follow-up questions, saves as an audited note, and queues Drive archival. It does not assign scores, change stage, or reject anyone. Unsupported quotes fail validation; even exact quotes still need human interpretation. Sources remain editable after recoverable errors; refreshing the record preserves the draft. Navigating away or reloading the whole browser loses unsaved drafts.
 
 ## Verification rather than an AI-writing verdict
 
 Use **Record verification checks** to document timeline comparisons, portfolio contribution, a live job-related work sample, and consented reference checks. Record actual evidence and candidate clarifications. AI-assisted or tailored writing is not proof of fraud. LinkedIn content is self-reported too. No AI-authorship detector or automatic fraud score is implemented.
 
-Useful next improvements: approved reusable scorecards for each job, structured work samples, and reminders for overdue human reviews. Backup snapshots are enabled; disaster recovery restoration remains untested.
+## Reusable scorecards
+
+In **Jobs & batches → Reusable scorecards**, give the template a name, add your approved job-related criteria, and define what earns each score from 1 to 5. Save the template. In **Assign a scorecard to a batch**, choose the batch and template, then save. Criteria have equal weight in the editor.
+
+Open an applicant's **Reusable scorecard review**, choose a score and add supporting evidence for every criterion, then save. The server computes the mean without rounding: 3 and 4 produce 3.5/5 = 70/100. Each reviewer's latest review counts once. Missing evidence should prompt a follow-up, not an invented score. No score automatically rejects an applicant.
+
+Editing a template creates a new version. Existing batches remain on their selected version, and saved reviews keep the full original criteria, definitions and evidence. Archiving hides a template from new assignments but preserves existing ones. New batches need an explicit template assignment.
+
+## Overdue review reminders
+
+The **Overview → Overdue human reviews** queue lists applications still in Application Review without a scorecard after the configured waiting period. Filter all, assigned to me, or unassigned, and open the applicant directly. The default is 48 hours since entering Application Review. Notes and AI summaries do not count as completed human reviews.
+
+In **Team & settings → Overdue human reviews**, set the waiting period, choose fallback managers, enable daily team emails, and save. Assigned active staff receive their own queue digest; selected managers cover unassigned or unavailable assignees. At most one digest per recipient per Bogotá calendar day is queued. These are staff reminders, never candidate messages. Gmail delivery status appears under Integration tasks. Disable the toggle to keep only the in-app queue.
+
+This is an initial-review queue. An existing scorecard removes an applicant even if they later return to Application Review. Interview reminders remain separate. Email processing runs in the background and retries temporary failures; it does not block applications.
+
+## Reuse work-sample instructions
+
+Open a saved batch and expand **Optional: assessment instructions**. Use **Reuse assessment instructions from a saved batch** to copy a previous assessment, then edit and save it for the new batch. Include the task, expected deliverable, evaluation criteria and reasonable time guidance in your approved instructions. Saving never sends an assessment: a recruiter must explicitly invite the candidate.
+
+## Operational limits
+
+Applications and private uploads save before Drive or Gmail work runs. The worker drains ready tasks in sequential batches, checking again after five seconds while a backlog exists and once per minute while idle. Provider quotas and outages can delay delivery; review Integration tasks for errors. A load test measures isolated application/storage behavior, not Google's external quotas. Backup snapshots are enabled; disaster recovery restoration remains untested.
 
 ## Design references
 

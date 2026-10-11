@@ -48,6 +48,24 @@ test("shutdown deadline leaves unfinished provider work leased for recovery", as
   release(); await start;
 });
 
+test("ready backlog drains promptly and returns to idle cadence without overlapping", async () => {
+  let calls = 0, active = 0, maxActive = 0, drained!: () => void;
+  const ready = new Promise<void>(resolve => { drained = resolve; });
+  const runner = new BackgroundRunner(async () => {
+    calls++; active++; maxActive = Math.max(maxActive, active);
+    await pause(2); active--;
+    if (calls === 3) drained();
+    return { hasMore: calls < 3 };
+  }, { intervalMs: 30_000, busyIntervalMs: 1 });
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await runner.start();
+    await Promise.race([ready, new Promise((_, reject) => { timeout = setTimeout(() => reject(new Error("backlog did not drain")), 2000); })]);
+    await pause(15);
+    assert.equal(calls, 3); assert.equal(maxActive, 1);
+  } finally { clearTimeout(timeout); await runner.stop(); }
+});
+
 test("health checks real temporary storage and background readiness without exposing configuration", async () => {
   const dir = await realpath(await mkdtemp(path.join(tmpdir(), "railway-health-")));
   const runner = new BackgroundRunner(async () => {}, { intervalMs: 60_000 });

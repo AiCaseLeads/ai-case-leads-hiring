@@ -11,7 +11,7 @@ export function gradeForScorecards(cards: readonly GradingScorecard[]) {
   const latest = new Map<string, GradingScorecard>();
   let scorecardCount = 0;
   for (const card of cards) {
-    if (!card.actor || !Number.isFinite(card.createdAt) || !Number.isInteger(card.score) || card.score < 1 || card.score > 5) continue;
+    if (!card.actor || !Number.isFinite(card.createdAt) || !Number.isFinite(card.score) || card.score < 1 || card.score > 5) continue;
     scorecardCount++;
     const actor = card.actor.trim().toLowerCase();
     if (!actor) continue;

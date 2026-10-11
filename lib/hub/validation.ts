@@ -93,7 +93,7 @@ export const actionInput = z
     reason: z.string().trim().max(2000).optional(),
     subject: z.string().trim().max(300).optional(),
     body: z.string().max(20000).optional(),
-    score: z.number().int().min(1).max(5).optional(),
+    score: z.number().finite().min(1).max(5).optional(),
     criteria: z.string().trim().max(10000).optional(),
     attended: z.boolean().optional(),
   })

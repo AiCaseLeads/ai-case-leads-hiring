@@ -20,4 +20,9 @@ test("low valid grade is still graded and carries review evidence",()=>{
  const grade=gradeForScorecards([card("reviewer@example.invalid",1,2)]);
  assert.equal(grade.reviewed,true);assert.equal(grade.scorePercent,20);assert.match(grade.latestReviews[0].text,/evidence/);
 });
+test("criterion means retain fractional precision instead of inflating a shortlist grade",()=>{
+ const grade=gradeForScorecards([card("reviewer@example.invalid",3.5,2)]);
+ assert.equal(grade.averageScore,3.5);assert.equal(grade.scorePercent,70);
+ assert.equal(gradeForScorecards([card("reviewer@example.invalid",Infinity,2)]).reviewed,false);
+});
 

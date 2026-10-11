@@ -33,11 +33,11 @@ async function api(url,method='GET',body,staff=true,extra={}){
  const response=await fetch(origin+url,{method,headers:{...(staff?{Cookie:ownerCookie}:{}),...(body!==undefined?{'Content-Type':'application/json',Origin:origin}:{}),...extra},...(body!==undefined?{body:JSON.stringify(body)}:{})});
  const value=await response.json();assert.equal(response.status,200,JSON.stringify({url,status:response.status,value}));return value.data;
 }
-function syntheticResume(){
- const content='BT /F1 12 Tf 72 720 Td (Synthetic isolated resume) Tj ET\n';
+function syntheticResume(padding=20000, label="Synthetic isolated resume"){
+ const content=`BT /F1 12 Tf 72 720 Td (${label}) Tj ET\n`;
  const objects=['<< /Type /Catalog /Pages 2 0 R >>','<< /Type /Pages /Kids [3 0 R] /Count 1 >>','<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>',`<< /Length ${Buffer.byteLength(content)} >>\nstream\n${content}endstream`,'<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>'];
  let pdf='%PDF-1.7\n',offsets=[0];for(const [index,object] of objects.entries()){offsets.push(Buffer.byteLength(pdf));pdf+=`${index+1} 0 obj\n${object}\nendobj\n`;}
- pdf+='% Synthetic isolated verification padding.\n'.repeat(20000);
+ pdf+='% Synthetic isolated verification padding.\n'.repeat(padding);
  const xref=Buffer.byteLength(pdf);pdf+=`xref\n0 ${offsets.length}\n0000000000 65535 f \n`+offsets.slice(1).map(offset=>String(offset).padStart(10,'0')+' 00000 n \n').join('')+`trailer\n<< /Size ${offsets.length} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`;
  return Buffer.from(pdf);
 }
@@ -82,15 +82,61 @@ try{
  const applications=await api('/api/hub/applications');assert.equal(applications.total,2);firstId=applications.items[0].id;
  const detail=await api('/api/hub/applications/'+firstId);assert.equal(detail.files.length,1);firstFile=detail.files[0].id;assert.equal(detail.source,'railway-verified');
  const original=await fetch(origin+'/api/files/'+firstFile,{headers:{Cookie:ownerCookie}});assert.equal(original.status,200);assert.deepEqual(Buffer.from(await original.arrayBuffer()),sample);assert.equal((await fetch(origin+'/api/files/'+firstFile)).status,403);
+ const pdfRequest={applicationId:firstId,fileId:firstFile};
+ const extracted=await api('/api/ai/resume-text','POST',pdfRequest);assert.equal(extracted.status,'ready');assert.match(extracted.text,/Synthetic isolated resume/);
+ assert.equal((await api('/api/ai/resume-text','POST',pdfRequest)).cached,true);
+ assert.equal((await fetch(origin+'/api/ai/resume-text',{method:'POST',headers:{Origin:origin,'Content-Type':'application/json'},body:JSON.stringify(pdfRequest)})).status,403);
+ const another=applications.items.find(item=>item.id!==firstId);
+ const mismatch=await fetch(origin+'/api/ai/resume-text',{method:'POST',headers:{Origin:origin,Cookie:ownerCookie,'Content-Type':'application/json'},body:JSON.stringify({...pdfRequest,applicationId:another.id})});assert.equal(mismatch.status,404);
  await team.goto(origin+'/team?application='+firstId);await team.getByLabel('Action',{exact:true}).selectOption('scorecard');await team.getByLabel('Overall reviewer grade',{exact:false}).selectOption('4');await team.getByLabel('Evaluation criteria',{exact:false}).fill('Isolated job-specific rubric');await team.getByLabel('Review notes',{exact:true}).fill('Synthetic test evidence only.');await team.getByRole('button',{name:'Save action',exact:true}).click();await team.getByText('Saved to this application.',{exact:true}).waitFor();
  const graded=await api('/api/hub/applications/'+firstId);assert.equal(graded.grade.scorePercent,80);assert.equal(graded.grade.reviewerCount,1);
+ let catalog=await api('/api/scorecards');
+ const rubric={name:'Synthetic reusable rubric',criteria:[{label:'Implementation evidence',weight:1,anchors:['1','2','3','4','5']},{label:'Communication evidence',weight:1,anchors:['1','2','3','4','5']}]};
+ catalog=await api('/api/scorecards','PATCH',{action:'save',expectedRevision:catalog.revision,rubric});const template=catalog.templates[0];
+ catalog=await api('/api/scorecards','PATCH',{action:'bind',expectedRevision:catalog.revision,jobId:another.jobId,templateId:template.id,version:template.version});
+ await team.goto(origin+'/team?application='+another.id);await team.getByRole('heading',{name:'Reusable scorecard review',exact:true}).waitFor();
+ await team.getByLabel('Implementation evidence: score',{exact:true}).selectOption('3');await team.getByLabel('Implementation evidence: supporting evidence',{exact:true}).fill('Synthetic sample includes a working API.');
+ await team.getByLabel('Communication evidence: score',{exact:true}).selectOption('4');await team.getByLabel('Communication evidence: supporting evidence',{exact:true}).fill('Synthetic explanation identifies constraints.');
+ await team.getByRole('button',{name:'Save reusable scorecard',exact:true}).click();
+ let rubricResult;for(let n=0;n<100;n++){rubricResult=await api('/api/hub/applications/'+another.id);if(rubricResult.grade.scorePercent===70)break;await new Promise(r=>setTimeout(r,100));}
+ assert.equal(rubricResult.grade.scorePercent,70);assert.match(rubricResult.scorecards[0].text,/Implementation evidence/);assert.equal(rubricResult.stage,another.stage);
+ await api('/api/scorecards','PATCH',{action:'save',expectedRevision:catalog.revision,templateId:template.id,rubric:{...rubric,name:'Synthetic rubric revised'}});
+ const assigned=await api('/api/scorecards?jobId='+another.jobId);assert.equal(assigned.template.version,1);
+ assert.equal((await api('/api/hub/applications/'+another.id)).grade.scorePercent,70);
+ await team.getByText('Compare résumé, profile and application with AI',{exact:true}).click();await team.getByLabel('Text read from uploaded PDF',{exact:true}).waitFor();
+ await team.waitForFunction(()=>document.querySelector('textarea[readonly]')?.value.includes('Synthetic isolated resume'));
  await team.getByRole('button',{name:'Team & settings',exact:true}).click();await team.getByRole('heading',{name:'Team & settings',exact:true}).waitFor();await team.getByText('Advanced admin setup',{exact:true}).click();await team.getByText('No Google Apps Script scheduler is needed.',{exact:false}).waitFor();assert.equal(await team.getByText('No Google Apps Script scheduler is needed.',{exact:false}).count(),1);assert.equal(await team.getByRole('button',{name:'Save Google client configuration',exact:true}).count(),0);
  await staff.close();assert.deepEqual(errors,[]);await browser.close();browser=undefined;console.log('Seeded owner browser job posting, desktop/mobile application uploads, private files and grading passed.');
  const payload=(job,seq)=>({jobPostingId:job.id,formVersion:job.formVersion,submissionKey:crypto.randomUUID(),fieldSubmissions:[{path:'_systemfield_name',value:`Isolated Load Candidate ${seq}`},{path:'_systemfield_email',value:`isolated-load-${seq}@example.invalid`}],utmData:{utm_source:'isolated-load'}});
  const submit=async(job,seq,input=payload(job,seq),session=randomBytes(32).toString('hex'))=>{
   const began=performance.now(),response=await fetch(origin+'/api/applications',{method:'POST',headers:{'Content-Type':'application/json',Origin:origin,Cookie:`hiring_session=${session}`,'x-real-ip':`198.18.${(seq>>8)&255}.${seq&255}`},body:JSON.stringify(input)}),value=await response.json();latencies.push(performance.now()-began);assert.equal(response.status,201,JSON.stringify(value));assert.equal(value.status,'accepted');return value;
  };
- for(let batch=0;batch<30;batch++)await Promise.all(Array.from({length:100},(_,index)=>{const seq=batch*100+index;return submit(seq%2?creative:engineer,seq);}));
+ const resumeJourneys=[];
+ for(let batch=0;batch<20;batch++)await Promise.all(Array.from({length:100},async(_,index)=>{
+  const seq=batch*100+index, job=seq%2?creative:engineer;
+  if(seq>=1000)return submit(job,seq);
+  const began=performance.now(),session=randomBytes(32).toString('hex'),input=payload(job,seq);
+  const bytes=syntheticResume(0,`Synthetic candidate ${seq}: Built React TypeScript interfaces and Node APIs.`);
+  const headers={Origin:origin,Cookie:`hiring_session=${session}`,'x-real-ip':`198.18.${(seq>>8)&255}.${seq&255}`};
+  const upload=await fetch(origin+'/api/uploads',{method:'POST',headers:{...headers,'Content-Type':'application/json'},body:JSON.stringify({jobPostingId:job.id,fieldPath:job.fields.find(f=>f.type==='File').path,filename:`synthetic-${seq}.pdf`,contentType:'application/pdf',contentLength:bytes.length})});
+  const slot=await upload.json();assert.equal(upload.status,200,JSON.stringify(slot));
+  const form=new FormData();form.append('file',new File([bytes],`synthetic-${seq}.pdf`,{type:'application/pdf'}));
+  const stored=await fetch(slot.url,{method:'POST',headers,body:form});assert.equal(stored.status,204,await stored.text());
+  input.fieldSubmissions.push({path:job.fields.find(f=>f.type==='File').path,value:slot.handle});
+  await submit(job,seq,input,session);resumeJourneys.push(performance.now()-began);
+ }));
+ await Promise.all(Array.from({length:1000},(_,index)=>{const seq=2000+index;return submit(seq%2?creative:engineer,seq);}));
+ const checkedFiles=new DatabaseSync(path.join(dataDir,'hiring.sqlite'),{readOnly:true});
+ assert.equal(checkedFiles.prepare('SELECT COUNT(*) AS n FROM hub_files WHERE application_id IS NOT NULL AND uploaded_at>0').get().n,1002);const selected=checkedFiles.prepare("SELECT id,application_id,filename FROM hub_files WHERE filename IN ('synthetic-0.pdf','synthetic-500.pdf','synthetic-999.pdf')").all();checkedFiles.close();
+ for(const file of selected){const seq=file.filename.match(/synthetic-(\d+)/)[1];const data=await api('/api/ai/resume-text','POST',{applicationId:file.application_id,fileId:file.id});assert.equal(data.status,'ready');assert.match(data.text,new RegExp(`Synthetic candidate ${seq}:`));}
+ const overdueDb=new DatabaseSync(path.join(dataDir,'hiring.sqlite'));const aged=Date.now()-49*3600_000;
+ overdueDb.prepare("UPDATE hub_applications SET stage_entered_at=? WHERE id IN (SELECT application_id FROM hub_files WHERE filename LIKE 'synthetic-%.pdf')").run(aged);
+ overdueDb.prepare("UPDATE hub_history SET created_at=? WHERE application_id IN (SELECT application_id FROM hub_files WHERE filename LIKE 'synthetic-%.pdf')").run(aged);overdueDb.close();
+ const overdue=await api('/api/review-reminders');assert.equal(overdue.total,1000);assert.equal(overdue.applications.length,50);
+ await api('/api/review-reminders','PATCH',{enabled:true,dueHours:48,fallbackAdmins:['sales@aicaseleads.com']});
+ const secondPage=await api('/api/review-reminders?offset=50');assert.equal(secondPage.total,1000);assert.equal(new Set([...overdue.applications,...secondPage.applications].map(a=>a.id)).size,100);
+ assert.equal((await fetch(origin+'/api/review-reminders')).status,403);
+ resumeJourneys.sort((a,b)=>a-b);
  const duplicate=payload(engineer,4000),session=randomBytes(32).toString('hex');const repeats=await Promise.all(Array.from({length:20},()=>submit(engineer,4000,duplicate,session)));verifyOneApplication(repeats.map(value=>value.receipt));
  assert.equal((await api('/api/hub/reports')).applications,3003);
  await stop();await start(false);
@@ -101,5 +147,5 @@ try{
  const logoutPage=await fetch(origin+'/api/auth/logout',{headers:{Cookie:ownerCookie}});assert.equal(logoutPage.status,200);assert.match(await logoutPage.text(),/form method="post"/);assert.ok(await api('/api/hub/overview'));
  const logout=await fetch(origin+'/api/auth/logout',{method:'POST',redirect:'manual',headers:{Cookie:ownerCookie,Origin:origin}});assert.equal(logout.status,303);assert.equal((await fetch(origin+'/api/hub/overview',{headers:{Cookie:ownerCookie}})).status,403);
  latencies.sort((a,b)=>a-b);
- console.log(JSON.stringify({status:'passed',existingBrowserChecks:20,seededOwnerBrowserJobPosting:true,desktopAndMobileRealApplications:2,originalResumeBytes:sample.length,privateFiles:true,gradePersisted:80,syntheticLoadApplications:3000,concurrentRequests:100,duplicateHttpRequests:20,duplicateApplicationsCreated:1,persistedApplications:3003,restartAndPausedReplay:true,elapsedMs:Math.round(performance.now()-started),httpP95Ms:Math.round(latencies[Math.floor(latencies.length*.95)]),limits:'Real built Node server on local disk with production SQLite/files. Synthetic account session is seeded only in the isolated test database. Google grant/delivery, Docker image and Railway hosting/volume backups remain unverified.'},null,2));
+ console.log(JSON.stringify({status:'passed',existingBrowserChecks:20,seededOwnerBrowserJobPosting:true,desktopAndMobileRealApplications:2,originalResumeBytes:sample.length,privateFiles:true,gradePersisted:80,reusableRubricGrade:70,autoPdfReading:true,overdueReviews:1000,syntheticLoadApplications:3000,applicationsWithPrivatePdfs:1002,pdfJourneyP95Ms:Math.round(resumeJourneys[Math.floor(resumeJourneys.length*.95)]),concurrentRequests:1000,concurrentPdfJourneys:100,duplicateHttpRequests:20,duplicateApplicationsCreated:1,persistedApplications:3003,restartAndPausedReplay:true,elapsedMs:Math.round(performance.now()-started),httpP95Ms:Math.round(latencies[Math.floor(latencies.length*.95)]),limits:'Real built Node server on local disk with production SQLite/files. Synthetic account session is seeded only in the isolated test database. Google grant/delivery, Docker image and Railway hosting/volume backups remain unverified.'},null,2));
 }finally{if(browser)await browser.close();await stop();rmSync(dataDir,{recursive:true,force:true});}
