@@ -81,6 +81,7 @@ test("missing client and scheduler configuration remain visible outside collapse
 
 test("saved AI connection keeps its secret when key is left blank and uses a password input", async t => {
   const { page, aiWrites } = await setup(t);
+  await page.getByText("AI evidence review", {exact:true}).click();
   const key = page.getByLabel("Replace OpenRouter API key (optional)");
   await key.waitFor();
   assert.equal(await key.getAttribute("type"), "password");

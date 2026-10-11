@@ -21,15 +21,16 @@ export function ReviewReminderSettings(){
     </form>}
   </section>;
 }
-export function ReviewReminderQueue({refresh=0,onSelect}:{refresh?:number;onSelect:(id:string)=>void}){
+export function ReviewReminderQueue({refresh=0,onSelect,compact=false}:{refresh?:number;onSelect:(id:string)=>void;compact?:boolean}){
   const [offset,setOffset]=useState(0),[scope,setScope]=useState("all");
   const resource=useHubResource<Data>(`/api/review-reminders?offset=${offset}&scope=${scope}`,refresh);
+  if (compact && resource.data && !resource.loading && resource.data.total === 0 && scope === "all") return <section className="hub-card hub-review-clear" id="overdue-reviews"><Badge tone="success">No overdue reviews</Badge><p>Initial reviews are up to date. Reviews become overdue after {resource.data.config.dueHours} hours.</p></section>;
   return <section className="hub-card" id="overdue-reviews"><h3>Overdue human reviews</h3><p>Applications in Application Review without a scorecard for {resource.data?.config.dueHours??48} hours or more.</p>
     <Field label="Show overdue applications"><select value={scope} onChange={e=>{setScope(e.target.value);setOffset(0);}}><option value="all">All team applications</option><option value="mine">Assigned to me</option><option value="unassigned">Unassigned</option></select></Field>
     <ResourceState loading={resource.loading} error={resource.error} retry={()=>void resource.reload()}/>
     {resource.data&&!resource.loading&&<><p><strong>{resource.data.total}</strong> awaiting human review</p>
       {resource.data.applications.length?<ul>{resource.data.applications.map(a=><li key={a.id}><button className="hub-button secondary" onClick={()=>onSelect(a.id)}>{a.name} · {a.jobTitle}</button><span className="hub-muted"> {a.assignee||"Unassigned"} · Waiting since {displayDate(a.stageEnteredAt)}</span></li>)}</ul>:<p>No applications match this overdue queue.</p>}
-      <div className="hub-actions"><button className="hub-button secondary" disabled={!offset} onClick={()=>setOffset(Math.max(0,offset-50))}>Previous reviews</button><button className="hub-button secondary" disabled={offset+50>=resource.data.total} onClick={()=>setOffset(offset+50)}>Next reviews</button></div>
+      {resource.data.total > 50 && <div className="hub-actions"><button className="hub-button secondary" disabled={!offset} onClick={()=>setOffset(Math.max(0,offset-50))}>Previous reviews</button><button className="hub-button secondary" disabled={offset+50>=resource.data.total} onClick={()=>setOffset(offset+50)}>Next reviews</button></div>}
     </>}
   </section>;
 }

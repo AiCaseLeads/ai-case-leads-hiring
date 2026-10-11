@@ -9,27 +9,25 @@ import {
   LogOut,
   RefreshCw,
   Settings2,
-  Workflow,
 } from "lucide-react";
 import { Brand } from "@/components/careers/chrome";
-import { useHubMutation, useHubResource } from "./api";
+import { useHubResource } from "./api";
 import { CandidateDetail, CandidateTable, Candidates } from "./candidates";
 import { Jobs } from "./jobs";
-import { Reports, Metric } from "./reports";
+import { Reports } from "./reports";
 import { HubSettings, Tasks } from "./settings";
 import { ReviewReminderQueue } from "./review-reminders";
-import { Badge, EmptyState, Feedback, ResourceState } from "./shared";
-import type { Member, Overview } from "./types";
+import { Badge, EmptyState, ResourceState } from "./shared";
+import { stages, type Member, type Overview } from "./types";
 
 type View =
   "overview" | "applications" | "jobs" | "reports" | "tasks" | "settings";
 const navigation = [
-  { id: "overview", label: "Overview", icon: LayoutDashboard },
+  { id: "overview", label: "Home", icon: LayoutDashboard },
   { id: "applications", label: "Applications", icon: ClipboardList },
-  { id: "jobs", label: "Jobs & batches", icon: BriefcaseBusiness },
+  { id: "jobs", label: "Jobs", icon: BriefcaseBusiness },
   { id: "reports", label: "Reports", icon: BarChart3 },
-  { id: "tasks", label: "Integration tasks", icon: Workflow },
-  { id: "settings", label: "Team & settings", icon: Settings2 },
+  { id: "settings", label: "Settings", icon: Settings2 },
 ] as const;
 export function HiringDashboard({
   member,
@@ -42,9 +40,15 @@ export function HiringDashboard({
     [refresh, setRefresh] = useState(0),
     [detailId, setDetailId] = useState<string | null>(null);
   const [workspaceNotice, setWorkspaceNotice] = useState("");
+  const [createJob, setCreateJob] = useState(0);
+  const [initialStage, setInitialStage] = useState("");
+  const [initialJobId, setInitialJobId] = useState("");
+  const [settingsSection, setSettingsSection] = useState<"scorecards" | undefined>();
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search), outcome = params.get("workspace"), application = params.get("application");
+    const params = new URLSearchParams(window.location.search), outcome = params.get("workspace"), application = params.get("application"), requestedView = params.get("view");
     queueMicrotask(() => {
+      if (requestedView && ["home", "overview", "applications", "jobs", "reports", "tasks", ...(member.role === "admin" ? ["settings"] : [])].includes(requestedView)) setView(requestedView === "home" ? "overview" : requestedView as View);
+      const requestedStage = params.get("stage"); if (requestedView === "applications" && requestedStage && stages.includes(requestedStage)) setInitialStage(requestedStage);
       if (application) setDetailId(application);
       if (outcome === "connection_failed") {
         const reason = params.get("reason"), messages: Record<string,string> = {
@@ -53,13 +57,16 @@ export function HiringDashboard({
           configuration_changed: "The Google client configuration changed during authorization. Connect Google Workspace again using the current client settings.",
           offline_grant_missing: "Google did not provide the background authorization required for recruiting tasks. Reconnect the recruiting account and approve access again.",
         };
-        setWorkspaceNotice(messages[reason || ""] || "Google authorization did not complete. Review your OAuth setup and try connecting again in Team & settings."); setView("settings");
+        setWorkspaceNotice(messages[reason || ""] || "Google authorization did not complete. Review your OAuth setup and try connecting again in Settings."); setView("settings");
       }
-      if (outcome === "connected") { setWorkspaceNotice("Google authorization completed. Confirm the recruiting sender, Calendar availability, and Drive folder in Team & settings before testing a delivery."); setView("settings"); }
+      if (outcome === "connected") { setWorkspaceNotice("Google authorization completed. Confirm the recruiting sender, Calendar availability, and Drive folder in Settings before testing a delivery."); setView("settings"); }
     });
-  }, []);
-  const resource = useHubResource<Overview>("/api/hub/overview", refresh),
-    mutation = useHubMutation();
+  }, [member.role]);
+  const resource = useHubResource<Overview>("/api/hub/overview", refresh);
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search), jobId = params.get("jobId");
+    if (params.get("view") === "applications" && jobId && resource.data?.jobs.some(job => job.id === jobId)) queueMicrotask(() => setInitialJobId(jobId));
+  }, [resource.data]);
   const admin = member.role === "admin",
     data = resource.data;
   function changed() {
@@ -68,17 +75,26 @@ export function HiringDashboard({
   function changeView(next: View) {
     setView(next);
     setDetailId(null);
-    mutation.clear();
+    setCreateJob(0);
+    setInitialStage("");
+    setInitialJobId("");
+    setSettingsSection(undefined);
+    const url = new URL(window.location.href);
+    url.searchParams.set("view", next === "overview" ? "home" : next);
+    url.searchParams.delete("application");
+    url.searchParams.delete("workspace");
+    url.searchParams.delete("reason");
+    url.searchParams.delete("jobId");
+    url.searchParams.delete("stage");
+    window.history.replaceState(null, "", url);
   }
-  async function seed() {
-    const result = await mutation.run(
-      "/api/hub/setup",
-      "POST",
-      {},
-      "The two draft roles were created. Open Jobs & batches to configure them.",
-    );
-    if (result !== undefined) changed();
+  function openReviewQueue() { changeView("applications"); setInitialStage("Application Review"); const url = new URL(window.location.href); url.searchParams.set("stage", "Application Review"); window.history.replaceState(null, "", url); }
+  function beginJob() { changeView("jobs"); setCreateJob(Date.now()); }
+  function selectApplication(id: string) {
+    setDetailId(id); const url = new URL(window.location.href); url.searchParams.set("application", id); window.history.replaceState(null, "", url);
   }
+  function closeApplication() { setDetailId(null); const url = new URL(window.location.href); url.searchParams.delete("application"); window.history.replaceState(null, "", url); }
+  function manageScorecards() { changeView("settings"); setSettingsSection("scorecards"); }
   return (
     <div className="hiring-hub">
       <a href="#hub-main" className="skip-link">
@@ -147,219 +163,52 @@ export function HiringDashboard({
             <CandidateDetail
               key={detailId}
               id={detailId}
-              back={() => setDetailId(null)}
+              back={closeApplication}
               changed={changed}
             />
           ) : view === "overview" ? (
             <>
               <div className="hub-section-heading">
-                <div>
-                  <p className="hub-kicker">YOUR HIRING OPERATIONS</p>
-                  <h1>Hiring, in one place.</h1>
-                  <p>
-                    Applications, decisions, communications, and delivery
-                    status.
-                  </p>
-                </div>
+                <div><p className="hub-kicker">YOUR HIRING WORKSPACE</p><h1>What needs your attention?</h1><p>Review applicants and keep your open jobs moving.</p></div>
+                {admin && <button className="hub-button" onClick={beginJob}>Create job</button>}
               </div>
-              <ResourceState
-                loading={resource.loading}
-                error={resource.error}
-                retry={() => void resource.reload()}
-              />
-              {data && !resource.loading && (
-                <>
-                  <div className="hub-metric-grid">
-                    <Metric
-                      label="Applications"
-                      value={data.counts.applications.toLocaleString()}
-                    />
-                    <Metric
-                      label="Active applications"
-                      value={data.counts.active.toLocaleString()}
-                    />
-                    <Metric
-                      label="Rejected"
-                      value={data.counts.rejected.toLocaleString()}
-                    />
-                    <Metric
-                      label="Hired"
-                      value={data.counts.hired.toLocaleString()}
-                    />
-                  </div>
-                  <ReviewReminderQueue refresh={refresh} onSelect={setDetailId} />
-                  <section className="hub-card hub-setup-card">
-                    <div className="hub-section-heading compact">
-                      <div>
-                        <h2>
-                          {data.integrations.applicationsEnabled
-                            ? "Platform status"
-                            : "Get ready to hire"}
-                        </h2>
-                        <p>
-                          {data.integrations.applicationsEnabled
-                            ? "Keep integration delivery healthy and review every hiring step."
-                            : "Configure your roles and company integrations, then complete launch checks before accepting applications."}
-                        </p>
-                      </div>
-                      <Badge
-                        tone={
-                          data.integrations.applicationsEnabled
-                            ? "success"
-                            : "warning"
-                        }
-                      >
-                        {data.integrations.applicationsEnabled
-                          ? "Intake enabled"
-                          : "Intake remains closed"}
-                      </Badge>
-                    </div>
-                    <div className="hub-setup-grid">
-                      <div>
-                        <span>01</span>
-                        <strong>Jobs & batches</strong>
-                        <p>
-                          {data.jobs.length} configured roles ·{" "}
-                          {
-                            data.jobs.filter((job) => job.status === "open")
-                              .length
-                          }{" "}
-                          open
-                        </p>
-                        <button
-                          className="hub-text-button"
-                          onClick={() => changeView("jobs")}
-                        >
-                          Manage roles
-                        </button>
-                      </div>
-                      <div>
-                        <span>02</span>
-                        <strong>Google Workspace</strong>
-                        <p>
-                          {data.integrations.google
-                            ? "Company connection ready"
-                            : "Email and Calendar not connected"}
-                        </p>
-                        {admin && (
-                          <button
-                            className="hub-text-button"
-                            onClick={() => changeView("settings")}
-                          >
-                            Configure connection
-                          </button>
-                        )}
-                      </div>
-                      <div>
-                        <span>03</span>
-                        <strong>Drive archival</strong>
-                        <p>
-                          {data.integrations.drive
-                            ? "Recruiting archive configured"
-                            : "Recruiting folder not configured"}
-                        </p>
-                        <button
-                          className="hub-text-button"
-                          onClick={() => changeView("tasks")}
-                        >
-                          Review delivery tasks
-                        </button>
-                      </div>
-                    </div>
-                    {data.jobs.length === 0 && (
-                      <div className="hub-seed-row">
-                        <p>
-                          Start with Full-stack Engineer and Creative
-                          Strategist. No qualifications or compensation are
-                          invented.
-                        </p>
-                        {admin ? (
-                          <button
-                            className="hub-button"
-                            disabled={mutation.busy}
-                            onClick={() => void seed()}
-                          >
-                            {mutation.busy
-                              ? "Creating draft roles…"
-                              : "Create the two draft roles"}
-                          </button>
-                        ) : (
-                          <p className="hub-muted">
-                            Ask an administrator to create your first roles.
-                          </p>
-                        )}
-                      </div>
-                    )}
-                    <Feedback
-                      error={mutation.error}
-                      success={mutation.success}
-                    />
-                  </section>
-                  <section className="hub-card">
-                    <div className="hub-section-heading compact">
-                      <h2>Recent applications</h2>
-                      <button
-                        className="hub-text-button"
-                        onClick={() => changeView("applications")}
-                      >
-                        View all applications
-                      </button>
-                    </div>
-                    {data.recentApplications.length ? (
-                      <CandidateTable
-                        items={data.recentApplications}
-                        select={setDetailId}
-                      />
-                    ) : (
-                      <EmptyState title="Your first applications will appear here">
-                        <p>
-                          Accepted submissions become searchable hiring records
-                          with answers and original files.
-                        </p>
-                        <button
-                          className="hub-button secondary"
-                          onClick={() => changeView("jobs")}
-                        >
-                          Review the role forms
-                        </button>
-                      </EmptyState>
-                    )}
-                  </section>
-                  <section className="hub-card">
-                    <h2>Current hiring stages</h2>
-                    {data.stageCounts.length ? (
-                      <div className="hub-stage-grid">
-                        {data.stageCounts.map((stage) => (
-                          <div key={stage.stage}>
-                            <strong>{stage.count}</strong>
-                            <span>{stage.stage}</span>
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <p className="hub-muted">
-                        No applications have entered the pipeline yet.
-                      </p>
-                    )}
-                  </section>
-                </>
-              )}
+              <ResourceState loading={resource.loading} error={resource.error} retry={() => void resource.reload()} />
+              {data && !resource.loading && <>
+                <div className="hub-home-actions">
+                  <button className="hub-card hub-home-action" onClick={openReviewQueue}><strong>{(data.stageCounts.find(stage => stage.stage === "Application Review")?.count || 0).toLocaleString()}</strong><span>In application review</span><small>Open applicant list →</small></button>
+                  <button className="hub-card hub-home-action" onClick={() => changeView("applications")}><strong>{data.counts.applications.toLocaleString()}</strong><span>All applications</span><small>Open applicant list →</small></button>
+                  <button className="hub-card hub-home-action" onClick={() => changeView("jobs")}><strong>{data.jobs.filter(job => job.status === "open").length}</strong><span>Open jobs</span><small>Manage job postings →</small></button>
+                </div>
+                <ReviewReminderQueue refresh={refresh} onSelect={selectApplication} compact />
+                <section className="hub-card">
+                  <div className="hub-section-heading compact"><div><h2>Your jobs</h2><p>Each posting keeps its own applicants, even when you hire again.</p></div><button className="hub-text-button" onClick={() => changeView("jobs")}>View all jobs</button></div>
+                  {data.jobs.length ? <ul className="hub-home-job-list">{data.jobs.filter(job => job.status !== "closed").slice(0, 4).map(job => <li key={job.id}><div><strong>{job.title}</strong><p className="hub-muted">{job.location || "Location not set"}</p></div><Badge tone={job.status === "open" ? "success" : "neutral"}>{job.status === "open" ? "Published" : "Draft"}</Badge><button className="hub-text-button" onClick={() => changeView("jobs")}>Manage</button></li>)}{!data.jobs.some(job => job.status !== "closed") && <li>No draft or published jobs. Your closed postings are saved under Jobs.</li>}</ul> : <EmptyState title="Create your first job"><p>Start from a blank job, a saved template, or a previous posting.</p>{admin && <button className="hub-button" onClick={beginJob}>Create job</button>}</EmptyState>}
+                </section>
+                <section className="hub-card">
+                  <div className="hub-section-heading compact"><h2>Recent applications</h2><button className="hub-text-button" onClick={() => changeView("applications")}>View all applications</button></div>
+                  {data.recentApplications.length ? <CandidateTable items={data.recentApplications} select={selectApplication} /> : <EmptyState title="No applications yet"><p>Publish a job and share its application link. New applicants will appear here.</p><button className="hub-button secondary" onClick={() => changeView("jobs")}>Open jobs</button></EmptyState>}
+                </section>
+                <div className="hub-home-status" aria-label="Hiring connections"><Badge tone={data.integrations.google && data.integrations.drive && data.integrations.applicationsEnabled ? "success" : "warning"}>{data.integrations.google && data.integrations.drive && data.integrations.applicationsEnabled ? "Google connected · Drive configured · Applications open" : "Setup needs attention"}</Badge>{admin && <button className="hub-text-button" onClick={() => changeView("settings")}>Connection settings</button>}<button className="hub-text-button" onClick={() => changeView("tasks")}>Delivery activity</button></div>
+              </>}
             </>
           ) : view === "applications" ? (
             <Candidates
+              key={`${initialStage}:${initialJobId}`}
+              initialStage={initialStage}
+              initialJobId={initialJobId}
               reviewerEmail={member.email}
               jobs={data?.jobs || []}
               refresh={refresh}
               changed={changed}
             />
           ) : view === "jobs" ? (
-            <Jobs admin={admin} refresh={refresh} changed={changed} />
+            <Jobs key={createJob} admin={admin} refresh={refresh} changed={changed} startCreating={!!createJob} onManageScorecards={manageScorecards} />
           ) : view === "reports" ? (
             <Reports refresh={refresh} />
           ) : view === "tasks" ? (
             <Tasks admin={admin} refresh={refresh} changed={changed} />
           ) : admin ? (
-            <HubSettings member={member} refresh={refresh} changed={changed} />
+            <HubSettings member={member} refresh={refresh} changed={changed} jobs={data?.jobs || []} startSection={settingsSection} onDeliveryActivity={() => changeView("tasks")} />
           ) : null}
           <footer className="hub-bottom-note">
             Hiring decisions stay with your team. Assessment and interview

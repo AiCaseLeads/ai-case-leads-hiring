@@ -48,8 +48,8 @@ export function SchedulerSetup() {
   </section>;
   if (runtime.data.hostingPlatform === "railway") return <section className="hub-card">
     <h3>Background task processing</h3>
-    <p className="hub-muted">Railway runs email, Calendar, reply synchronization, and Drive tasks automatically while the service is running. No Google Apps Script scheduler is needed. Connect the recruiting account, then verify a real delivery in Integration tasks.</p>
-    <p className="hub-notice">{runtime.data.backgroundEnabled ? "Automatic processing is enabled. The Integration tasks view shows the last completed run and any delivery failures." : "Automatic processing is disabled in Railway’s Variables. Set BACKGROUND_ENABLED=true and redeploy before opening applications."}</p>
+    <p className="hub-muted">Railway runs email, Calendar, reply synchronization, and Drive tasks automatically while the service is running. No Google Apps Script scheduler is needed. Connect the recruiting account, then verify a real delivery in Delivery activity.</p>
+    <p className="hub-notice">{runtime.data.backgroundEnabled ? "Automatic processing is enabled. The Delivery activity view shows the last completed run and any delivery failures." : "Automatic processing is disabled in Railway’s Variables. Set BACKGROUND_ENABLED=true and redeploy before opening applications."}</p>
   </section>;
   return (
     <section className="hub-card">
@@ -57,7 +57,7 @@ export function SchedulerSetup() {
       <p className="hub-muted">
         Use the company’s Google Apps Script scheduler for unattended email and
         Drive tasks. Until it is installed and verified, use Process pending
-        tasks in Integration tasks.
+        tasks in Delivery activity.
       </p>
       {!config ? (
         <button

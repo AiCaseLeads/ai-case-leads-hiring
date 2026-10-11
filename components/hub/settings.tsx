@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ExternalLink, Plus, Trash2 } from "lucide-react";
 import {
   displayDate,
@@ -8,31 +8,39 @@ import {
   useHubResource,
 } from "./api";
 import { Badge, EmptyState, Feedback, Field, ResourceState } from "./shared";
-import type { Member, Settings, Task } from "./types";
+import type { HubJob, Member, Settings, Task } from "./types";
 import { GoogleConfiguration } from "./google-setup";
 import { SchedulerSetup } from "./scheduler-setup";
 import { driveFolderId } from "./drive-folder";
 import { AiReviewSettings } from "./ai-review";
+import { ScorecardTemplates } from "./scorecards";
 import { ReviewReminderSettings } from "./review-reminders";
 
 export function HubSettings({
   member,
   refresh,
   changed,
+  jobs = [],
+  startSection,
+  onDeliveryActivity,
 }: {
   member: Member;
   refresh: number;
   changed: () => void;
+  jobs?: HubJob[];
+  startSection?: "scorecards";
+  onDeliveryActivity?: () => void;
 }) {
   const resource = useHubResource<Settings>("/api/hub/settings", refresh);
+  useEffect(() => { if (startSection && resource.data) document.getElementById("scorecard-settings")?.scrollIntoView({block:"start"}); }, [startSection,resource.data]);
   return (
     <section aria-labelledby="settings-title">
       <div className="hub-section-heading">
         <div>
           <p className="hub-kicker">ADMINISTRATION</p>
-          <h2 id="settings-title">Team & settings</h2>
+          <h2 id="settings-title">Settings</h2>
           <p>
-            Follow the three connection steps, then invite your hiring team.
+            Connect Google in three steps. Hiring preferences and team access are below.
           </p>
         </div>
       </div>
@@ -46,6 +54,9 @@ export function HubSettings({
           key={JSON.stringify(resource.data)}
           initial={resource.data}
           member={member}
+          jobs={jobs}
+          startSection={startSection}
+          onDeliveryActivity={onDeliveryActivity}
           changed={() => {
             changed();
             void resource.reload();
@@ -59,10 +70,16 @@ function SettingsForm({
   initial,
   member,
   changed,
+  jobs,
+  startSection,
+  onDeliveryActivity,
 }: {
   initial: Settings;
   member: Member;
   changed: () => void;
+  jobs: HubJob[];
+  startSection?: "scorecards";
+  onDeliveryActivity?: () => void;
 }) {
   const [members, setMembers] = useState<Member[]>(() => {
       const active = initial.members.filter((value) => value.active !== false);
@@ -167,8 +184,9 @@ function SettingsForm({
         Automatic email, calendar, and file processing is disabled. An administrator must enable it in Advanced admin setup before launch.
       </p>}
       {initial.queue.failed > 0 && <p className="hub-notice hub-error" role="alert">
-        {initial.queue.failed} integration task(s) need attention. Open Integration tasks to review the error and retry safely.
+        {initial.queue.failed} integration task(s) need attention. Open Delivery activity to review the error and retry safely.
       </p>}
+      {onDeliveryActivity && <button className="hub-button secondary" type="button" onClick={onDeliveryActivity}>Open delivery activity</button>}
       <section className="hub-card">
         <div className="hub-section-heading compact">
           <div>
@@ -360,7 +378,7 @@ function SettingsForm({
                 ? "Calendar and availability saved"
                 : "Save calendar and availability to enable invitations"}
             </Badge>
-            <p className="hub-muted">Saved settings do not verify access. A completed test booking confirms calendar access and Meet creation; check Integration tasks for delivery errors.</p>
+            <p className="hub-muted">Saved settings do not verify access. A completed test booking confirms calendar access and Meet creation; check Delivery activity for delivery errors.</p>
           </section>
           <section className="hub-card">
             <h3>3. Choose the shared applicant folder</h3>
@@ -384,16 +402,16 @@ function SettingsForm({
               </a>}
             </div>
             <p className="hub-muted">
-              Files are organized automatically: Recruiting → Job → Location → Batch → Applicant.
-              Earlier batches remain stored when you hire again. Each application has a separate folder.
-              A saved folder is not proof of access: check a test application’s Drive link and Integration tasks to confirm files arrived.
+              Files are organized automatically: Recruiting → Job → Location → Posting → Applicant.
+              Earlier postings remain stored when you hire again. Each application has a separate folder.
+              A saved folder is not proof of access: check a test application’s Drive link and Delivery activity to confirm files arrived.
               Temporary Drive failures do not lose accepted applications.
             </p>
           </section>
-          <section className="hub-card">
+          <details className="hub-card hub-setup-details"><summary>Team access</summary>
             <div className="hub-section-heading compact">
               <div>
-                <h3>Team access</h3>
+                <h3>Manage teammates</h3>
                 <p>
                   Administrators manage configuration. Recruiters can operate
                   hiring records.
@@ -464,10 +482,10 @@ function SettingsForm({
               Your owner account keeps its server-configured administrative
               access. Teammates sign in with their own approved account.
             </p>
-          </section>
+          </details>
 
-          <section className="hub-card">
-            <h3>Default rejection email for new roles</h3>
+          <details className="hub-card hub-setup-details"><summary>Default rejection email</summary>
+            <h3>Default rejection email for new jobs</h3>
             <Field label="Approved template">
               <textarea
                 rows={7}
@@ -477,10 +495,10 @@ function SettingsForm({
             </Field>
             <p className="hub-muted">
               New roles use this default. Existing roles keep their approved
-              message, which you can edit in Jobs & batches. Individual and
+              message, which you can edit in Jobs. Individual and
               automatic rejection rules must be explicitly approved.
             </p>
-          </section>
+          </details>
           <div className="hub-sticky-save">
             <button
               className="hub-button"
@@ -493,15 +511,16 @@ function SettingsForm({
           </div>
         </fieldset>
       </form>
-      <AiReviewSettings />
-      <ReviewReminderSettings />
+      <details className="hub-card hub-setup-details" id="scorecard-settings" open={startSection === "scorecards" || undefined}><summary>Scorecard templates</summary><ScorecardTemplates jobs={jobs} /></details>
+      <details className="hub-card hub-setup-details"><summary>AI evidence review</summary><AiReviewSettings /></details>
+      <details className="hub-card hub-setup-details"><summary>Review reminders</summary><ReviewReminderSettings /></details>
       <details className="hub-card hub-setup-details">
         <summary>Advanced admin setup</summary>
         <p className="hub-muted">Only needed when installing the app or changing its Google client or background processing. Day-to-day hiring uses the three steps above.</p>
         <GoogleConfiguration />
         <SchedulerSetup />
       </details>
-      {initial.accessAudit && <section className="hub-card"><h3>Recent access changes</h3><p className="hub-muted">Configuration changes record who made them and the previous and updated values. Most recent 50 events.</p>{initial.accessAudit.length ? initial.accessAudit.map((event) => <article key={event.id} className="hub-history-item"><strong>{event.type} · {event.actor}</strong><small>{displayDate(event.createdAt)}</small><details><summary>Review recorded change</summary><pre className="hub-preserve">{JSON.stringify({before:event.before,after:event.after},null,2)}</pre></details></article>) : <p className="hub-muted">No access changes recorded yet.</p>}</section>}
+      {initial.accessAudit && <details className="hub-card hub-setup-details"><summary>Recent access changes</summary><h3>Access history</h3><p className="hub-muted">Configuration changes record who made them and the previous and updated values. Most recent 50 events.</p>{initial.accessAudit.length ? initial.accessAudit.map((event) => <article key={event.id} className="hub-history-item"><strong>{event.type} · {event.actor}</strong><small>{displayDate(event.createdAt)}</small><details><summary>Review recorded change</summary><pre className="hub-preserve">{JSON.stringify({before:event.before,after:event.after},null,2)}</pre></details></article>) : <p className="hub-muted">No access changes recorded yet.</p>}</details>}
     </>
   );
 }
@@ -561,7 +580,7 @@ export function Tasks({
       <div className="hub-section-heading">
         <div>
           <p className="hub-kicker">DELIVERY & RECOVERY</p>
-          <h2 id="tasks-title">Integration tasks</h2>
+          <h2 id="tasks-title">Delivery activity</h2>
           <p>
             Email, Calendar, and Drive work is recorded here with retry and
             delivery status. Unattended processing requires the configured
