@@ -41,12 +41,25 @@ function reject(response, code, status) {
   response.end(JSON.stringify({ error: { code, message: "The request could not be processed." } }));
 }
 /** Streams through a byte cap before any framework action or route may buffer it. */
-export function railwayRequestHandler(listeners, origin) {
+export function railwayRequestHandler(listeners, origin, legacyDomain = process.env.RAILWAY_PUBLIC_DOMAIN) {
+  const canonical = new URL(origin);
+  // Only Railway's explicitly configured public hostname is a migration alias.
+  // Never derive a redirect destination from Host or forwarded headers.
+  const legacyHost = typeof legacyDomain === "string" && /^[a-z0-9-]+\.up\.railway\.app$/i.test(legacyDomain)
+    ? legacyDomain.toLowerCase() : null;
   return (request, response) => {
     const url = request.url || "/";
     if (!url.startsWith("/") || url.startsWith("//") || url.includes("\\")) { reject(response, "invalid_request_target", 400); request.resume(); return; }
     const pathname = url.split("?")[0];
     cacheBoundary(response, pathname);
+    const host = typeof request.headers.host === "string" ? request.headers.host.toLowerCase() : "";
+    if (legacyHost && legacyHost !== canonical.host && host === legacyHost && pathname !== "/api/health") {
+      if (!["GET", "HEAD"].includes(request.method || "GET")) {
+        reject(response, "invalid_origin", 403); request.resume(); return;
+      }
+      response.writeHead(307, { Location: canonical.origin + url, "Cache-Control": "no-store", "Referrer-Policy": "no-referrer" });
+      response.end(); request.resume(); return;
+    }
     normalizeRailwayRequest(request, origin);
     const fileUpload = request.method === "POST" && /^\/api\/uploads\/[a-f0-9]{64}$/.test(pathname);
     const limit = fileUpload ? MAX_FILE + 65536 : MAX_JSON;

@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtemp, rm, realpath } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { createServer } from "node:http";
+import { createServer, request as httpRequest } from "node:http";
 import { BackgroundRunner, backgroundHealth } from "../../lib/railway/background";
 import { railwayConfig } from "../../lib/railway/config";
 import { initializeRailwayStorage, closeRailwayStorage } from "../../lib/railway/bindings";
@@ -69,6 +69,39 @@ test("Node boundary fixes origin and strips forged identity/proxy/IP headers", (
   normalizeRailwayRequest(edge, production.PUBLIC_SITE_ORIGIN!, true); assert.equal(edge.headers["cf-connecting-ip"], "203.0.113.1");
   const invalid = { headers: { "x-real-ip": "203.0.113.1,203.0.113.2", "cf-connecting-ip": "198.51.100.1" }, socket: { remoteAddress: "127.0.0.1" } };
   normalizeRailwayRequest(invalid, production.PUBLIC_SITE_ORIGIN!, true); assert.equal(invalid.headers["cf-connecting-ip"], "127.0.0.1");
+});
+
+test("legacy Railway host redirects navigation safely but never replays writes", async () => {
+  const legacy = "hiring-production.up.railway.app";
+  let reached = 0;
+  const listener = (_request: unknown, response: import("node:http").ServerResponse) => { reached++; response.end("ready"); };
+  const server = createServer(railwayRequestHandler([listener], production.PUBLIC_SITE_ORIGIN!, legacy));
+  await new Promise<void>(resolve => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address()!; assert.ok(typeof address !== "string");
+  const base = `http://127.0.0.1:${address.port}`;
+  const send = (url: string, options: { method?: string; headers?: Record<string, string>; body?: string; redirect?: string }) => new Promise<{ status: number; headers: Headers }>((resolve, reject) => {
+    const req = httpRequest(url, { method: options.method, headers: options.headers }, res => {
+      res.resume(); res.on("end", () => resolve({ status: res.statusCode!, headers: new Headers(Object.entries(res.headers).filter(([, value]) => typeof value === "string") as [string, string][]) }));
+    });
+    req.on("error", reject); req.end(options.body);
+  });
+  try {
+    for (const method of ["GET", "HEAD"]) {
+      const response = await send(base + "/interview/private-token?source=old", { method, headers: { Host: legacy }, redirect: "manual" });
+      assert.equal(response.status, 307);
+      assert.equal(response.headers.get("location"), production.PUBLIC_SITE_ORIGIN + "/interview/private-token?source=old");
+      assert.equal(response.headers.get("cache-control"), "no-store");
+    }
+    assert.equal(reached, 0);
+    const write = await send(base + "/api/applications", { method: "POST", headers: { Host: legacy }, body: "private data", redirect: "manual" });
+    assert.equal(write.status, 403); assert.equal(write.headers.get("location"), null); assert.equal(reached, 0);
+    for (const host of ["evil.invalid", "careers.example.invalid"]) {
+      const response = await send(base + "/", { headers: { Host: host, "X-Forwarded-Host": legacy }, redirect: "manual" });
+      assert.equal(response.status, 200); assert.equal(response.headers.get("location"), null);
+    }
+    const health = await send(base + "/api/health", { headers: { Host: legacy }, redirect: "manual" });
+    assert.equal(health.status, 200); assert.equal(health.headers.get("location"), null);
+  } finally { server.closeAllConnections(); await new Promise<void>(resolve => server.close(() => resolve())); }
 });
 
 test("actual Node stream caps chunked bodies and prevents missing-asset caching", async () => {
