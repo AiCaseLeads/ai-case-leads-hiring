@@ -29,6 +29,9 @@ export type Rule = {
   enabled: boolean;
 };
 export type HubJob = Job & {
+  archiveProject?: string;
+  archiveCountry?: string;
+  hiringRound?: string;
   status: "draft" | "open" | "closed";
   fields: ApplicationField[];
   formVersion: number;

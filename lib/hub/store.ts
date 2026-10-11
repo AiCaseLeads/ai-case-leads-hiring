@@ -43,6 +43,7 @@ export type HubOptions = {
   sessionHash?: string;
   origin?: string;
   integrations?: IntegrationStatus;
+  expectedRecruitingSender?: string;
 };
 type JobRow = {
   id: string;
@@ -57,6 +58,9 @@ type JobRow = {
   auto_reject: number;
   rejection_template: string;
   assessment_prompt: string | null;
+  archive_project: string | null;
+  archive_country: string | null;
+  hiring_round: string | null;
   form_version: number;
 };
 type ApplicationRow = {
@@ -70,6 +74,9 @@ type ApplicationRow = {
   email: string;
   stage: Stage;
   qualification: ApplicationSummary["qualification"];
+  archive_project: string | null;
+  archive_country: string | null;
+  hiring_round: string | null;
   form_version: number;
   utm_json: string;
   qualification_json: string;
@@ -146,6 +153,9 @@ function job(row: JobRow): HubJob {
     ...(row.location ? { location: row.location } : {}),
     status: row.status,
     fields: decode(row.fields_json, []),
+    archiveProject: row.archive_project || undefined,
+    archiveCountry: row.archive_country || undefined,
+    hiringRound: row.hiring_round || undefined,
     formVersion: row.form_version,
     rules: decode(row.rules_json, []),
     autoReject: row.auto_reject === 1,
@@ -314,7 +324,7 @@ export class HubStore {
     try {
       if (previous) {
         const result = await this.stmt(
-          "UPDATE hub_jobs SET title=?,slug=?,department=?,description_html=?,location=?,status=?,fields_json=?,rules_json=?,auto_reject=?,rejection_template=?,assessment_prompt=?,form_version=form_version+1,updated_at=? WHERE id=? AND form_version=?",
+          "UPDATE hub_jobs SET title=?,slug=?,department=?,description_html=?,location=?,status=?,fields_json=?,rules_json=?,auto_reject=?,rejection_template=?,assessment_prompt=?,archive_project=?,archive_country=?,hiring_round=?,form_version=form_version+1,updated_at=? WHERE id=? AND form_version=?",
           input.title,
           input.slug,
           input.department,
@@ -326,6 +336,9 @@ export class HubStore {
           input.autoReject ? 1 : 0,
           rejectionTemplate,
           input.assessmentPrompt || null,
+          input.archiveProject?.trim() || null,
+          input.archiveCountry?.trim() || null,
+          input.hiringRound?.trim() || null,
           now,
           jobId,
           previous.formVersion,
@@ -333,7 +346,7 @@ export class HubStore {
         if (result.meta.changes !== 1) throw conflict();
       } else
         await this.stmt(
-          "INSERT INTO hub_jobs (id,title,slug,department,description_html,location,status,fields_json,rules_json,auto_reject,rejection_template,assessment_prompt,form_version,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,1,?,?)",
+          "INSERT INTO hub_jobs (id,title,slug,department,description_html,location,status,fields_json,rules_json,auto_reject,rejection_template,assessment_prompt,archive_project,archive_country,hiring_round,form_version,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,?,?)",
           jobId,
           input.title,
           input.slug,
@@ -346,6 +359,9 @@ export class HubStore {
           input.autoReject ? 1 : 0,
           rejectionTemplate,
           input.assessmentPrompt || null,
+          input.archiveProject?.trim() || null,
+          input.archiveCountry?.trim() || null,
+          input.hiringRound?.trim() || null,
           now,
           now,
         ).run();
@@ -599,7 +615,7 @@ export class HubStore {
     }
     // A NOT NULL failure aborts the entire D1 batch if a posting/file changes between validation and commit.
     const insert = this.stmt(
-      `INSERT INTO hub_applications (id,submission_key_hash,fingerprint,session_hash,job_id,job_title,form_version,name,email,stage,qualification,qualification_json,answers_json,fields_json,utm_json,source,rejection_reason,revision,stage_entered_at,created_at,updated_at) SELECT CASE WHEN EXISTS (SELECT 1 FROM hub_applications WHERE id=? AND fingerprint=? AND session_hash=?) OR (NOT EXISTS (SELECT 1 FROM hub_applications WHERE id=?) AND ${guards.join(" AND ")}) THEN ? ELSE NULL END,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,?,?,? ON CONFLICT(id) DO NOTHING`,
+      `INSERT INTO hub_applications (id,submission_key_hash,fingerprint,session_hash,job_id,job_title,form_version,name,email,stage,qualification,qualification_json,answers_json,fields_json,utm_json,source,rejection_reason,archive_project,archive_country,hiring_round,revision,stage_entered_at,created_at,updated_at) SELECT CASE WHEN EXISTS (SELECT 1 FROM hub_applications WHERE id=? AND fingerprint=? AND session_hash=?) OR (NOT EXISTS (SELECT 1 FROM hub_applications WHERE id=?) AND ${guards.join(" AND ")}) THEN ? ELSE NULL END,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,?,?,? ON CONFLICT(id) DO NOTHING`,
       id,
       fingerprint,
       sessionHash,
@@ -622,6 +638,9 @@ export class HubStore {
       JSON.stringify(input.utmData || {}),
       source,
       reason,
+      posting.archiveProject || posting.title,
+      posting.archiveCountry || "International",
+      posting.hiringRound || posting.title,
       now,
       now,
       now,
@@ -774,7 +793,7 @@ export class HubStore {
     const allInterviews:Interview[] = interviews.map((item) => ({id:item.id,revision:item.revision,status:item.status as Interview["status"],...(item.start?{start:item.start}:{}),...(item.end?{end:item.end}:{}),...(item.time_zone?{timeZone:item.time_zone}:{}),...(item.calendar_id?{calendarId:item.calendar_id}:{}),...(item.meet_url?{meetUrl:item.meet_url}:{}),...(item.attended !== null?{attended:!!item.attended}:{}),...linkInfo("interview",item.id)}));
     const duplicateCount = await this.stmt("SELECT COUNT(*) AS count FROM hub_applications WHERE email=?",app.email).first<{count:number}>();
     const cards = scorecards.map((card) => ({id:card.id,actor:card.actor,score:card.score,criteria:card.criteria,text:card.text,createdAt:card.created_at}));
-    return {...summary(app),revision:app.revision,formVersion:app.form_version,utmData:decode(app.utm_json,{}),
+    return {...summary(app),archiveProject:app.archive_project || undefined,archiveCountry:app.archive_country || undefined,hiringRound:app.hiring_round || undefined,revision:app.revision,formVersion:app.form_version,utmData:decode(app.utm_json,{}),
       duplicateEmail:(duplicateCount?.count || 1)>1,duplicateApplicationCount:duplicateCount?.count || 1,grade:gradeForScorecards(cards),
       answers:decode(app.answers_json,[]),fields:decode(app.fields_json,[]),qualificationEvidence:decode(app.qualification_json,[]),
       files:files.map((file) => ({id:file.id,filename:file.filename,contentType:file.content_type,size:file.size,url:`/api/files/${encodeURIComponent(file.id)}`})),
@@ -855,6 +874,7 @@ export class HubStore {
       members,
       google: {
         connected: !!this.options.integrations?.google,
+        expectedSender: this.options.expectedRecruitingSender || "",
         sender,
         calendarId,
         driveRootId,

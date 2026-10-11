@@ -228,3 +228,21 @@ test("archives all assessments and interviews while removing every private capab
   assert.deepEqual(JSON.parse(text).application.assessments, [{ id: "first", answer: "First answer" }, { id: "second", answer: "Second answer" }]);
   assert.deepEqual(JSON.parse(text).application.interviews, [{ id: "first", attended: false }, { id: "second", attended: true }]);
 });
+
+test("Drive groups projects and countries while retaining independent hiring rounds and retries", async () => {
+  const f=fixture();
+  const snapshot={...detail,archiveProject:"Creative Strategist",archiveCountry:"Spain",hiringRound:"October"};
+  const first=await f.workspace.archiveApplication(snapshot,[original]);
+  const parent=(id:string)=>f.files.get((f.files.get(id)?.parents as string[])[0])!;
+  assert.equal(parent(first.folderId).name,"October–job-one");
+  const round=parent(first.folderId),country=parent(round.id as string),project=parent(country.id as string);
+  assert.equal(country.name,"Spain");assert.equal(project.name,"Creative Strategist");
+  const again=await f.workspace.archiveApplication(snapshot,[original],first.folderId);
+  assert.equal(again.folderId,first.folderId);
+  const second=await f.workspace.archiveApplication({...snapshot,id:"app-two",jobId:"job-two"},[original]);
+  assert.notEqual(parent(second.folderId).id,round.id);
+  assert.equal(parent(parent(second.folderId).id as string).id,country.id);
+  const usa=await f.workspace.archiveApplication({...snapshot,id:"app-three",jobId:"job-three",archiveCountry:"USA"},[original]);
+  assert.equal(parent(parent(usa.folderId).id as string).name,"USA");
+  assert.ok(f.files.has(first.folderId));
+});

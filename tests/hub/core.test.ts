@@ -709,3 +709,20 @@ test("reminder opt-in is an explicit boolean manager setting", async () => {
   assert.equal((await store.settings()).scheduling.remindersEnabled, false);
   database.close();
 });
+
+test("archive grouping snapshots survive job edits and reposting keeps separate applications", async () => {
+  const {store,database}=createStore();
+  const first=await store.saveJob({...jobInput(),archiveProject:"Creative Strategist",archiveCountry:"Spain",hiringRound:"October"});
+  const accepted=await store.acceptApplication(applicationInput(first.id),SESSION_HASH);
+  await store.saveJob({...first,archiveCountry:"USA",hiringRound:"November"},first.id,first.formVersion);
+  const detail=await store.getApplication(accepted.id);
+  assert.equal(detail.archiveProject,"Creative Strategist");
+  assert.equal(detail.archiveCountry,"Spain");
+  assert.equal(detail.hiringRound,"October");
+  const next=await store.saveJob({...jobInput(),slug:"next-round",archiveProject:"Creative Strategist",archiveCountry:"Spain",hiringRound:"October"});
+  const newer=await store.acceptApplication(applicationInput(next.id),SESSION_HASH);
+  assert.notEqual(newer.id,accepted.id);
+  assert.notEqual((await store.getApplication(newer.id)).jobId,detail.jobId);
+  assert.equal((await store.getApplication(accepted.id)).archiveCountry,"Spain");
+  database.close();
+});

@@ -73,7 +73,7 @@ export function Jobs({
 }) {
   const resource = useHubResource<HubJob[]>("/api/hub/jobs", refresh),
     mutation = useHubMutation();
-  const [editing, setEditing] = useState<HubJob | "new" | null>(null),
+  const [editing, setEditing] = useState<HubJob | "new" | { copy: HubJob } | null>(null),
     [defaultTemplate, setDefaultTemplate] = useState("");
   async function createRole() {
     const result = await mutation.run<Settings>("/api/hub/settings", "GET", undefined, "");
@@ -94,8 +94,9 @@ export function Jobs({
   if (editing)
     return (
       <JobEditor
-        key={editing === "new" ? "new" : editing.id}
-        job={editing === "new" ? undefined : editing}
+        key={editing === "new" ? "new" : "copy" in editing ? "copy-" + editing.copy.id : editing.id}
+        job={editing === "new" || "copy" in editing ? undefined : editing}
+        copyFrom={editing !== "new" && "copy" in editing ? editing.copy : undefined}
         defaultRejectionTemplate={defaultTemplate}
         done={() => {
           setEditing(null);
@@ -159,13 +160,18 @@ export function Jobs({
                     {job.rules.filter((rule) => rule.enabled).length} enabled
                     qualification rules
                   </p>
+                  <p className="hub-muted">
+                    Archive: {job.archiveProject || job.title} / {job.archiveCountry || "International"} / {(job.hiringRound || job.title) + " (" + job.id + ")"}
+                  </p>
                   {admin ? (
-                    <button
-                      className="hub-button secondary"
-                      onClick={() => setEditing(job)}
-                    >
-                      Edit role & form
-                    </button>
+                    <>
+                      <button className="hub-button secondary" onClick={() => setEditing(job)}>
+                        Edit role & form
+                      </button>
+                      <button className="hub-text-button" onClick={() => setEditing({ copy: job })}>
+                        Create new hiring round
+                      </button>
+                    </>
                   ) : (
                     <p className="hub-muted">
                       Ask an administrator to update this role.
@@ -210,36 +216,42 @@ export function Jobs({
 }
 function JobEditor({
   job,
+  copyFrom,
   done,
   cancel,
   defaultRejectionTemplate,
 }: {
   job?: HubJob;
+  copyFrom?: HubJob;
   done: () => void;
   cancel: () => void;
   defaultRejectionTemplate: string;
 }) {
-  const [title, setTitle] = useState(job?.title || ""),
-    [slug, setSlug] = useState(job?.slug || ""),
-    [department, setDepartment] = useState(job?.department || ""),
-    [location, setLocation] = useState(job?.location || ""),
-    [status, setStatus] = useState(job?.status || "draft"),
-    [description, setDescription] = useState(job?.descriptionHtml || ""),
+  const source = job || copyFrom;
+  const [archiveProject, setArchiveProject] = useState(source?.archiveProject || (copyFrom ? copyFrom.title : "")),
+    [archiveCountry, setArchiveCountry] = useState(source?.archiveCountry || ""),
+    [hiringRound, setHiringRound] = useState(copyFrom ? "" : job?.hiringRound || "");
+  const [title, setTitle] = useState(source?.title || ""),
+    [slug, setSlug] = useState(() => copyFrom ? copyFrom.slug.slice(0, 60).replace(/-+$/, "") + "-" + crypto.randomUUID() : job?.slug || ""),
+    [department, setDepartment] = useState(source?.department || ""),
+    [location, setLocation] = useState(source?.location || ""),
+    [status, setStatus] = useState(copyFrom ? "draft" : job?.status || "draft"),
+    [description, setDescription] = useState(source?.descriptionHtml || ""),
     [fields, setFields] = useState<ApplicationField[]>(
-      job?.fields.length
-        ? job.fields
+      source?.fields.length
+        ? source.fields
         : starterFields.map((field) => ({ ...field })),
     ),
-    [rules, setRules] = useState<Rule[]>(job?.rules || []),
-    [autoReject, setAutoReject] = useState(job?.autoReject || false),
+    [rules, setRules] = useState<Rule[]>(source?.rules || []),
+    [autoReject, setAutoReject] = useState(copyFrom ? false : job?.autoReject || false),
     [approved, setApproved] = useState(false),
     [descriptionApproved, setDescriptionApproved] = useState(false),
     [rejectionTemplate, setRejectionTemplate] = useState(
-      job?.rejectionTemplate ||
+      source?.rejectionTemplate ||
         defaultRejectionTemplate,
     ),
     [assessmentPrompt, setAssessmentPrompt] = useState(
-      job?.assessmentPrompt || "",
+      source?.assessmentPrompt || "",
     );
   const mutation = useHubMutation();
   function updateField(index: number, update: Partial<ApplicationField>) {
@@ -274,6 +286,9 @@ function JobEditor({
       autoReject,
       rejectionTemplate,
       assessmentPrompt,
+      archiveProject,
+      archiveCountry,
+      hiringRound,
       ...(job ? { formVersion: job.formVersion } : {}),
     };
     const result = await mutation.run(
@@ -295,7 +310,7 @@ function JobEditor({
             {job ? "ROLE CONFIGURATION" : "NEW ROLE"}
           </p>
           <h2 id="role-editor-title">
-            {job ? "Edit " + job.title : "Create a role"}
+            {job ? "Edit " + job.title : copyFrom ? "Create a new hiring round" : "Create a role"}
           </h2>
           <p>
             Keep qualifications specific and approved. Automatic rejection
@@ -303,6 +318,7 @@ function JobEditor({
           </p>
         </div>
       </div>
+      {copyFrom && <div className="hub-notice">This creates a separate draft with a new page address. The previous role and all its applications remain unchanged. Review the market and round below before publishing.</div>}
       <form onSubmit={save}>
         <fieldset disabled={mutation.busy}>
           <section className="hub-card">
@@ -379,6 +395,22 @@ function JobEditor({
                 Intake also requires the platform’s launch setting.
               </label>
             )}
+          </section>
+          <section className="hub-card">
+            <h3>Shared Drive archive grouping</h3>
+            <p>Recruiting / Project or role / Country or market / Hiring round / Applicant. Use a separate role posting for each market, such as Spain and USA. This is the job’s hiring market, not the applicant’s nationality.</p>
+            <div className="hub-form-grid">
+              <Field label="Project or role" hint="Defaults to the job title.">
+                <input maxLength={120} value={archiveProject} onChange={(e) => setArchiveProject(e.target.value)} placeholder={title || "Job title"} />
+              </Field>
+              <Field label="Country or market" hint="Defaults to International.">
+                <input maxLength={120} value={archiveCountry} onChange={(e) => setArchiveCountry(e.target.value)} placeholder="International" />
+              </Field>
+              <Field label="Hiring round" hint="Leave blank for the job title. Every round folder also includes its unique job ID.">
+                <input maxLength={120} value={hiringRound} onChange={(e) => setHiringRound(e.target.value)} placeholder="For example: October 2026" />
+              </Field>
+            </div>
+            <p className="hub-muted">New applications use this grouping. Existing applicants keep their saved archive location. Reposting creates a new draft and keeps earlier applications.</p>
           </section>
           <section className="hub-card">
             <div className="hub-section-heading compact">

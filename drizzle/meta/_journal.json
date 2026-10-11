@@ -43,6 +43,13 @@
       "when": 1791586782852,
       "tag": "0005_staff_auth",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1791676800000,
+      "tag": "0006_archive_hierarchy",
+      "breakpoints": true
     }
   ]
 }

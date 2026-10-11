@@ -123,3 +123,20 @@ test("online backup contains committed WAL records, is private and never overwri
     const unsafe=path.join(root,"symlink.sqlite");symlinkSync(destination,unsafe);assert.throws(()=>new SQLiteD1Database(unsafe),/sqlite_file_unsafe/);
   }finally{db.close();rmSync(root,{recursive:true,force:true});}
 });
+
+test("archive migration preserves existing applications and legacy Drive identity on upgrade", async()=>{
+  const root=temporary(),folder=path.join(root,"old-migrations");mkdirSync(folder);
+  const entries=JSON.parse(readFileSync(path.join(migrations,"meta/_journal.json"),"utf8")).entries as {tag:string}[];
+  journal(folder,entries.slice(0,6).map(({tag})=>[tag,readFileSync(path.join(migrations,tag+".sql"),"utf8")]));
+  const db=new SQLiteD1Database(path.join(root,"hiring.sqlite"));
+  try {
+    db.migrate(folder);
+    db.connection.exec("INSERT INTO hub_jobs(id,slug,title,department,description_html,rejection_template,created_at,updated_at) VALUES('old-job','old-job','Creative Strategist','','','thanks',1,1)");
+    db.connection.exec("INSERT INTO hub_applications(id,submission_key_hash,fingerprint,session_hash,job_id,job_title,form_version,name,email,stage,qualification,qualification_json,answers_json,fields_json,utm_json,source,drive_folder_id,drive_folder_url,stage_entered_at,created_at,updated_at) VALUES('old-app','key','fingerprint','session','old-job','Creative Strategist',1,'Test','test@example.invalid','Application Review','review','[]','[]','[]','{}','Direct','legacy-folder','https://drive.google.com/drive/folders/legacy-folder',1,1,1)");
+    db.migrate(migrations);db.migrate(migrations);
+    const app=await new HubStore(db.asD1()).getApplication('old-app');
+    assert.equal(app.archiveProject,undefined);assert.equal(app.archiveCountry,undefined);assert.equal(app.hiringRound,undefined);
+    assert.equal(app.driveFolderUrl,'https://drive.google.com/drive/folders/legacy-folder');
+    assert.equal(app.jobId,'old-job');
+  }finally{db.close();rmSync(root,{recursive:true,force:true});}
+});

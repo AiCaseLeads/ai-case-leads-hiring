@@ -159,7 +159,7 @@ function SettingsForm({
             <dt>Recruiting sender</dt>
             <dd>{initial.google.sender || "Not configured"}</dd>
           </div>
-          <div><dt>Account to authorize</dt><dd>{initial.google.expectedSender || "mariam@aicaseleads.com"}</dd></div>
+          <div><dt>Account to authorize</dt><dd>{initial.google.expectedSender || "Check Google connection setup"}</dd></div>
           <div>
             <dt>Applications</dt>
             <dd>
@@ -398,7 +398,7 @@ function SettingsForm({
             <h3>Drive archival</h3>
             <Field
               label="Recruiting root folder ID"
-              hint="Use the shared company folder where Recruiting / Role / Candidate–Application ID should be archived."
+              hint="Use the shared company folder where Recruiting / Project or role / Country or market / Hiring round / Candidate–Application ID should be archived."
             >
               <input
                 value={driveRootId}
@@ -407,7 +407,7 @@ function SettingsForm({
               />
             </Field>
             <p className="hub-muted">
-              Each application gets its own archive. Temporary Drive failures
+              Each application gets its own archive; earlier rounds remain stored when you repost. Share the root folder with authorized hiring staff. Temporary Drive failures
               remain visible in integration tasks and do not lose an accepted
               application.
             </p>

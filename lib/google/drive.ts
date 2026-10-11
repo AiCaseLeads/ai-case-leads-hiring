@@ -6,6 +6,7 @@ import { GoogleBudget } from "./budget";
 export type { ArchiveItem, ItemState } from "../archive/contracts";
 export interface ApplicationSnapshot {
   id: string; revision: number; name: string; jobId: string; jobTitle: string;
+  archiveProject?: string; archiveCountry?: string; hiringRound?: string;
   updatedAt?: number; driveFolderId?: string; driveFolderUrl?: string;
   files?: Array<{ id: string; filename: string; contentType: string; size: number; url?: string }>;
 }
@@ -48,7 +49,18 @@ export class WorkspaceDrive {
     this.archive.deadline = this.budget.deadline;
     await this.archive.assertPrivateRoot(this.config.driveRootId);
     const recruiting = await this.archive.folder("hub:recruiting:v1", "Recruiting", this.config.driveRootId);
-    const job = await this.archive.folder(`hub:job:${detail.jobId}`, detail.jobTitle, recruiting);
+    // Legacy snapshots keep their existing parent and application identity forever.
+    // New submissions snapshot explicit job geography, never applicant nationality.
+    let job: string;
+    if (detail.archiveProject && detail.archiveCountry && detail.hiringRound) {
+      const projectKey = JSON.stringify([detail.archiveProject]);
+      const countryKey = JSON.stringify([detail.archiveProject, detail.archiveCountry]);
+      const project = await this.archive.folder(`hub:project:v2:${projectKey}`, detail.archiveProject, recruiting);
+      const country = await this.archive.folder(`hub:country:v2:${countryKey}`, detail.archiveCountry, project);
+      job = await this.archive.folder(`hub:round:v2:${detail.jobId}:${countryKey}`, `${detail.hiringRound}–${detail.jobId}`, country);
+    } else {
+      job = await this.archive.folder(`hub:job:${detail.jobId}`, detail.jobTitle, recruiting);
+    }
     const folderId = await this.archive.folder(`hub:application:${detail.id}:job:${detail.jobId}`, `${detail.name}–${detail.id}`, job);
     if (existingFolderId && existingFolderId !== folderId) throw new GoogleError("drive_application_folder_identity_mismatch");
     // File download URLs and secure scheduling capabilities are not useful as archival data.
