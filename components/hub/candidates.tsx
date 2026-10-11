@@ -8,6 +8,7 @@ import {
   useHubResource,
 } from "./api";
 import { Badge, EmptyState, Feedback, Field, ResourceState } from "./shared";
+import { ReusableScorecard, useScorecardDraft } from "./scorecards";
 import { CandidateEvidence, useEvidenceDraft } from "./ai-review";
 import { jobGroup, jobLocation, jobBatch } from "./job-organization";
 import { applicationsCsv, downloadApplication, downloadFile } from "./export";
@@ -476,6 +477,7 @@ export function CandidateDetail({
     [newEmailApproved, setNewEmailApproved] = useState(false),
     [approve, setApprove] = useState(false);
   const evidenceDraft = useEvidenceDraft();
+  const scorecardDraft = useScorecardDraft();
   const emailRequest = useRef<{ action: string; subject: string; body: string; actionId: string; expectedRevision: number } | null>(null);
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -768,6 +770,7 @@ export function CandidateDetail({
                 {detail.grade?.latestReviews.map((review) => <article className="hub-history-item" key={review.actor}><strong>{review.actor} · {review.score}/5</strong><p>{review.criteria}</p><p className="hub-preserve">{review.text}</p><small>{displayDate(review.createdAt)}</small></article>)}
                 {detail.grade?.reviewerCount === 1 && <p className="hub-notice">One reviewer has graded this application. A second or third review can give you more evidence before deciding.</p>}
               </section>
+              <ReusableScorecard detail={detail} draft={scorecardDraft} saved={() => { void resource.reload(); changed(); }} />
               <CandidateEvidence key={detail.id} detail={detail} draft={evidenceDraft} saved={() => { void resource.reload(); changed(); }} />
               <section className="hub-card">
                 <h3>Application answers</h3>

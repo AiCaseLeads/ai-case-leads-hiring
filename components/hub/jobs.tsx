@@ -5,6 +5,7 @@ import type { ApplicationField, FieldType } from "@/lib/hiring/types";
 import { useHubMutation, useHubResource } from "./api";
 import { Badge, EmptyState, Feedback, Field, ResourceState } from "./shared";
 import type { HubJob, Rule, Settings } from "./types";
+import { ScorecardTemplates } from "./scorecards";
 import { availableJobSlug, jobBatch, jobChoices, jobGroup, jobLocation, matchingJobs, nextBatch, experienceQuestions, withExperienceQuestions } from "./job-organization";
 
 const fieldTypes: FieldType[] = [
@@ -226,6 +227,7 @@ export function Jobs({
           )}
         </>
       )}
+      {admin && <ScorecardTemplates jobs={jobs} />}
     </section>
   );
 }
@@ -700,6 +702,13 @@ function JobEditor({
               Recruiters explicitly send assessments after reviewing an
               application.
             </p>
+            <Field label="Reuse assessment instructions from a saved batch" hint="Copies only its instructions into this draft. Review and edit them before saving; no invitation is sent.">
+              <select defaultValue="" onChange={e => { const prior = jobs.find(j => j.id === e.target.value); if (prior) setAssessmentPrompt(prior.assessmentPrompt || ""); e.currentTarget.value = ""; }}>
+                <option value="">Choose existing instructions</option>
+                {jobs.filter(j => j.assessmentPrompt?.trim()).map(j => <option value={j.id} key={j.id}>{j.title} · {jobLocation(j)} · {jobBatch(j)}</option>)}
+              </select>
+            </Field>
+            <p className="hub-muted">A clear work sample describes the task, deliverable, expected time, permitted tools, evaluation criteria, and how to request an accommodation. Use an exercise relevant to this job, with no real client data.</p>
             <Field label="Saved assessment instructions">
               <textarea
                 rows={6}
