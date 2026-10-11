@@ -96,7 +96,7 @@ test("manual verification records evidence with revision while inactive AI canno
   await page.getByText("Compare résumé, profile and application with AI", { exact: true }).click();
   await page.getByText("AI review is off.", { exact: false }).waitFor();
   await page.getByLabel("Job requirements to check", { exact: true }).fill("Experience with TypeScript");
-  await page.getByLabel("Share these excerpts and application answers", { exact: false }).check();
+  await page.getByLabel("Share the selected résumé text, profile excerpts and application answers", { exact: false }).check();
   assert.equal(await page.getByRole("button", { name: "Generate evidence review" }).isDisabled(), true);
   await page.getByText("Record verification checks", { exact: true }).click();
   await page.getByLabel("Résumé and profile dates or roles compared", { exact: true }).selectOption("Needs candidate clarification");
@@ -119,7 +119,7 @@ test("AI review requires per-review sharing consent and sends evidence without a
   await page.getByLabel("Candidate-supplied LinkedIn / experience excerpts (optional)", { exact: true }).fill("Engineer at Example Co.");
   await page.getByLabel("Job requirements to check", { exact: true }).fill("Experience with TypeScript");
   assert.equal(await page.getByRole("button", { name: "Generate evidence review" }).isDisabled(), true);
-  await page.getByLabel("Share these excerpts and application answers", { exact: false }).check();
+  await page.getByLabel("Share the selected résumé text, profile excerpts and application answers", { exact: false }).check();
   await page.getByRole("button", { name: "Generate evidence review" }).click();
   await page.getByText("AI evidence review saved", { exact: false }).waitFor();
   assert.deepEqual(reviews, [{ applicationId: "application-test", expectedRevision: 9, resumeText: "Built TypeScript dashboards at Example Co.", linkedinText: "Engineer at Example Co.", jobCriteria: "Experience with TypeScript", consent: true }]);
@@ -136,7 +136,7 @@ test("candidate evidence draft survives detail unmount and revision refresh afte
   await page.getByLabel("Résumé excerpts", { exact: true }).fill("Built TypeScript dashboards at Example Co.");
   await page.getByLabel("Candidate-supplied LinkedIn / experience excerpts (optional)", { exact: true }).fill("Engineer at Example Co.");
   await page.getByLabel("Job requirements to check", { exact: true }).fill("Experience with TypeScript");
-  await page.getByLabel("Share these excerpts and application answers", { exact: false }).check();
+  await page.getByLabel("Share the selected résumé text, profile excerpts and application answers", { exact: false }).check();
   await manualSummary.click();
   await page.getByLabel("Résumé and profile dates or roles compared", { exact: true }).selectOption("Needs candidate clarification");
   await page.getByLabel("Evidence and follow-up notes", { exact: true }).fill("Ask candidate to clarify the date.");
@@ -162,7 +162,7 @@ test("candidate evidence draft survives detail unmount and revision refresh afte
   assert.deepEqual(reviews, [{ applicationId: "application-test", expectedRevision: 11, resumeText: "Built TypeScript dashboards at Example Co.", linkedinText: "Engineer at Example Co.", jobCriteria: "Experience with TypeScript", consent: true }]);
   await page.getByRole("button", { name: "Finish detail refresh" }).click();
   await aiSummary.click();
-  assert.equal(await page.getByLabel("Share these excerpts and application answers", { exact: false }).isChecked(), false);
+  assert.equal(await page.getByLabel("Share the selected résumé text, profile excerpts and application answers", { exact: false }).isChecked(), false);
   assert.equal(await page.getByRole("button", { name: "Generate evidence review" }).isDisabled(), true);
   assert.equal(await page.getByLabel("Résumé excerpts", { exact: true }).inputValue(), "Built TypeScript dashboards at Example Co.");
 });

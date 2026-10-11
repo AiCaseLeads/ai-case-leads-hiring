@@ -1,8 +1,9 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Badge, Feedback, Field, ResourceState } from "./shared";
 import { useHubMutation, useHubResource } from "./api";
 import type { ApplicationDetail } from "./types";
+import type { ResumeText } from "../../lib/pdf/types";
 
 type AiConfig = { configured: boolean; enabled: boolean; model: string; provider: string; reviewOnly: boolean };
 
@@ -30,7 +31,7 @@ export function AiReviewSettings() {
         <input type="password" autoComplete="new-password" value={apiKey} maxLength={500} onChange={e => setApiKey(e.target.value)} />
       </Field>
       <label className="hub-checkbox"><input type="checkbox" checked={enable ?? config.data.enabled} onChange={e => setEnable(e.target.checked)} /> Enable reviewer-requested AI evidence reviews</label>
-      <p className="hub-muted">Each review requires confirmation before sharing the selected application answers and pasted résumé/profile excerpts with OpenRouter and OpenAI. Uploaded PDFs are not automatically read. Set a spending limit on the OpenRouter key.</p>
+      <p className="hub-muted">Each review requires confirmation before sharing the selected application answers and selected résumé text/profile excerpts with OpenRouter and OpenAI. Uploaded text PDFs are read locally for preview; scans require manual text. Set a spending limit on the OpenRouter key.</p>
       <button className="hub-button secondary" disabled={mutation.busy || (!(config.data.configured || apiKey.trim()) && (enable ?? config.data.enabled))}>{mutation.busy ? "Saving…" : "Save AI connection"}</button>
       <Feedback error={mutation.error} success={mutation.success} />
     </form>}
@@ -45,19 +46,44 @@ const verificationChecks = [
 ];
 
 export function useEvidenceDraft() {
+  const [selectedPdf, setSelectedPdf] = useState<string | null>(null);
   const [resumeText, setResumeText] = useState("");
   const [linkedinText, setLinkedinText] = useState("");
   const [jobCriteria, setJobCriteria] = useState("");
   const [verification, setVerification] = useState(verificationChecks.map(() => "Not checked"));
   const [notes, setNotes] = useState("");
   const [consent, setConsent] = useState(false);
-  return { resumeText, setResumeText, linkedinText, setLinkedinText, jobCriteria, setJobCriteria, verification, setVerification, notes, setNotes, consent, setConsent };
+  return { selectedPdf, setSelectedPdf, resumeText, setResumeText, linkedinText, setLinkedinText, jobCriteria, setJobCriteria, verification, setVerification, notes, setNotes, consent, setConsent };
 }
 export function CandidateEvidence({ detail, saved, draft }: { detail: ApplicationDetail; saved: () => void; draft?: ReturnType<typeof useEvidenceDraft> }) {
   const config = useHubResource<AiConfig>("/api/ai/config");
   const mutation = useHubMutation();
   const localDraft = useEvidenceDraft();
-  const { resumeText, setResumeText, linkedinText, setLinkedinText, jobCriteria, setJobCriteria, verification, setVerification, notes, setNotes, consent, setConsent } = draft || localDraft;
+  const { selectedPdf, setSelectedPdf, resumeText, setResumeText, linkedinText, setLinkedinText, jobCriteria, setJobCriteria, verification, setVerification, notes, setNotes, consent, setConsent } = draft || localDraft;
+  const [panelOpen, setPanelOpen] = useState(false);
+  const pdfs = (detail.files || []).filter(file => file.contentType === "application/pdf");
+  const defaultPdf = pdfs.find(file => /resume|résumé|\bcv\b/i.test(file.filename)) || pdfs[0];
+  const fileId = selectedPdf ?? defaultPdf?.id ?? "";
+  const [pdf, setPdf] = useState<ResumeText | null>(null);
+  const [pdfLoading, setPdfLoading] = useState(false);
+  const [pdfError, setPdfError] = useState("");
+  const [pdfRetry, setPdfRetry] = useState(0);
+  useEffect(() => {
+    if (!panelOpen || !fileId) return;
+    const controller = new AbortController();
+    queueMicrotask(() => {
+      if(controller.signal.aborted) return;
+      setPdfLoading(true); setPdfError(""); setPdf(null);
+    void fetch("/api/ai/resume-text", {method:"POST",headers:{"Content-Type":"application/json"},credentials:"same-origin",signal:controller.signal,body:JSON.stringify({applicationId:detail.id,fileId})})
+      .then(async response => {const body = await response.json() as {data:ResumeText;error?:{message?:string}}; if(!response.ok) throw new Error(body.error?.message || "Could not read the PDF. Please retry."); return body.data as ResumeText;})
+      .then(result => {if(!controller.signal.aborted) setPdf(result);})
+      .catch(error => {if(!controller.signal.aborted) setPdfError(error instanceof Error ? error.message : "Could not read the PDF. Please retry.");})
+      .finally(() => {if(!controller.signal.aborted) setPdfLoading(false);});
+    });
+    return () => controller.abort();
+  },[panelOpen,fileId,detail.id,pdfRetry]);
+  const currentPdf = pdf?.fileId === fileId ? pdf : null;
+  const pdfReady = !fileId || (!pdfLoading && currentPdf?.status === "ready");
   const ready = config.data?.configured && config.data.enabled;
   const criteriaLines = jobCriteria.split("\n").map(v => v.trim()).filter(Boolean);
   const criteriaValid = criteriaLines.length > 0 && criteriaLines.length <= 8 && criteriaLines.every(v => v.length <= 500);
@@ -70,7 +96,7 @@ export function CandidateEvidence({ detail, saved, draft }: { detail: Applicatio
   }
   async function review() {
     const result = await mutation.run("/api/ai/review", "POST", {
-      applicationId: detail.id, expectedRevision: detail.revision, resumeText, linkedinText, jobCriteria, consent,
+      applicationId: detail.id, expectedRevision: detail.revision, resumeText: fileId ? "" : resumeText, ...(fileId ? {resumeFileId:fileId} : {}), linkedinText, jobCriteria, consent,
     }, "AI evidence review saved in applicant notes. Check its citations before recording your manager grade.");
     if (result !== undefined) { setConsent(false); saved(); }
   }
@@ -86,17 +112,31 @@ export function CandidateEvidence({ detail, saved, draft }: { detail: Applicatio
       <Field label="Evidence and follow-up notes" hint="Include source links, dates, the specific inconsistency or work-sample result, and the candidate’s explanation. Avoid unrelated personal information."><textarea rows={4} value={notes} maxLength={6000} onChange={e => setNotes(e.target.value)} disabled={mutation.busy} /></Field>
       <button className="hub-button secondary" onClick={() => void saveVerification()} disabled={mutation.busy || !notes.trim()}>Save verification notes</button>
     </details>
-    <details>
+    <details onToggle={event => setPanelOpen(event.currentTarget.open)}>
       <summary>Compare résumé, profile and application with AI</summary>
       <ResourceState loading={config.loading} error={config.error} retry={() => void config.reload()} />
       {!config.loading && config.data && !ready && <p className="hub-notice">AI review is off. An administrator can connect OpenRouter under Team & settings → Optional AI evidence review. You can still review files and record manager scores.</p>}
-      <p className="hub-muted">This reads the application answers and the text you paste below. It does not scrape LinkedIn or extract text from uploaded PDFs. Open the original files above, then paste the relevant résumé text and candidate-supplied LinkedIn About/Experience text. Leave profile text empty if unavailable.</p>
-      <Field label="Résumé excerpts" hint="Only job-related experience and skills; omit contact details and unrelated personal data."><textarea rows={6} maxLength={30000} value={resumeText} onChange={e => setResumeText(e.target.value)} disabled={mutation.busy} /></Field>
+      <p className="hub-muted">Uploaded text PDFs are read locally when you open this panel. Nothing is sent to AI until you confirm and request a review. Select the correct résumé below and compare its text with the original. LinkedIn is not scraped.</p>
+      <Field label="Résumé source"><select value={fileId} disabled={mutation.busy} onChange={event => {setSelectedPdf(event.target.value);setConsent(false);}}>
+        {pdfs.map(file => <option key={file.id} value={file.id}>{file.filename}</option>)}
+        <option value="">Enter résumé text manually</option>
+      </select></Field>
+      {fileId ? <>
+        {pdfLoading && <p role="status">Reading the uploaded PDF… Applications remain available while this runs.</p>}
+        {pdfError && <div role="alert"><p>{pdfError}</p><button className="hub-button secondary" onClick={() => setPdfRetry(value => value + 1)}>Retry PDF reading</button></div>}
+        {currentPdf && <>
+          <p className={currentPdf.status === "ready" ? "hub-muted" : "hub-notice"}>{currentPdf.message}</p>
+          {!!currentPdf.pages && <p className="hub-muted">{currentPdf.pages} pages. {currentPdf.truncated ? "Partial text: the first 30,000 characters only. Review the rest in the original before grading." : "Check the original for layout, graphics, and any text the reader missed."}</p>}
+          {currentPdf.status === "ready" && <Field label="Text read from uploaded PDF"><textarea readOnly rows={8} value={currentPdf.text} /></Field>}
+          <button className="hub-button secondary" disabled={mutation.busy} onClick={() => {setResumeText(currentPdf.text);setSelectedPdf("");setConsent(false);}}>Use editable text instead</button>
+          {["timeout","unavailable"].includes(currentPdf.status) && <button className="hub-button secondary" onClick={() => setPdfRetry(value => value + 1)}>Retry PDF reading</button>}
+        </>}
+      </> : <Field label="Résumé excerpts" hint="Only job-related experience and skills; omit contact details and unrelated personal data."><textarea rows={6} maxLength={30000} value={resumeText} onChange={e => setResumeText(e.target.value)} disabled={mutation.busy} /></Field>}
       <Field label="Candidate-supplied LinkedIn / experience excerpts (optional)"><textarea rows={5} maxLength={20000} value={linkedinText} onChange={e => setLinkedinText(e.target.value)} disabled={mutation.busy} /></Field>
       <Field label="Job requirements to check" hint="One specific, job-related requirement per line. Maximum 8 requirements, 500 characters each. Use the same requirements for applicants to this job."><textarea rows={5} maxLength={4007} value={jobCriteria} onChange={e => setJobCriteria(e.target.value)} disabled={mutation.busy} /></Field>
-      <label className="hub-checkbox"><input type="checkbox" checked={consent} onChange={e => setConsent(e.target.checked)} disabled={mutation.busy} /> Share these excerpts and application answers with OpenRouter and OpenAI for this review.</label>
+      <label className="hub-checkbox"><input type="checkbox" checked={consent} onChange={e => setConsent(e.target.checked)} disabled={mutation.busy} /> Share the selected résumé text, profile excerpts and application answers with OpenRouter and OpenAI for this review.</label>
       <p className="hub-muted">The review cites supplied text and suggests follow-up questions. It does not verify employment, detect AI authorship, or determine a hiring outcome. Results are saved as notes and archived to Drive.</p>
-      <button className="hub-button" onClick={() => void review()} disabled={!ready || mutation.busy || !consent || !criteriaValid}>{mutation.busy ? "Reviewing…" : "Generate evidence review"}</button>
+      <button className="hub-button" onClick={() => void review()} disabled={!ready || !pdfReady || mutation.busy || !consent || !criteriaValid}>{mutation.busy ? "Reviewing…" : "Generate evidence review"}</button>
     </details>
     <Feedback error={mutation.error} success={mutation.success} />
   </section>;

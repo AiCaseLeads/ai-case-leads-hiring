@@ -13,7 +13,7 @@
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
     "db:generate": "drizzle-kit generate",
     "typecheck": "tsc --noEmit",
-    "test": "tsx --test tests/hiring/*.test.ts tests/hub/*.test.ts tests/google/*.test.ts tests/custom*.test.ts tests/archive.test.ts tests/ai/*.test.ts",
+    "test": "tsx --test tests/hiring/*.test.ts tests/hub/*.test.ts tests/google/*.test.ts tests/custom*.test.ts tests/archive.test.ts tests/ai/*.test.ts tests/pdf/*.test.ts",
     "test:load": "tsx tests/custom-load.mjs",
     "test:ui": "node --test tests/ui-flow.spec.mjs",
     "test:load:legacy": "tsx tests/load.mjs",
@@ -32,10 +32,12 @@
     "date-fns": "^4.4.0",
     "drizzle-orm": "0.45.2",
     "embla-carousel-react": "^8.6.0",
+    "fast-xml-parser": "5.11.2",
     "input-otp": "^1.4.2",
     "lucide-react": "^1.31.0",
     "next": "16.4.0",
     "next-themes": "^0.4.6",
+    "pdfjs-dist": "6.4.299",
     "radix-ui": "^1.6.7",
     "react": "19.2.8",
     "react-day-picker": "^10.0.1",
@@ -46,8 +48,7 @@
     "sonner": "^2.0.8",
     "tailwind-merge": "3.6.0",
     "vaul": "^1.1.2",
-    "zod": "^3.25.76",
-    "fast-xml-parser": "5.11.2"
+    "zod": "^3.25.76"
   },
   "devDependencies": {
     "@cloudflare/vite-plugin": "1.37.1",
@@ -63,6 +64,7 @@
     "eslint-config-next": "16.4.0",
     "json-rpc-2.0": "1.7.1",
     "playwright": "^1.64.0",
+    "railway": "3.13.1",
     "raw-body": "3.0.2",
     "react-server-dom-webpack": "19.2.8",
     "tailwindcss": "4.2.1",
@@ -71,8 +73,7 @@
     "typescript": "5.9.3",
     "vinext": "1.0.0-beta.5",
     "vite": "8.0.13",
-    "wrangler": "4.92.0",
-    "railway": "3.13.1"
+    "wrangler": "4.92.0"
   },
   "type": "module",
   "overrides": {

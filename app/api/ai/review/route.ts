@@ -7,6 +7,6 @@ export const dynamic="force-dynamic";
 export async function POST(request:Request){
   try{
     const member=await requireHubMember(request);
-    return handleAiReview(request,member,{store:await getHubStore(request),encryptionKey:workspaceEnv().GOOGLE_TOKEN_KEY});
+    return handleAiReview(request,member,{store:await getHubStore(request),encryptionKey:workspaceEnv().GOOGLE_TOKEN_KEY,bucket:workspaceEnv().BUCKET});
   }catch(error){return errorResponse(error);}
 }

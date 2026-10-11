@@ -7,6 +7,7 @@ export const reviewInput = z.object({
   applicationId: z.string().min(1).max(128),
   expectedRevision: z.number().int().positive().safe(),
   resumeText: z.string().trim().max(30000),
+  resumeFileId: z.string().regex(/^[a-f0-9]{64}$/).optional(),
   linkedinText: z.string().trim().max(20000),
   jobCriteria: z.string().trim().min(1).max(8000),
   consent: z.literal(true),
@@ -57,6 +58,6 @@ export async function generateReview(key:string,sources:Sources,criteria:string[
     throw new HiringError("ai_review_failed",502,"AI review did not finish or returned an invalid response. No review was saved. Wait a minute before retrying.");
   }
 }
-export function reviewNote(review:Review,hash:string):string {
-  return [`AI EVIDENCE REVIEW — unverified, for human review only`, `Model: ${MODEL} via OpenRouter / OpenAI`, `Review ID: ${hash}`,"Sources: reviewer-supplied resume/profile excerpts and selected stored application answers. No external profile was scraped or verified.","This does not change qualification, grades, or hiring stage. Tailored/AI-written resumes are not proof of fraud.",...review.criteria.map(item=>`${item.criterion}\n${item.status}: ${item.explanation}\n${item.citations.map(c=>`[${c.source}] “${c.quote}”`).join("\n")}`),"Verification questions",...review.checks.map(x=>`${x.question}\n${x.citations.map(c=>`[${c.source}] “${c.quote}”`).join("\n")}`)].join("\n\n").trim();
+export function reviewNote(review:Review,hash:string,provenance="Reviewer-supplied excerpts."):string {
+  return [`AI EVIDENCE REVIEW — unverified, for human review only`, `Model: ${MODEL} via OpenRouter / OpenAI`, `Review ID: ${hash}`,provenance,"Sources: uploaded PDF text or reviewer-supplied resume/profile excerpts and selected stored application answers. No external profile was scraped or verified.","This does not change qualification, grades, or hiring stage. Tailored/AI-written resumes are not proof of fraud.",...review.criteria.map(item=>`${item.criterion}\n${item.status}: ${item.explanation}\n${item.citations.map(c=>`[${c.source}] “${c.quote}”`).join("\n")}`),"Verification questions",...review.checks.map(x=>`${x.question}\n${x.citations.map(c=>`[${c.source}] “${c.quote}”`).join("\n")}`)].join("\n\n").trim();
 }

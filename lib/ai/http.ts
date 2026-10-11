@@ -9,10 +9,12 @@ import { boundedBytes } from "../hiring/files";
 import { sha256 } from "../hiring/crypto";
 import { MODEL,criteriaLines,generateReview,reviewInput,reviewNote,validateReview,type Review,type Sources } from "./review";
 
+import { readResumeText } from "../pdf/http";
+
 const CONFIG = "ai_openrouter_config_v1";
 type Configuration = {enabled:boolean;sealedKey?:string;updatedBy?:string;updatedAt?:number};
 const configInput=z.object({apiKey:z.string().trim().regex(/^sk-or-[A-Za-z0-9_-]{16,250}$/).optional(),enabled:z.boolean()}).strict();
-export type AiDependencies={store:HubStore;encryptionKey?:string;fetcher?:typeof fetch};
+export type AiDependencies={store:HubStore;encryptionKey?:string;fetcher?:typeof fetch;bucket?:R2Bucket};
 async function json(request:Request){
   const bytes=await boundedBytes(request,256*1024);
   try{return JSON.parse(new TextDecoder().decode(bytes));}catch{throw new HiringError("invalid_request",400,"The request could not be read.");}
@@ -64,14 +66,17 @@ export async function handleAiReview(request:Request,member:HubMember|null,deps:
     const config=await deps.store.setting<Configuration>(CONFIG,{enabled:false});
     if(!config.enabled||!config.sealedKey||!deps.encryptionKey)throw new HiringError("ai_not_configured",409,"AI review is off. A manager can connect OpenRouter in Settings.");
     const application=await deps.store.getApplication(input.applicationId);
-    const sources:Sources={resume:input.resumeText,linkedin:input.linkedinText,answers:answerSource(application)};
+    const pdf=input.resumeFileId?await readResumeText(input.applicationId,input.resumeFileId,{store:deps.store,bucket:deps.bucket}):null;
+    if(pdf&&pdf.status!=="ready")throw new HiringError("pdf_not_readable",422,pdf.message);
+    const sources:Sources={resume:pdf?pdf.text:input.resumeText,linkedin:input.linkedinText,answers:answerSource(application)};
     if(!sources.resume&&!sources.linkedin&&!sources.answers)throw new HiringError("ai_sources_required",422,"Add resume or candidate-supplied profile excerpts before reviewing.");
-    const hash=await sha256(JSON.stringify({applicationId:input.applicationId,model:MODEL,criteria,sources}));
+    const provenance=pdf?`Original PDF: ${pdf.filename} (file ${pdf.fileId}), ${pdf.pages} pages. ${pdf.truncated?"PARTIAL: first 30,000 characters only; inspect the original for remaining evidence.":"Automatically extracted text; inspect the original for missed layout, images or text."}`:"Reviewer-supplied excerpts.";
+    const hash=await sha256(JSON.stringify({applicationId:input.applicationId,model:MODEL,criteria,sources,provenance}));
     const cacheKey=`ai_review_v1_${hash}`;
     let cache=await deps.store.setting<Cache|null>(cacheKey,null);
     let review=cache?.status==="complete"&&cache.review?validateReview(cache.review,sources,criteria):undefined;
     const cached=!!review;
-    if(review&&application.notes.some(note=>note.text===reviewNote(review!,hash)))return jsonResponse({data:{review,application,model:MODEL,cached:true}});
+    if(review&&application.notes.some(note=>note.text===reviewNote(review!,hash,provenance)))return jsonResponse({data:{review,application,model:MODEL,cached:true}});
     if(application.revision!==input.expectedRevision)throw new HiringError("application_conflict",409,"The application changed. Refresh it before running AI review.");
     if(!review){
       await limit(deps.store,`ai:staff:${member.userId}`,30);
@@ -88,7 +93,7 @@ export async function handleAiReview(request:Request,member:HubMember|null,deps:
         }catch(error){await deps.store.setSetting(cacheKey,{status:"failed"});throw error;}
       }
     }
-    const updated=await deps.store.action(input.applicationId,{action:"note",text:reviewNote(review!,hash),expectedRevision:input.expectedRevision},member);
+    const updated=await deps.store.action(input.applicationId,{action:"note",text:reviewNote(review!,hash,provenance),expectedRevision:input.expectedRevision},member);
     return jsonResponse({data:{review,application:updated,model:MODEL,cached}});
   }catch(error){return errorResponse(error);}
 }
