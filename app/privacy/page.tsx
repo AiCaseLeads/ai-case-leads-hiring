@@ -56,7 +56,7 @@ export default function PrivacyPage() {
             information. The recruiting team handles these requests.
           </p>
           <p className="privacy-note">
-            Closing a job or starting another batch does not delete earlier
+            Closing a job or creating another job posting does not delete earlier
             applications. Access is restricted to authorized hiring staff.
           </p>
         </div>

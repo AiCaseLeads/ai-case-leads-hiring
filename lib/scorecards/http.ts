@@ -45,7 +45,7 @@ export async function handleScorecardReview(request:Request,member:HubMember|nul
  staff(member);if(request.method!=="POST")throw new HiringError("method_not_allowed",405,"Use the scorecard review form.");assertSameOrigin(request);
  const input=parse(reviewInput,await body(request)),application=await store.getApplication(input.applicationId),catalog=await store.setting<Catalog>(KEY,structuredClone(emptyCatalog));
  const template=boundTemplate(catalog,application.jobId);
- if(!template||template.id!==input.templateId||template.version!==input.version)throw new HiringError("template_changed",409,"This batch's assigned scorecard changed. Reload its scorecard before submitting.");
+ if(!template||template.id!==input.templateId||template.version!==input.version)throw new HiringError("template_changed",409,"This job posting’s assigned scorecard changed. Reload its scorecard before submitting.");
  if(input.ratings.length!==template.criteria.length)throw new HiringError("ratings_required",422,"Score every criterion and add supporting evidence.");
  const score=calculateScore(template,input.ratings),text=snapshotText(template,input.ratings),criteria=`${template.name} · version ${template.version}: ${template.criteria.map(c=>c.label).join("; ")}`;
  // An uncertain network response can be retried without adding a second review.

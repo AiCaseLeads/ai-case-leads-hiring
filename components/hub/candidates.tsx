@@ -10,7 +10,7 @@ import {
 import { Badge, EmptyState, Feedback, Field, ResourceState } from "./shared";
 import { ReusableScorecard, useScorecardDraft } from "./scorecards";
 import { CandidateEvidence, useEvidenceDraft } from "./ai-review";
-import { jobGroup, jobLocation, jobBatch } from "./job-organization";
+import { jobGroup, jobLocation } from "./job-organization";
 import { applicationsCsv, downloadApplication, downloadFile } from "./export";
 import {
   stages,
@@ -102,7 +102,7 @@ export function CandidateTable({
                 <Badge tone={qualificationTone(item.qualification)}>
                   {item.qualification === "review"
                     ? "Needs review"
-                    : item.qualification}
+                    : item.qualification === "pass" ? "Requirements met" : "Requirement not met"}
                 </Badge>
               </td>
               <td><GradeSummary grade={item.grade} /></td>
@@ -246,60 +246,23 @@ export function Candidates({
           {resource.data ? resource.data.total + " applications" : ""}
         </span><button type="button" className="hub-button secondary" disabled={mutation.busy || !resource.data} onClick={() => void exportApplications()}><Download size={16} /> Export filtered applications</button></div>
       </div>
-      <form className="hub-filter-grid" onSubmit={filterSubmit}>
-        <Field label="Search">
-          <input
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            placeholder="Name or email"
-            type="search"
-          />
-        </Field>
-        <Field label="Job & batch">
-          <select value={jobId} onChange={(e) => { setJobId(e.target.value); setGrade(""); setSort(""); }}>
-            <option value="">All jobs and batches</option>
-            {jobs.map((job) => (
-              <option key={job.id} value={job.id}>
-                {jobGroup(job)} · {jobLocation(job)} · {jobBatch(job)}
-              </option>
-            ))}
-          </select>
-        </Field>
-        <Field label="Qualification rules">
-          <select value={qualification} onChange={(e) => setQualification(e.target.value)}>
-            <option value="">All qualification results</option><option value="pass">Requirements met</option><option value="review">Needs review</option><option value="fail">Requirement not met</option>
-          </select>
-        </Field>
-        <Field label="Reviewer grades" hint={!jobId ? "Choose one batch to compare reviewer grades." : "Qualification and reviewer grade are separate."}>
-          <select value={grade} disabled={!jobId} onChange={(e) => setGrade(e.target.value)}>
-            <option value="">Graded and ungraded</option><option value="reviewed">Graded applications</option><option value="ungraded">Ungraded applications</option>
-          </select>
-        </Field>
-        <Field label="Order">
-          <select value={sort} disabled={!jobId} onChange={(e) => setSort(e.target.value)}>
-            <option value="">Newest applications</option><option value="grade_desc">Highest reviewer grade first</option>
-          </select>
-        </Field>
-        <label className="hub-checkbox"><input type="checkbox" checked={duplicate} onChange={(e) => setDuplicate(e.target.checked)} /> Shared-email applications</label>
-        <Field label="Stage">
-          <select value={stage} onChange={(e) => setStage(e.target.value)}>
-            <option value="">All stages</option>
-            {stages.map((value) => (
-              <option key={value}>{value}</option>
-            ))}
-          </select>
-        </Field>
-        <Field label="Assigned to">
-          <input
-            value={assignee}
-            onChange={(e) => setAssignee(e.target.value)}
-            type="email"
-            placeholder="Reviewer email"
-          />
-        </Field>
-        <button className="hub-button" type="submit">
-          <Search size={16} /> Filter
-        </button>
+      <form className="hub-card" onSubmit={filterSubmit}>
+        <div className="hub-filter-grid">
+          <Field label="Search"><input value={q} onChange={e=>setQ(e.target.value)} placeholder="Name or email" type="search" /></Field>
+          <Field label="Job posting"><select value={jobId} onChange={e=>{setJobId(e.target.value);setGrade("");setSort("");}}><option value="">All job postings</option>{jobs.map(job=><option key={job.id} value={job.id}>{jobGroup(job)} · {job.location || jobLocation(job)} · {job.status} · /{job.slug}</option>)}</select></Field>
+          <Field label="Stage"><select value={stage} onChange={e=>setStage(e.target.value)}><option value="">All stages</option>{stages.map(value=><option key={value}>{value}</option>)}</select></Field>
+          <Field label="Order" hint={!jobId ? "Choose a posting to compare grades." : undefined}><select value={sort} disabled={!jobId} onChange={e=>setSort(e.target.value)}><option value="">Newest applications</option><option value="grade_desc">Highest reviewer grade first</option></select></Field>
+        </div>
+        <details>
+          <summary>More filters{[qualification,grade,assignee,duplicate].filter(Boolean).length ? ` · ${[qualification,grade,assignee,duplicate].filter(Boolean).length} selected` : ""}</summary>
+          <div className="hub-filter-grid">
+            <Field label="Qualification rules"><select value={qualification} onChange={e=>setQualification(e.target.value)}><option value="">All qualification results</option><option value="pass">Requirements met</option><option value="review">Needs review</option><option value="fail">Requirement not met</option></select></Field>
+            <Field label="Reviewer grades" hint={!jobId ? "Choose a job posting to compare reviewer grades." : "Qualification and reviewer grade are separate."}><select value={grade} disabled={!jobId} onChange={e=>setGrade(e.target.value)}><option value="">Graded and ungraded</option><option value="reviewed">Graded applications</option><option value="ungraded">Ungraded applications</option></select></Field>
+            <Field label="Assigned to"><input value={assignee} onChange={e=>setAssignee(e.target.value)} type="email" placeholder="Reviewer email" /></Field>
+            <label className="hub-checkbox"><input type="checkbox" checked={duplicate} onChange={e=>setDuplicate(e.target.checked)} /> Shared-email applications</label>
+          </div>
+        </details>
+        <div className="hub-button-row"><button className="hub-button" type="submit"><Search size={16} /> Apply filters</button><button className="hub-button secondary" type="button" onClick={()=>{setQ("");setJobId("");setStage("");setAssignee("");setQualification("");setGrade("");setSort("");setDuplicate(false);setFilter("");setPage(1);setSelected([]);}}>Clear filters</button></div>
       </form>
       <details className="hub-card hub-review-queues">
         <summary>Saved review queues · this browser only</summary><p className="hub-muted">These filters stay in this browser for your account. Apply filters above before saving a queue; candidate records remain private in the hiring hub.</p>
@@ -462,6 +425,7 @@ export function CandidateDetail({
       "/api/hub/applications/" + encodeURIComponent(id),
     ),
     mutation = useHubMutation();
+  const [section, setSection] = useState<"application" | "review" | "activity">("application");
   const [action, setAction] = useState("note"),
     [stage, setStage] = useState("Screening"),
     [text, setText] = useState(""),
@@ -575,6 +539,7 @@ export function CandidateDetail({
                       value={action}
                       onChange={(e) => {
                         setAction(e.target.value);
+                        if(e.target.value === "scorecard") setSection("review");
                         setText("");
                         setApprove(false);
                         setRenew(false);
@@ -589,7 +554,7 @@ export function CandidateDetail({
                       <option value="interview">
                         Send interview booking link
                       </option>
-                      <option value="scorecard">Record scorecard</option>
+                      <option value="scorecard">Record an overall grade</option>
                       <option value="attendance">
                         Record interview attendance
                       </option>
@@ -763,15 +728,19 @@ export function CandidateDetail({
               </form>
             </aside>
             <div className="hub-detail-main">
+              <div className="hub-button-row" role="tablist" aria-label="Applicant record">{([{id:"application",label:"Application & files"},{id:"review",label:"Review & scorecard"},{id:"activity",label:"Activity & messages"}] as const).map(tab=><button key={tab.id} type="button" role="tab" id={`candidate-tab-${tab.id}`} aria-selected={section===tab.id} aria-controls={`candidate-panel-${tab.id}`} className={"hub-button " + (section===tab.id ? "" : "secondary")} onClick={()=>setSection(tab.id)}>{tab.label}</button>)}</div>
+              <div role="tabpanel" id="candidate-panel-review" aria-labelledby="candidate-tab-review" hidden={section!=="review"}>
               <section className="hub-card">
-                <h3>Manager score · how ranking works</h3>
+                <h3>Reviewer grade</h3>
                 <GradeSummary grade={detail.grade} />
-                <p className="hub-muted">Qualification is the result of approved application rules. The reviewer grade is a separate human evaluation: the latest overall score from each reviewer, weighted equally. Compare grades only within this batch. A 4/5 average displays as 80/100; it is a reviewer score, not a probability of success. Ungraded applicants are not given a zero. Choose a job and batch in Applications, then sort by highest reviewer grade to see your shortlist. AI evidence reviews never change this score.</p>
+                <details><summary>How the shortlist is sorted</summary><p>The latest grade from each reviewer counts once, with equal weight. Compare candidates applying to the same job posting with the same approved criteria. A 4/5 mean displays as 80/100. Ungraded candidates stay ungraded. In Applications, choose the posting and sort by highest reviewer grade. Qualification rules and AI summaries do not change this grade.</p></details>
                 {detail.grade?.latestReviews.map((review) => <article className="hub-history-item" key={review.actor}><strong>{review.actor} · {review.score}/5</strong><p>{review.criteria}</p><p className="hub-preserve">{review.text}</p><small>{displayDate(review.createdAt)}</small></article>)}
                 {detail.grade?.reviewerCount === 1 && <p className="hub-notice">One reviewer has graded this application. A second or third review can give you more evidence before deciding.</p>}
               </section>
               <ReusableScorecard detail={detail} draft={scorecardDraft} saved={() => { void resource.reload(); changed(); }} />
               <CandidateEvidence key={detail.id} detail={detail} draft={evidenceDraft} saved={() => { void resource.reload(); changed(); }} />
+              </div>
+              <div role="tabpanel" id="candidate-panel-application" aria-labelledby="candidate-tab-application" hidden={section!=="application"}>
               <section className="hub-card">
                 <h3>Application answers</h3>
                 {detail.answers.length ? (
@@ -870,6 +839,8 @@ export function CandidateDetail({
                   </p>
                 )}
               </section>
+              </div>
+              <div role="tabpanel" id="candidate-panel-activity" aria-labelledby="candidate-tab-activity" hidden={section!=="activity"}>
               {(detail.assessments || (detail.assessment ? [detail.assessment] : [])).map((assessment, index) => (
                 <section className="hub-card" key={assessment.id}>
                   <div className="hub-section-heading compact">
@@ -918,7 +889,7 @@ export function CandidateDetail({
                 </section>
               ))}
               <section className="hub-card">
-                <h3>Scorecards</h3>
+                <h3>Previous scorecard reviews</h3>
                 {detail.scorecards.length ? (
                   detail.scorecards.map((card) => (
                     <article className="hub-history-item" key={card.id}>
@@ -933,7 +904,7 @@ export function CandidateDetail({
                   ))
                 ) : (
                   <p className="hub-muted">
-                    No scorecards yet. Record a review using the action panel.
+                    No scorecards yet. Use Review & scorecard to record a review.
                   </p>
                 )}
               </section>
@@ -995,6 +966,7 @@ export function CandidateDetail({
                   <p className="hub-muted">No hiring events recorded.</p>
                 )}
               </section>
+              </div>
             </div>
           </div>
         </>
