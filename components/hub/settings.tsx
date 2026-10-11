@@ -13,6 +13,7 @@ import { GoogleConfiguration } from "./google-setup";
 import { SchedulerSetup } from "./scheduler-setup";
 import { driveFolderId } from "./drive-folder";
 import { AiReviewSettings } from "./ai-review";
+import { ReviewReminderSettings } from "./review-reminders";
 
 export function HubSettings({
   member,
@@ -493,6 +494,7 @@ function SettingsForm({
         </fieldset>
       </form>
       <AiReviewSettings />
+      <ReviewReminderSettings />
       <details className="hub-card hub-setup-details">
         <summary>Advanced admin setup</summary>
         <p className="hub-muted">Only needed when installing the app or changing its Google client or background processing. Day-to-day hiring uses the three steps above.</p>

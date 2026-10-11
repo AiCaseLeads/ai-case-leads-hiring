@@ -5,6 +5,7 @@ import { sha256 } from "./hiring/crypto";
 import { cleanupExpiredUploads } from "./hiring/upload-cleanup";
 import { withinDeadline } from "./hiring/deadline";
 import { syncHiringReplies } from "./mail-sync";
+import { enqueueReviewReminders, reviewReminderMail } from "./review-reminders/service";
 
 function safeCode(error:unknown):string{
   const code=error&&typeof error==="object"&&"code"in error?error.code:null;
@@ -35,8 +36,12 @@ async function reconcileUncertain(db:D1Database,store:HubStore,google:GoogleWork
   }
   return reconciled;
 }
-async function taskEffect(task:Task,store:HubStore,db:D1Database,bucket:R2Bucket|undefined,google:GoogleWorkspace,deadline:number):Promise<Record<string,unknown>>{
+async function taskEffect(task:Task,store:HubStore,db:D1Database,bucket:R2Bucket|undefined,google:GoogleWorkspace,deadline:number,owners:string[]):Promise<Record<string,unknown>>{
   if(task.kind==="gmail"){
+    if(task.payload.reviewReminder===true){
+      const mail=await reviewReminderMail(task,store,owners);
+      return mail?{...await google.sendMail(mail)}:{stale:true};
+    }
     if(task.payload.reminder===true){
       const current=await db.prepare("SELECT revision,status,start FROM hub_interviews WHERE id=? AND application_id=?").bind(String(task.payload.interviewId||""),task.applicationId).first<{revision:number;status:string;start:string|null}>();
       if(!await store.setting("interview_reminders_enabled",false)||!current||current.status!=="booked"||current.revision!==Number(task.payload.revision)||current.start!==task.payload.interviewStart||!current.start||!Number.isFinite(Date.parse(current.start))||Date.parse(current.start)<=Date.now()||["Rejected","Withdrawn","Hired"].includes((await store.applicationRow(task.applicationId)).stage))return {stale:true};
@@ -82,13 +87,14 @@ async function taskEffect(task:Task,store:HubStore,db:D1Database,bucket:R2Bucket
   };
   return {...await google.archiveApplication(detail,files,existing?.drive_folder_id||undefined,continuation),archivedRevision:detail.revision};
 }
-export async function processHubTasks(store:HubStore,db:D1Database,bucket:R2Bucket|undefined,google:GoogleWorkspace,max=5){
+export async function processHubTasks(store:HubStore,db:D1Database,bucket:R2Bucket|undefined,google:GoogleWorkspace,max=5,owners:string[]=(process.env.ADMIN_EMAILS||"").split(",")){
   const began=Date.now(),deadline=began+40_000;
   google.setDeadline?.(deadline);
   const previous=await store.setting<Record<string,unknown>>("worker_health",{});
   await store.setSetting("worker_health",{...previous,lastStartedAt:began});
   let processed=0,failed=0,uncertain=0,reconciled=0,replies=0;
   try {
+    await enqueueReviewReminders(store,owners);
     await reconcileArchives(db,store);
     reconciled=await reconcileUncertain(db,store,google,Math.min(max,5),deadline);
     for(let index=0;index<Math.max(1,Math.min(max,10));index++){
@@ -97,7 +103,7 @@ export async function processHubTasks(store:HubStore,db:D1Database,bucket:R2Buck
       if(!task.leaseToken)throw new Error("task_lease_missing");
       let providerCompleted=false;
       try{
-        const result=await taskEffect(task,store,db,bucket,google,deadline);
+        const result=await taskEffect(task,store,db,bucket,google,deadline,owners);
         providerCompleted=true;
         await store.finishTask(task.id,task.leaseToken,{status:"done",result});processed++;
       }catch(error){
