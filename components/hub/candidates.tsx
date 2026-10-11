@@ -121,15 +121,17 @@ export function Candidates({
   changed,
   reviewerEmail,
   initialStage = "",
+  initialJobId = "",
 }: {
   jobs: HubJob[];
   refresh: number;
   changed: () => void;
   reviewerEmail: string;
   initialStage?: string;
+  initialJobId?: string;
 }) {
   const [q, setQ] = useState(""),
-    [jobId, setJobId] = useState(""),
+    [jobId, setJobId] = useState(initialJobId),
     [stage, setStage] = useState(initialStage),
     [assignee, setAssignee] = useState(""),
     [qualification, setQualification] = useState(""),
@@ -137,7 +139,7 @@ export function Candidates({
     [sort, setSort] = useState(""),
     [duplicate, setDuplicate] = useState(false),
     [page, setPage] = useState(1),
-    [filter, setFilter] = useState(initialStage ? new URLSearchParams({stage:initialStage}).toString() : ""),
+    [filter, setFilter] = useState(new URLSearchParams({...initialStage?{stage:initialStage}:{},...initialJobId?{jobId:initialJobId}:{}}).toString()),
     [selected, setSelected] = useState<string[]>([]),
     [detailId, setDetailId] = useState<string | null>(null);
   const [queues, setQueues] = useState<{name: string; filter: string}[]>([]),
