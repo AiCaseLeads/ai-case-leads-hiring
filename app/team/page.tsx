@@ -19,6 +19,7 @@ export const metadata = {
 };
 export default async function TeamPage({ searchParams }: { searchParams?: Promise<Record<string, string | string[] | undefined>> }) {
   const query = await searchParams;
+  const signInDestination = query?.view === "settings" ? "/team?view=settings" : "/team";
   const notices: Record<string, string> = {
     expired: "Your sign-in link expired or has already been used. Start a new sign-in below.",
     failed: "Sign-in could not be completed. Please try again with your hiring-team Google account.",
@@ -52,11 +53,11 @@ export default async function TeamPage({ searchParams }: { searchParams?: Promis
             to authorized team members.
           </p>
         ) : (
-          <a className="button ink" href={chatGPTSignInPath("/team")}>
+          <a className="button ink" href={chatGPTSignInPath(signInDestination)}>
             {usesGoogleStaffAuth() ? "Sign in with Google" : "Sign in to the hiring hub"}
           </a>
         )}
-        {usesGoogleStaffAuth() && <p className="team-boundary">Staff sign-in gives access to your hiring workspace. Recruiting email, Calendar, and Drive are connected separately by an administrator in Settings.</p>}
+        {usesGoogleStaffAuth() && <p className="team-boundary">Sign in with your own invited Google Workspace account. In Settings → My setup, connect your calendar and set interview hours. The owner manages the shared company Gmail and Drive connection.</p>}
         <p>
           <a className="back-link" href="/">
             Back to the applicant website
