@@ -1,5 +1,5 @@
 import { savePersonalGrant } from "@/lib/personal-calendar/oauth";
-import { requireHubMember,requireHubAdmin } from "@/lib/hub/auth";
+import { requireHubMember,requireHubOwner } from "@/lib/hub/auth";
 import { resolvedWorkspaceEnv,readSetting } from "@/lib/workspace-config";
 import { exchangeCode,sealToken,scopeStatus } from "@/lib/google/workspace";
 import { configurationFingerprint,claimOAuthBinding,saveGoogleGrant } from "@/lib/google/config-state";
@@ -14,7 +14,7 @@ export async function GET(request:Request){
     if(!env.DB||!env.GOOGLE_CLIENT_ID||!env.GOOGLE_CLIENT_SECRET||!env.GOOGLE_TOKEN_KEY||!state||!/^[a-f0-9]{64}$/.test(state))throw new Error("oauth_invalid");
     const {binding,stateHash,claimedAt}=await claimOAuthBinding(env.DB,state,member.userId);
     personal=binding.flow==="personal-calendar";
-    if(!personal)requireHubAdmin(member);
+    if(!personal)requireHubOwner(member);
     if(!code||url.searchParams.has("error"))throw new Error("oauth_invalid");
     if(binding.revision!==(env.GOOGLE_CLIENT_REVISION??0)||binding.fingerprint!==await configurationFingerprint(env))throw new Error("configuration_changed");
     if(personal){
