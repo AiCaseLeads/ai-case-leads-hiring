@@ -2,7 +2,8 @@
 import { useEffect, useRef, useState } from "react";
 import { ArrowLeft, Plus, Trash2 } from "lucide-react";
 import { hubRequest, useHubMutation } from "./api";
-import { Badge, Feedback, Field } from "./shared";
+import { Badge, Feedback, Field, ResourceState } from "./shared";
+import { JobTeamFields, useJobTeam } from "./job-team";
 import type { HubJob, Rule } from "./types";
 import type { ApplicationField, FieldType } from "@/lib/hiring/types";
 import {
@@ -539,6 +540,7 @@ function Editor({
   const [postingLabel] = useState(
     () => `${new Date().toISOString().slice(0, 10)} ${creationId.slice(0, 8)}`,
   );
+  const hiringTeam = useJobTeam(job?.id);
   const archiveCountry =
       job?.archiveCountry || location?.country || "International",
     slug =
@@ -689,6 +691,10 @@ function Editor({
       },
       location,
       expectedBinding,
+      ...(hiringTeam.draft && hiringTeam.resource.data ? {
+        hiringTeam: hiringTeam.draft,
+        expectedTeamRevision: hiringTeam.resource.data.config?.revision ?? 0,
+      } : {}),
       scorecard: binding,
       ...(choice === "new" ? { rubric } : {}),
       ...(request ? { requestId: request.id } : {}),
@@ -797,7 +803,7 @@ function Editor({
         </button>
       )}
       <fieldset disabled={mutation.busy}>
-        {step === 0 && (
+        {step === 0 && (<>
           <section className="hub-card">
             <h3>Tell applicants about the job</h3>
             <Field label="Job title">
@@ -871,7 +877,13 @@ function Editor({
               </Field>
             </details>
           </section>
-        )}
+          <section className="hub-card hub-job-team-panel">
+            <h3>Who is hiring for this job?</h3>
+            <ResourceState loading={hiringTeam.resource.loading} error={hiringTeam.resource.error} retry={() => void hiringTeam.resource.reload()} />
+            {hiringTeam.resource.data && hiringTeam.draft && <JobTeamFields data={hiringTeam.resource.data} value={hiringTeam.draft} change={value => { hiringTeam.setDraft(value); setApproved(false); }} />}
+            {hiringTeam.resource.error && <p className="hub-muted">Your job details are preserved. You can save the job and configure its hiring team from Jobs later.</p>}
+          </section>
+        </>)}
         {step === 1 && (
           <section className="hub-card">
             <h3>What should applicants send?</h3>
@@ -1250,6 +1262,8 @@ function Editor({
                   : job?.location || job?.archiveCountry}
               </p>
               <p className="hub-muted">Public page: /jobs/{slug}</p>
+              <p>Hiring team: {hiringTeam.draft?.members.length ? hiringTeam.draft.members.join(", ") : "No team selected"}</p>
+              <p>Applicant reply contact: {hiringTeam.draft?.replyTo || hiringTeam.resource.data?.sender || "Connected recruiting mailbox"}</p>
               <p>
                 {fields.filter((f) => f.required).length} required fields ·{" "}
                 {fields.filter((f) => !f.required).length} optional fields

@@ -7,6 +7,7 @@ import type { HubJob } from "./types";
 import type { SetupCatalog } from "@/lib/job-setup/model";
 import type { Catalog } from "@/lib/scorecards/model";
 import { JobWizard, JobStart } from "./job-wizard";
+import { JobTeamPanel } from "./job-team";
 const completedJobSessions = new Set<string>();
 export function Jobs({
   admin,
@@ -37,6 +38,7 @@ export function Jobs({
     [success, setSuccess] = useState(""),
     [templateJob, setTemplateJob] = useState<HubJob | null>(null),
     [templateName, setTemplateName] = useState("");
+  const [teamJob, setTeamJob] = useState<HubJob | null>(null);
   function editorUrl(editor: string | null, chosen?: JobStart) {
     const url = new URL(window.location.href);
     for (const key of ["jobEditor", "jobStep", "jobStart", "jobSource", "jobSession"]) url.searchParams.delete(key);
@@ -175,6 +177,7 @@ export function Jobs({
         )}
       </div>
       <Feedback error={mutation.error} success={success || mutation.success} />
+      {teamJob && <JobTeamPanel key={teamJob.id} jobId={teamJob.id} title={teamJob.title} admin={admin} close={() => setTeamJob(null)} />}
       <ResourceState
         loading={jobs.loading || setup.loading || scores.loading}
         error={jobs.error || setup.error || scores.error}
@@ -228,6 +231,7 @@ export function Jobs({
                     : "Manual review"}
                 </p>
                 <p className="hub-muted">/jobs/{j.slug}</p>
+                <button className="hub-button secondary" aria-expanded={teamJob?.id === j.id} onClick={() => setTeamJob(teamJob?.id === j.id ? null : j)}>Hiring team & emails</button>
                 {admin && (
                   <>
                     <button
