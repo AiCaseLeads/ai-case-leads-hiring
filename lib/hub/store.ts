@@ -1,3 +1,4 @@
+import { jobNotificationStatements } from "../job-team/service";
 import { canonicalJson, privateToken, sha256 } from "../hiring/crypto";
 import { HiringError } from "../hiring/errors";
 import { validateAnswers, MAX_APPLICATION_FILE_BYTES } from "../hiring/validation";
@@ -671,6 +672,7 @@ export class HubStore {
         { applicationId: id },
         now,
       ),
+      ...await jobNotificationStatements(this,posting.id,id,"newApplication",id,now),
       ...this.mailStatements(
         `gmail:${id}:confirmation`,
         { id, email },

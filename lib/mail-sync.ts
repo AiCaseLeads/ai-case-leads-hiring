@@ -1,3 +1,4 @@
+import { jobNotificationStatements } from "./job-team/service";
 import type { GoogleWorkspace } from "./google/workspace";
 import type { HiringMail, MailAttachment } from "./google/gmail";
 import { GoogleError, hash } from "./google/http";
@@ -69,6 +70,7 @@ async function importMessage(store: HubStore, db: D1Database, google: GoogleWork
   for (const file of added) statements.push(db.prepare("INSERT INTO hub_files(id,job_id,field_path,filename,content_type,size,object_key,uploaded_at,application_id,expires_at,session_hash) VALUES(?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO NOTHING").bind(file.id, app.job_id, `gmail:${message.id}:${file.partId}`, file.name!, file.contentType!, file.size!, file.objectKey!, now, appId, Number.MAX_SAFE_INTEGER, app.session_hash));
   if (changed) statements.push(db.prepare("INSERT INTO hub_tasks (id,application_id,kind,payload_json,status,attempts,run_after,created_at,updated_at) SELECT 'drive:'||id||':mail:'||?,id,'drive',?,'pending',0,?,?,? FROM hub_applications WHERE id=? ON CONFLICT(id) DO NOTHING").bind(`${message.id}:${await hash(body + added.map(file => file.id).join())}`, JSON.stringify({ applicationId: appId }), now, now, now, appId));
   statements.push(store.settingStatement(`gmail_message_complete:${message.id}`, error ? 0 : 1), store.settingStatement(`gmail_message_error:${message.id}`, error), store.settingStatement(`gmail_message_next_repair:${message.id}`, error ? now + 15 * 60_000 : 0));
+  if(!message.sent&&!existing)statements.push(...await jobNotificationStatements(store,app.job_id,appId,"reply",message.id,now,message.createdAt||now));
   await db.batch(statements);
   return changed ? 1 : 0;
 }

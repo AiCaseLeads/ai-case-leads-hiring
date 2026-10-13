@@ -1,3 +1,4 @@
+import { teamInputSchema } from "../job-team/service";
 import { z } from "zod";
 import { jobInput } from "../hub/validation";
 import { rubricSchema } from "../scorecards/model";
@@ -75,6 +76,8 @@ export const saveCommand = z
     jobId: z.string().min(1).max(128).optional(),
     formVersion: z.number().int().positive().optional(),
     job: jobInput,
+    hiringTeam:teamInputSchema.optional(),
+    expectedTeamRevision:z.number().int().min(0).optional(),
     location: locationInput.nullable(),
     requestId: z.string().uuid().optional(),
     expectedBinding: z

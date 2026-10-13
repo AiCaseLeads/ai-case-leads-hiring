@@ -1,3 +1,4 @@
+import { jobTeam,teamKey,validateTeam } from "../job-team/service";
 import type { HubMember } from "../hub/auth-core";
 import { HubStore, DEFAULT_REJECTION } from "../hub/store";
 import { parse, sanitizeDescription, validateJob } from "../hub/validation";
@@ -33,6 +34,7 @@ export async function handleJobSetup(
   request: Request,
   member: HubMember | null,
   store: HubStore,
+  owners:string[]=[],
 ) {
   try {
     if (!member)
@@ -166,6 +168,9 @@ export async function handleJobSetup(
         409,
         "The assigned scorecard changed while you were editing. Review the latest assignment before saving.",
       );
+    const previousTeam=await jobTeam(store,jobId);
+    if(input.hiringTeam&&input.expectedTeamRevision!==(previousTeam?.revision||0))throw new HiringError("job_team_changed",409,"This hiring team changed. Refresh before saving.");
+    const team=input.hiringTeam?await validateTeam(store,input.hiringTeam,owners):undefined;
     let binding = input.scorecard;
     if (input.rubric) {
       if (scores.templates.length >= 1000)
@@ -243,16 +248,18 @@ export async function handleJobSetup(
     // The operation ledger is written in the same transaction as the posting and its rubric.
     const guard =
       "COALESCE((SELECT json_extract(value,'$.revision') FROM hub_settings WHERE key='job_setup_v1'),0)=? AND COALESCE((SELECT json_extract(value,'$.revision') FROM hub_settings WHERE key='scorecard_templates_v1'),0)=?";
+    const teamGuard=team?" AND COALESCE((SELECT json_extract(value,'$.revision') FROM hub_settings WHERE key=?),0)=?":"";
     const revisionGuard = previous
       ? " AND (SELECT form_version FROM hub_jobs WHERE id=?)=?"
       : "";
     const statements = [
       store.stmt(
-        `INSERT INTO hub_settings(key,value,updated_at) VALUES(?,CASE WHEN ${guard}${revisionGuard} THEN ? ELSE NULL END,?)`,
+        `INSERT INTO hub_settings(key,value,updated_at) VALUES(?,CASE WHEN ${guard}${revisionGuard}${teamGuard} THEN ? ELSE NULL END,?)`,
         operationKey,
         setupRevision,
         scoreRevision,
         ...(previous ? [jobId, previous.formVersion] : []),
+        ...(team?[teamKey(jobId),input.expectedTeamRevision!]:[]),
         JSON.stringify({ jobId, payloadHash }),
         now,
       ),
@@ -296,6 +303,7 @@ export async function handleJobSetup(
           now,
         ),
       );
+    if(team)statements.push(store.settingStatement(teamKey(jobId),{...team,revision:(previousTeam?.revision||0)+1,createdAt:previousTeam?.createdAt||now,updatedAt:now}));
     statements.push(
       store.settingStatement(KEY, setup),
       store.settingStatement(SCORE, scores),

@@ -37,8 +37,9 @@ async function recipientQueue(store:HubStore,config:ReminderConfig,staff:Staff[]
   const fallback=config.fallbackAdmins.includes(recipient)&&staff.some(s=>s.email===recipient&&s.role==="admin");
   const assigned="lower(trim(COALESCE(a.assignee,'')))";
   const match=active.length?`(${assigned}=? ${fallback?`OR ${assigned} NOT IN (${active.map(()=>"?").join(",")})`:""})`:"0=1";
-  const values:[number,string,...string[]]=[now-config.dueHours*3600000,recipient,...(fallback?active:[])];
-  return store.stmt(`SELECT COUNT(*) AS count,MIN(a.id) AS anchor FROM hub_applications a WHERE ${dueSql} AND ${match}`,...values).first<{count:number;anchor:string|null}>();
+  const values=[now-config.dueHours*3600000,recipient,recipient,...(fallback?active:[])];
+  const teamMatch="(jt.key IS NOT NULL AND json_extract(jt.value,'$.notifyOverdueReviews')=1 AND EXISTS (SELECT 1 FROM json_each(jt.value,'$.members') member WHERE member.value=?))";
+  return store.stmt(`SELECT COUNT(*) AS count,MIN(a.id) AS anchor FROM hub_applications a LEFT JOIN hub_settings jt ON jt.key='job_team:'||a.job_id WHERE ${dueSql} AND (${teamMatch} OR (jt.key IS NULL AND ${match}))`,...values).first<{count:number;anchor:string|null}>();
 }
 export function reminderDay(now:number){return new Intl.DateTimeFormat("en-CA",{timeZone:"America/Bogota",year:"numeric",month:"2-digit",day:"2-digit"}).format(now);}
 export async function enqueueReviewReminders(store:HubStore,owners:string[]=[],now=Date.now()):Promise<number>{
@@ -70,5 +71,5 @@ export async function reviewReminderMail(task:Task,store:HubStore,owners:string[
   if(!current?.count)return null;
   const origin=store.options.origin||"https://jobs.aicaseleads.com";
   const url=new URL("/team?reviews=overdue",origin).toString();
-  return {to:recipient,subject:"Hiring review reminder",messageId:task.payload.messageId,body:`You have ${current.count} application${current.count===1?"":"s"} waiting for an initial human review for at least ${config.dueHours} hours.\n\nOpen the overdue review queue: ${url}\n\nThis digest includes applications assigned to you${fallback?" and unassigned applications covered by your manager fallback":""}. Record a scorecard or move the application out of Application Review after reviewing it. Notes and AI evidence summaries alone do not mark a human review complete.\n\nThis is an internal team reminder; no applicant was emailed.`};
+  return {to:recipient,subject:"Hiring review reminder",messageId:task.payload.messageId,body:`You have ${current.count} application${current.count===1?"":"s"} waiting for an initial human review for at least ${config.dueHours} hours.\n\nOpen the overdue review queue: ${url}\n\nThis digest includes applications for your configured job teams and legacy applications assigned to you${fallback?" or covered by your manager fallback":""}. Record a scorecard or move the application out of Application Review after reviewing it. Notes and AI evidence summaries alone do not mark a human review complete.\n\nThis is an internal team reminder; no applicant was emailed.`};
 }

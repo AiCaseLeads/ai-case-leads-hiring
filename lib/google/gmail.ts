@@ -2,7 +2,7 @@ import type { GoogleClient } from "./client";
 import { base64, base64url, emailAddress, fromBase64url, GoogleError, json, utf8 } from "./http";
 
 const API = "https://gmail.googleapis.com/gmail/v1/users/me";
-export interface MailInput { to: string; subject: string; body: string; messageId: string }
+export interface MailInput { to: string; subject: string; body: string; messageId: string; replyTo?: string[] }
 export interface SentMail { id: string; threadId: string }
 interface GmailMessage extends SentMail { internalDate?: string; labelIds?: string[]; payload?: MimePart }
 interface MimePart { partId?: string; filename?: string; mimeType?: string; headers?: Array<{ name: string; value: string }>; body?: { data?: string; attachmentId?: string; size?: number }; parts?: MimePart[] }
@@ -31,9 +31,10 @@ function subjectHeader(value: string): string {
 }
 export function mimeMessage(sender: string, input: MailInput): string {
   if (typeof input.body !== "string" || utf8(input.body).length > 1_000_000) throw new GoogleError("invalid_mail_body");
+  if(input.replyTo&&(!Array.isArray(input.replyTo)||input.replyTo.length>2))throw new GoogleError("invalid_reply_to");
   const encodedBody = base64(utf8(input.body.replace(/\r?\n/g, "\r\n"))).match(/.{1,76}/g)?.join("\r\n") ?? "";
   return [
-    `From: ${emailAddress(sender)}`, `To: ${emailAddress(input.to)}`, `Subject: ${subjectHeader(input.subject)}`,
+    `From: ${emailAddress(sender)}`, `To: ${emailAddress(input.to)}`, ...(input.replyTo?.length?[`Reply-To: ${[...new Set(input.replyTo.map(emailAddress))].join(", ")}`]:[]), `Subject: ${subjectHeader(input.subject)}`,
     `Message-ID: ${normalizedMessageId(input.messageId)}`, `Date: ${new Date().toUTCString()}`, "MIME-Version: 1.0",
     'Content-Type: text/plain; charset="UTF-8"', "Content-Transfer-Encoding: base64", "", encodedBody, "",
   ].join("\r\n");

@@ -1,3 +1,4 @@
+import { workspaceEnv } from "@/lib/workspace-config";
 import { requireHubMember } from "@/lib/hub/auth";
 import { getHubStore } from "@/lib/hub/runtime";
 import { errorResponse } from "@/lib/hiring/http";
@@ -9,6 +10,7 @@ async function handle(request: Request) {
       request,
       await requireHubMember(request),
       await getHubStore(request),
+      ((workspaceEnv() as {ADMIN_EMAILS?:string}).ADMIN_EMAILS||"").split(","),
     );
   } catch (e) {
     return errorResponse(e);

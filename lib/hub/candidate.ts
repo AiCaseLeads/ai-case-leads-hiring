@@ -1,3 +1,4 @@
+import { jobNotificationStatements } from "../job-team/service";
 import { sha256 } from "../hiring/crypto";
 import { HiringError } from "../hiring/errors";
 import { assertSameOrigin, errorResponse, jsonResponse } from "../hiring/http";
@@ -309,6 +310,7 @@ export async function handleCandidateRequest(
         );
       try {
         await store.db.batch([
+          ...await jobNotificationStatements(store,app.job_id,app.id,"assessmentSubmission",current.id,now),
           mutation(),
           store.stmt(
             "UPDATE hub_assessments SET id=CASE WHEN status='invited' AND EXISTS (SELECT 1 FROM hub_links WHERE token_hash=? AND used_at IS NULL AND expires_at>?) THEN id ELSE NULL END,status='submitted',answer=?,submitted_at=? WHERE id=?",
