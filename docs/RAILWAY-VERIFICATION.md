@@ -6,6 +6,8 @@ Production is https://jobs.aicaseleads.com, with staff at `/team`. Railway runs 
 
 Fresh read-only verification on 2026-10-12 confirmed Railway deployment `ac2f616b-5325-4d38-9350-065db6e916bc` (`8f6096c76c97780f601c9bc83bb6bddfb8ac74a1`) is SUCCESS. The domain is active with valid TLS and `jobs` CNAME `5j9uygci.up.railway.app`. Public Engineer and Creative Strategist jobs are open and submission-enabled. Daily snapshots retain 6 days, weekly snapshots 27 days; actual October 11/12 daily and October 11 manual snapshots exist. None of those observations proves an isolated restore.
 
+Fresh authenticated Chrome verification on 2026-10-12 also completed owner Google sign-in at the custom-domain callback. Settings displayed sales as the connected and allowed recruiting account, the approved sales/Bogotá calendar window, the saved shared Drive location, zero pending/failed tasks and a current reply-poll timestamp. This establishes the current saved connection state; it does not substitute for a new test email, booking, Drive upload or known-thread reply. The mounted volume currently has a 50,000 MB capacity and approximately 1,054 MB used; the original 10 GB proposal is not the current observed capacity.
+
 Dated hosted verification on 2026-10-10 established:
 
 | Hosted check | Evidence and boundary |

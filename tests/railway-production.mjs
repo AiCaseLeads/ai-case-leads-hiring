@@ -66,7 +66,7 @@ try{
  const executable='/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
  browser=await chromium.launch({headless:true,...(existsSync(executable)?{executablePath:executable}:{})});
  const staff=await browser.newContext({viewport:{width:1440,height:1000}});await staff.addCookies([{name:'aicl_staff_session',value:rawSession,url:origin,httpOnly:true,sameSite:'Lax'}]);
- const team=await staff.newPage(),errors=[];team.on('pageerror',error=>errors.push(error.message));
+ const team=await staff.newPage(),errors=[],consoleErrors=[];team.on('pageerror',error=>errors.push(error.message));team.on('console',message=>{if(message.type()==='error')consoleErrors.push(message.text());});
  await team.goto(origin+'/team');await team.getByRole('button',{name:'Jobs',exact:true}).click();await team.getByRole('button',{name:'Create job',exact:true}).click();
  await team.getByRole('button',{name:'Create blank job',exact:true}).click();
  await team.getByLabel('Job title',{exact:true}).fill('Railway Test Engineer');await team.getByText('More details: department and page address',{exact:true}).click();await team.getByLabel('Public page address',{exact:true}).fill('railway-test-engineer');await team.getByLabel('Job description',{exact:true}).fill('Isolated Railway verification role. No real applications or outreach.');
@@ -99,6 +99,19 @@ try{
  assert.equal((await fetch(origin+'/api/ai/resume-text',{method:'POST',headers:{Origin:origin,'Content-Type':'application/json'},body:JSON.stringify(pdfRequest)})).status,403);
  const another=applications.items.find(item=>item.id!==firstId);
  const mismatch=await fetch(origin+'/api/ai/resume-text',{method:'POST',headers:{Origin:origin,Cookie:ownerCookie,'Content-Type':'application/json'},body:JSON.stringify({...pdfRequest,applicationId:another.id})});assert.equal(mismatch.status,404);
+ // Real browser history on the built server, without changing applicant data.
+ const nav=team.getByRole('navigation',{name:'Hiring workspace'});
+ await nav.getByRole('button',{name:'Applications',exact:true}).click();await team.getByRole('heading',{name:'Applications',exact:true}).waitFor();
+ const applicationListUrl=team.url();
+ await nav.getByRole('button',{name:'Jobs',exact:true}).click();await team.getByRole('heading',{name:'Jobs',exact:true}).waitFor();
+ await team.goBack();await team.getByRole('heading',{name:'Applications',exact:true}).waitFor();assert.equal(team.url(),applicationListUrl);
+ await team.goForward();await team.getByRole('heading',{name:'Jobs',exact:true}).waitFor().catch(async error=>{throw new Error(error.message+'\nURL: '+team.url()+'\n'+(await team.locator('body').innerText()).slice(0,1500)+'\nBrowser errors: '+JSON.stringify({errors,consoleErrors})+'\nServer logs: '+logs.slice(-1500));});
+ await nav.getByRole('button',{name:'Applications',exact:true}).click();await team.getByRole('heading',{name:'Applications',exact:true}).waitFor();
+ await team.getByRole('button',{name:detail.name,exact:true}).click();await team.getByRole('heading',{name:detail.name,exact:true}).waitFor();
+ assert.equal(new URL(team.url()).searchParams.get('application'),firstId);
+ await team.goBack();await team.getByRole('heading',{name:'Applications',exact:true}).waitFor();
+ await team.goForward();await team.getByRole('heading',{name:detail.name,exact:true}).waitFor();
+ await team.getByRole('button',{name:'Back to applications',exact:true}).click();await team.getByRole('heading',{name:'Applications',exact:true}).waitFor();
  await team.goto(origin+'/team?application='+firstId);await team.getByLabel('Action',{exact:true}).selectOption('scorecard');await team.getByLabel('Overall reviewer grade',{exact:false}).selectOption('4');await team.getByLabel('Evaluation criteria',{exact:false}).fill('Isolated job-specific rubric');await team.getByLabel('Review notes',{exact:true}).fill('Synthetic test evidence only.');await team.getByRole('button',{name:'Save action',exact:true}).click();await team.getByText('Saved to this application.',{exact:true}).waitFor();
  const graded=await api('/api/hub/applications/'+firstId);assert.equal(graded.grade.scorePercent,80);assert.equal(graded.grade.reviewerCount,1);
  let catalog=await api('/api/scorecards');
@@ -158,5 +171,5 @@ try{
  const logoutPage=await fetch(origin+'/api/auth/logout',{headers:{Cookie:ownerCookie}});assert.equal(logoutPage.status,200);assert.match(await logoutPage.text(),/form method="post"/);assert.ok(await api('/api/hub/overview'));
  const logout=await fetch(origin+'/api/auth/logout',{method:'POST',redirect:'manual',headers:{Cookie:ownerCookie,Origin:origin}});assert.equal(logout.status,303);assert.equal((await fetch(origin+'/api/hub/overview',{headers:{Cookie:ownerCookie}})).status,403);
  latencies.sort((a,b)=>a-b);
- console.log(JSON.stringify({status:'passed',existingBrowserChecks:20,seededOwnerBrowserJobPosting:true,guidedStartingPoints:['blank','duplicate','template','request'],desktopAndMobileRealApplications:2,originalResumeBytes:sample.length,privateFiles:true,gradePersisted:80,reusableRubricGrade:70,autoPdfReading:true,overdueReviews:1000,syntheticLoadApplications:3000,applicationsWithPrivatePdfs:1002,pdfJourneyP95Ms:Math.round(resumeJourneys[Math.floor(resumeJourneys.length*.95)]),concurrentRequests:1000,concurrentPdfJourneys:100,duplicateHttpRequests:20,duplicateApplicationsCreated:1,persistedApplications:3003,restartAndPausedReplay:true,elapsedMs:Math.round(performance.now()-started),httpP95Ms:Math.round(latencies[Math.floor(latencies.length*.95)]),limits:'Real built Node server on local disk with production SQLite/files. Synthetic account session is seeded only in the isolated test database. Google grant/delivery, Docker image and Railway hosting/volume backups remain unverified.'},null,2));
+ console.log(JSON.stringify({status:'passed',existingBrowserChecks:20,seededOwnerBrowserJobPosting:true,browserBackForwardVerified:true,guidedStartingPoints:['blank','duplicate','template','request'],desktopAndMobileRealApplications:2,originalResumeBytes:sample.length,privateFiles:true,gradePersisted:80,reusableRubricGrade:70,autoPdfReading:true,overdueReviews:1000,syntheticLoadApplications:3000,applicationsWithPrivatePdfs:1002,pdfJourneyP95Ms:Math.round(resumeJourneys[Math.floor(resumeJourneys.length*.95)]),concurrentRequests:1000,concurrentPdfJourneys:100,duplicateHttpRequests:20,duplicateApplicationsCreated:1,persistedApplications:3003,restartAndPausedReplay:true,elapsedMs:Math.round(performance.now()-started),httpP95Ms:Math.round(latencies[Math.floor(latencies.length*.95)]),limits:'Real built Node server on local disk with production SQLite/files. Synthetic account session is seeded only in the isolated test database. Google grant/delivery, Docker image and Railway hosting/volume backups remain unverified.'},null,2));
 }finally{if(browser)await browser.close();await stop();rmSync(dataDir,{recursive:true,force:true});}
