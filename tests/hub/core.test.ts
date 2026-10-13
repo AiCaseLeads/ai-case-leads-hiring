@@ -277,7 +277,7 @@ test("bulk actions are all-or-nothing and private settings exclude sealed OAuth 
   );
   database.close();
 });
-test("staff configuration requires manager access and writes require origin/JSON", async () => {
+test("recruiters can manage jobs and writes require same origin and JSON", async () => {
   const { store, database } = createStore();
   const request = (
     method: string,
@@ -292,13 +292,13 @@ test("staff configuration requires manager access and writes require origin/JSON
   assert.equal(
     (
       await handleHubRequest(
-        request("POST", jobInput()),
+        request("POST", {...jobInput(),slug:"recruiter-created-job"}),
         ["jobs"],
         RECRUITER,
         store,
       )
     ).status,
-    403,
+    200,
   );
   assert.equal(
     (

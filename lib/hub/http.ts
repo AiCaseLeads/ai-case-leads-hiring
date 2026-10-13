@@ -81,10 +81,8 @@ export async function handleHubRequest(
     else if (section === "jobs" && request.method === "GET" && !id)
       data = await store.listJobs();
     else if (section === "jobs" && request.method === "POST" && !id) {
-      admin(member);
       data = await store.saveJob(parse(jobInput, await json(request)));
     } else if (section === "jobs" && id && request.method === "PATCH") {
-      admin(member);
       const existing = await store.getJob(id),
         { formVersion, ...patch } = parse(jobPatchInput, await json(request));
       data = await store.saveJob(
@@ -138,9 +136,11 @@ export async function handleHubRequest(
     else if (section === "settings" && request.method === "GET")
       data = await store.settings();
     else if (section === "settings" && request.method === "PATCH") {
-      admin(member);
+      if (!member.isOwner) throw new HiringError("owner_access_required",403,"Only the account owner can change company settings.");
+      const input = parse(settingsInput, await json(request));
+      if (input.members) throw new HiringError("use_team_settings",422,"Use Team access to invite or update recruiting staff.");
       data = await store.saveSettings(
-        parse(settingsInput, await json(request)),
+        input,
         member,
       );
     } else if (section === "setup" && request.method === "POST") {

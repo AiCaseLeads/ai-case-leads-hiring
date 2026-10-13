@@ -10,10 +10,10 @@ const origin="https://jobs.example.invalid",other="other@example.invalid";
 function request(method:string,body?:unknown,jobId=""){return new Request(`${origin}/api/job-team${jobId?`?jobId=${jobId}`:""}`,{method,headers:{origin,"content-type":"application/json"},...(body?{body:JSON.stringify(body)}:{})});}
 async function fixture(){const f=createStore();for(const email of [RECRUITER.email,other])f.database.prepare("INSERT INTO hub_members(id,email,role,active,created_at,updated_at) VALUES (?,?,'recruiter',1,0,0)").run(email,email);return f;}
 async function configure(f:Awaited<ReturnType<typeof fixture>>,jobId:string,members:string[],extra:Record<string,unknown>={}){const response=await handleJobTeam(request("PUT",{jobId,expectedRevision:0,...emptyJobTeam,members,...extra}),MANAGER,f.store,[MANAGER.email]);assert.equal(response.status,200,await response.clone().text());return response;}
-test("job teams are private authorized manager settings, deduplicate members and preserve explicit empty config",async()=>{
+test("job teams are private authorized staff settings, deduplicate members and preserve explicit empty config",async()=>{
  const f=await fixture(),job=await f.store.saveJob(jobInput());
  assert.equal((await handleJobTeam(request("GET"),null,f.store)).status,403);
- assert.equal((await handleJobTeam(request("PUT",{jobId:job.id}),RECRUITER,f.store)).status,403);
+ assert.equal((await handleJobTeam(request("PUT",{jobId:job.id}),RECRUITER,f.store)).status,422);
  assert.equal((await handleJobTeam(request("PUT",{jobId:job.id,expectedRevision:0,...emptyJobTeam,members:["stranger@example.invalid"]}),MANAGER,f.store)).status,422);
  await configure(f,job.id,[RECRUITER.email,RECRUITER.email],{replyTo:RECRUITER.email});
  assert.deepEqual((await jobTeam(f.store,job.id))!.members,[RECRUITER.email]);

@@ -13,7 +13,6 @@ export async function handleJobTeam(request:Request,member:HubMember|null,store:
   let jobId=new URL(request.url).searchParams.get("jobId");
   if(request.method==="PUT"){
    assertSameOrigin(request);
-   if(member.role!=="admin")throw new HiringError("admin_access_required",403,"Only managers can change a job's hiring team.");
    let raw;try{raw=JSON.parse(new TextDecoder().decode(await boundedBytes(request,16000)));}catch{throw new HiringError("invalid_request",400,"The hiring team could not be read.");}
    const {jobId:id,expectedRevision,...input}=parse(command,raw);jobId=id;
    await store.getJob(id);

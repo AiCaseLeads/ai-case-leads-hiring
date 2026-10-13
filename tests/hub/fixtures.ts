@@ -24,6 +24,7 @@ export async function currentBulk(store:HubStore,ids:string[],input:Omit<BulkInp
 export const MANAGER = {
   email: "manager@example.invalid",
   userId: "manager",
+  isOwner: true,
   role: "admin" as const,
 };
 export const RECRUITER = {

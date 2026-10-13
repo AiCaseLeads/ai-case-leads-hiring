@@ -9,7 +9,7 @@ test("staff membership requires Sites identity and explicit authorization",async
   assert.equal(await memberFromHeaders(new Headers({Cookie:"hiring_session="+"a".repeat(64)}),config),null);
   assert.equal(await memberFromHeaders(new Headers({"oai-authenticated-user-id":"u","oai-authenticated-user-email":"stranger@example.invalid"}),config),null);
   assert.equal(await memberFromHeaders(new Headers({"oai-authenticated-user-email":"owner@example.invalid"}),config),null);
-  assert.deepEqual(await memberFromHeaders(new Headers({"oai-authenticated-user-id":"u","oai-authenticated-user-email":"OWNER@example.invalid"}),config),{userId:"u",email:"owner@example.invalid",role:"admin"});
+  assert.deepEqual(await memberFromHeaders(new Headers({"oai-authenticated-user-id":"u","oai-authenticated-user-email":"OWNER@example.invalid"}),config),{userId:"u",email:"owner@example.invalid",role:"admin",isOwner:true});
 });
 test("scheduler authorization requires the complete independent bearer",async()=>{
   assert.equal(await schedulerAuthorized(new Request("https://careers.invalid"),"secret"),false);

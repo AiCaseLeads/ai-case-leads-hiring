@@ -49,12 +49,6 @@ export async function handleJobSetup(
     );
     if (request.method === "GET") return jsonResponse({ data: setup });
     assertSameOrigin(request);
-    if (member.role !== "admin")
-      throw new HiringError(
-        "admin_access_required",
-        403,
-        "Only managers can create jobs, templates and hiring requests.",
-      );
     if (request.method === "PATCH") {
       const input = parse(catalogCommand, await body(request));
       if (input.expectedRevision !== setup.revision)

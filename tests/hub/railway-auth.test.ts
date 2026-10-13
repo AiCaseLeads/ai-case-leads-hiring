@@ -73,7 +73,7 @@ test("login uses trusted callback, PKCE, nonce and only identity scopes; opaque 
     const row = f.database.prepare("SELECT * FROM staff_sessions").get()!;
     assert.equal(row.token_hash, await sha256(raw)); assert.notEqual(row.token_hash, raw);
     assert.equal(row.expires_at, NOW + 12 * 3600_000);
-    assert.deepEqual(await staffMemberFromRequest(new Headers({ Cookie: sessionCookie }), f.config, NOW + 1), { userId: "synthetic-google-sales", email: "sales@aicaseleads.com", role: "admin" });
+    assert.deepEqual(await staffMemberFromRequest(new Headers({ Cookie: sessionCookie }), f.config, NOW + 1), { userId: "synthetic-google-sales", email: "sales@aicaseleads.com", role: "admin", isOwner: true });
     assert.equal(await verifiedStaffSession(new Headers({ Cookie: sessionCookie }), f.config, Number(row.expires_at)), null);
     assert.equal(f.database.prepare("SELECT COUNT(*) count FROM hub_settings WHERE key LIKE 'google_%'").get()!.count, 0);
   } finally { f.database.close(); }

@@ -32,9 +32,9 @@ export async function currentStaffMember(identity: GoogleStaffIdentity, config: 
   // An explicit revoked membership overrides the owner environment allowlist.
   if (row && (!row.active || !["admin", "recruiter"].includes(row.role))) return null;
   const owners = config.adminEmails.split(",").map(s => s.trim().toLowerCase()).filter(Boolean);
-  if (owners.includes(identity.email)) return { userId: identity.userId, email: identity.email, role: "admin" };
+  if (owners.includes(identity.email)) return { userId: identity.userId, email: identity.email, role: "admin", isOwner: true };
   if (!row) return null;
-  return { userId: identity.userId, email: identity.email, role: row.role as HubMember["role"] };
+  return { userId: identity.userId, email: identity.email, role: row.role as HubMember["role"], isOwner: false };
 }
 export async function verifiedStaffSession(headers: Headers, config: StaffAuthConfig, now = Date.now()): Promise<{ identity: GoogleStaffIdentity; member: HubMember } | null> {
   const token = cookie(headers, staffCookieNames(config).session); if (!token) return null;

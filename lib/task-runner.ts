@@ -1,3 +1,4 @@
+import { processStaffInvites } from "./staff/service";
 import { jobNotificationMail,candidateReplyTo } from "./job-team/service";
 import { HubStore } from "./hub/store";
 import type { Task } from "./hub/types";
@@ -99,6 +100,7 @@ export async function processHubTasks(store:HubStore,db:D1Database,bucket:R2Buck
   await store.setSetting("worker_health",{...previous,lastStartedAt:began});
   let processed=0,failed=0,uncertain=0,reconciled=0,replies=0;
   try {
+    await processStaffInvites(store,google,owners,3);
     await enqueueReviewReminders(store,owners);
     await reconcileArchives(db,store);
     reconciled=await reconcileUncertain(db,store,google,Math.min(max,5),deadline);

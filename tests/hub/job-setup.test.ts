@@ -205,15 +205,15 @@ test("saved job templates are immutable snapshots and copies disable automatic r
   );
   assert.equal(stale.status, 409);
 });
-test("only managers mutate setup and new jobs require real structured locations", async () => {
+test("staff mutate setup and new jobs require real structured locations", async () => {
   const { store } = createStore();
   assert.equal(
     (await handleJobSetup(request("POST", command()), null, store)).status,
     403,
   );
   assert.equal(
-    (await handleJobSetup(request("POST", command()), RECRUITER, store)).status,
-    403,
+    (await handleJobSetup(request("POST", command()), RECRUITER, createStore().store)).status,
+    200,
   );
   assert.equal(
     (

@@ -33,7 +33,7 @@ export async function handleAiConfig(request:Request,member:HubMember|null,deps:
     if(request.method==="GET")return jsonResponse({data:configStatus(config,deps.encryptionKey)});
     if(request.method!=="PATCH")throw new HiringError("method_not_allowed",405,"Use the configuration form to update AI settings.");
     assertSameOrigin(request);
-    if(member.role!=="admin")throw new HiringError("admin_access_required",403,"Only managers can configure AI review.");
+    if(!member.isOwner)throw new HiringError("owner_access_required",403,"Only the account owner can configure AI review.");
     const input=parse(configInput,await json(request));
     if(!deps.encryptionKey)throw new HiringError("encryption_unavailable",503,"Server credential encryption must be configured before saving an API key.");
     const sealedKey=input.apiKey?await sealToken(input.apiKey,deps.encryptionKey):config.sealedKey;

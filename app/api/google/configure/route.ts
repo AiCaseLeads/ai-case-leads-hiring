@@ -1,4 +1,4 @@
-import { requireHubMember,requireHubAdmin } from "@/lib/hub/auth";
+import { requireHubMember,requireHubOwner } from "@/lib/hub/auth";
 import { workspaceEnv } from "@/lib/workspace-config";
 import { assertSameOrigin,errorResponse,jsonResponse } from "@/lib/hiring/http";
 import { boundedBytes } from "@/lib/hiring/files";
@@ -8,7 +8,7 @@ import { sealToken } from "@/lib/google/workspace";
 export const dynamic="force-dynamic";
 export async function POST(request:Request){
   try{
-    const member=await requireHubMember(request);requireHubAdmin(member);assertSameOrigin(request);
+    const member=await requireHubMember(request);requireHubOwner(member);assertSameOrigin(request);
     const env=workspaceEnv();if(!env.DB||!env.GOOGLE_TOKEN_KEY)throw new HiringError("google_setup_required",503,"Secure Workspace configuration is unavailable.");
     if(env.GOOGLE_CLIENT_ID||env.GOOGLE_CLIENT_SECRET)throw new HiringError("runtime_configuration_locked",409,"Google credentials are managed in the hosting settings. Update them there, then reconnect Workspace.");
     const body=JSON.parse(new TextDecoder().decode(await boundedBytes(request,16384))) as Record<string,unknown>;

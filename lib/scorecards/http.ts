@@ -16,7 +16,7 @@ export async function handleScorecards(request:Request,member:HubMember|null,sto
   return jsonResponse({data:catalog});
  }
  if(request.method!=="PATCH")throw new HiringError("method_not_allowed",405,"Use the scorecard form.");
- assertSameOrigin(request);if(member.role!=="admin")throw new HiringError("admin_access_required",403,"Only managers can configure scorecards.");
+ assertSameOrigin(request);
  const input=parse(configInput,await body(request));
  if(input.expectedRevision!==catalog.revision)throw new HiringError("scorecard_conflict",409,"Scorecards changed. Refresh templates before saving; your draft remains here.");
  if(input.action==="save"){

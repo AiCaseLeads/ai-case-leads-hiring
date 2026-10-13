@@ -1,4 +1,4 @@
-import { requireHubMember,requireHubAdmin } from "@/lib/hub/auth";
+import { requireHubMember,requireHubOwner } from "@/lib/hub/auth";
 import { resolvedWorkspaceEnv } from "@/lib/workspace-config";
 import { assertSameOrigin,errorResponse,jsonResponse } from "@/lib/hiring/http";
 import { privateToken,sha256 } from "@/lib/hiring/crypto";
@@ -9,7 +9,7 @@ import { expectedRecruitingSender } from "@/lib/google/sender";
 export const dynamic="force-dynamic";
 export async function POST(request:Request){
   try{
-    const member=await requireHubMember(request);requireHubAdmin(member);assertSameOrigin(request);
+    const member=await requireHubMember(request);requireHubOwner(member);assertSameOrigin(request);
     const env=await resolvedWorkspaceEnv();
     if(!env.DB||!env.GOOGLE_CLIENT_ID||!env.GOOGLE_CLIENT_SECRET||!env.GOOGLE_TOKEN_KEY)throw new HiringError("google_setup_required",503,"Add your Google OAuth client ID and secret through the secure site settings, then connect Workspace. The setup guide lists the exact steps.");
     const state=privateToken(),verifier=privateToken();

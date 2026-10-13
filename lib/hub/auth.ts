@@ -26,3 +26,7 @@ export async function requireHubMember(request: Request): Promise<HubMember> {
 export function requireHubAdmin(member: HubMember): void {
   if (member.role !== "admin") throw new HiringError("admin_access_required", 403, "Only managers can change this setting.");
 }
+
+export function requireHubOwner(member: HubMember): void {
+  if (member.isOwner !== true) throw new HiringError("owner_access_required", 403, "Only the account owner can change company connections and security settings.");
+}
