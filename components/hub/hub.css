@@ -1369,7 +1369,7 @@ html:has(.hub-sticky-save) { scroll-padding-bottom: 180px; }
 .hub-personal-calendar-form legend, .hub-personal-days legend { font-weight: 650; margin-bottom: 16px; }
 .hub-personal-days { margin: 24px 0; }
 .hub-team-access-list { display: grid; gap: 20px; margin: 28px 0; }
-.hub-team-access-item { display: flex; justify-content: space-between; align-items: flex-start; gap: 24px; padding: 22px; border: 1px solid var(--hub-border); border-radius: 12px; }
+.hub-team-access-item { display: flex; justify-content: space-between; align-items: flex-start; gap: 24px; padding: 22px; border: 1px solid var(--hub-line); border-radius: 12px; }
 .hub-team-access-item > div { min-width: 0; }
 .hub-team-access-item h4 { margin: 0; overflow-wrap: anywhere; }
 .hub-team-access-item .hub-button-row { flex-wrap: wrap; }
@@ -1379,4 +1379,39 @@ html:has(.hub-sticky-save) { scroll-padding-bottom: 180px; }
   .hub-team-access-item { flex-direction: column; padding: 18px; gap: 18px; }
   .hub-team-access-item .hub-button-row { width: 100%; }
   .hub-personal-calendar-form { margin-top: 24px; }
+}
+
+/* Settings save actions stay with their form instead of covering other sections.
+   The job wizard keeps its separate sticky footer. */
+.hub-settings-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 24px;
+}
+.hub-settings-stack > * { margin-block: 0; }
+.hub-company-settings > .hub-button { align-self: flex-start; }
+.hub-company-settings-form > fieldset {
+  padding: 0;
+  border: 0;
+  margin: 0;
+}
+.hub-settings-save {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 16px;
+}
+.hub-settings-save > p { flex: 1 1 240px; margin: 0; }
+.hub-settings-save > .hub-notice { flex-basis: 100%; margin: 0; }
+.hub-settings .hub-setup-details > .hub-card:last-child { margin-bottom: 0; }
+.hub-settings .hub-setup-details a.hub-button { text-decoration: none; color: #fff; }
+.hub-settings .hub-setup-details a.hub-button.secondary { color: var(--hub-ink); }
+.hub-settings .hub-team-access-item { flex-wrap: wrap; }
+.hub-settings .hub-team-access-item > div:first-child { flex: 1 1 240px; }
+.hub-settings .hub-team-access-item > .hub-button-row { flex: 0 1 auto; }
+@media (max-width: 640px) {
+  .hub-settings .hub-team-access-item > div:first-child { flex: 0 1 auto; }
+  .hub-settings-save > .hub-button { width: 100%; }
+  .hub-settings-save > p { flex-basis: 100%; }
 }

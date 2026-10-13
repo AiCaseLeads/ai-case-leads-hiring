@@ -38,7 +38,7 @@ export function HubSettings({
   const [section, setSection] = useState<"personal" | "team" | "company" | "scorecards">(startSection === "scorecards" ? "scorecards" : "personal");
   useEffect(() => { if (startSection === "scorecards") queueMicrotask(() => setSection("scorecards")); }, [startSection]);
   return (
-    <section aria-labelledby="settings-title">
+    <section className="hub-settings" aria-labelledby="settings-title">
       <div className="hub-section-heading">
         <div><p className="hub-kicker">YOUR WORKSPACE</p><h2 id="settings-title">Settings</h2>
           <p>Your own calendar, your hiring team, and company connections each have their own place.</p>
@@ -154,7 +154,7 @@ function SettingsForm({
       window.location.assign(result.url);
   }
   return (
-    <>
+    <div className="hub-settings-stack hub-company-settings">
       <p className="hub-notice">
         Company setup is managed by the owner. This shared account sends recruiting emails and stores applicant files. Recruiters connect their own calendars under My setup.
         Changes in steps 2 and 3 take effect when you click Save settings.
@@ -219,29 +219,31 @@ function SettingsForm({
             Email reply sync: {initial.mailSync.lastError}
           </p>
         )}
-        <button
-          className="hub-button secondary"
-          onClick={() => void connect()}
-          disabled={connection.busy || runtime.loading || runtime.data?.configured === false}
-        >
-          {connection.busy
-            ? "Connecting…"
-            : initial.google.connected
-              ? "Reconnect Google Workspace"
-              : "Connect Google Workspace"}{" "}
-          <ExternalLink size={15} />
-        </button>
-        <button className="hub-text-button" type="button" onClick={() => void runtime.reload()} disabled={runtime.loading}>
-          Refresh setup checks
-        </button>
+        <div className="hub-button-row">
+          <button
+            className="hub-button secondary"
+            onClick={() => void connect()}
+            disabled={connection.busy || runtime.loading || runtime.data?.configured === false}
+          >
+            {connection.busy
+              ? "Connecting…"
+              : initial.google.connected
+                ? "Reconnect Google Workspace"
+                : "Connect Google Workspace"}{" "}
+            <ExternalLink size={15} />
+          </button>
+          <button className="hub-text-button" type="button" onClick={() => void runtime.reload()} disabled={runtime.loading}>
+            Refresh setup checks
+          </button>
+        </div>
         <Feedback error={connection.error} success={connection.success} />
         <p className="hub-muted">
           Choose {initial.google.expectedSender || "the configured recruiting account"} on the Google screen.
           This company connection is separate from each recruiter’s calendar. Leave it connected when adding recruiters; they use My setup with their own accounts.
         </p>
       </section>
-      <form onSubmit={save}>
-        <fieldset disabled={mutation.busy}>
+      <form onSubmit={save} className="hub-company-settings-form">
+        <fieldset className="hub-settings-stack" disabled={mutation.busy}>
           <section className="hub-card">
             <h3>2. Shared fallback interview calendar</h3>
             <p className="hub-muted">
@@ -406,7 +408,7 @@ function SettingsForm({
               automatic rejection rules must be explicitly approved.
             </p>
           </details>
-          <div className="hub-sticky-save">
+          <div className="hub-card hub-settings-save" role="group" aria-label="Save company settings">
             <button
               className="hub-button"
               type="submit"
@@ -414,6 +416,7 @@ function SettingsForm({
             >
               {mutation.busy ? "Saving settings…" : "Save settings"}
             </button>
+            <p className="hub-muted">Saves the shared calendar, applicant folder, and default rejection email above.</p>
             <Feedback error={validationError || mutation.error} success={validationError ? "" : mutation.success} />
           </div>
         </fieldset>
@@ -426,7 +429,7 @@ function SettingsForm({
         <SchedulerSetup />
       </details>
       {initial.accessAudit && <details className="hub-card hub-setup-details"><summary>Recent access changes</summary><h3>Access history</h3><p className="hub-muted">Configuration changes record who made them and the previous and updated values. Most recent 50 events.</p>{initial.accessAudit.length ? initial.accessAudit.map((event) => <article key={event.id} className="hub-history-item"><strong>{event.type} · {event.actor}</strong><small>{displayDate(event.createdAt)}</small><details><summary>Review recorded change</summary><pre className="hub-preserve">{JSON.stringify({before:event.before,after:event.after},null,2)}</pre></details></article>) : <p className="hub-muted">No access changes recorded yet.</p>}</details>}
-    </>
+    </div>
   );
 }
 export function Tasks({
