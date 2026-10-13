@@ -1,4 +1,6 @@
 import { processStaffInvites } from "./staff/service";
+import { interviewCalendar } from "./personal-calendar/service";
+import { personalCalendarEffect } from "./personal-calendar/client";
 import { jobNotificationMail,candidateReplyTo } from "./job-team/service";
 import { HubStore } from "./hub/store";
 import type { Task } from "./hub/types";
@@ -63,6 +65,12 @@ async function taskEffect(task:Task,store:HubStore,db:D1Database,bucket:R2Bucket
     const calendarId=typeof task.payload.calendarId==="string"?task.payload.calendarId:current.calendar_id;
     if(!calendarId)throw {code:"interview_calendar_identity_missing"};
     if(current.calendar_id&&calendarId!==current.calendar_id)throw {code:"interview_calendar_identity_mismatch"};
+    const personal=await interviewCalendar(store,payload.interviewId);
+    if(personal){
+      if(personal.calendarId!==calendarId)throw {code:"interview_calendar_identity_mismatch"};
+      const {resolvedWorkspaceEnv}=await import("./workspace-config");
+      return personalCalendarEffect(store,personal,{...payload,calendarId},await resolvedWorkspaceEnv(),fetch,deadline);
+    }
     if(payload.operation==="cancel"){await google.cancelInterview(payload.id||payload.interviewId,calendarId);return {cancelled:true};}
     const pinned={...payload,calendarId};
     const result=payload.operation==="update"?await google.updateInterview(pinned):await google.createInterview(pinned);

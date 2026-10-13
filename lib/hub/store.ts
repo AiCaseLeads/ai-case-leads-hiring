@@ -1,3 +1,4 @@
+import { personalCalendarSnapshot,interviewCalendar,interviewCalendarKey } from "../personal-calendar/service";
 import { jobNotificationStatements } from "../job-team/service";
 import { canonicalJson, privateToken, sha256 } from "../hiring/crypto";
 import { HiringError } from "../hiring/errors";
@@ -1396,8 +1397,14 @@ export class HubStore {
             422,
             "Reopen this application before inviting an interview.",
           );
+        const existing = await this.latestInterview(app.id);
+        const renewing = existing && existing.status !== "cancelled";
+        const pinned = renewing ? await interviewCalendar(this,existing.id) : null;
+        if(renewing && input.interviewerEmail && input.interviewerEmail !== pinned?.ownerEmail)
+          throw new HiringError("interview_owner_pinned",409,"Cancel this interview before choosing a different interviewer.");
+        const personal = renewing ? pinned : input.interviewerEmail ? await personalCalendarSnapshot(this,input.interviewerEmail,(process.env.ADMIN_EMAILS||"").split(",")) : null;
         if (
-          !(await this.scheduling()).configured ||
+          (!personal && !(await this.scheduling()).configured) ||
           !this.options.integrations?.google
         )
           throw new HiringError(
@@ -1405,8 +1412,6 @@ export class HubStore {
             422,
             "Connect Google Workspace and save the calendar, interview time zone, and availability before inviting interviews.",
           );
-        const existing = await this.latestInterview(app.id);
-        const renewing = existing && existing.status !== "cancelled";
         if (renewing && !input.renew && await this.hasActiveInvitation(app.id,"interview",existing.id,now)) return [];
         if (!this.options.origin)
           throw new HiringError(
@@ -1417,7 +1422,7 @@ export class HubStore {
         const interviewId = renewing ? existing.id : crypto.randomUUID(),
           token = privateToken(),
           hash = await sha256(token),
-          calendarId = await this.setting("google_calendar_id", "");
+          calendarId = personal?.calendarId || (renewing ? existing.calendar_id : null) || await this.setting("google_calendar_id", "");
         const url = `${this.options.origin}/interview/${token}`;
         statements.push(
           ...this.cancelInvitationStatements(app.id,"interview",now),
@@ -1426,6 +1431,7 @@ export class HubStore {
             now,
             app.id,
           ),
+          ...(!renewing && personal ? [this.stmt("INSERT INTO hub_settings(key,value,updated_at) VALUES (?,?,?)",interviewCalendarKey(interviewId),JSON.stringify(personal),now)] : []),
           ...(!renewing ? [this.stmt(
             "INSERT INTO hub_interviews (id,application_id,status,calendar_id,revision,created_at,updated_at) VALUES (?,?,'invited',?,1,?,?)",
             interviewId,

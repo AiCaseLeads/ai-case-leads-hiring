@@ -1,3 +1,4 @@
+import { interviewCalendar,personalScheduling } from "../personal-calendar/service";
 import { jobNotificationStatements } from "../job-team/service";
 import { sha256 } from "../hiring/crypto";
 import { HiringError } from "../hiring/errors";
@@ -14,23 +15,22 @@ export async function availableSlots(
   excludeInterviewId?: string,
   pinnedCalendarId?: string | null,
 ): Promise<CandidateSlot[]> {
-  const policy = await store.scheduling();
-  if (!policy.configured || !hooks.busy || !store.options.integrations?.google)
+  const personal = await interviewCalendar(store,excludeInterviewId);
+  const policy = personal ? personalScheduling(personal) : await store.scheduling();
+  if (!policy.configured || (personal ? !hooks.personalBusy : !hooks.busy) || !store.options.integrations?.google)
     throw new HiringError(
       "scheduling_not_configured",
       503,
       "Interview scheduling is temporarily unavailable. Contact the hiring team.",
     );
-  const calendarId = pinnedCalendarId || await store.setting("google_calendar_id", "");
-  const from = Date.now() + 2 * 3600000,
-    to = from + 14 * 86400000;
+  if(personal && pinnedCalendarId && personal.calendarId !== pinnedCalendarId)throw new HiringError("interview_calendar_identity_mismatch",503,"Contact the hiring team to check the interview calendar.");
+  const calendarId = personal?.calendarId || pinnedCalendarId || await store.setting("google_calendar_id", "");
+  const from = Date.now() + (personal?.availability.minimumNoticeHours??2) * 3600000,
+    to = from + (personal?.availability.horizonDays??14) * 86400000;
   let busy: CandidateSlot[];
   try {
-    busy = await hooks.busy({
-      start: new Date(from).toISOString(),
-      end: new Date(to).toISOString(),
-      calendarIds: [calendarId],
-    });
+    const range={start:new Date(from).toISOString(),end:new Date(to).toISOString(),calendarIds:[calendarId]};
+    busy = personal ? await hooks.personalBusy!(personal,range) : await hooks.busy!(range);
   } catch {
     throw new HiringError(
       "calendar_unavailable",

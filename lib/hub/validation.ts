@@ -76,6 +76,7 @@ export const actionInput = z
     expectedRevision: z.number().int().positive().safe(),
     actionId: z.string().uuid().optional(),
     renew: z.boolean().optional(),
+    interviewerEmail: z.string().trim().email().transform(value=>value.toLowerCase()).optional(),
     action: z.enum([
       "stage",
       "note",

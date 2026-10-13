@@ -173,6 +173,7 @@ export type Scheduling = {
   configured: boolean;
 };
 export type CandidateHooks = {
+  personalBusy?: (snapshot: import("../personal-calendar/service").InterviewCalendar, input: {start:string;end:string;calendarIds?:string[]}) => Promise<{start:string;end:string}[]>;
   busy?: (input: {
     start: string;
     end: string;

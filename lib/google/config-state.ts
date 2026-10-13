@@ -2,7 +2,7 @@ import { sha256 } from "../hiring/crypto";
 import { expectedRecruitingSender } from "./sender";
 
 type Client = {GOOGLE_CLIENT_ID?:string;GOOGLE_CLIENT_SECRET?:string;EXPECTED_RECRUITING_EMAIL?:string};
-export type OAuthStateBinding={verifier:string;revision:number;fingerprint:string};
+export type OAuthStateBinding={verifier:string;revision:number;fingerprint:string;flow?:"personal-calendar";email?:string};
 export async function configurationFingerprint(client:Client){
  return sha256(JSON.stringify([client.GOOGLE_CLIENT_ID,client.GOOGLE_CLIENT_SECRET,expectedRecruitingSender(client)]));
 }
@@ -45,4 +45,13 @@ export async function saveGoogleGrant(db:D1Database,input:{revision:number;finge
    db.prepare("INSERT INTO hub_settings(key,value,updated_at) VALUES ('google_grant_fingerprint',?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_at=excluded.updated_at").bind(JSON.stringify(input.fingerprint),now),
   ]);
  }catch{throw new Error("configuration_changed");}
+}
+
+/** Atomically bind callback to the same signed-in staff member and consume once. */
+export async function claimOAuthBinding(db:D1Database,state:string,userId:string,now=Date.now()){
+ if(!/^[a-f0-9]{64}$/.test(state))throw new Error("oauth_invalid");
+ const stateHash=await sha256(state);
+ const claim=await db.prepare("UPDATE hub_oauth_states SET used_at=? WHERE state_hash=? AND user_id=? AND used_at IS NULL AND expires_at>? RETURNING verifier").bind(now,stateHash,userId,now).first<{verifier:string}>();
+ if(!claim)throw new Error("oauth_expired");
+ return {binding:decodeOAuthState(claim.verifier),stateHash,claimedAt:now};
 }
