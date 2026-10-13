@@ -10,6 +10,7 @@ export type Member = {
   email: string;
   userId?: string;
   role: "admin" | "recruiter";
+  isOwner?: boolean;
 };
 export const stages = [
   "Application Review",

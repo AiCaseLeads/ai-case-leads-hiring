@@ -1361,3 +1361,22 @@ html:has(.hub-sticky-save) { scroll-padding-bottom: 180px; }
 @media (max-height: 540px) and (max-width: 960px) {
   .hub-sticky-save { position: static; }
 }
+
+/* Separate self-service setup from company-wide configuration. */
+.hub-settings-navigation { margin-bottom: 28px; gap: 12px; }
+.hub-onboarding-steps { display: grid; gap: 16px; padding-left: 24px; margin: 24px 0; line-height: 1.6; }
+.hub-personal-calendar-form { margin-top: 28px; }
+.hub-personal-calendar-form legend, .hub-personal-days legend { font-weight: 650; margin-bottom: 16px; }
+.hub-personal-days { margin: 24px 0; }
+.hub-team-access-list { display: grid; gap: 20px; margin: 28px 0; }
+.hub-team-access-item { display: flex; justify-content: space-between; align-items: flex-start; gap: 24px; padding: 22px; border: 1px solid var(--hub-border); border-radius: 12px; }
+.hub-team-access-item > div { min-width: 0; }
+.hub-team-access-item h4 { margin: 0; overflow-wrap: anywhere; }
+.hub-team-access-item .hub-button-row { flex-wrap: wrap; }
+.hub-interviewer-choice { margin: 20px 0; }
+@media (max-width: 640px) {
+  .hub-settings-navigation { display: grid; grid-template-columns: 1fr; }
+  .hub-team-access-item { flex-direction: column; padding: 18px; gap: 18px; }
+  .hub-team-access-item .hub-button-row { width: 100%; }
+  .hub-personal-calendar-form { margin-top: 24px; }
+}

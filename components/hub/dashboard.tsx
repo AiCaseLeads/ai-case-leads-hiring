@@ -52,7 +52,7 @@ export function HiringDashboard({
     setMenuOpen(false);
     const params = new URLSearchParams(window.location.search);
     const requested = params.get("view");
-    const allowed = ["home", "overview", "applications", "jobs", "reports", "tasks", ...(member.role === "admin" ? ["settings"] : [])];
+    const allowed = ["home", "overview", "applications", "jobs", "reports", "tasks", "settings"];
     const next = requested && allowed.includes(requested) ? (requested === "home" ? "overview" : requested as View) : params.has("application") ? "applications" : "overview";
     setView(next);
     setDetailId(params.get("application"));
@@ -83,7 +83,10 @@ export function HiringDashboard({
       } else readLocation();
     };
     window.addEventListener("popstate", pop, true);
-    const params = new URLSearchParams(window.location.search), outcome = params.get("workspace");
+    const params = new URLSearchParams(window.location.search), outcome = params.get("workspace"), personalOutcome = params.get("personalCalendar");
+    if (personalOutcome) queueMicrotask(() => {
+      setWorkspaceNotice(personalOutcome === "connected" ? "Your calendar is connected. Confirm your interview hours in My setup, then complete a test booking." : "Your calendar authorization did not complete. Connect again in My setup using your own dashboard account and approve Calendar access.");
+    });
     if (outcome) queueMicrotask(() => {
       if (outcome === "connection_failed") {
         const messages: Record<string, string> = {
@@ -102,7 +105,6 @@ export function HiringDashboard({
     });
     return () => window.removeEventListener("popstate", pop, true);
     // Location, rather than a captured React view, is the source of navigation state.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [member.role]);
   const resource = useHubResource<Overview>("/api/hub/overview", refresh);
   const admin = member.role === "admin",
@@ -162,7 +164,7 @@ export function HiringDashboard({
         <div className="hub-workspace-label">HIRING WORKSPACE</div>
         <nav aria-label="Hiring workspace">
           {navigation
-            .filter((item) => item.id !== "settings" || admin)
+            
             .map((item) => (
               <button
                 key={item.id}
@@ -185,7 +187,7 @@ export function HiringDashboard({
             Applicant website <ExternalLink size={15} />
           </a>
           <p>{member.email}</p>
-          <Badge>{admin ? "Administrator" : "Recruiter"}</Badge>
+          <Badge>{member.isOwner ? "Owner" : admin ? "Head recruiter" : "Recruiter"}</Badge>
           <a href={signOutHref}>
             <LogOut size={15} /> Sign out
           </a>
@@ -244,7 +246,7 @@ export function HiringDashboard({
             <>
               <div className="hub-section-heading">
                 <div><p className="hub-kicker">YOUR HIRING WORKSPACE</p><h1>What needs your attention?</h1><p>Review applicants and keep your open jobs moving.</p></div>
-                {admin && <button className="hub-button" onClick={beginJob}>Create job</button>}
+                <button className="hub-button" onClick={beginJob}>Create job</button>
               </div>
               <ResourceState loading={resource.loading} error={resource.error} retry={() => void resource.reload()} />
               {data && !resource.loading && <>
@@ -256,24 +258,24 @@ export function HiringDashboard({
                 <ReviewReminderQueue refresh={refresh} onSelect={selectApplication} compact />
                 <section className="hub-card">
                   <div className="hub-section-heading compact"><div><h2>Your jobs</h2><p>Each posting keeps its own applicants, even when you hire again.</p></div><button className="hub-text-button" onClick={() => changeView("jobs")}>View all jobs</button></div>
-                  {data.jobs.length ? <ul className="hub-home-job-list">{data.jobs.filter(job => job.status !== "closed").slice(0, 4).map(job => <li key={job.id}><div><strong>{job.title}</strong><p className="hub-muted">{job.location || "Location not set"}</p></div><Badge tone={job.status === "open" ? "success" : "neutral"}>{job.status === "open" ? "Published" : "Draft"}</Badge><button className="hub-text-button" onClick={() => changeView("jobs")}>Manage</button></li>)}{!data.jobs.some(job => job.status !== "closed") && <li>No draft or published jobs. Your closed postings are saved under Jobs.</li>}</ul> : <EmptyState title="Create your first job"><p>Start from a blank job, a saved template, or a previous posting.</p>{admin && <button className="hub-button" onClick={beginJob}>Create job</button>}</EmptyState>}
+                  {data.jobs.length ? <ul className="hub-home-job-list">{data.jobs.filter(job => job.status !== "closed").slice(0, 4).map(job => <li key={job.id}><div><strong>{job.title}</strong><p className="hub-muted">{job.location || "Location not set"}</p></div><Badge tone={job.status === "open" ? "success" : "neutral"}>{job.status === "open" ? "Published" : "Draft"}</Badge><button className="hub-text-button" onClick={() => changeView("jobs")}>Manage</button></li>)}{!data.jobs.some(job => job.status !== "closed") && <li>No draft or published jobs. Your closed postings are saved under Jobs.</li>}</ul> : <EmptyState title="Create your first job"><p>Start from a blank job, a saved template, or a previous posting.</p><button className="hub-button" onClick={beginJob}>Create job</button></EmptyState>}
                 </section>
                 <section className="hub-card">
                   <div className="hub-section-heading compact"><h2>Recent applications</h2><button className="hub-text-button" onClick={() => changeView("applications")}>View all applications</button></div>
                   {data.recentApplications.length ? <CandidateTable items={data.recentApplications} select={selectApplication} /> : <EmptyState title="No applications yet"><p>Publish a job and share its application link. New applicants will appear here.</p><button className="hub-button secondary" onClick={() => changeView("jobs")}>Open jobs</button></EmptyState>}
                 </section>
-                <div className="hub-home-status" aria-label="Hiring connections"><Badge tone={data.integrations.google && data.integrations.drive && data.integrations.applicationsEnabled ? "success" : "warning"}>{data.integrations.google && data.integrations.drive && data.integrations.applicationsEnabled ? "Google connected · Drive configured · Applications open" : "Setup needs attention"}</Badge>{admin && <button className="hub-text-button" onClick={() => changeView("settings")}>Connection settings</button>}<button className="hub-text-button" onClick={() => changeView("tasks")}>Delivery activity</button></div>
+                <div className="hub-home-status" aria-label="Hiring connections"><Badge tone={data.integrations.google && data.integrations.drive && data.integrations.applicationsEnabled ? "success" : "warning"}>{data.integrations.google && data.integrations.drive && data.integrations.applicationsEnabled ? "Google connected · Drive configured · Applications open" : "Setup needs attention"}</Badge><button className="hub-text-button" onClick={() => changeView("settings")}>My setup</button><button className="hub-text-button" onClick={() => changeView("tasks")}>Delivery activity</button></div>
               </>}
             </>
           ) : view === "applications" ? null : view === "jobs" ? (
-            <Jobs admin={admin} refresh={refresh} changed={changed} startCreating={!!createJob} onManageScorecards={manageScorecards} />
+            <Jobs admin={true} refresh={refresh} changed={changed} startCreating={!!createJob} onManageScorecards={manageScorecards} />
           ) : view === "reports" ? (
             <Reports refresh={refresh} />
           ) : view === "tasks" ? (
             <Tasks admin={admin} refresh={refresh} changed={changed} />
-          ) : admin ? (
+          ) : (
             <HubSettings member={member} refresh={refresh} changed={changed} jobs={data?.jobs || []} startSection={settingsSection} onDeliveryActivity={() => changeView("tasks")} />
-          ) : null}
+          )}
           <footer className="hub-bottom-note">
             Hiring decisions stay with your team. Assessment and interview
             invitations require an explicit recruiter action.

@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
-import { ExternalLink, Plus, Trash2 } from "lucide-react";
+import { ExternalLink } from "lucide-react";
 import {
   displayDate,
   safeNavigation,
@@ -15,6 +15,8 @@ import { driveFolderId } from "./drive-folder";
 import { AiReviewSettings } from "./ai-review";
 import { ScorecardTemplates } from "./scorecards";
 import { ReviewReminderSettings } from "./review-reminders";
+import { PersonalCalendarSetup } from "./personal-calendar";
+import { TeamAccess } from "./team-access";
 
 export function HubSettings({
   member,
@@ -31,47 +33,47 @@ export function HubSettings({
   startSection?: "scorecards";
   onDeliveryActivity?: () => void;
 }) {
-  const resource = useHubResource<Settings>("/api/hub/settings", refresh);
-  useEffect(() => { if (startSection && resource.data) document.getElementById("scorecard-settings")?.scrollIntoView({block:"start"}); }, [startSection,resource.data]);
+  const owner = member.isOwner === true;
+  const managesTeam = member.role === "admin";
+  const [section, setSection] = useState<"personal" | "team" | "company" | "scorecards">(startSection === "scorecards" ? "scorecards" : "personal");
+  useEffect(() => { if (startSection === "scorecards") queueMicrotask(() => setSection("scorecards")); }, [startSection]);
   return (
     <section aria-labelledby="settings-title">
       <div className="hub-section-heading">
-        <div>
-          <p className="hub-kicker">ADMINISTRATION</p>
-          <h2 id="settings-title">Settings</h2>
-          <p>
-            Connect Google in three steps. Hiring preferences and team access are below.
-          </p>
+        <div><p className="hub-kicker">YOUR WORKSPACE</p><h2 id="settings-title">Settings</h2>
+          <p>Your own calendar, your hiring team, and company connections each have their own place.</p>
         </div>
       </div>
-      <ResourceState
-        loading={resource.loading}
-        error={resource.error}
-        retry={() => void resource.reload()}
-      />
-      {resource.data && !resource.loading && (
-        <SettingsForm
-          key={JSON.stringify(resource.data)}
-          initial={resource.data}
-          member={member}
-          jobs={jobs}
-          startSection={startSection}
-          onDeliveryActivity={onDeliveryActivity}
-          changed={() => {
-            changed();
-            void resource.reload();
-          }}
-        />
-      )}
+      <nav className="hub-button-row hub-settings-navigation" aria-label="Settings sections">
+        <button type="button" aria-current={section === "personal" ? "page" : undefined} className={"hub-button " + (section === "personal" ? "" : "secondary")} onClick={() => setSection("personal")}>My setup</button>
+        {managesTeam && <button type="button" aria-current={section === "team" ? "page" : undefined} className={"hub-button " + (section === "team" ? "" : "secondary")} onClick={() => setSection("team")}>Team access &amp; invitations</button>}
+        <button type="button" aria-current={section === "scorecards" ? "page" : undefined} className={"hub-button " + (section === "scorecards" ? "" : "secondary")} onClick={() => setSection("scorecards")}>Scorecard templates</button>
+        {owner && <button type="button" aria-current={section === "company" ? "page" : undefined} className={"hub-button " + (section === "company" ? "" : "secondary")} onClick={() => setSection("company")}>Company setup</button>}
+      </nav>
+      {section === "personal" && <>
+        <section className="hub-card"><h3>Welcome, {member.email}</h3><p>You sign in with your own Google Workspace account. Never share your password with another teammate.</p>
+          <ol className="hub-onboarding-steps"><li><strong>Connect your calendar below.</strong> Google will ask you to approve access to your own interview calendar.</li><li><strong>Set your interview hours.</strong> Choose your time zone, days, and hours, then save.</li><li><strong>Create or join a job.</strong> Open Jobs to create a posting. Under Hiring team &amp; emails, select the people who should receive its alerts.</li><li><strong>Review, then invite.</strong> Open an applicant, choose an interviewer, and send a booking link after your review.</li></ol>
+          <p><a className="hub-button secondary" href="/recruiter-guide.pdf" target="_blank" rel="noopener noreferrer">Open recruiter guide (PDF) <ExternalLink size={15} /></a></p>
+          <p className="hub-muted">Company email and applicant files use the shared connection managed by the owner. You do not need the owner’s or another recruiter’s password. Your personal connection only handles your calendar.</p>
+        </section>
+        <PersonalCalendarSetup key={member.email} member={member} refresh={refresh} />
+      </>}
+      {section === "team" && managesTeam && <TeamAccess member={member} changed={changed} refresh={refresh} />}
+      {section === "scorecards" && <section className="hub-card" id="scorecard-settings"><ScorecardTemplates jobs={jobs} /></section>}
+      {section === "company" && owner && <CompanySettings member={member} refresh={refresh} changed={changed} jobs={jobs} onDeliveryActivity={onDeliveryActivity} />}
     </section>
   );
 }
+function CompanySettings({ member, refresh, changed, jobs, onDeliveryActivity }: { member:Member; refresh:number; changed:()=>void; jobs:HubJob[]; onDeliveryActivity?:()=>void }) {
+  const resource = useHubResource<Settings>("/api/hub/settings", refresh);
+  return <>
+    <ResourceState loading={resource.loading} error={resource.error} retry={() => void resource.reload()} />
+    {resource.data && !resource.loading && <SettingsForm key={JSON.stringify(resource.data)} initial={resource.data} member={member} jobs={jobs} onDeliveryActivity={onDeliveryActivity} changed={() => { changed(); void resource.reload(); }} />}
+  </>;
+}
 function SettingsForm({
   initial,
-  member,
   changed,
-  jobs,
-  startSection,
   onDeliveryActivity,
 }: {
   initial: Settings;
@@ -81,15 +83,7 @@ function SettingsForm({
   startSection?: "scorecards";
   onDeliveryActivity?: () => void;
 }) {
-  const [members, setMembers] = useState<Member[]>(() => {
-      const active = initial.members.filter((value) => value.active !== false);
-      return active.some(
-        (value) => value.email.toLowerCase() === member.email.toLowerCase(),
-      )
-        ? active
-        : [{ email: member.email, role: "admin" }, ...active];
-    }),
-    [calendarId, setCalendarId] = useState(initial.google.calendarId || ""),
+  const [calendarId, setCalendarId] = useState(initial.google.calendarId || ""),
     [driveRootId, setDriveRootId] = useState(initial.google.driveRootId || ""),
     [rejectionTemplate, setRejectionTemplate] = useState(
       initial.templates.rejection || "",
@@ -135,10 +129,6 @@ function SettingsForm({
       "PATCH",
       {
         settingsVersion: initial.settingsVersion,
-        members: members.map((value) => ({
-          email: value.email.trim(),
-          role: value.role,
-        })),
         calendarId: calendarId.trim(),
         driveRootId: folderId,
         rejectionTemplate,
@@ -163,17 +153,10 @@ function SettingsForm({
     if (result?.url && safeNavigation(result.url))
       window.location.assign(result.url);
   }
-  function updateMember(index: number, update: Partial<Member>) {
-    setMembers((current) =>
-      current.map((value, i) =>
-        i === index ? { ...value, ...update } : value,
-      ),
-    );
-  }
   return (
     <>
       <p className="hub-notice">
-        Start here: connect Google, choose the interview calendar, and choose where applicant files are saved.
+        Company setup is managed by the owner. This shared account sends recruiting emails and stores applicant files. Recruiters connect their own calendars under My setup.
         Changes in steps 2 and 3 take effect when you click Save settings.
       </p>
       <ResourceState loading={runtime.loading} error={runtime.error} retry={() => void runtime.reload()} />
@@ -190,9 +173,9 @@ function SettingsForm({
       <section className="hub-card">
         <div className="hub-section-heading compact">
           <div>
-            <h3>1. Connect your recruiting Google account</h3>
+            <h3>1. Company email & applicant archive</h3>
             <p>
-              One shared connection sends recruiting emails, creates interviews with Meet, and saves applicant files.
+              The shared company account sends Gmail messages and saves applicant files to Drive. Each recruiter can connect a separate interview calendar under My setup.
             </p>
           </div>
           <Badge tone={initial.google.connected ? "success" : "warning"}>
@@ -254,13 +237,13 @@ function SettingsForm({
         <Feedback error={connection.error} success={connection.success} />
         <p className="hub-muted">
           Choose {initial.google.expectedSender || "the configured recruiting account"} on the Google screen.
-          Your dashboard login is separate. To switch the recruiting account to Maria, an administrator must first change the allowed account in server configuration, then Maria must authorize Google here. This button cannot change that account restriction.
+          This company connection is separate from each recruiter’s calendar. Leave it connected when adding recruiters; they use My setup with their own accounts.
         </p>
       </section>
       <form onSubmit={save}>
         <fieldset disabled={mutation.busy}>
           <section className="hub-card">
-            <h3>2. Choose the interview calendar</h3>
+            <h3>2. Shared fallback interview calendar</h3>
             <p className="hub-muted">
               Use the connected account’s calendar now, or a calendar shared with that account.
               Confirm the hours below, save, then send a test interview from an applicant’s profile.
@@ -274,7 +257,7 @@ function SettingsForm({
               Use {connectedAccount || "connected account"} calendar
             </button>
             <p className="hub-muted">
-              For Maria’s calendar, she can share it with {connectedAccount || "the connected recruiting account"} and grant permission to change events. Then enter her calendar ID below. A calendar selection alone does not grant access.
+              Recruiters normally connect their own calendar in My setup. This fallback is only used when the shared company calendar is selected for an interview. A calendar selection alone does not grant access.
               Active or unresolved interviews must be cancelled or reconciled before switching calendars.
             </p>
             <div className="hub-form-grid">
@@ -408,84 +391,6 @@ function SettingsForm({
               Temporary Drive failures do not lose accepted applications.
             </p>
           </section>
-          <details className="hub-card hub-setup-details"><summary>Team access</summary>
-            <div className="hub-section-heading compact">
-              <div>
-                <h3>Manage teammates</h3>
-                <p>
-                  Adding a teammate here gives them dashboard login access.
-                  Administrators manage configuration; recruiters operate hiring records.
-                  In Jobs → Hiring team &amp; emails, choose who receives alerts and
-                  which reply contact to use for each posting.
-                </p>
-              </div>
-              <button
-                type="button"
-                className="hub-button secondary"
-                onClick={() =>
-                  setMembers((current) => [
-                    ...current,
-                    { email: "", role: "recruiter" },
-                  ])
-                }
-              >
-                <Plus size={16} /> Add teammate
-              </button>
-            </div>
-            <div className="hub-editor-list">
-              {members.map((value, index) => (
-                <div className="hub-member-row" key={index}>
-                  <Field label={"Teammate " + (index + 1) + " email"}>
-                    <input
-                      required
-                      type="email"
-                      value={value.email}
-                      onChange={(e) =>
-                        updateMember(index, { email: e.target.value })
-                      }
-                    />
-                  </Field>
-                  <Field label="Access level">
-                    <select
-                      value={value.role}
-                      onChange={(e) =>
-                        updateMember(index, {
-                          role: e.target.value as Member["role"],
-                        })
-                      }
-                    >
-                      <option value="admin">Administrator — full access</option>
-                      <option value="recruiter">
-                        Recruiter — hiring operations
-                      </option>
-                    </select>
-                  </Field>
-                  <button
-                    type="button"
-                    className="hub-icon-button"
-                    disabled={
-                      value.email.toLowerCase() === member.email.toLowerCase()
-                    }
-                    onClick={() =>
-                      setMembers((current) =>
-                        current.filter((_, i) => i !== index),
-                      )
-                    }
-                    aria-label={
-                      "Remove " + (value.email || "teammate " + (index + 1))
-                    }
-                  >
-                    <Trash2 size={17} />
-                  </button>
-                </div>
-              ))}
-            </div>
-            <p className="hub-muted">
-              Your owner account keeps its server-configured administrative
-              access. Teammates sign in with their own approved account.
-            </p>
-          </details>
-
           <details className="hub-card hub-setup-details"><summary>Default rejection email</summary>
             <h3>Default rejection email for new jobs</h3>
             <Field label="Approved template">
@@ -513,7 +418,6 @@ function SettingsForm({
           </div>
         </fieldset>
       </form>
-      <details className="hub-card hub-setup-details" id="scorecard-settings" open={startSection === "scorecards" || undefined}><summary>Scorecard templates</summary><ScorecardTemplates jobs={jobs} /></details>
       <details className="hub-card hub-setup-details"><summary>AI evidence review</summary><AiReviewSettings /></details>
       <details className="hub-card hub-setup-details"><summary>Review reminders</summary><ReviewReminderSettings /></details>
       <details className="hub-card hub-setup-details">

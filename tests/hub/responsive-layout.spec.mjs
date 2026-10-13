@@ -8,7 +8,7 @@ import postcss from 'postcss';
 import tailwind from '@tailwindcss/postcss';
 
 const longEmail = 'creative.strategy.recruiting.team@long-company-example.invalid';
-const member = { email: longEmail, role: 'admin' };
+const member = { email: longEmail, role: 'admin', isOwner:true };
 const job = { id: 'job-1', title: 'Synthetic Creative Strategist', slug: 'synthetic-creative', location: 'Remote · Spain and United States', status: 'open', fields: [], rules: [], formVersion: 1, archiveCountry: 'Spain', hiringRound: 'October' };
 const detail = { id: 'app-1', revision: 1, name: 'Synthetic Applicant With A Long Name', email: longEmail, jobId: job.id, jobTitle: job.title, stage: 'Application Review', qualification: 'review', assignee: longEmail, createdAt: Date.now(), updatedAt: Date.now(), source: 'test', fields: [{path:'experience',title:'Experience',type:'LongText',required:false}], answers: [{path:'experience',value:'Synthetic work sample'}], files: [{id:'file-1',filename:'synthetic-resume-with-a-long-original-file-name.pdf',url:'/api/files/file-1',contentType:'application/pdf',size:500}], history: [], notes: [], communications: [], scorecards: [], qualificationEvidence: [] };
 const settings = {settingsVersion:1,members:[member,{email:'reviewer@example.invalid',role:'recruiter'}],google:{connected:true,sender:longEmail,expectedSender:longEmail,calendarId:longEmail,driveRootId:'shared'},queue:{pending:0,failed:0},templates:{rejection:'Thank you for applying.'},applicationsEnabled:true,scheduling:{timeZone:'America/Bogota',startHour:10,endHour:16,durationMinutes:30,weekdays:[1,2,3,4,5],configured:true,remindersEnabled:false}};
@@ -30,6 +30,8 @@ async function setup(t) {
   if(path==='/api/ai/config')data={configured:false,enabled:false,reviewOnly:true};
   if(path==='/api/review-reminders')data={total:0,applications:[],staff:[member],config:{enabled:false,dueHours:48,fallbackAdmins:[]}};
   if(path==='/api/hub/settings')data=settings;
+  if(path==='/api/team')data={members:[member],canManageTeam:true};
+  if(path==='/api/personal-calendar')data={email:longEmail,connected:false,ready:false,configured:true,calendarId:null,availability:{timeZone:'America/Bogota',weekdays:[1,2,3,4,5],startHour:10,endHour:16,durationMinutes:30,minimumNoticeHours:2,horizonDays:14},interviewers:[]};
   if(path==='/api/google/status')data={configured:true,hostingPlatform:'railway',backgroundEnabled:true,credentialsManaged:true,expectedSender:longEmail};
   if(path==='/api/hub/reports')data={applications:1,qualificationRate:0,attendance:{total:0,attended:0},conversion:[],stageCounts:[],sources:[],timeInStage:[],workload:[]};
   return route.fulfill({json:{data}});
@@ -64,9 +66,9 @@ test('real styled hub stays usable across mobile, tablet and desktop widths',asy
   if(!process.env.HUB_LAYOUT_CAPTURE_ONLY){await noOverflow(page);const library=await page.getByRole('button',{name:'Add selected question',exact:true}).boundingBox(),custom=await page.getByRole('button',{name:'Add custom question',exact:true}).boundingBox();assert.ok(custom.y-library.y-library.height>=12,'Library and custom question actions have separation');const rows=await page.locator('.hub-question').evaluateAll(es=>es.map(e=>e.getBoundingClientRect().toJSON()));for(let i=1;i<rows.length;i++)assert.ok(rows[i].top-rows[i-1].bottom>=16,'Question cards have separation');}
   await page.goto(origin+'/?view=reports');await page.getByRole('heading',{name:'Reports',exact:true}).waitFor();if(!process.env.HUB_LAYOUT_CAPTURE_ONLY)await noOverflow(page);
   await page.goto(origin+'/?view=home');await page.getByRole('heading',{name:'What needs your attention?',exact:true}).waitFor();if(!process.env.HUB_LAYOUT_CAPTURE_ONLY)await noOverflow(page);
-  await page.goto(origin+'/?view=settings');await page.getByRole('heading',{name:'1. Connect your recruiting Google account',exact:true}).waitFor();await page.getByText('Team access',{exact:true}).click();
+  await page.goto(origin+'/?view=settings');await page.getByRole('heading',{name:'My interview calendar',exact:true}).waitFor();await page.getByRole('button',{name:'Team access & invitations',exact:true}).click();await page.getByLabel('Teammate’s Google Workspace email',{exact:true}).waitFor();
   if(artifacts)await page.screenshot({path:`${artifacts}/settings-${width}.png`,fullPage:true});
-  if(!process.env.HUB_LAYOUT_CAPTURE_ONLY){await noOverflow(page);const buttons=await page.locator('.hub-button:visible,.hub-icon-button:visible').evaluateAll(es=>es.map(e=>({label:e.textContent,height:e.getBoundingClientRect().height})));assert.ok(buttons.every(e=>e.height>=44),JSON.stringify(buttons.filter(e=>e.height<44)));if(width<=640)assert.equal(await page.getByLabel('Teammate 1 email',{exact:true}).evaluate(e=>getComputedStyle(e).fontSize),'16px');}
+  if(!process.env.HUB_LAYOUT_CAPTURE_ONLY){await noOverflow(page);const buttons=await page.locator('.hub-button:visible,.hub-icon-button:visible').evaluateAll(es=>es.map(e=>({label:e.textContent,height:e.getBoundingClientRect().height})));assert.ok(buttons.every(e=>e.height>=44),JSON.stringify(buttons.filter(e=>e.height<44)));if(width<=640)assert.equal(await page.getByLabel('Teammate’s Google Workspace email',{exact:true}).evaluate(e=>getComputedStyle(e).fontSize),'16px');}
  }
  assert.deepEqual(pageErrors,[]);
 });

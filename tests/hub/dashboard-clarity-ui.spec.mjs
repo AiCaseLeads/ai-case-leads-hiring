@@ -19,10 +19,10 @@ test('home prioritizes applicant work, keeps connection status compact and start
  await page.getByText('No overdue reviews',{exact:true}).waitFor();assert.equal(await page.getByLabel('Show overdue applications').count(),0);assert.equal(await page.getByRole('heading',{name:'Platform status'}).count(),0);
  assert.match(await page.getByRole('button',{name:/In application review/}).textContent(),/4/);
  await page.getByRole('button',{name:'Create job',exact:true}).click();await page.getByRole('heading',{name:'Create a job step by step'}).waitFor();assert.equal(new URL(page.url()).searchParams.get('view'),'jobs');await page.reload();await page.getByRole('heading',{name:'Job postings',exact:true}).waitFor();
- await page.getByRole('button',{name:'Manage scorecard templates',exact:true}).click();await page.getByRole('heading',{name:'Reusable scorecards',exact:true}).waitFor();assert.equal(await page.locator('#scorecard-settings').count(),1);assert.equal(await page.locator('#scorecard-settings').getAttribute('open'),'');
+ await page.getByRole('button',{name:'Manage scorecard templates',exact:true}).click();await page.getByRole('heading',{name:'Reusable scorecards',exact:true}).waitFor();assert.equal(await page.locator('#scorecard-settings').count(),1);assert.equal(await page.locator('#scorecard-settings').isVisible(),true);
 });
 test('recruiters can review overdue work and see delivery activity without administrator controls',async t=>{
- const page=await setup(t,'recruiter',1);await page.getByRole('button',{name:'Sample Applicant · Engineer',exact:true}).waitFor();assert.equal(await page.getByRole('button',{name:'Create job',exact:true}).count(),0);assert.equal(await page.getByRole('navigation').getByRole('button',{name:'Settings',exact:true}).count(),0);
+ const page=await setup(t,'recruiter',1);await page.getByRole('button',{name:'Sample Applicant · Engineer',exact:true}).waitFor();assert.equal(await page.getByRole('button',{name:'Create job',exact:true}).count(),1);assert.equal(await page.getByRole('navigation').getByRole('button',{name:'Settings',exact:true}).count(),1);
  await page.getByRole('button',{name:'Delivery activity',exact:true}).click();await page.getByRole('heading',{name:'Delivery activity',exact:true}).waitFor();
 });
 

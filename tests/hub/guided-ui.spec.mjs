@@ -5,7 +5,7 @@ import { existsSync } from "node:fs";
 import { build } from "esbuild";
 import { chromium } from "playwright";
 
-const member = { email: "sales@aicaseleads.com", role: "admin" };
+const member = { email: "sales@aicaseleads.com", role: "admin", isOwner: true };
 const fixture = {
   settingsVersion: 7,
   members: [member],
@@ -43,13 +43,14 @@ async function setup(t, configured = true, mode = "settings", aiEnabled = false)
   await page.route("**/api/hub/applications/application-test/action", async route => { actions.push(route.request().postDataJSON()); await route.fulfill({ json: { data: { revision: 10 } } }); });
   await page.route("**/api/ai/review", async route => { reviews.push(route.request().postDataJSON()); await route.fulfill({ json: { data: { revision: 10 } } }); });
   await page.goto(`http://127.0.0.1:${server.address().port}`);
-  await page.getByRole("heading", { name: mode === "settings" ? "1. Connect your recruiting Google account" : "Evidence & verification" }).waitFor();
+  if(mode === "settings") await page.getByRole("button",{name:"Company setup",exact:true}).click();
+  await page.getByRole("heading", { name: mode === "settings" ? "1. Company email & applicant archive" : "Evidence & verification" }).waitFor();
   return { page, writes, aiWrites, actions, reviews };
 }
 
 test("guided connections save a pasted Drive folder and selected calendar without changing approved hours or revision", async t => {
   const { page, writes } = await setup(t);
-  assert.deepEqual((await page.getByRole("heading", { level: 3 }).allTextContents()).filter(value => /^[123]\./.test(value)), ["1. Connect your recruiting Google account", "2. Choose the interview calendar", "3. Choose the shared applicant folder"]);
+  assert.deepEqual((await page.getByRole("heading", { level: 3 }).allTextContents()).filter(value => /^[123]\./.test(value)), ["1. Company email & applicant archive", "2. Shared fallback interview calendar", "3. Choose the shared applicant folder"]);
   assert.equal(await page.getByText("Advanced admin setup", { exact: true }).evaluate(element => element.parentElement.open), false);
   assert.equal(await page.getByRole("link", { name: "Open saved folder" }).getAttribute("href"), "https://drive.google.com/drive/folders/0AFEhbfGTJcYhUk9PVA");
   await page.getByRole("button", { name: "Use sales@aicaseleads.com calendar" }).click();

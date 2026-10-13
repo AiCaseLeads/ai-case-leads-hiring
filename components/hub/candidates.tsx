@@ -10,6 +10,7 @@ import {
 import { Badge, EmptyState, Feedback, Field, ResourceState } from "./shared";
 import { ReusableScorecard, useScorecardDraft } from "./scorecards";
 import { CandidateEvidence, useEvidenceDraft } from "./ai-review";
+import { InterviewerChoice } from "./personal-calendar";
 import { jobGroup, jobLocation } from "./job-organization";
 import { applicationsCsv, downloadApplication, downloadFile } from "./export";
 import {
@@ -459,6 +460,7 @@ export function CandidateDetail({
     [criteria, setCriteria] = useState(""),
     [attendance, setAttendance] = useState("true"),
     [renew, setRenew] = useState(false),
+    [interviewerEmail, setInterviewerEmail] = useState(""),
     [emailPending, setEmailPending] = useState(false),
     [newEmailApproved, setNewEmailApproved] = useState(false),
     [approve, setApprove] = useState(false);
@@ -468,11 +470,13 @@ export function CandidateDetail({
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     if (action === "reject" && !approve) return;
+    if (action === "interview" && !renew && !interviewerEmail) return;
     if (!resource.data || (action === "scorecard" && (!score || !criteria.trim() || !text.trim()))) return;
     const draft = {
       action,
       expectedRevision: resource.data.revision,
       ...(["assessment", "interview"].includes(action) ? { renew } : {}),
+      ...(action === "interview" && !renew && interviewerEmail && interviewerEmail !== "__shared__" ? { interviewerEmail } : {}),
       ...(action === "stage"
         ? { stage }
         : action === "assign"
@@ -660,11 +664,7 @@ export function CandidateDetail({
                     </Field>
                   )}
                   {action === "interview" && (
-                    <p className="hub-notice">
-                      Sends a secure booking link. Available slots depend on the
-                      connected calendar. Review this application before
-                      sending.
-                    </p>
+                    <><p className="hub-notice">Review this application before sending a secure booking link.</p><InterviewerChoice value={interviewerEmail} change={setInterviewerEmail} renew={renew}/></>
                   )}
                   {action === "email" && (
                     <>
