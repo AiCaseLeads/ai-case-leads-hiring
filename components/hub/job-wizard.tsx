@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ArrowLeft, Plus, Trash2 } from "lucide-react";
 import { hubRequest, useHubMutation } from "./api";
 import { Badge, Feedback, Field } from "./shared";
@@ -505,10 +505,8 @@ function Editor({
     (originalBinding &&
       !scorecards.archived.includes(originalBinding.templateId)) ||
     (job && originalBinding);
-  const [step, setStep] = useState(() => {
-    if (typeof window === "undefined") return 0;
-    return Math.max(0, Math.min(3, Number(new URLSearchParams(window.location.search).get("jobStep")) || 0));
-  }),
+  const highestValidatedStep = useRef(0);
+  const [step, setStep] = useState(0),
     [title, setTitle] = useState(source?.title || request?.title || ""),
     [description, setDescription] = useState(
       source?.descriptionHtml || request?.description || "",
@@ -561,13 +559,21 @@ function Editor({
   useEffect(() => {
     const restore = () => {
       const value = new URLSearchParams(window.location.search).get("jobStep");
-      if (value !== null && value !== "start") {setStep(Math.max(0, Math.min(3, Number(value) || 0))); setApproved(false); setRejectApproved(false); setError("");}
+      if (value !== null && value !== "start") {
+        const requested = Number(value);
+        const next = Number.isSafeInteger(requested) && requested >= 0 ? Math.min(highestValidatedStep.current, requested) : 0;
+        setStep(next); setApproved(false); setRejectApproved(false); setError("");
+        if (String(next) !== value) {const url = new URL(window.location.href); url.searchParams.set("jobStep", String(next)); window.history.replaceState(window.history.state, "", url);}
+      }
     };
+    restore();
     window.addEventListener("popstate", restore);
-    return () => window.removeEventListener("popstate", restore);
+    window.addEventListener("hub:navigate", restore);
+    return () => {window.removeEventListener("popstate", restore); window.removeEventListener("hub:navigate", restore);};
   }, []);
   function goToStep(next: number) {
     if (next === step) return;
+    highestValidatedStep.current = Math.max(highestValidatedStep.current, next);
     const url = new URL(window.location.href);
     url.searchParams.set("jobStep", String(next));
     window.history.pushState({aiclHub: true, jobStepFrom: window.location.href}, "", url);

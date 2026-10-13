@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Plus, Copy } from "lucide-react";
 import { useHubMutation, useHubResource } from "./api";
 import { Badge, EmptyState, Feedback, Field, ResourceState } from "./shared";
@@ -7,6 +7,7 @@ import type { HubJob } from "./types";
 import type { SetupCatalog } from "@/lib/job-setup/model";
 import type { Catalog } from "@/lib/scorecards/model";
 import { JobWizard, JobStart } from "./job-wizard";
+const completedJobSessions = new Set<string>();
 export function Jobs({
   admin,
   refresh,
@@ -20,6 +21,8 @@ export function Jobs({
   startCreating?: boolean;
   onManageScorecards?: () => void;
 }) {
+  const currentSession = useRef("");
+  const [editorSession, setEditorSession] = useState("");
   const jobs = useHubResource<HubJob[]>("/api/hub/jobs", refresh),
     setup = useHubResource<SetupCatalog>("/api/job-setup", refresh),
     scores = useHubResource<Catalog>("/api/scorecards", refresh),
@@ -36,8 +39,9 @@ export function Jobs({
     [templateName, setTemplateName] = useState("");
   function editorUrl(editor: string | null, chosen?: JobStart) {
     const url = new URL(window.location.href);
-    for (const key of ["jobEditor", "jobStep", "jobStart", "jobSource"]) url.searchParams.delete(key);
+    for (const key of ["jobEditor", "jobStep", "jobStart", "jobSource", "jobSession"]) url.searchParams.delete(key);
     if (editor) {
+      url.searchParams.set("jobSession", currentSession.current);
       url.searchParams.set("jobEditor", editor);
       url.searchParams.set("jobStep", editor === "new" && !chosen ? "start" : "0");
       if (chosen) {
@@ -49,11 +53,16 @@ export function Jobs({
     return url;
   }
   function openEditor(job?: HubJob, chosen?: JobStart) {
+    currentSession.current = crypto.randomUUID(); setEditorSession(currentSession.current);
     setEditing(job || null); setCreating(!job); setStart(chosen || null);
     setChoosingStart(!job && !chosen); setEditorVisible(true);
     window.history.pushState({aiclHub: true}, "", editorUrl(job?.id || "new", chosen));
   }
   function chooseStart(chosen: JobStart) {
+    const identity = (value: JobStart) => value.kind + ":" + (value.kind === "duplicate" ? value.source.id : value.kind === "template" ? value.template.id : value.kind === "request" ? value.request.id : "");
+    if (start && identity(start) !== identity(chosen)) {
+      currentSession.current = crypto.randomUUID(); setEditorSession(currentSession.current);
+    }
     setStart(chosen); setChoosingStart(false);
     window.history.pushState({aiclHub: true}, "", editorUrl("new", chosen));
   }
@@ -66,6 +75,13 @@ export function Jobs({
       if (!admin) {setEditorVisible(false); return;}
       const params = new URLSearchParams(window.location.search), editor = params.get("jobEditor");
       if (!editor) {setEditorVisible(false); return;}
+      const session = params.get("jobSession") || currentSession.current || crypto.randomUUID();
+      if (completedJobSessions.has(session)) {
+        setEditorVisible(false);
+        window.history.replaceState({aiclHub:true}, "", editorUrl(null));
+        return;
+      }
+      currentSession.current = session; setEditorSession(session);
       if (editor !== "new") {
         const job = jobs.data?.find(item => item.id === editor);
         if (!job) return;
@@ -89,7 +105,13 @@ export function Jobs({
     // A Home shortcut starts a workflow; ordinary refreshes do not reopen it.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [startCreating]);
-  function done(message: string) {
+  function done(message: string, session: string) {
+    completedJobSessions.add(session);
+    if (completedJobSessions.size > 100) completedJobSessions.delete(completedJobSessions.values().next().value!);
+    if (currentSession.current !== session) {
+      changed(); void jobs.reload(); void setup.reload(); void scores.reload();
+      return;
+    }
     window.history.replaceState({aiclHub: true}, "", editorUrl(null));
     setEditorVisible(false);
     setSuccess(message);
@@ -104,7 +126,7 @@ export function Jobs({
   const data = jobs.data || [];
   const editor = (editing || creating) && jobs.data && setup.data && scores.data ? (
       <JobWizard
-        key={editing?.id || "new"}
+        key={editorSession}
         job={editing || undefined}
         start={start || undefined}
         jobs={data}
@@ -113,7 +135,7 @@ export function Jobs({
         chooseStart={choosingStart}
         onChoose={chooseStart}
         cancel={closeEditor}
-        done={done}
+        done={(message) => done(message, editorSession)}
         onManageScorecards={onManageScorecards}
       />
     ) : null;

@@ -8,6 +8,7 @@ const job={id:'job-1',title:'Synthetic Engineer',slug:'synthetic-engineer',locat
 const detail={id:'app-1',revision:1,name:'Synthetic Applicant',email:'synthetic@example.invalid',jobId:job.id,jobTitle:job.title,stage:'Application Review',qualification:'review',assignee:null,createdAt:Date.now(),updatedAt:Date.now(),source:'test',fields:[{path:'experience',title:'Experience',type:'LongText',required:false}],answers:[{path:'experience',value:'Synthetic role evidence'}],files:[{id:'file-1',filename:'synthetic-resume.pdf',url:'/api/files/file-1',contentType:'application/pdf',size:500}],history:[],notes:[],communications:[],scorecards:[],qualificationEvidence:[]};
 
 async function setup(t,query=''){
+ let currentDetail=structuredClone(detail);
  const overview={counts:{applications:75,active:75,rejected:0,hired:0},stageCounts:[],recentApplications:[detail],integrations:{google:true,drive:true,applicationsEnabled:true},jobs:[job]};
  const {outputFiles}=await build({stdin:{contents:`import React from 'react';import{createRoot}from'react-dom/client';import{HiringDashboard}from'./components/hub/dashboard';createRoot(document.getElementById('root')).render(<HiringDashboard member={{email:'sales@example.invalid',role:'admin'}} signOutHref='/logout'/>);`,loader:'tsx',resolveDir:process.cwd()},bundle:true,write:false,format:'iife',jsx:'automatic'});
  const server=createServer((req,res)=>{res.setHeader('Content-Type',req.url==='/bundle.js'?'text/javascript':'text/html');res.end(req.url==='/bundle.js'?outputFiles[0].text:'<div id="root"></div><script src="/bundle.js"></script>');});await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
@@ -16,8 +17,9 @@ async function setup(t,query=''){
  await page.route('**/api/**',route=>{
   const url=new URL(route.request().url());let data={};
   if(url.pathname==='/api/hub/overview')data=overview;
-  if(url.pathname==='/api/hub/applications'){queries.push(url.search);data={items:[detail],total:75,page:Number(url.searchParams.get('page')||1),pageSize:25};}
-  if(url.pathname==='/api/hub/applications/app-1')data=detail;
+  if(url.pathname==='/api/hub/applications'){queries.push(url.search);data={items:url.searchParams.get('stage')&&url.searchParams.get('stage')!==currentDetail.stage?[]:[currentDetail],total:75,page:Number(url.searchParams.get('page')||1),pageSize:25};}
+  if(url.pathname==='/api/hub/applications/app-1')data=currentDetail;
+  if(url.pathname==='/api/hub/applications/app-1/action'){currentDetail={...currentDetail,revision:currentDetail.revision+1,stage:route.request().postDataJSON().stage};data=currentDetail;}
   if(url.pathname==='/api/scorecards')data={template:null,revision:0,templates:[],archived:[],bindings:{}};
   if(url.pathname==='/api/hub/jobs')data=[job];
   if(url.pathname==='/api/job-setup')data={revision:0,templates:[],requests:[],locations:{}};
@@ -48,4 +50,12 @@ test('the Home create shortcut keeps drafts through browser Back and Forward',as
  await page.goBack();await page.getByRole('heading',{name:'Tell applicants about the job',exact:true}).waitFor();assert.equal(await page.getByLabel('Job title',{exact:true}).inputValue(),'Unsaved Home draft');await page.goForward();await page.getByRole('heading',{name:'What should applicants send?',exact:true}).waitFor();
  await page.getByRole('navigation',{name:'Hiring workspace'}).getByRole('button',{name:'Jobs',exact:true}).click();await page.getByRole('heading',{name:'Jobs',exact:true}).waitFor();
  await page.goBack();await page.getByRole('heading',{name:'What should applicants send?',exact:true}).waitFor();await page.goBack();await page.getByRole('heading',{name:'Tell applicants about the job',exact:true}).waitFor();assert.equal(await page.getByLabel('Job title',{exact:true}).inputValue(),'Unsaved Home draft');
+});
+
+test('direct applicant link Back returns applications rather than Home',async t=>{const{page}=await setup(t);await page.goto(new URL('/?application=app-1',page.url()).href);await page.getByRole('heading',{name:'Synthetic Applicant',exact:true}).waitFor();await page.getByRole('button',{name:'Back to applications',exact:true}).click();await page.getByRole('heading',{name:'Applications',exact:true}).waitFor({timeout:2500});});
+
+test('returning after a candidate stage change clears stale bulk selections and approval',async t=>{
+ const{page}=await setup(t,'&stage=Application%20Review');
+ await page.getByLabel('Select Synthetic Applicant',{exact:true}).check();await page.getByLabel('Bulk action',{exact:true}).selectOption('reject');await page.getByLabel('I approve these rejections and their rejection emails.',{exact:true}).check();
+ await page.getByRole('button',{name:'Synthetic Applicant',exact:true}).click();await page.getByRole('heading',{name:'Synthetic Applicant',exact:true}).waitFor();await page.getByLabel('Action',{exact:true}).selectOption('stage');await page.getByRole('region',{name:'Synthetic Applicant',exact:true}).getByLabel('Stage',{exact:true}).selectOption('Screening');await page.getByRole('button',{name:'Save action',exact:true}).click();await page.getByText('Saved to this application.',{exact:true}).waitFor();await page.getByRole('button',{name:'Back to applications',exact:true}).click();await page.getByRole('heading',{name:'No applications in this view',exact:true}).waitFor();assert.equal(await page.getByLabel('Bulk action',{exact:true}).count(),0);assert.equal(await page.getByText('1 selected',{exact:true}).count(),0);
 });

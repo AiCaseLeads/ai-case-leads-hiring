@@ -64,9 +64,20 @@ export function HiringDashboard({
   const [initialFilter, setInitialFilter] = useState("");
   const [initialPage, setInitialPage] = useState(1);
   useEffect(() => {
+    const ownedPath = window.location.pathname;
+    // Mark the entry that loaded the workspace, including direct applicant links.
+    window.history.replaceState({...window.history.state, aiclHub:true}, "", window.location.href);
     queueMicrotask(readLocation);
-    const pop = () => readLocation();
-    window.addEventListener("popstate", pop);
+    const pop = (event: PopStateEvent) => {
+      if (event.state?.aiclHub && window.location.pathname === ownedPath) {
+        // These entries change dashboard state only. Letting the framework fetch
+        // an RSC page for each query change makes rapid Back/Forward abort a render.
+        event.stopImmediatePropagation();
+        readLocation();
+        window.dispatchEvent(new Event("hub:navigate"));
+      } else readLocation();
+    };
+    window.addEventListener("popstate", pop, true);
     const params = new URLSearchParams(window.location.search), outcome = params.get("workspace");
     if (outcome) queueMicrotask(() => {
       if (outcome === "connection_failed") {
@@ -84,7 +95,7 @@ export function HiringDashboard({
         window.history.replaceState(window.history.state, "", url); readLocation();
       }
     });
-    return () => window.removeEventListener("popstate", pop);
+    return () => window.removeEventListener("popstate", pop, true);
     // Location, rather than a captured React view, is the source of navigation state.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [member.role]);
@@ -104,7 +115,7 @@ export function HiringDashboard({
   }
   function viewUrl(next: View) {
     const url = new URL(window.location.href);
-    for (const key of ["application", "workspace", "reason", "jobId", "stage", "q", "assignee", "qualification", "grade", "sort", "duplicate", "page", "section", "jobEditor", "jobStep", "jobStart", "jobSource"]) url.searchParams.delete(key);
+    for (const key of ["application", "workspace", "reason", "jobId", "stage", "q", "assignee", "qualification", "grade", "sort", "duplicate", "page", "section", "jobEditor", "jobStep", "jobStart", "jobSource", "jobSession"]) url.searchParams.delete(key);
     url.searchParams.set("view", next === "overview" ? "home" : next);
     return url;
   }
@@ -119,7 +130,7 @@ export function HiringDashboard({
     const url = new URL(window.location.href); url.searchParams.delete("application");
     // Only traverse a predecessor that this dashboard created. A direct link stays here.
     if (window.history.state?.aiclHub && window.history.state?.candidateFrom === url.href) window.history.back();
-    else navigate(url, true);
+    else {if (!url.searchParams.has("view")) url.searchParams.set("view", "applications"); navigate(url, true);}
   }
   function applyFilters(filter: string, page: number) {
     const url = viewUrl("applications");

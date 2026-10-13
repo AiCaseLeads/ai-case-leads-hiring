@@ -175,6 +175,11 @@ export function Candidates({
       refresh,
     ),
     mutation = useHubMutation();
+  const visibleRevisions = resource.data?.items.map(item => `${item.id}:${item.revision}`).join("|");
+  useEffect(() => {
+    // A previous selection or rejection approval must not carry over to changed records.
+    queueMicrotask(() => {setSelected([]); setApprove(false);});
+  }, [refresh, visibleRevisions]);
   function filterSubmit(e: React.FormEvent) {
     e.preventDefault();
     const search = new URLSearchParams();
