@@ -4,7 +4,7 @@ import { openToken } from "../google/oauth";
 import { configurationFingerprint } from "../google/config-state";
 import { HiringError } from "../hiring/errors";
 import type { HubStore } from "../hub/store";
-import { grantKey,type PersonalGrant,type InterviewCalendar } from "./service";
+import { grantKey,requireActiveInterviewer,type PersonalGrant,type InterviewCalendar } from "./service";
 type ClientEnv={GOOGLE_CLIENT_ID?:string;GOOGLE_CLIENT_SECRET?:string;GOOGLE_TOKEN_KEY?:string;GOOGLE_CLIENT_REVISION?:number;EXPECTED_RECRUITING_EMAIL?:string};
 export async function personalCalendarClient(store:HubStore,snapshot:InterviewCalendar,env:ClientEnv,fetcher:typeof fetch=fetch,deadline?:number){
  const grant=await store.setting<PersonalGrant|null>(grantKey(snapshot.ownerEmail),null);
@@ -15,6 +15,7 @@ export async function personalCalendarClient(store:HubStore,snapshot:InterviewCa
 }
 export async function personalCalendarEffect(store:HubStore,snapshot:InterviewCalendar,payload:import("../google/calendar").InterviewInput&{operation:string;interviewId:string},env:ClientEnv,fetcher:typeof fetch=fetch,deadline?:number):Promise<Record<string,unknown>>{
  if(payload.calendarId!==snapshot.calendarId)throw new HiringError("interview_calendar_identity_mismatch",503,"The interview calendar identity changed.");
+ if(payload.operation!=="cancel")await requireActiveInterviewer(store,snapshot.ownerEmail);
  const calendar=await personalCalendarClient(store,snapshot,env,fetcher,deadline);
  if(payload.operation==="cancel"){await calendar.cancel(payload.id||payload.interviewId,snapshot.calendarId);return {cancelled:true};}
  if(!["create","update"].includes(payload.operation))throw new HiringError("invalid_calendar_operation",422,"The interview operation is not supported.");

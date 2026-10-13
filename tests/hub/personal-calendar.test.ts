@@ -95,6 +95,11 @@ test("calendar create, reschedule and cancel use the pinned recruiter token and 
  await personalCalendarEffect(f.store,snapshot,payload,env,provider);
  await connect(f); // Same-account reconnect leaves the event identity intact.
  await personalCalendarEffect(f.store,snapshot,{...payload,operation:"update",start:"2030-01-07T16:00:00Z",end:"2030-01-07T16:30:00Z"},env,provider);
+ f.database.prepare("UPDATE hub_members SET active=0 WHERE email=?").run(RECRUITER.email);
+ const before=methods.length;
+ await assert.rejects(personalCalendarEffect(f.store,snapshot,payload,env,provider),{code:"interviewer_not_active"});
+ await assert.rejects(personalCalendarEffect(f.store,snapshot,{...payload,operation:"update"},env,provider),{code:"interviewer_not_active"});
+ assert.equal(methods.length,before);
  await personalCalendarEffect(f.store,snapshot,{...payload,operation:"cancel"},env,provider);
  assert.ok(methods.includes("POST")&&methods.includes("PATCH")&&methods.includes("DELETE"));
  await assert.rejects(personalCalendarEffect(f.store,snapshot,{...payload,calendarId:MANAGER.email},env,provider),{code:"interview_calendar_identity_mismatch"});
