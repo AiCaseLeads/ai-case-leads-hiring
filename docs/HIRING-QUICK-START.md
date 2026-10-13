@@ -1,6 +1,8 @@
 # Hiring quick start
 
-Open https://jobs.aicaseleads.com/team and sign in with your approved work account.
+Open https://jobs.aicaseleads.com/team and sign in with your invited work Google account. Read the [six-page recruiter handbook](../public/recruiter-guide.pdf), which is also available from Settings.
+
+The owner manages company connections and appoints head recruiters. Head recruiters invite/manage recruiters. All authorized recruiters can create/manage jobs, scorecards and applicant reviews. Each person connects their own interview calendar; no shared passwords are needed. Job assignment controls notifications, not visibility of hiring records.
 
 ## Create a job
 
@@ -22,7 +24,7 @@ Use **Save draft** to pause setup. A draft needs a valid title, location and que
 
 ## Assign recruiters and route job emails
 
-In **Settings → Team access**, add each recruiter's work email so they can sign in with their own Google account. Then choose **Jobs → Hiring team & emails** on a posting, or select its team in the first job-setup step. Managers can select multiple active recruiters/managers per job, choose a reply contact, and save the changes in the dashboard. Hiring-team assignment controls alerts, not dashboard permissions; authorized recruiters still have access to all hiring records.
+In **Settings → Team access & invitations**, invite each recruiter's work email so they can sign in with their own Google account. The owner can appoint a Head recruiter; head recruiters can invite other Recruiters. Invitations show queued, sent, failed or uncertain status; queued is not proof of delivery. Then choose **Jobs → Hiring team & emails** on a posting, or select its team in the first job-setup step. Recruiters can select multiple active staff per job, choose a reply contact, and save the changes in the dashboard. Hiring-team assignment controls alerts, not dashboard permissions; authorized recruiters still have access to all hiring records.
 
 Toggle alerts for new applications, submitted assessments, applicant replies received in the connected mailbox, and overdue reviews. An empty saved team receives no alerts and does not fall back to sales. Saving a team does not send old application alerts. Duplicated jobs and templates start with an empty team so you can choose the people for the new posting.
 
@@ -44,17 +46,15 @@ Unsaved evidence and scorecard drafts survive switching these views. Reloading t
 
 Browser Back/Forward follows dashboard sections, applicant profiles and job-setup steps. Returning from an applicant restores the applied filters and list page; opening from Home returns to Home. A direct applicant link closes into Applications. Job details remain while moving backward and forward inside the same setup; save a draft before reloading or leaving for another section. A pending save can finish on the server even if you navigate back, but its response cannot close a newer setup.
 
-## Connect Google
+## Personal and company setup
 
-**Settings** has three guided steps:
+**Settings → My setup → My interview calendar** is available to every staff member. Choose **Connect my Google Calendar**, approve the connection using the same account used to sign in, and save your own interview hours, time zone, days, duration, notice period and booking horizon. Calendar authorization is separate from dashboard login. Only the account holder can finish Google sign-in/consent; no owner password or new API key is needed.
 
-1. Connect the configured recruiting Google account. Currently sales@aicaseleads.com. Dashboard login is separate from the recruiting account.
-2. Choose the interview calendar. The shortcut uses the connected account. Current approved availability is Monday–Friday, 10:00–16:00 America/Bogota, 30-minute interviews.
-3. Paste the shared Drive folder link. Files use Recruiting → Job → Location → Posting → Applicant. Existing applicants retain their saved folders, including older folder names.
+When sending a booking link, explicitly choose **Who will conduct this interview?** A recruiter is available only after connecting their calendar and saving their hours. The shared company calendar is an explicit alternative. Existing invitations keep their original interviewer/calendar, including during rescheduling and cancellation. Reconnecting a personal calendar must use the same email; a failed personal connection never silently switches the booking to the company calendar.
 
-Save calendar/folder changes using **Save settings**. Switching to Maria's calendar requires event-editing access for the connected account and no active/unresolved bookings. Switching the recruiting Google account requires the hosting administrator to update EXPECTED_RECRUITING_EMAIL and Maria to authorize Google. Do not share the owner's login.
+**Settings → Company setup** is owner-only. The existing company sender and shared Drive archive remain connected as sales@aicaseleads.com. They are separate from personal interview calendars. Recruiters do not need to reconnect the company account or change the archive root. The legacy shared calendar retains the approved Monday-Friday, 10:00-16:00 America/Bogota, 30-minute schedule until the owner changes it.
 
-Team access, reusable scorecards, AI settings, review reminders, rejection templates and advanced hosting controls are separate expandable sections. Connection status alone is not proof a specific email or archive task delivered; check Delivery activity.
+**Team access & invitations** appears for head recruiters and the owner. **Scorecard templates** are available to recruiting staff. Company AI credentials and hosting controls are restricted to the owner. Connection status is not proof of email, calendar or archive delivery; inspect Delivery activity and the actual record.
 
 ## Scorecards and the shortlist
 
@@ -64,7 +64,7 @@ For each candidate, open **Review & scorecard**, choose a score and record suppo
 
 Qualification rules report requirements met, unmet or needing review separately from reviewer grades. AI never changes the grade, stage or hiring outcome. No score automatically rejects anyone.
 
-Editing a scorecard creates a new version. Existing jobs retain their assigned version until a manager explicitly changes it. Saved reviews retain the complete original criteria, rating definitions and evidence. Archiving prevents new assignments while preserving existing ones.
+Editing a scorecard creates a new version. Existing jobs retain their assigned version until an authorized recruiter explicitly changes it. Saved reviews retain the complete original criteria, rating definitions and evidence. Archiving prevents new assignments while preserving existing ones.
 
 ## PDF reading, OCR and optional AI evidence review
 

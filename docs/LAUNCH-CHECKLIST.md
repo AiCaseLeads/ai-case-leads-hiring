@@ -32,7 +32,7 @@ Checked items below reflect dated evidence, principally the hosted checks on 202
 - [ ] Rehearse a controlled provider outage/revoked grant and recovery. Accepted applications must stay intact; retry only safe failures and reconcile uncertain Calendar/Gmail work without duplication.
 - [ ] If enabling interview reminders, prove actual 24-hour/1-hour delivery once, with the correct timezone/Meet link, and suppression for pending/cancelled/replaced/past bookings. Default-off code behavior has isolated coverage; timed live delivery is separate.
 - [ ] Observe the first genuine overdue-review digest reaching the authorized staff recipient once after the saved 48-hour threshold. Recipient/day deduplication and revalidation passed isolated tests; zero overdue records did not exercise live delivery.
-- [ ] When switching to Mariam's account/calendar, obtain her own Google grant or grant the connected account calendar-edit rights, resolve active bookings, update the configured expected recruiting sender if needed, and verify a new booking. Workspace ownership does not authorize her mailbox.
+- [ ] Recruiter onboarding release: invite Mariam as Head recruiter, verify her own sign-in and personal calendar consent, save her availability, and verify a booking/reschedule/cancellation on her calendar. Personal calendar setup no longer requires replacing the company Gmail/Drive grant or changing its expected sender. Existing invitations retain their calendar identity. Her consent and real delivery must be confirmed separately from isolated tests.
 
 ## Controlled end-to-end rehearsal
 
