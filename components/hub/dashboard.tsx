@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   BarChart3,
   BriefcaseBusiness,
@@ -7,6 +7,8 @@ import {
   ExternalLink,
   LayoutDashboard,
   LogOut,
+  Menu,
+  X,
   RefreshCw,
   Settings2,
 } from "lucide-react";
@@ -39,12 +41,15 @@ export function HiringDashboard({
   const [view, setView] = useState<View>("overview"),
     [refresh, setRefresh] = useState(0),
     [detailId, setDetailId] = useState<string | null>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuButton = useRef<HTMLButtonElement>(null);
   const [workspaceNotice, setWorkspaceNotice] = useState("");
   const [createJob, setCreateJob] = useState(0);
   const [initialStage, setInitialStage] = useState("");
   const [initialJobId, setInitialJobId] = useState("");
   const [settingsSection, setSettingsSection] = useState<"scorecards" | undefined>();
   function readLocation() {
+    setMenuOpen(false);
     const params = new URLSearchParams(window.location.search);
     const requested = params.get("view");
     const allowed = ["home", "overview", "applications", "jobs", "reports", "tasks", ...(member.role === "admin" ? ["settings"] : [])];
@@ -144,8 +149,16 @@ export function HiringDashboard({
       <a href="#hub-main" className="skip-link">
         Skip to hiring workspace
       </a>
-      <aside className="hub-sidebar">
-        <Brand />
+      <aside className={"hub-sidebar" + (menuOpen ? " menu-open" : "")} onKeyDown={event => {
+        if (event.key === "Escape" && menuOpen) { setMenuOpen(false); menuButton.current?.focus(); }
+      }}>
+        <div className="hub-sidebar-heading">
+          <Brand />
+          <button ref={menuButton} type="button" className="hub-menu-toggle" aria-expanded={menuOpen} aria-controls="hub-navigation" aria-label={menuOpen ? "Close workspace menu" : "Open workspace menu"} onClick={() => setMenuOpen(open => !open)}>
+            {menuOpen ? <X size={20} /> : <Menu size={20} />} Menu
+          </button>
+        </div>
+        <div id="hub-navigation" className="hub-navigation">
         <div className="hub-workspace-label">HIRING WORKSPACE</div>
         <nav aria-label="Hiring workspace">
           {navigation
@@ -157,7 +170,10 @@ export function HiringDashboard({
                 aria-current={
                   view === item.id && !detailId ? "page" : undefined
                 }
-                onClick={() => changeView(item.id)}
+                onClick={() => {
+                  changeView(item.id);
+                  if (menuButton.current?.offsetParent) menuButton.current.focus();
+                }}
               >
                 <item.icon size={18} />
                 {item.label}
@@ -173,6 +189,7 @@ export function HiringDashboard({
           <a href={signOutHref}>
             <LogOut size={15} /> Sign out
           </a>
+        </div>
         </div>
       </aside>
       <div className="hub-workspace">

@@ -50,37 +50,37 @@ export function CandidateTable({
 }) {
   return (
     <div className="hub-table-wrap">
-      <table className="hub-table hub-applications-table">
-        <thead>
-          <tr>
+      <table className="hub-table hub-applications-table" role="table" aria-label="Applications">
+        <thead role="rowgroup">
+          <tr role="row">
             {toggle && (
-              <th scope="col">
+              <th scope="col" role="columnheader">
                 <span className="sr-only">Select candidate</span>
               </th>
             )}
-            <th scope="col">Candidate</th>
-            <th scope="col">Role</th>
-            <th scope="col">Stage</th>
-            <th scope="col">Qualification</th>
-            <th scope="col">Reviewer grade</th>
-            <th scope="col">Owner</th>
-            <th scope="col">Applied</th>
+            <th scope="col" role="columnheader">Candidate</th>
+            <th scope="col" role="columnheader">Role</th>
+            <th scope="col" role="columnheader">Stage</th>
+            <th scope="col" role="columnheader">Qualification</th>
+            <th scope="col" role="columnheader">Reviewer grade</th>
+            <th scope="col" role="columnheader">Owner</th>
+            <th scope="col" role="columnheader">Applied</th>
           </tr>
         </thead>
-        <tbody>
+        <tbody role="rowgroup">
           {items.map((item) => (
-            <tr key={item.id}>
+            <tr key={item.id} role="row">
               {toggle && (
-                <td>
-                  <input
+                <td role="cell" data-label="Select" className="hub-candidate-select">
+                  <label className="hub-select-target"><span className="sr-only">Select {item.name}</span><input
                     type="checkbox"
                     aria-label={"Select " + item.name}
                     checked={selected?.includes(item.id) || false}
                     onChange={() => toggle(item.id)}
-                  />
+                  /></label>
                 </td>
               )}
-              <td>
+              <td role="cell" data-label="Candidate" className="hub-candidate-identity">
                 <button
                   className="hub-text-button hub-candidate-name"
                   onClick={() => select(item.id)}
@@ -89,25 +89,21 @@ export function CandidateTable({
                 </button>
                 <span className="hub-secondary-line">{item.email}</span>
                 {item.duplicateEmail && <Badge tone="warning">Shared email · {item.duplicateApplicationCount || 2} applications</Badge>}
-                <div className="hub-mobile-review">
-                  <Badge tone={qualificationTone(item.qualification)}>{item.qualification === "review" ? "Needs review" : item.qualification === "pass" ? "Requirements met" : "Requirement not met"}</Badge>
-                  <span className="hub-secondary-line">Reviewer grade</span><GradeSummary grade={item.grade} />
-                </div>
               </td>
-              <td>{item.jobTitle}</td>
-              <td>
+              <td role="cell" data-label="Role">{item.jobTitle}</td>
+              <td role="cell" data-label="Stage">
                 <Badge>{item.stage}</Badge>
               </td>
-              <td>
+              <td role="cell" data-label="Qualification">
                 <Badge tone={qualificationTone(item.qualification)}>
                   {item.qualification === "review"
                     ? "Needs review"
                     : item.qualification === "pass" ? "Requirements met" : "Requirement not met"}
                 </Badge>
               </td>
-              <td><GradeSummary grade={item.grade} /></td>
-              <td>{item.assignee || "Unassigned"}</td>
-              <td className="hub-nowrap">{displayDate(item.createdAt)}</td>
+              <td role="cell" data-label="Reviewer grade"><GradeSummary grade={item.grade} /></td>
+              <td role="cell" data-label="Owner">{item.assignee || "Unassigned"}</td>
+              <td role="cell" data-label="Applied" className="hub-nowrap">{displayDate(item.createdAt)}</td>
             </tr>
           ))}
         </tbody>

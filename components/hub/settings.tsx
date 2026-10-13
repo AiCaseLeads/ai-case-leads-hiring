@@ -413,8 +413,10 @@ function SettingsForm({
               <div>
                 <h3>Manage teammates</h3>
                 <p>
-                  Administrators manage configuration. Recruiters can operate
-                  hiring records.
+                  Adding a teammate here gives them dashboard login access.
+                  Administrators manage configuration; recruiters operate hiring records.
+                  In Jobs → Hiring team &amp; emails, choose who receives alerts and
+                  which reply contact to use for each posting.
                 </p>
               </div>
               <button
