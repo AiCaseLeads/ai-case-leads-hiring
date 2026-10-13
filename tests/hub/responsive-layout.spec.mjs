@@ -67,3 +67,19 @@ test('real styled hub stays usable across mobile, tablet and desktop widths',asy
  }
  assert.deepEqual(pageErrors,[]);
 });
+
+test('question badges and final controls stay readable above the mobile save bar',async t=>{
+ const {page,origin}=await setup(t);
+ for(const width of [320,375]) {
+  await page.setViewportSize({width,height:844});await page.goto(origin+'/?view=jobs');
+  await page.getByRole('button',{name:'Create job',exact:true}).click();await page.getByRole('button',{name:'Create blank job',exact:true}).click();await page.getByLabel('Job title',{exact:true}).fill('Synthetic mobile badge test');await page.getByRole('button',{name:'Continue',exact:true}).click();
+  await page.getByRole('heading',{name:'What should applicants send?',exact:true}).waitFor();
+  const headings=await page.locator('.hub-question-heading').evaluateAll(es=>es.map(e=>{const badge=e.querySelector('.hub-badge'),title=e.querySelector('strong'),button=e.querySelector('button');const range=document.createRange();range.selectNodeContents(badge);return{lines:range.getClientRects().length,badge:badge.getBoundingClientRect().toJSON(),title:title.getBoundingClientRect().toJSON(),button:button?.getBoundingClientRect().toJSON()};}));
+  for(const row of headings){assert.equal(row.lines,1,'Required/Optional stays on a single line');assert.ok(row.badge.y>=row.title.bottom,'Title has its own row');if(row.button)assert.ok(row.button.x>=row.badge.right+8,'Remove button does not pinch the badge');}
+  assert.equal(await page.locator('.hub-sticky-save').evaluate(e=>getComputedStyle(e).backgroundColor),'rgb(255, 255, 255)');
+  const library=page.getByLabel('Add from the question library',{exact:true});await library.focus();await page.keyboard.press('Tab');const custom=page.getByRole('button',{name:'Add custom question',exact:true});assert.equal(await custom.evaluate(e=>e===document.activeElement),true);
+  await custom.scrollIntoViewIfNeeded();assert.equal(await custom.evaluate(e=>{const r=e.getBoundingClientRect();return e.contains(document.elementFromPoint(r.x+r.width/2,r.y+r.height/2));}),true,'Final custom-question control is not covered');
+  if(artifacts)await page.screenshot({path:`${artifacts}/question-badges-${width}.png`,fullPage:true});
+  await page.setViewportSize({width,height:440});await page.getByLabel('Question 4 label',{exact:true}).focus();await page.keyboard.type(' mobile');assert.match(await page.getByLabel('Question 4 label',{exact:true}).inputValue(),/mobile/);assert.equal(await page.locator('.hub-sticky-save').evaluate(e=>getComputedStyle(e).position),'static','Short viewports leave the form unobstructed');await noOverflow(page);
+ }
+});
