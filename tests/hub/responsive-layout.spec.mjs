@@ -11,7 +11,7 @@ const longEmail = 'creative.strategy.recruiting.team@long-company-example.invali
 const member = { email: longEmail, role: 'admin', isOwner:true };
 const job = { id: 'job-1', title: 'Synthetic Creative Strategist', slug: 'synthetic-creative', location: 'Remote · Spain and United States', status: 'open', fields: [], rules: [], formVersion: 1, archiveCountry: 'Spain', hiringRound: 'October' };
 const detail = { id: 'app-1', revision: 1, name: 'Synthetic Applicant With A Long Name', email: longEmail, jobId: job.id, jobTitle: job.title, stage: 'Application Review', qualification: 'review', assignee: longEmail, createdAt: Date.now(), updatedAt: Date.now(), source: 'test', fields: [{path:'experience',title:'Experience',type:'LongText',required:false}], answers: [{path:'experience',value:'Synthetic work sample'}], files: [{id:'file-1',filename:'synthetic-resume-with-a-long-original-file-name.pdf',url:'/api/files/file-1',contentType:'application/pdf',size:500}], history: [], notes: [], communications: [], scorecards: [], qualificationEvidence: [] };
-const settings = {settingsVersion:1,members:[member,{email:'reviewer@example.invalid',role:'recruiter'}],google:{connected:true,sender:longEmail,expectedSender:longEmail,calendarId:longEmail,driveRootId:'shared'},queue:{pending:0,failed:0},templates:{rejection:'Thank you for applying.'},applicationsEnabled:true,scheduling:{timeZone:'America/Bogota',startHour:10,endHour:16,durationMinutes:30,weekdays:[1,2,3,4,5],configured:true,remindersEnabled:false}};
+const settings = {settingsVersion:1,members:[member,{email:'reviewer@example.invalid',role:'recruiter'}],google:{connected:true,sender:longEmail,expectedSender:longEmail,calendarId:longEmail,driveRootId:'shared'},queue:{pending:0,failed:0},templates:{rejection:'Thank you for applying.'},applicationsEnabled:true,accessAudit:[{id:'audit-1',type:'Company configuration updated',actor:longEmail,createdAt:Date.now(),before:{calendarId:longEmail},after:{calendarId:longEmail,driveRootId:'synthetic-shared-folder-'+ 'x'.repeat(80)}}],scheduling:{timeZone:'America/Bogota',startHour:10,endHour:16,durationMinutes:30,weekdays:[1,2,3,4,5],configured:true,remindersEnabled:false}};
 async function setup(t) {
  const {outputFiles}=await build({stdin:{contents:`import React from 'react';import{createRoot}from'react-dom/client';import{HiringDashboard}from'./components/hub/dashboard';createRoot(document.getElementById('root')).render(<HiringDashboard member={${JSON.stringify(member)}} signOutHref='/logout'/>);`,loader:'tsx',resolveDir:process.cwd()},bundle:true,write:false,format:'iife',jsx:'automatic'});
  const globalCss=(await postcss([tailwind()]).process(readFileSync('app/globals.css','utf8'),{from:'app/globals.css'})).css;
@@ -39,14 +39,15 @@ async function setup(t) {
  return {page,origin:`http://127.0.0.1:${server.address().port}`};
 }
 async function noOverflow(page) {
- const out=await page.evaluate(()=>({width:innerWidth,scroll:document.documentElement.scrollWidth,offenders:[...document.querySelectorAll('.hub-main *')].filter(e=>{const r=e.getBoundingClientRect();return r.width&&r.right>innerWidth+1&&!e.closest('.hub-table-wrap');}).slice(0,8).map(e=>e.className||e.tagName)}));
+ const out=await page.evaluate(()=>({width:innerWidth,scroll:document.documentElement.scrollWidth,offenders:[...document.querySelectorAll('.hub-main *')].filter(e=>{const r=e.getBoundingClientRect();return e.checkVisibility()&&r.width&&(r.right>innerWidth+1||r.left < -1)&&!e.closest('.hub-table-wrap');}).slice(0,8).map(e=>e.className||e.tagName)}));
  assert.ok(out.scroll<=out.width+1,JSON.stringify(out));
+ assert.deepEqual(out.offenders,[],`Visible content must fit even when an ancestor hides overflow: ${JSON.stringify(out)}`);
 }
 const artifacts=process.env.HUB_LAYOUT_ARTIFACTS;
 if(artifacts)mkdirSync(artifacts,{recursive:true});
 test('real styled hub stays usable across mobile, tablet and desktop widths',async t=>{
  const {page,origin}=await setup(t);const pageErrors=[];page.on('pageerror',error=>pageErrors.push(error.message));
- for(const width of [320,375,390,768,1280]) {
+ for(const width of [320,375,390,768,1280,1920]) {
   await page.setViewportSize({width,height:844});
   await page.goto(origin+'/?view=jobs');await page.getByRole('heading',{name:'Jobs',exact:true}).waitFor();
   await page.getByRole('button',{name:'Hiring team & emails',exact:true}).waitFor();
@@ -87,4 +88,60 @@ test('question badges and final controls stay readable above the mobile save bar
   if(artifacts)await page.screenshot({path:`${artifacts}/question-badges-${width}.png`,fullPage:true});
   await page.setViewportSize({width,height:440});await page.getByLabel('Question 4 label',{exact:true}).focus();await page.keyboard.type(' mobile');assert.match(await page.getByLabel('Question 4 label',{exact:true}).inputValue(),/mobile/);assert.equal(await page.locator('.hub-sticky-save').evaluate(e=>getComputedStyle(e).position),'static','Short viewports leave the form unobstructed');await noOverflow(page);
  }
+});
+
+
+// Company setup contains forms and nested disclosures that the Team-only sweep missed.
+// Check actual geometry, including the former sticky Save settings overlay, instead
+// of merely checking document width (clipped children can pass that check).
+test('all Settings sections keep expanded content and save actions separated',async t=>{
+ const {page,origin}=await setup(t);const errors=[];page.on('pageerror',error=>errors.push(error.message));
+ for(const viewport of [{width:320,height:844},{width:390,height:844},{width:768,height:844},{width:1280,height:844},{width:1920,height:1080},{width:390,height:440},{width:1280,height:440},{width:1920,height:440},{width:960,height:540}]) {
+  await t.test(`${viewport.width}x${viewport.height}`,async()=>{
+   await page.setViewportSize(viewport);await page.goto(origin+'/?view=settings');
+   await page.getByRole('heading',{name:'My interview calendar',exact:true}).waitFor();
+   for(const section of ['My setup','Team access & invitations','Scorecard templates','Company setup']) {
+    await page.getByRole('button',{name:section,exact:true}).click();
+    if(section==='My setup')await page.getByRole('heading',{name:'My interview calendar',exact:true}).waitFor();
+    if(section==='Team access & invitations')await page.getByLabel('Teammate’s Google Workspace email',{exact:true}).waitFor();
+    if(section==='Scorecard templates'){
+     await page.locator('#scorecard-settings').waitFor();await page.getByRole('button',{name:'New scorecard template',exact:true}).click();
+     const boxes=await page.getByRole('button',{name:'Save template version',exact:true}).evaluate(e=>[...e.parentElement.querySelectorAll('button')].map(e=>e.getBoundingClientRect().toJSON()));
+     if(artifacts)await page.screenshot({path:`${artifacts}/scorecard-editor-${viewport.width}x${viewport.height}.png`,fullPage:true});
+     assert.equal(boxes.length,3,'Scorecard edit actions are present');
+     for(let i=1;i<boxes.length;i++)assert.ok(boxes[i].left-boxes[i-1].right>=10||boxes[i].top-boxes[i-1].bottom>=10,'Scorecard add, save, cancel actions have separate click targets');
+    }
+    if(section==='Company setup')await page.getByRole('button',{name:'Save settings',exact:true}).waitFor();
+    await noOverflow(page);
+    const clipped=await page.locator('.hub-main').evaluate(main=>[...main.querySelectorAll('input,select,textarea,button,summary,code,pre')].filter(e=>e.getClientRects().length&&e.checkVisibility()).flatMap(e=>{const r=e.getBoundingClientRect(),parent=e.closest('.hub-card')?.getBoundingClientRect();return parent&&(r.left<parent.left-1||r.right>parent.right+1)?[{tag:e.tagName,label:e.textContent?.slice(0,70),left:r.left,right:r.right,parentLeft:parent.left,parentRight:parent.right}]:[];}));
+    assert.deepEqual(clipped,[],`${section}: controls stay inside their card`);
+   }
+   for(const label of ['Default rejection email','AI evidence review','Advanced admin setup','Recent access changes'])await page.locator('summary').filter({hasText:new RegExp('^'+label+'$')}).click();
+   await page.getByRole('heading',{name:'Background task processing',exact:true}).waitFor();
+   const deliveryGap=await page.getByRole('button',{name:'Open delivery activity',exact:true}).evaluate(e=>e.nextElementSibling.getBoundingClientRect().top-e.getBoundingClientRect().bottom);
+   assert.ok(deliveryGap>=16,'Delivery activity action has space before the connection card');
+   await page.locator('summary').filter({hasText:/^OAuth client setup instructions$/}).click();
+   await page.locator('summary').filter({hasText:/^Review recorded change$/}).click();
+   await noOverflow(page);
+   const rejection=page.locator('details').filter({has:page.locator('summary').filter({hasText:/^Default rejection email$/})});
+   await rejection.evaluate(e=>window.scrollTo(0,e.getBoundingClientRect().top+scrollY-100));
+   const layout=await page.getByRole('button',{name:'Save settings',exact:true}).evaluate(button=>{
+    const save=button.parentElement,prev=save.previousElementSibling,form=save.closest('form'),next=form.nextElementSibling;
+    const s=save.getBoundingClientRect(),p=prev.getBoundingClientRect(),n=next.getBoundingClientRect();
+    return {beforeGap:s.top-p.bottom,afterGap:n.top-s.bottom,savePosition:getComputedStyle(save).position,saveTop:s.top,previousBottom:p.bottom};
+   });
+   if(artifacts){
+    await page.screenshot({path:`${artifacts}/company-expanded-${viewport.width}x${viewport.height}.png`,fullPage:true});
+    await page.screenshot({path:`${artifacts}/company-save-${viewport.width}x${viewport.height}.png`});
+   }
+   assert.ok(layout.beforeGap>=16&&layout.afterGap>=16,`Settings save row needs space on both sides and must not float over the preceding form: ${JSON.stringify(layout)}`);
+   for(const control of [page.getByLabel('Approved template',{exact:true}),page.getByRole('button',{name:'Save settings',exact:true}),page.locator('summary').filter({hasText:/^AI evidence review$/})]) {
+    await control.scrollIntoViewIfNeeded();
+    assert.equal(await control.evaluate(e=>{const r=e.getBoundingClientRect(),x=r.left+r.width/2;const hit=document.elementFromPoint(x,Math.min(innerHeight-1,Math.max(0,r.top)+Math.min(r.height,innerHeight-Math.max(0,r.top))/2));return hit===e||e.contains(hit);}),true,'Expanded settings controls remain reachable without a covering save bar');
+   }
+   const summaryGaps=await page.locator('.hub-setup-details[open] > summary').evaluateAll(es=>es.map(e=>({label:e.textContent,gap:e.nextElementSibling.getBoundingClientRect().top-e.getBoundingClientRect().bottom})));
+   assert.ok(summaryGaps.every(item=>item.gap>=12),JSON.stringify(summaryGaps));
+  });
+ }
+ assert.deepEqual(errors,[]);
 });
