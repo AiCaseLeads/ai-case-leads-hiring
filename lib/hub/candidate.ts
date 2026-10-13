@@ -1,4 +1,4 @@
-import { interviewCalendar,personalScheduling } from "../personal-calendar/service";
+import { interviewCalendar,personalScheduling,requireActiveInterviewer } from "../personal-calendar/service";
 import { jobNotificationStatements } from "../job-team/service";
 import { sha256 } from "../hiring/crypto";
 import { HiringError } from "../hiring/errors";
@@ -16,6 +16,7 @@ export async function availableSlots(
   pinnedCalendarId?: string | null,
 ): Promise<CandidateSlot[]> {
   const personal = await interviewCalendar(store,excludeInterviewId);
+  if(personal)await requireActiveInterviewer(store,personal.ownerEmail);
   const policy = personal ? personalScheduling(personal) : await store.scheduling();
   if (!policy.configured || (personal ? !hooks.personalBusy : !hooks.busy) || !store.options.integrations?.google)
     throw new HiringError(

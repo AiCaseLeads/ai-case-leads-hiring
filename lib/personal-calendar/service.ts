@@ -14,7 +14,7 @@ export type InterviewCalendar={ownerEmail:string;calendarId:string;availability:
 export async function personalStatus(store:HubStore,email:string){
  const grant=await store.setting<PersonalGrant|null>(grantKey(email),null),availability=await store.setting<Availability|null>(availabilityKey(email),null);
  const revision=await store.setting("google_client_revision",0);
- const connected=!!grant&&grant.email===email.toLowerCase()&&grant.revision===revision;
+ const connected=!!grant&&grant.email===email.toLowerCase()&&grant.revision===revision&&(!store.options.googleFingerprint||grant.fingerprint===store.options.googleFingerprint);
  return {email:email.toLowerCase(),connected,ready:connected&&!!availability,calendarId:grant?.calendarId??null,availability:availability??defaultAvailability};
 }
 export async function personalCalendarSnapshot(store:HubStore,email:string,owners:string[]=[]):Promise<InterviewCalendar>{
@@ -26,3 +26,7 @@ export async function personalCalendarSnapshot(store:HubStore,email:string,owner
 }
 export async function interviewCalendar(store:HubStore,id?:string):Promise<InterviewCalendar|null>{return id?store.setting<InterviewCalendar|null>(interviewCalendarKey(id),null):null;}
 export function personalScheduling(snapshot:InterviewCalendar):Scheduling{return {...snapshot.availability,configured:true,remindersEnabled:false};}
+
+export async function requireActiveInterviewer(store:HubStore,email:string,owners:string[]=(process.env.ADMIN_EMAILS||"").split(",")){
+ if(!(await activeJobStaff(store,owners)).some(person=>person.email===email))throw new HiringError("interviewer_not_active",503,"This interviewer is no longer available. Contact the hiring team for a new invitation.");
+}

@@ -58,6 +58,8 @@ test("personal interviewer owns immutable invite, availability and calendar iden
  await assert.rejects(availableSlots(f.store,{busy:async()=>[]},interview.id,RECRUITER.email),/unavailable/);
  await assert.rejects(availableSlots(f.store,{personalBusy:async()=>{throw new Error("revoked");},busy:async()=>[]},interview.id,RECRUITER.email),/could not be checked/);
  await assert.rejects(currentAction(f.store,app.id,{action:"interview",renew:true,interviewerEmail:MANAGER.email},MANAGER),{code:"interview_owner_pinned"});
+ f.database.prepare("UPDATE hub_members SET active=0 WHERE email=?").run(RECRUITER.email);
+ await assert.rejects(availableSlots(f.store,{personalBusy:async()=>[]},interview.id,RECRUITER.email),{code:"interviewer_not_active"});
  const client=await personalCalendarClient(f.store,snapshot!,env,async()=>{throw new Error("not called for setup");});assert.ok(client);
  await f.store.setSetting(grantKey(RECRUITER.email),null);await assert.rejects(personalCalendarClient(f.store,snapshot!,env),{code:"personal_calendar_reconnect_required"});f.database.close();
 });
@@ -70,6 +72,7 @@ test("candidate booking and cancellation retain personal calendar and one reserv
  const booked=await handleCandidateRequest(post({action:"book",start:info.data.slots[0].start,timeZone:"America/Bogota"}),token,f.store,hooks);assert.equal(booked.status,202,await booked.clone().text());
  const task=(await f.store.tasks()).find(t=>t.kind==="calendar")!;assert.equal(task.payload.calendarId,RECRUITER.email);
  const interview=(await f.store.getApplication(app.id)).interview!;f.database.prepare("UPDATE hub_interviews SET status='booked',provider_id='event' WHERE id=?").run(interview.id);
+ f.database.prepare("UPDATE hub_members SET active=0 WHERE email=?").run(RECRUITER.email);
  const cancelled=await handleCandidateRequest(post({action:"cancel"}),token,f.store,hooks);assert.equal(cancelled.status,202,await cancelled.clone().text());
  const cancel=(await f.store.tasks()).find(t=>t.kind==="calendar"&&t.payload.operation==="cancel")!;assert.equal(cancel.payload.calendarId,RECRUITER.email);assert.equal((await interviewCalendar(f.store,interview.id))?.ownerEmail,RECRUITER.email);f.database.close();
 });
@@ -96,4 +99,14 @@ test("calendar create, reschedule and cancel use the pinned recruiter token and 
  assert.ok(methods.includes("POST")&&methods.includes("PATCH")&&methods.includes("DELETE"));
  await assert.rejects(personalCalendarEffect(f.store,snapshot,{...payload,calendarId:MANAGER.email},env,provider),{code:"interview_calendar_identity_mismatch"});
  f.database.close();
+});
+
+test("personal readiness detects credential fingerprint changes and offline consent is not ready until hours saved",async()=>{
+ const f=await fixture();await connect(f);
+ assert.equal((await personalStatus(f.store,RECRUITER.email)).ready,true);
+ f.store.options.googleFingerprint="changed-credentials";
+ assert.equal((await personalStatus(f.store,RECRUITER.email)).connected,false);
+ assert.equal((await personalStatus(f.store,RECRUITER.email)).ready,false);
+ f.store.options.googleFingerprint=await configurationFingerprint(env);await f.store.setSetting(availabilityKey(RECRUITER.email),null);
+ assert.equal((await personalStatus(f.store,RECRUITER.email)).connected,true);assert.equal((await personalStatus(f.store,RECRUITER.email)).ready,false);f.database.close();
 });

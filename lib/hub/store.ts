@@ -46,6 +46,7 @@ export type HubOptions = {
   origin?: string;
   integrations?: IntegrationStatus;
   expectedRecruitingSender?: string;
+  googleFingerprint?: string;
 };
 type JobRow = {
   id: string;
