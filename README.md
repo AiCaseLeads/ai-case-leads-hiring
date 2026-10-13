@@ -1,14 +1,14 @@
 # AI Case Leads careers and hiring hub — Railway edition
 
-A custom careers website and private hiring dashboard for `jobs.aicaseleads.com`. This standalone edition runs on **Node 24**, with an authoritative SQLite database and private original uploads on one Railway volume. Google Workspace provides staff login, recruiting Gmail, Calendar/Meet, and a secondary Drive archive. A built-in processor handles queued integration tasks. No ATS subscription is required.
+A custom careers website at **https://jobs.aicaseleads.com** and private hiring dashboard at **[/team](https://jobs.aicaseleads.com/team)**. This edition runs on **Node 24** with an authoritative SQLite database and private original uploads on one Railway `/data` volume. Google Workspace provides staff login, recruiting Gmail, Calendar/Meet and a secondary shared Drive archive. A built-in processor handles queued integration tasks. No ATS subscription is required.
 
-**Start here: [Railway setup and owner test](docs/RAILWAY-SETUP.md).** Owner login: `sales@aicaseleads.com`. Recruiting sender: `mariam@aicaseleads.com`, unless you explicitly change it. Staff sign-in and mailbox authorization are separate Google flows.
+**Using the live app? Start with [Hiring quick start](docs/HIRING-QUICK-START.md).** Owner login and the currently connected recruiting sender are both `sales@aicaseleads.com`. The sales calendar is temporary; changing to Mariam's mailbox requires her authorization. Staff sign-in and recruiting authorization are separate Google flows.
 
-This edition does not change the existing Sites deployment. It starts with an empty database and paused intake. Create the two draft roles from the hub; automatic rejection and reminders start off. The current Sites database is not automatically copied. Real Google authorization, Railway deployment, volume restore/persistence, and final domain cutover remain launch checks.
+**Operating or installing it? Read [Railway setup](docs/RAILWAY-SETUP.md).** The existing Railway deployment, Google grant, domain/HTTPS and controlled application/Drive/calendar checks have dated evidence. [Launch checklist](docs/LAUNCH-CHECKLIST.md) distinguishes those completed checks from remaining privacy/retention approval, isolated backup restoration, separate staff-identity testing and the complete offer rehearsal. A fresh installation starts empty with intake paused; it does not copy the old Sites database automatically.
 
 ## Deploy
 
-Use the root `Dockerfile`. Attach a persistent volume at `/data`, configure the server variables from [`.env.railway.example`](.env.railway.example), use one always-running instance, and configure `/api/health` as the deployment healthcheck. Modern optional Railway IaC is in [`.railway/README.md`](.railway/README.md). No `railway.json` is used for new services.
+Use the root `Dockerfile`. Attach a persistent volume at `/data`, configure server variables using [`.env.railway.example`](.env.railway.example) and the setup guide, use one always-running instance, and configure `/api/health` as the deployment healthcheck. The current deployment uses `PUBLIC_SITE_ORIGIN=https://jobs.aicaseleads.com` and `EXPECTED_RECRUITING_EMAIL=sales@aicaseleads.com`. Fresh environments should keep `APPLICATIONS_ENABLED=false` until their own controlled tests pass. Optional Railway IaC is in [`.railway/README.md`](.railway/README.md).
 
 ```sh
 npm ci
@@ -16,13 +16,13 @@ npm run build:railway
 npm run start:railway
 ```
 
-Startup applies append-only SQL migrations after storage is mounted. Never use an ephemeral filesystem for production. Keep credentials in Railway Variables and back up the encryption key securely. The service does not trust browser-supplied staff identity headers.
+Startup applies append-only SQL migrations after storage is mounted. Never use an ephemeral filesystem for production. Keep credentials in Railway Variables and back up the encryption key separately and securely. The service does not trust browser-supplied staff identity headers. Do not reset the existing production installation while following fresh-install instructions.
 
 ## Hiring workflow
 
-Sign in at `/team`. Create the two draft roles, edit job descriptions/forms/requirements, and add approved managers and recruiters. Applications, evidence, notes, shared review, scorecards, bulk actions, assessments, interview booking, reports, communication history, task failures, and Drive links are custom features. Recruiters explicitly initiate assessments and interview invitations. Applicants need no account.
+In **Jobs → Create job**, start blank, duplicate a posting, use a saved template or turn a hiring request into a draft. Follow **Details → Application → Scorecard → Review**. Drafts stay private; closed postings preserve their applicants and files. Applicants need no account. Recruiters explicitly initiate assessments and interview invitations; moving stages alone sends no invitation.
 
-Qualification rules and manager scorecards are separate. Grades display the average of each reviewer’s latest 1–5 score; the API also provides its 0–100 equivalent. An unreviewed applicant has no grade. Compare candidates within one role. There is no AI ranking or AI rejection.
+Qualification rules and human scorecards are separate. Reusable scorecards compute a weighted criterion average; the displayed overall grade averages each reviewer's latest review, with an equivalent 0–100 value available in the API. Ungraded applicants have no grade. Compare within the same posting and approved rubric. PDF text reading and English/Spanish OCR run locally; optional OpenRouter/OpenAI evidence summaries require an explicitly authorized reviewer action and do not rank, grade or reject applicants.
 
 ## Verification
 
@@ -35,6 +35,6 @@ npm run build:railway
 npm run test:railway:http
 ```
 
-[Railway verification](docs/RAILWAY-VERIFICATION.md) records actual checks and remaining live gates. Existing Sites/legacy adapter tests remain regression fixtures; they do not establish Railway or Google live behavior. Follow the owner rehearsal in the setup guide before opening intake or moving DNS.
+[Railway verification](docs/RAILWAY-VERIFICATION.md) records dated hosted checks, historical local evidence and remaining gaps. [Guided hiring audit](docs/HIRING-UX-AUDIT.md) documents the redesign's test scope. Existing Sites/legacy adapter tests remain regression fixtures and do not establish Railway or Google live behavior.
 
-For retained Sites development, the existing `dev`, `build`, and `start` commands use the original Workers build. Railway commands use a separate Node build and independent staff identity.
+For retained Sites development, `dev`, `build` and `start` use the original Workers build. Railway commands use a separate Node build and independent staff identity. Sites D1/R2 bindings and the legacy Apps Script scheduler are not needed for the current Railway deployment.

@@ -1,20 +1,20 @@
 # Railway deployment and owner setup
 
-This is the standalone Railway edition. The existing Sites deployment is unchanged. Railway stores authoritative hiring records in SQLite and original uploads in private files on one persistent volume. Gmail, Calendar/Meet, and Drive use Google Workspace. Staff sign-in uses Google; applicants need no account.
+The production installation is https://jobs.aicaseleads.com, with the private dashboard at `/team`. This guide also covers a fresh standalone Railway installation; do not reset or recreate the existing production service while following those steps. Railway stores authoritative hiring records in SQLite and original uploads in private files on one persistent volume. Gmail, Calendar/Meet, and Drive use Google Workspace. Staff sign-in uses Google; applicants need no account.
 
-Deployment preparation is not a live launch. Google authorization, Railway volume persistence, the owner’s job-posting rehearsal, and final DNS/TLS checks must pass before opening intake.
+The current deployment has dated evidence for Google authorization, volume persistence, guided private job setup, and custom-domain HTTPS. See [Railway verification](RAILWAY-VERIFICATION.md) and [Launch checklist](LAUNCH-CHECKLIST.md) for completed checks and remaining gates. A new environment needs its own tests before enabling intake.
 
-## 1. Your account and Mariam’s account
+## 1. Current owner and recruiting account
 
-`sales@aicaseleads.com` is the configured owner login. You can administer the deployment and the Google Cloud project with the appropriate permissions. Managers can be added as administrators in **Team & settings**.
+`sales@aicaseleads.com` is the owner login and the currently connected recruiting account for Gmail, Calendar/Meet and shared Drive. This replaces the earlier plan to connect `mariam@aicaseleads.com`. The owner authorized sales directly because Mariam's login was unavailable. Managers and recruiters can be added explicitly under **Settings → Team access**; do not share the owner's session.
 
-`mariam@aicaseleads.com` remains the selected recruiting sender. Workspace ownership does not supply permission to her mailbox. While signed in to the hub as sales, use **Connect Google Workspace**, select Mariam’s Google account in the consent window, and have her authorize access. Keep the hub’s staff session signed in as sales. This separate grant lets the service send and read recruiting mail, create Calendar/Meet invitations, and archive files under the chosen Drive root. Do not share her password or paste secrets into chat.
+To switch recruiting email to Mariam later, update `EXPECTED_RECRUITING_EMAIL` to her exact address in Railway, redeploy, and have her authorize **Settings → Connect Google Workspace** using her own account. The hub staff session can remain signed in as sales. Workspace ownership does not itself grant mailbox access. The current implementation uses user OAuth and does not implement domain-wide delegation.
 
-If you prefer sales to perform all recruiting activity, change `EXPECTED_RECRUITING_EMAIL` to `sales@aicaseleads.com` in Railway and redeploy, then authorize sales in the recruiting connection. Existing grants are sender-specific; reconnect after changing this setting. The current implementation uses user OAuth and does not implement domain-wide delegation.
+Switching only the calendar may use the sales grant if sales has permission to edit that calendar. Resolve active/unresolved bookings before changing the calendar ID, then verify a controlled new booking. This is separate from changing the recruiting sender or granting dashboard access.
 
 [Google describes user authorization and administrator-managed domain-wide delegation separately.](https://developers.google.com/workspace/guides/create-credentials)
 
-## 2. Create the Railway service and volume
+## 2. Create a new Railway service and volume
 
 1. Upload this source to a **private GitHub repository** and create a Railway service from that repository. Alternatively, extract the supplied source archive, install the Railway CLI, link your own Railway project, and run `railway up` from the extracted project root. Do not upload `.env`, local databases, private files, or `node_modules`.
 2. Name the service **`hiring-hub`**. Railway detects the root `Dockerfile`. Its build command is `npm run build:railway` and its runtime command is `npm run start:railway`. Node 24 is required. In Railway’s deployment settings, set **healthcheck `/api/health`**, timeout **300 seconds**, restart policy **Always**, and a **55-second shutdown/drain window**. New services no longer read `railway.json`; optional supported IaC is included in [`.railway/README.md`](../.railway/README.md).
@@ -32,16 +32,16 @@ Copy names and ordinary values from `.env.railway.example`. Enter secrets direct
 | Variable | Value / purpose |
 | --- | --- |
 | `DATA_DIR` | `/data`; the attached volume mount |
-| `PUBLIC_SITE_ORIGIN` | Your generated Railway HTTPS origin, without a path or trailing slash |
+| `PUBLIC_SITE_ORIGIN` | Current deployment: `https://jobs.aicaseleads.com`. New environment: its own HTTPS origin, without a path or trailing slash |
 | `ADMIN_EMAILS` | `sales@aicaseleads.com`; explicit owner access |
-| `EXPECTED_RECRUITING_EMAIL` | `mariam@aicaseleads.com`, unless you choose sales instead |
+| `EXPECTED_RECRUITING_EMAIL` | `sales@aicaseleads.com` for the current recruiting connection |
 | `GOOGLE_CLIENT_ID` | The Google Web application OAuth client ID created below |
 | `GOOGLE_CLIENT_SECRET` | The same client’s secret; server-only |
 | `GOOGLE_TOKEN_KEY` | 32 cryptographically random bytes encoded as 64 hexadecimal characters; securely back it up |
-| `APPLICATIONS_ENABLED` | `false` throughout setup; change to exact `true` only for the controlled test and approved launch |
+| `APPLICATIONS_ENABLED` | New environment: `false` during setup; enable exact `true` only for controlled tests/approved intake. Do not reset the existing production flag while following this guide |
 | `BACKGROUND_ENABLED` | `true`; built-in task processing |
 
-The start command sets Railway mode. Railway supplies `PORT`; the server listens on `0.0.0.0`. Keep the encryption key stable after connection. Losing or replacing it makes saved Google credentials unreadable and requires reconnecting. Do not copy credentials from the current Sites deployment: this is a separate installation with its own database and grant.
+The start command sets Railway mode. Railway supplies `PORT`; the server listens on `0.0.0.0`. Keep the encryption key stable after connection. Losing or replacing it makes saved Google credentials unreadable and requires reconnecting. A fresh installation needs its own database and authorization; do not copy credentials or overwrite the existing production installation while following this guide.
 
 To generate an encryption key locally, run this once and paste the result directly into Railway Variables; keep it out of screenshots, commits, and chat:
 
@@ -53,40 +53,42 @@ node -e "process.stdout.write(require('node:crypto').randomBytes(32).toString('h
 
 1. In [Google Cloud Console](https://console.cloud.google.com/), create or select the company recruiting project. Enable **Gmail API**, **Google Calendar API**, and **Google Drive API**.
 2. Configure Google Auth Platform branding and audience. Use **Internal** for your Workspace organization when eligible. Allow the app in Workspace Admin if your organization blocks third-party app access. Staff login needs `openid email profile`; the separate recruiting grant requests Gmail, Calendar, and Drive access.
-3. Create a **Web application** OAuth client. Add these two authorized redirect URIs, replacing `YOUR-SERVICE.up.railway.app` with the generated domain:
+3. Create a **Web application** OAuth client. Add these two authorized redirect URIs, using the current production addresses below (a new environment must use its own origin):
 
 ```text
-https://YOUR-SERVICE.up.railway.app/api/auth/google/callback
-https://YOUR-SERVICE.up.railway.app/api/google/callback
+https://jobs.aicaseleads.com/api/auth/google/callback
+https://jobs.aicaseleads.com/api/google/callback
 ```
 
 4. Enter its client ID and secret in Railway Variables and redeploy. They are shared by the two separate authorization flows, remain on the server, and are never displayed by the hiring status API.
-5. Open `/team`, select **Sign in with Google**, and choose `sales@aicaseleads.com`. Unknown users do not become administrators. Add managers/recruiters explicitly in **Team & settings**.
-6. In **Team & settings → Google connection setup**, confirm the expected sender. Select **Connect Google Workspace** and authorize the chosen recruiting account. Confirm the connected sender afterward.
+5. Open `/team`, select **Sign in with Google**, and choose `sales@aicaseleads.com`. Unknown users do not become administrators. Add managers/recruiters explicitly in **Settings**.
+6. In **Settings → Google connection setup**, confirm the expected sender. Select **Connect Google Workspace** and authorize the chosen recruiting account. Confirm the connected sender afterward.
 
 The callback addresses must match exactly. Staff identity does not authorize recruiting services. [Google web-server OAuth](https://developers.google.com/identity/protocols/oauth2/web-server), [Google sign-in validation](https://developers.google.com/identity/openid-connect/openid-connect).
 
 ## 5. Calendar, Drive, and background tasks
 
-Create or choose a recruiting calendar. The recruiting Google account must be able to create and modify its events. Copy **Calendar settings → Integrate calendar → Calendar ID** into the hub. Save the actual time zone, weekdays, hours, and interview duration; confirm these instead of accepting an assumed schedule.
+The current approved temporary calendar is sales, Monday–Friday, 10:00–16:00 `America/Bogota`, with 30-minute interviews. For a new environment, create or choose a recruiting calendar. The recruiting Google account must be able to create and modify its events. Copy **Calendar settings → Integrate calendar → Calendar ID** into the hub. Save the actual time zone, weekdays, hours, and interview duration; confirm these instead of accepting an assumed schedule.
 
-Create a private recruiting Drive root folder and give the recruiting account access to create folders and files inside it. Paste its folder ID into the hub. Public `anyone`-shared roots are rejected. Candidate data and original files remain private on Railway; Drive receives a secondary archive organized by job and separate application identity.
+Create a private recruiting Drive root folder and give the recruiting account access to create folders and files inside it. Paste its folder ID into the hub. Public `anyone`-shared roots are rejected. Candidate data and original files remain private on Railway; Drive receives a secondary archive organized as Recruiting → Job → Location → Posting → Applicant, with separate application identity. Legacy folder labels remain preserved.
 
-The Node service runs the queue without Apps Script. **Integration tasks** shows task outcomes, failed/uncertain deliveries, and worker health. Google outages leave accepted applications in the database. Fix the connection and retry failed tasks through the hub. Uncertain Gmail sends are searched by their exact message identity and are never automatically resent. Review the recorded outcome before authorizing any new message.
+The Node service runs the queue without Apps Script. **Delivery activity** shows task outcomes, failed/uncertain deliveries, and worker health. Google outages leave accepted applications in the database. Fix the connection and retry failed tasks through the hub. Uncertain Gmail sends are searched by their exact message identity and are never automatically resent. Review the recorded outcome before authorizing any new message.
 
 Do not install the old Sites Apps Script scheduler for this edition. Keep **automatic rejection and interview reminders disabled** until their specific tests and requirements are approved.
 
-## 6. Post a job and test the complete flow
+## 6. Post a job and rehearse the complete flow
 
-1. As sales, open **Overview → Create the two draft roles** if the database is empty. Open **Roles & forms** and edit one draft’s description, application questions, assessment prompt, and approved qualification rules. Save, reopen, and confirm persistence.
-2. Open the job, set `APPLICATIONS_ENABLED=true`, and redeploy for a short controlled test using the temporary Railway domain. Open the applicant website in a signed-out browser and confirm the role appears. Use a clearly labeled test application and an inbox you control.
-3. Upload a sample resume, submit, and confirm the receipt. Repeated clicks/retries must create one application and one initial email decision. Verify the application appears in the private hub with the correct job, answers, source, and file. Anonymous visitors must not see the application or private file.
-4. Check confirmation email delivery and Drive archival. Add an internal note and reopen the profile. Record a manager scorecard and verify the displayed score and reviewer. Review qualification evidence against your configured rules.
-5. Explicitly start the assessment and complete its emailed link. Explicitly invite the candidate to an interview, check time zones and availability, book it, verify the Calendar event/Meet link, reschedule, then cancel. Confirm the matching event and history update. Test rejection using your own test inbox and verify one email for one decision.
-6. Restart and redeploy the service with the same volume. Verify that the test job, application, scorecard, original upload, and Drive links remain. Confirm a queued task resumes. Enable and test backups below.
-7. Set intake back to `false` if any check fails or setup remains incomplete. Clean up test records deliberately; never run destructive resets against production.
+Use a clearly labeled test posting and an inbox you control. Never send test invitations, rejections or offers to real applicants. On production, save private drafts while reviewing setup; changing `APPLICATIONS_ENABLED` affects all postings.
 
-Local automated checks cannot verify an actual Google consent grant, provider quotas, delivery, Railway disk persistence, owner permissions, or DNS. Those remain live acceptance checks.
+1. Open **Jobs → Create job**. Choose blank, duplicate, saved template or hiring request; follow **Details → Application → Scorecard → Review**. Set Remote/Hybrid/On-site and country/city, choose Required/Optional questions and an approved reusable scorecard. Save a draft, reopen and confirm persistence. Duplicate creates a new posting; the original retains its applicants.
+2. Approve the description/questions and publish the test posting only for the controlled rehearsal. In a fresh environment, enable `APPLICATIONS_ENABLED=true` and redeploy first. Confirm public visibility in a signed-out browser.
+3. Submit on desktop/mobile with a sample resume. Verify the accepted receipt, one application despite retries, correct answers/source/private original, and anonymous access denial.
+4. Confirm actual Gmail delivery and the shared Drive copy. Add a human review and reopen it; verify the reviewer, criterion evidence, grade and pinned rubric version. Check qualification evidence separately.
+5. Explicitly start an assessment and submit through its emailed link. Explicitly invite to an interview; verify timezone/availability/conflicts, Calendar event/Meet, rescheduling, cancellation and matching history. Test manual rejection against the controlled inbox and verify one email per decision.
+6. Rehearse Offer with approved test content and verify its hiring history and archived record. Completing earlier booking checks does not certify this full apply → review → assessment → schedule → offer path.
+7. Close the synthetic posting afterward; retain evidence deliberately. Verify persistence after restart/redeploy with the same volume, queue recovery and an isolated restore as described below. If submission integrity fails, pause intake without deleting accepted records.
+
+Local checks establish code behavior; actual consent, provider delivery/quotas, identities, hosted storage and DNS need dated live evidence. The launch checklist already records completed hosted component checks so they need not be confused with entirely missing setup.
 
 ## 7. How grading works
 
@@ -98,7 +100,7 @@ Approve a shared rubric before comparing applicants: job-relevant evidence, exam
 
 ## 8. Backups, recovery, and the public domain
 
-Enable Railway volume backups and choose a retention schedule. Test a restore into a separate staging service before launch. The database, original-file directory, and encryption key all matter; Drive archives do not replace the authoritative database. Use the included SQLite backup command for an online-consistent database snapshot; do not copy just `hiring.sqlite` while WAL writes are active. Treat every backup as private candidate data.
+The current deployment has daily/weekly Railway volume snapshots configured; an isolated restore remains a separate unfinished acceptance test. For a new installation, enable backups and choose a retention schedule. Test recovery into a separate staging service without overwriting production. The database, original-file directory, and encryption key all matter; Drive archives do not replace the authoritative database. Use the included SQLite backup command for an online-consistent database snapshot; do not copy just `hiring.sqlite` while WAL writes are active. Treat every backup as private candidate data.
 
 From a Railway shell inside the running container, create a new dated snapshot without overwriting an existing file:
 
@@ -110,7 +112,7 @@ Replace the date placeholder. This captures SQLite including committed WAL data;
 
 Keep this service on one replica. For larger multi-instance operation, plan a separate migration to a shared database/object store instead of mounting SQLite on multiple services.
 
-After the controlled test and review gate pass, add **`jobs.aicaseleads.com`** to Railway’s custom domains. Use the exact DNS record Railway supplies. Remove/replace the old Sites routing for this hostname only after confirming the cutover; do not reuse the Sites CNAME or guess Railway’s target. Update `PUBLIC_SITE_ORIGIN=https://jobs.aicaseleads.com`, add both custom-domain callback URIs to the same Google client, and redeploy. Revalidate staff login, applicant links, email, Calendar, Drive, and HTTPS on the final hostname. If the Google client or sender changes, reconnect the recruiting grant.
+The current **`jobs.aicaseleads.com`** cutover is already verified. The following procedure is for a future origin change or a new installation: after the controlled test and review gate pass, add the intended hostname to Railway’s custom domains. Use the exact DNS record Railway supplies. Remove/replace the old Sites routing for this hostname only after confirming the cutover; do not reuse the Sites CNAME or guess Railway’s target. Update `PUBLIC_SITE_ORIGIN=https://jobs.aicaseleads.com`, add both custom-domain callback URIs to the same Google client, and redeploy. Revalidate staff login, applicant links, email, Calendar, Drive, and HTTPS on the final hostname. If the Google client or sender changes, reconnect the recruiting grant.
 
 Keep the Railway-domain callbacks during rollback preparation. If a release fails, redeploy the previous code against the same volume only when its migrations are compatible, or restore a tested private backup into staging first. Never attach two live instances to the same SQLite volume.
 

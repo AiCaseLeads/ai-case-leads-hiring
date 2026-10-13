@@ -1,41 +1,46 @@
-# Connect the recruiting Google account
+# Google Workspace setup — Railway
 
-**For the standalone Railway edition, use [Railway setup](RAILWAY-SETUP.md).** The instructions below describe the retained Sites installation and its Apps Script scheduler.
+The current production hub is https://jobs.aicaseleads.com/team. **`sales@aicaseleads.com` is both the owner login and the connected recruiting account** for Gmail, the temporary Calendar/Meet setup and the shared Drive archive. Actual Google consent and controlled Gmail/Calendar/Drive behavior have dated evidence; see [Railway verification](RAILWAY-VERIFICATION.md). The previous Mariam sender plan and private Sites setup do not describe current production.
 
-The custom hub owns hiring records in Sites D1 and original files in private R2. Gmail, Calendar/Meet, and Drive require a real Google grant. That grant and live end-to-end tests are still pending; intake remains paused.
+Staff login and the recruiting connection are separate OAuth flows. A manager can sign in to the hiring hub without becoming the recruiting sender. Workspace ownership does not authorize another employee's mailbox.
 
-## Secure setup in the hub
+## Check the existing connection
 
-1. Open `/team` → **Sign in to the hiring hub** → **Team & settings** as an admin. Under **Google connection setup**, copy the displayed exact HTTPS callback URI ending in `/api/google/callback`.
-2. Open the team's [Google Cloud Console](https://console.cloud.google.com/). Enable Gmail, Google Calendar, and Google Drive APIs. Configure the OAuth audience as **Internal** for the team's Workspace organization when eligible, then create a **Web application** OAuth client with that exact authorized redirect URI. Google requires redirect URI matching; external/restricted-scope apps have separate consent/verification requirements. See [Google web-server OAuth](https://developers.google.com/identity/protocols/oauth2/web-server).
-3. Return to **Google connection setup**. Enter the client ID and client secret in the dedicated fields and select **Save Google client configuration**. The secret field clears after successful saving. Saved client secrets and refresh tokens are encrypted server-side; status endpoints do not return them. Do not paste secrets into chat.
-4. Select **Connect Google Workspace** while using the intended recruiting sender account. Grant the requested Gmail send/read, Calendar, and Drive permissions. Verify the displayed connected sender afterward. Saving a replacement OAuth client disconnects the old grant and requires reconnection.
-5. Save the **Recruiting calendar ID**, **Interview time zone** (IANA name), duration, weekdays, and availability window. Save the **Recruiting Drive root folder ID**. The connected account needs Calendar event access and permission to create files under that private root; roots shared with `anyone` are rejected.
-6. Use **Integration tasks** → **Process pending tasks** with authorized test records. Prove actual email delivery, replies, availability/conflicts, Meet creation, booking changes/cancellations, and correct Drive contents before relying on the integration.
+1. Sign in as an approved administrator and open **Settings**. The guided Google steps show the connected sender, interview calendar and shared Drive folder.
+2. Confirm the intended sender is sales. Do not disconnect/recreate the working grant just to repeat setup.
+3. Current approved temporary availability is Monday–Friday, 10:00–16:00 `America/Bogota`, 30-minute interviews. Confirm calendar editing rights before changing IDs, and resolve active/unresolved bookings first.
+4. The shared recruiting root must permit the connected account to create folders/files and remain private. Archives use Recruiting → Job → Location → Posting → Applicant; existing application/folder identities are preserved.
+5. Save calendar/Drive changes using **Save settings**. Inspect **Delivery activity** for actual completed or failed tasks; a connected status alone is not delivery evidence.
 
-The current Site's `GOOGLE_TOKEN_KEY` and `HUB_SCHEDULER_SECRET` are already set through native server configuration. Do not replace or disclose them. Replacing the encryption key makes saved sealed credentials unreadable. For separate environments, provision server-only secrets securely; `.env.example` contains placeholders only.
+## Configure a fresh Railway environment
 
-Gmail read permission supports exact Message-ID reconciliation and polling of known hiring threads. Full Drive scope supports the existing selected root; this build does not provide a Google Picker `drive.file` flow. The OAuth callback verifies staff-bound, expiring state and requires the requested scopes and offline refresh token. The callback sender is read from the actual Gmail profile.
+Use [Railway setup](RAILWAY-SETUP.md) for the full deployment procedure. Keep its intake paused until controlled acceptance tests pass.
 
-## Install unattended processing
+1. In the company Google Cloud project, enable Gmail, Calendar and Drive APIs. Configure the Google Auth Platform audience as Internal when eligible; allow the app in Workspace Admin if required.
+2. Create a Web application OAuth client with the exact environment-specific callbacks. Current production uses:
 
-1. In **Team & settings** → **Background task processing**, select **Show scheduler configuration**. This explicitly retrieves the authenticated setup values; the scheduler secret is masked until revealed. Copy the properties only into the team's authorized Apps Script project.
-2. Create a standalone [Google Apps Script](https://script.google.com/) project owned by the recruiting Workspace account. Download the scheduler source from the hub (`/workspace-scheduler.gs`) and paste it into the project. The source contains no credentials.
-3. In **Project Settings** → **Script properties**, add the displayed `HIRING_SITE_URL`, `HIRING_SCHEDULER_SECRET`, and `HIRING_BATCH_LIMIT`. Use the displayed batch limit of 5 for initial validation.
-4. A private Site additionally requires a verified hosting service-authentication mechanism. The script supports a `SITE_SERVICE_TOKEN` property sent in `OAI-Sites-Authorization`; obtain and validate it through the hosting platform if available. The scheduler secret alone cannot pass owner sign-in. Do not promise private unattended operation before token lifetime and renewal are established.
-5. Run **installWorkspaceScheduler** manually and approve the script's Google authorization. Verify there is exactly one **runHiringQueue** trigger. Run **runHiringQueue** manually against a controlled queue, inspect task results, and check the `HIRING_LAST_SUCCESS_AT` Script property. Then observe a genuine scheduled execution.
-6. Use **uninstallWorkspaceScheduler** to stop this project's hiring trigger. Keep **Process pending tasks** available as the manual fallback.
+```text
+https://jobs.aicaseleads.com/api/auth/google/callback
+https://jobs.aicaseleads.com/api/google/callback
+```
 
-The trigger requests processing once per minute; delivery is subject to [Apps Script quotas](https://developers.google.com/apps-script/guides/services/quotas) and trigger delays, not a one-minute SLA. D1 owns leases, retry state, and failures. Stopping the scheduler does not lose tasks. The script sends no candidate data, logs no secrets, and rejects login redirects. See [installable triggers](https://developers.google.com/apps-script/guides/triggers/installable).
+3. Save `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` privately in Railway Variables, with a stable backed-up `GOOGLE_TOKEN_KEY`. No secret belongs in source, browser code or chat. Replacing the encryption key invalidates saved encrypted credentials.
+4. Set `ADMIN_EMAILS` to explicitly approved owners and `EXPECTED_RECRUITING_EMAIL=sales@aicaseleads.com` for the selected sales connection. Redeploy, sign in through Google, then separately choose **Connect Google Workspace** and authorize the recruiting account. Verify its actual displayed sender.
+5. Save the calendar ID, timezone/window/duration and private shared Drive root. The consent grant requires Gmail send/read, Calendar and Drive scopes plus offline access. [Google web-server OAuth](https://developers.google.com/identity/protocols/oauth2/web-server).
+6. Use a controlled inbox/posting to verify delivery, availability/conflicts, Meet, booking changes/cancellation and archive identity. Complete the remaining [launch acceptance checks](LAUNCH-CHECKLIST.md), including reply/recovery and offer rehearsal.
 
-## Recovery and go-live
+## Switch to Mariam later
 
-Failed tasks can be retried after fixing the cause. Uncertain Gmail sends are reconciled by exact Message-ID and never blindly resent; uncertain Calendar work uses **Reconcile Calendar** with the same event identity. Drive retries retain reserved IDs and upload state. Reconnect Google if the grant is revoked, and inspect the visible reply-polling error in settings.
+To change the **recruiting mailbox**, the operator must update `EXPECTED_RECRUITING_EMAIL` to Mariam's exact address, redeploy, and have Mariam authorize her account in the Google connection step. Do not ask for or share her password. Her dashboard access is granted separately through **Settings → Team access**.
 
-Each application folder contains revision snapshots named `application-r1.json`, `application-r2.json`, and so on, plus its original files. The highest revision contains the newest archived hiring record; earlier snapshots preserve history. Separate revision identities prevent a late worker from replacing a newer snapshot. Email and Calendar results queue another snapshot, and reconciliation compares the saved application revision rather than task timestamps. Drive folder links and delivery timestamps do not themselves create new hiring revisions.
+To change **only the calendar**, the sales connection can remain if sales has event-editing rights to Mariam's calendar. Resolve active bookings before switching and test one new invitation afterward. User OAuth is implemented; administrator domain-wide delegation is not.
 
-Keep the Site private, jobs draft, and intake paused until the controlled Google tests pass. Before changing to the public domain, update and verify the exact OAuth callback, emailed-link origin, and scheduler origin. Use [LAUNCH-CHECKLIST.md](LAUNCH-CHECKLIST.md) and [SUBMISSION-RECOVERY.md](SUBMISSION-RECOVERY.md).
+## Processing and recovery
 
-## Optional interview reminders
+Railway's always-running Node service processes queued work automatically. **No Apps Script scheduler, Sites service token, D1 binding or R2 bucket is required.** The retained `workspace-scheduler.gs` is legacy Sites material and must not be installed for this deployment.
 
-The manager can enable Gmail reminders in Calendar settings. They are off by default. A subsequent confirmed booking or reschedule queues reminders 24 hours and one hour before the interview, only when those times are still in the future. Enabling the option does not backfill already confirmed bookings. Before delivery, the processor checks the current booking, revision, start time, active application, and saved setting again; stale or cancelled reminders are skipped. Live timing and delivery must still be tested after Google authorization.
+Accepted applications and originals save on Railway before Google tasks execute. On failure, fix the grant/access and retry safe failures from Delivery activity. Uncertain Gmail sends use exact Message-ID reconciliation rather than blind resend; uncertain Calendar work uses the existing event identity. Drive retries preserve reserved IDs and revision snapshots. Public Drive roots shared with `anyone` are rejected.
+
+Full Drive OAuth access is broader than only the recruiting folder; this implementation does not use a Google Picker `drive.file` flow. Gmail read permission supports known-thread replies and uncertain-send reconciliation. Record any change of grant/root as an operational change and verify the intended account and private access.
+
+Overdue-review reminders are staff-only and use the saved waiting period/fallback recipients; their first real email remains an acceptance check. Interview reminders are separate and default off: prove actual timed delivery and cancellation suppression before enabling them. [Google Workspace setup and credentials](https://developers.google.com/workspace/guides/create-credentials).
