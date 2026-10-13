@@ -44,57 +44,90 @@ export function HiringDashboard({
   const [initialStage, setInitialStage] = useState("");
   const [initialJobId, setInitialJobId] = useState("");
   const [settingsSection, setSettingsSection] = useState<"scorecards" | undefined>();
+  function readLocation() {
+    const params = new URLSearchParams(window.location.search);
+    const requested = params.get("view");
+    const allowed = ["home", "overview", "applications", "jobs", "reports", "tasks", ...(member.role === "admin" ? ["settings"] : [])];
+    const next = requested && allowed.includes(requested) ? (requested === "home" ? "overview" : requested as View) : params.has("application") ? "applications" : "overview";
+    setView(next);
+    setDetailId(params.get("application"));
+    setInitialStage(next === "applications" && stages.includes(params.get("stage") || "") ? params.get("stage")! : "");
+    setInitialJobId(next === "applications" ? params.get("jobId") || "" : "");
+    const filters = new URLSearchParams();
+    for (const key of ["q", "jobId", "stage", "assignee", "qualification", "grade", "sort", "duplicate"]) if (next === "applications" && params.has(key)) filters.set(key, params.get(key)!);
+    setInitialFilter(filters.toString());
+    const page = Number(params.get("page"));
+    setInitialPage(Number.isFinite(page) ? Math.max(1, Math.min(10000, Math.floor(page))) : 1);
+    setSettingsSection(next === "settings" && params.get("section") === "scorecards" ? "scorecards" : undefined);
+    setCreateJob(0);
+  }
+  const [initialFilter, setInitialFilter] = useState("");
+  const [initialPage, setInitialPage] = useState(1);
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search), outcome = params.get("workspace"), application = params.get("application"), requestedView = params.get("view");
-    queueMicrotask(() => {
-      if (requestedView && ["home", "overview", "applications", "jobs", "reports", "tasks", ...(member.role === "admin" ? ["settings"] : [])].includes(requestedView)) setView(requestedView === "home" ? "overview" : requestedView as View);
-      const requestedStage = params.get("stage"); if (requestedView === "applications" && requestedStage && stages.includes(requestedStage)) setInitialStage(requestedStage);
-      if (application) setDetailId(application);
+    queueMicrotask(readLocation);
+    const pop = () => readLocation();
+    window.addEventListener("popstate", pop);
+    const params = new URLSearchParams(window.location.search), outcome = params.get("workspace");
+    if (outcome) queueMicrotask(() => {
       if (outcome === "connection_failed") {
-        const reason = params.get("reason"), messages: Record<string,string> = {
+        const messages: Record<string, string> = {
           wrong_sender: "Google authorization used a different account. Connect again using the recruiting account shown in Google connection setup.",
           missing_permissions: "Google authorization did not include all required Gmail, Calendar, and Drive permissions. Connect again and approve the requested access.",
           configuration_changed: "The Google client configuration changed during authorization. Connect Google Workspace again using the current client settings.",
           offline_grant_missing: "Google did not provide the background authorization required for recruiting tasks. Reconnect the recruiting account and approve access again.",
         };
-        setWorkspaceNotice(messages[reason || ""] || "Google authorization did not complete. Review your OAuth setup and try connecting again in Settings."); setView("settings");
+        setWorkspaceNotice(messages[params.get("reason") || ""] || "Google authorization did not complete. Review your OAuth setup and try connecting again in Settings.");
       }
-      if (outcome === "connected") { setWorkspaceNotice("Google authorization completed. Confirm the recruiting sender, Calendar availability, and Drive folder in Settings before testing a delivery."); setView("settings"); }
+      if (outcome === "connected") setWorkspaceNotice("Google authorization completed. Confirm the recruiting sender, Calendar availability, and Drive folder in Settings before testing a delivery.");
+      if (member.role === "admin") {
+        const url = new URL(window.location.href); url.searchParams.set("view", "settings");
+        window.history.replaceState(window.history.state, "", url); readLocation();
+      }
     });
+    return () => window.removeEventListener("popstate", pop);
+    // Location, rather than a captured React view, is the source of navigation state.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [member.role]);
   const resource = useHubResource<Overview>("/api/hub/overview", refresh);
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search), jobId = params.get("jobId");
-    if (params.get("view") === "applications" && jobId && resource.data?.jobs.some(job => job.id === jobId)) queueMicrotask(() => setInitialJobId(jobId));
-  }, [resource.data]);
   const admin = member.role === "admin",
     data = resource.data;
   function changed() {
     setRefresh((value) => value + 1);
   }
-  function changeView(next: View) {
-    setView(next);
-    setDetailId(null);
-    setCreateJob(0);
-    setInitialStage("");
-    setInitialJobId("");
-    setSettingsSection(undefined);
-    const url = new URL(window.location.href);
-    url.searchParams.set("view", next === "overview" ? "home" : next);
-    url.searchParams.delete("application");
-    url.searchParams.delete("workspace");
-    url.searchParams.delete("reason");
-    url.searchParams.delete("jobId");
-    url.searchParams.delete("stage");
-    window.history.replaceState(null, "", url);
+  function navigate(url: URL, replace = false, candidateFrom?: string) {
+    if (url.href !== window.location.href) {
+      const state = { aiclHub: true, ...(candidateFrom ? { candidateFrom } : {}) };
+      window.history[replace ? "replaceState" : "pushState"](state, "", url);
+    }
+    readLocation();
+    window.dispatchEvent(new Event("hub:navigate"));
   }
-  function openReviewQueue() { changeView("applications"); setInitialStage("Application Review"); const url = new URL(window.location.href); url.searchParams.set("stage", "Application Review"); window.history.replaceState(null, "", url); }
+  function viewUrl(next: View) {
+    const url = new URL(window.location.href);
+    for (const key of ["application", "workspace", "reason", "jobId", "stage", "q", "assignee", "qualification", "grade", "sort", "duplicate", "page", "section", "jobEditor", "jobStep", "jobStart", "jobSource"]) url.searchParams.delete(key);
+    url.searchParams.set("view", next === "overview" ? "home" : next);
+    return url;
+  }
+  function changeView(next: View) { navigate(viewUrl(next)); }
+  function openReviewQueue() { const url = viewUrl("applications"); url.searchParams.set("stage", "Application Review"); navigate(url); }
   function beginJob() { changeView("jobs"); setCreateJob(Date.now()); }
   function selectApplication(id: string) {
-    setDetailId(id); const url = new URL(window.location.href); url.searchParams.set("application", id); window.history.replaceState(null, "", url);
+    const url = new URL(window.location.href); url.searchParams.set("application", id);
+    navigate(url, false, window.location.href);
   }
-  function closeApplication() { setDetailId(null); const url = new URL(window.location.href); url.searchParams.delete("application"); window.history.replaceState(null, "", url); }
-  function manageScorecards() { changeView("settings"); setSettingsSection("scorecards"); }
+  function closeApplication() {
+    const url = new URL(window.location.href); url.searchParams.delete("application");
+    // Only traverse a predecessor that this dashboard created. A direct link stays here.
+    if (window.history.state?.aiclHub && window.history.state?.candidateFrom === url.href) window.history.back();
+    else navigate(url, true);
+  }
+  function applyFilters(filter: string, page: number) {
+    const url = viewUrl("applications");
+    new URLSearchParams(filter).forEach((value, key) => url.searchParams.set(key, value));
+    if (page > 1) url.searchParams.set("page", String(page));
+    navigate(url);
+  }
+  function manageScorecards() { const url = viewUrl("settings"); url.searchParams.set("section", "scorecards"); navigate(url); }
   return (
     <div className="hiring-hub">
       <a href="#hub-main" className="skip-link">
@@ -159,6 +192,19 @@ export function HiringDashboard({
         </header>
         <main id="hub-main" className="hub-main">
           {workspaceNotice && <p className="hub-notice" role="status">{workspaceNotice}</p>}
+          {view === "applications" && <div hidden={!!detailId}><Candidates
+            key={`${initialFilter}:${initialPage}:${data?.jobs.some(job => job.id === initialJobId) ? initialJobId : ""}`}
+            initialStage={initialStage}
+            initialJobId={data?.jobs.some(job => job.id === initialJobId) ? initialJobId : ""}
+            initialFilter={initialFilter}
+            initialPage={initialPage}
+            reviewerEmail={member.email}
+            jobs={data?.jobs || []}
+            refresh={refresh}
+            changed={changed}
+            onSelect={selectApplication}
+            onFilterChange={applyFilters}
+          /></div>}
           {detailId ? (
             <CandidateDetail
               key={detailId}
@@ -191,18 +237,8 @@ export function HiringDashboard({
                 <div className="hub-home-status" aria-label="Hiring connections"><Badge tone={data.integrations.google && data.integrations.drive && data.integrations.applicationsEnabled ? "success" : "warning"}>{data.integrations.google && data.integrations.drive && data.integrations.applicationsEnabled ? "Google connected · Drive configured · Applications open" : "Setup needs attention"}</Badge>{admin && <button className="hub-text-button" onClick={() => changeView("settings")}>Connection settings</button>}<button className="hub-text-button" onClick={() => changeView("tasks")}>Delivery activity</button></div>
               </>}
             </>
-          ) : view === "applications" ? (
-            <Candidates
-              key={`${initialStage}:${initialJobId}`}
-              initialStage={initialStage}
-              initialJobId={initialJobId}
-              reviewerEmail={member.email}
-              jobs={data?.jobs || []}
-              refresh={refresh}
-              changed={changed}
-            />
-          ) : view === "jobs" ? (
-            <Jobs key={createJob} admin={admin} refresh={refresh} changed={changed} startCreating={!!createJob} onManageScorecards={manageScorecards} />
+          ) : view === "applications" ? null : view === "jobs" ? (
+            <Jobs admin={admin} refresh={refresh} changed={changed} startCreating={!!createJob} onManageScorecards={manageScorecards} />
           ) : view === "reports" ? (
             <Reports refresh={refresh} />
           ) : view === "tasks" ? (

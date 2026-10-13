@@ -122,6 +122,10 @@ export function Candidates({
   reviewerEmail,
   initialStage = "",
   initialJobId = "",
+  initialFilter,
+  initialPage = 1,
+  onSelect,
+  onFilterChange,
 }: {
   jobs: HubJob[];
   refresh: number;
@@ -129,17 +133,26 @@ export function Candidates({
   reviewerEmail: string;
   initialStage?: string;
   initialJobId?: string;
+  initialFilter?: string;
+  initialPage?: number;
+  onSelect?: (id: string) => void;
+  onFilterChange?: (filter: string, page: number) => void;
 }) {
-  const [q, setQ] = useState(""),
+  const initial = new URLSearchParams(initialFilter);
+  if (initialStage) initial.set("stage", initialStage);
+  if (initialJobId) initial.set("jobId", initialJobId);
+  else {initial.delete("jobId"); initial.delete("grade"); initial.delete("sort");}
+  if (!initialStage) initial.delete("stage");
+  const [q, setQ] = useState(initial.get("q") || ""),
     [jobId, setJobId] = useState(initialJobId),
     [stage, setStage] = useState(initialStage),
-    [assignee, setAssignee] = useState(""),
-    [qualification, setQualification] = useState(""),
-    [grade, setGrade] = useState(""),
-    [sort, setSort] = useState(""),
-    [duplicate, setDuplicate] = useState(false),
-    [page, setPage] = useState(1),
-    [filter, setFilter] = useState(new URLSearchParams({...initialStage?{stage:initialStage}:{},...initialJobId?{jobId:initialJobId}:{}}).toString()),
+    [assignee, setAssignee] = useState(initial.get("assignee") || ""),
+    [qualification, setQualification] = useState(initial.get("qualification") || ""),
+    [grade, setGrade] = useState(initial.get("grade") || ""),
+    [sort, setSort] = useState(initial.get("sort") || ""),
+    [duplicate, setDuplicate] = useState(initial.get("duplicate") === "true"),
+    [page, setPage] = useState(initialPage),
+    [filter, setFilter] = useState(initial.toString()),
     [selected, setSelected] = useState<string[]>([]),
     [detailId, setDetailId] = useState<string | null>(null);
   const [queues, setQueues] = useState<{name: string; filter: string}[]>([]),
@@ -173,6 +186,7 @@ export function Candidates({
     if (jobId && grade) search.set("grade", grade);
     if (jobId && sort) search.set("sort", sort);
     if (duplicate) search.set("duplicate", "true");
+    onFilterChange?.(search.toString(), 1);
     setFilter(search.toString());
     setPage(1);
     setSelected([]);
@@ -181,6 +195,7 @@ export function Candidates({
     const params = new URLSearchParams(value);
     setQ(params.get("q") || ""); setJobId(params.get("jobId") || ""); setStage(params.get("stage") || ""); setAssignee(params.get("assignee") || "");
     setQualification(params.get("qualification") || ""); setGrade(params.get("grade") || ""); setSort(params.get("sort") || ""); setDuplicate(params.get("duplicate") === "true");
+    onFilterChange?.(value, 1);
     setFilter(value); setPage(1); setSelected([]);
   }
   function saveQueue() {
@@ -266,7 +281,7 @@ export function Candidates({
             <label className="hub-checkbox"><input type="checkbox" checked={duplicate} onChange={e=>setDuplicate(e.target.checked)} /> Shared-email applications</label>
           </div>
         </details>
-        <div className="hub-button-row"><button className="hub-button" type="submit"><Search size={16} /> Apply filters</button><button className="hub-button secondary" type="button" onClick={()=>{setQ("");setJobId("");setStage("");setAssignee("");setQualification("");setGrade("");setSort("");setDuplicate(false);setFilter("");setPage(1);setSelected([]);}}>Clear filters</button></div>
+        <div className="hub-button-row"><button className="hub-button" type="submit"><Search size={16} /> Apply filters</button><button className="hub-button secondary" type="button" onClick={()=>{setQ("");setJobId("");setStage("");setAssignee("");setQualification("");setGrade("");setSort("");setDuplicate(false);onFilterChange?.("",1);setFilter("");setPage(1);setSelected([]);}}>Clear filters</button></div>
       </form>
       <details className="hub-card hub-review-queues">
         <summary>Saved review queues · this browser only</summary><p className="hub-muted">These filters stay in this browser for your account. Apply filters above before saving a queue; candidate records remain private in the hiring hub.</p>
@@ -286,7 +301,7 @@ export function Candidates({
           {resource.data.items.length ? (
             <CandidateTable
               items={resource.data.items}
-              select={setDetailId}
+              select={onSelect || setDetailId}
               selected={selected}
               toggle={(id) =>
                 setSelected((current) =>
@@ -311,6 +326,7 @@ export function Candidates({
               className="hub-button secondary"
               disabled={page <= 1}
               onClick={() => {
+                onFilterChange?.(filter, page - 1);
                 setPage((value) => value - 1);
                 setSelected([]);
               }}
@@ -327,6 +343,7 @@ export function Candidates({
                 page * (resource.data.pageSize || 25) >= resource.data.total
               }
               onClick={() => {
+                onFilterChange?.(filter, page + 1);
                 setPage((value) => value + 1);
                 setSelected([]);
               }}

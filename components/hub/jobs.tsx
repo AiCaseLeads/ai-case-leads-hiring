@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Plus, Copy } from "lucide-react";
 import { useHubMutation, useHubResource } from "./api";
 import { Badge, EmptyState, Feedback, Field, ResourceState } from "./shared";
@@ -26,13 +26,72 @@ export function Jobs({
     mutation = useHubMutation();
   const [editing, setEditing] = useState<HubJob | null>(null),
     [creating, setCreating] = useState(startCreating),
+    [editorVisible, setEditorVisible] = useState(startCreating),
+    [choosingStart, setChoosingStart] = useState(startCreating),
     [start, setStart] = useState<JobStart | null>(null),
     [status, setStatus] = useState("active"),
     [search, setSearch] = useState(""),
     [success, setSuccess] = useState(""),
     [templateJob, setTemplateJob] = useState<HubJob | null>(null),
     [templateName, setTemplateName] = useState("");
+  function editorUrl(editor: string | null, chosen?: JobStart) {
+    const url = new URL(window.location.href);
+    for (const key of ["jobEditor", "jobStep", "jobStart", "jobSource"]) url.searchParams.delete(key);
+    if (editor) {
+      url.searchParams.set("jobEditor", editor);
+      url.searchParams.set("jobStep", editor === "new" && !chosen ? "start" : "0");
+      if (chosen) {
+        url.searchParams.set("jobStart", chosen.kind);
+        const source = chosen.kind === "duplicate" ? chosen.source.id : chosen.kind === "template" ? chosen.template.id : chosen.kind === "request" ? chosen.request.id : "";
+        if (source) url.searchParams.set("jobSource", source);
+      }
+    }
+    return url;
+  }
+  function openEditor(job?: HubJob, chosen?: JobStart) {
+    setEditing(job || null); setCreating(!job); setStart(chosen || null);
+    setChoosingStart(!job && !chosen); setEditorVisible(true);
+    window.history.pushState({aiclHub: true}, "", editorUrl(job?.id || "new", chosen));
+  }
+  function chooseStart(chosen: JobStart) {
+    setStart(chosen); setChoosingStart(false);
+    window.history.pushState({aiclHub: true}, "", editorUrl("new", chosen));
+  }
+  function closeEditor() {
+    setEditorVisible(false);
+    window.history.pushState({aiclHub: true}, "", editorUrl(null));
+  }
+  useEffect(() => {
+    const restore = () => {
+      if (!admin) {setEditorVisible(false); return;}
+      const params = new URLSearchParams(window.location.search), editor = params.get("jobEditor");
+      if (!editor) {setEditorVisible(false); return;}
+      if (editor !== "new") {
+        const job = jobs.data?.find(item => item.id === editor);
+        if (!job) return;
+        setEditing(job); setCreating(false); setChoosingStart(false); setEditorVisible(true); return;
+      }
+      setEditing(null); setCreating(true); setEditorVisible(true);
+      setChoosingStart(params.get("jobStep") === "start");
+      const kind = params.get("jobStart"), source = params.get("jobSource");
+      if (kind === "duplicate") {const found = jobs.data?.find(item => item.id === source); if (found) setStart({kind,source:found});}
+      else if (kind === "template") {const found = setup.data?.templates.find(item => item.id === source); if (found) setStart({kind,template:found});}
+      else if (kind === "request") {const found = setup.data?.requests.find(item => item.id === source); if (found) setStart({kind,request:found});}
+      else if (kind === "blank") setStart({kind});
+    };
+    queueMicrotask(restore);
+    window.addEventListener("popstate", restore);
+    window.addEventListener("hub:navigate", restore);
+    return () => {window.removeEventListener("popstate", restore); window.removeEventListener("hub:navigate", restore);};
+  }, [admin, jobs.data, setup.data]);
+  useEffect(() => {
+    if (startCreating) queueMicrotask(() => openEditor());
+    // A Home shortcut starts a workflow; ordinary refreshes do not reopen it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [startCreating]);
   function done(message: string) {
+    window.history.replaceState({aiclHub: true}, "", editorUrl(null));
+    setEditorVisible(false);
     setSuccess(message);
     setEditing(null);
     setCreating(false);
@@ -43,8 +102,7 @@ export function Jobs({
     void scores.reload();
   }
   const data = jobs.data || [];
-  if ((editing || creating) && jobs.data && setup.data && scores.data)
-    return (
+  const editor = (editing || creating) && jobs.data && setup.data && scores.data ? (
       <JobWizard
         key={editing?.id || "new"}
         job={editing || undefined}
@@ -52,17 +110,13 @@ export function Jobs({
         jobs={data}
         catalog={setup.data}
         scorecards={scores.data}
-        chooseStart={!editing && !start}
-        onChoose={setStart}
-        cancel={() => {
-          setEditing(null);
-          setCreating(false);
-          setStart(null);
-        }}
+        chooseStart={choosingStart}
+        onChoose={chooseStart}
+        cancel={closeEditor}
         done={done}
         onManageScorecards={onManageScorecards}
       />
-    );
+    ) : null;
   const filtered = data.filter(
     (j) =>
       (status === "all" ||
@@ -74,7 +128,9 @@ export function Jobs({
         .includes(search.toLowerCase()),
   );
   return (
-    <section aria-labelledby="jobs-title">
+    <>
+    <div hidden={!editorVisible}>{editor}</div>
+    <section hidden={editorVisible} aria-labelledby="jobs-title">
       <div className="hub-section-heading">
         <div>
           <p className="hub-kicker">HIRING</p>
@@ -89,8 +145,7 @@ export function Jobs({
             className="hub-button"
             disabled={mutation.busy}
             onClick={() => {
-              setStart(null);
-              setCreating(true);
+              openEditor();
             }}
           >
             <Plus size={16} /> Create job
@@ -156,7 +211,7 @@ export function Jobs({
                     <button
                       className="hub-button secondary"
                       disabled={mutation.busy}
-                      onClick={() => setEditing(j)}
+                      onClick={() => openEditor(j)}
                     >
                       Edit job
                     </button>
@@ -164,8 +219,7 @@ export function Jobs({
                       className="hub-text-button"
                       disabled={mutation.busy}
                       onClick={() => {
-                        setStart({ kind: "duplicate", source: j });
-                        setCreating(true);
+                        openEditor(undefined, {kind: "duplicate", source: j});
                       }}
                     >
                       <Copy size={14} /> Duplicate job
@@ -267,5 +321,6 @@ export function Jobs({
         </form>
       )}
     </section>
+    </>
   );
 }

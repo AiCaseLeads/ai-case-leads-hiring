@@ -451,3 +451,22 @@ test("pending template saves lock every job flow action and preserve the selecte
  assert.equal(catalogWrites[0].sourceJobId,prior.id);assert.equal(catalogWrites[0].name,"Approved first template");assert.equal(await page.getByLabel("Template name",{exact:true}).count(),0);
  assert.equal(await page.getByRole("button",{name:"Create job",exact:true}).isDisabled(),false);
 });
+
+test("browser Back and Forward navigate wizard steps while retaining the unsaved job",async t=>{
+ const {page,writes}=await setup(t,{mobile:true,jobs:[]});
+ await page.getByRole('button',{name:'Create job',exact:true}).click();
+ await page.getByRole('button',{name:'Create blank job',exact:true}).click();
+ await page.getByLabel('Job title',{exact:true}).fill('Unpublished navigation draft');
+ await page.getByLabel('Where can applicants work from?',{exact:true}).selectOption('Spain');
+ await next(page);await page.getByRole('heading',{name:'What should applicants send?',exact:true}).waitFor();
+ await page.goBack();await page.getByRole('heading',{name:'Tell applicants about the job',exact:true}).waitFor();
+ assert.equal(await page.getByLabel('Job title',{exact:true}).inputValue(),'Unpublished navigation draft');
+ await page.goBack();await page.getByRole('heading',{name:'Create a job',exact:true}).waitFor();
+ await page.goForward();await page.getByRole('heading',{name:'Tell applicants about the job',exact:true}).waitFor();
+ assert.equal(await page.getByLabel('Job title',{exact:true}).inputValue(),'Unpublished navigation draft');
+ assert.equal(await page.getByLabel('Where can applicants work from?',{exact:true}).inputValue(),'Spain');
+ await page.goForward();await page.getByRole('heading',{name:'What should applicants send?',exact:true}).waitFor();
+ await page.getByRole('button',{name:'Back',exact:true}).click();await page.getByRole('heading',{name:'Tell applicants about the job',exact:true}).waitFor();
+ assert.equal(await page.getByLabel('Job title',{exact:true}).inputValue(),'Unpublished navigation draft');
+ assert.equal(writes.length,0);
+});

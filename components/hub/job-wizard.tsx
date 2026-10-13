@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ArrowLeft, Plus, Trash2 } from "lucide-react";
 import { hubRequest, useHubMutation } from "./api";
 import { Badge, Feedback, Field } from "./shared";
@@ -439,29 +439,16 @@ export function JobWizard({
   done: (m: string) => void;
   onManageScorecards?: () => void;
 }) {
-  if (chooseStart)
-    return (
-      <StartChoices
-        jobs={jobs}
-        catalog={catalog}
-        choose={onChoose}
-        back={cancel}
-      />
-    );
-  return (
-    <Editor
+  return <>
+    <div hidden={!chooseStart}><StartChoices jobs={jobs} catalog={catalog} choose={onChoose} back={cancel}/></div>
+    {(!chooseStart || start || job) && <div hidden={chooseStart}><Editor
       key={job?.id || JSON.stringify(start)}
-      job={job}
-      start={start || { kind: "blank" }}
-      jobs={jobs}
-      catalog={catalog}
-      scorecards={scorecards}
-      cancel={cancel}
-      done={done}
-      onManageScorecards={onManageScorecards}
-    />
-  );
+      job={job} start={start || {kind: "blank"}} jobs={jobs} catalog={catalog} scorecards={scorecards}
+      cancel={cancel} done={done} onManageScorecards={onManageScorecards}
+    /></div>}
+  </>;
 }
+
 function Editor({
   job,
   start,
@@ -518,7 +505,10 @@ function Editor({
     (originalBinding &&
       !scorecards.archived.includes(originalBinding.templateId)) ||
     (job && originalBinding);
-  const [step, setStep] = useState(0),
+  const [step, setStep] = useState(() => {
+    if (typeof window === "undefined") return 0;
+    return Math.max(0, Math.min(3, Number(new URLSearchParams(window.location.search).get("jobStep")) || 0));
+  }),
     [title, setTitle] = useState(source?.title || request?.title || ""),
     [description, setDescription] = useState(
       source?.descriptionHtml || request?.description || "",
@@ -568,6 +558,21 @@ function Editor({
         (t) => t.id === pin.templateId && t.version === pin.version,
       )
     : undefined;
+  useEffect(() => {
+    const restore = () => {
+      const value = new URLSearchParams(window.location.search).get("jobStep");
+      if (value !== null && value !== "start") {setStep(Math.max(0, Math.min(3, Number(value) || 0))); setApproved(false); setRejectApproved(false); setError("");}
+    };
+    window.addEventListener("popstate", restore);
+    return () => window.removeEventListener("popstate", restore);
+  }, []);
+  function goToStep(next: number) {
+    if (next === step) return;
+    const url = new URL(window.location.href);
+    url.searchParams.set("jobStep", String(next));
+    window.history.pushState({aiclHub: true, jobStepFrom: window.location.href}, "", url);
+    setStep(next);
+  }
   function next() {
     setError("");
     if (
@@ -619,7 +624,7 @@ function Editor({
       );
       return;
     }
-    setStep(Math.min(3, step + 1));
+    goToStep(Math.min(3, step + 1));
   }
   function updateField(i: number, change: Partial<ApplicationField>) {
     setFields((v) => v.map((f, n) => (i === n ? { ...f, ...change } : f)));
@@ -748,7 +753,7 @@ function Editor({
               onClick={() => {
                 setApproved(false);
                 setRejectApproved(false);
-                setStep(i);
+                goToStep(i);
               }}
             >
               {label}
@@ -771,7 +776,7 @@ function Editor({
                 binding ? `${binding.templateId}:${binding.version}` : "none",
               );
               setApproved(false);
-              setStep(2);
+              goToStep(2);
               mutation.clear();
             } catch (e) {
               setError(
@@ -1303,7 +1308,10 @@ function Editor({
               setApproved(false);
               setRejectApproved(false);
               setError("");
-              setStep(step - 1);
+              const previous = new URL(window.location.href);
+              previous.searchParams.set("jobStep", String(step - 1));
+              if (window.history.state?.jobStepFrom === previous.href) window.history.back();
+              else goToStep(step - 1);
             }}
           >
             Back
