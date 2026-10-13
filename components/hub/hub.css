@@ -1415,3 +1415,6 @@ html:has(.hub-sticky-save) { scroll-padding-bottom: 180px; }
   .hub-settings-save > .hub-button { width: 100%; }
   .hub-settings-save > p { flex-basis: 100%; }
 }
+
+/* Scorecard actions use the shared wrapping row and clear the following panel. */
+.hub-scorecard-editor, .hub-scorecard-review > form { margin-bottom: 24px; }
