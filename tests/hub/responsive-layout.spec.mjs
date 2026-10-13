@@ -47,6 +47,9 @@ test('real styled hub stays usable across mobile, tablet and desktop widths',asy
  for(const width of [320,375,390,768,1280]) {
   await page.setViewportSize({width,height:844});
   await page.goto(origin+'/?view=jobs');await page.getByRole('heading',{name:'Jobs',exact:true}).waitFor();
+  await page.getByRole('button',{name:'Hiring team & emails',exact:true}).waitFor();
+  const teamAction=await page.getByRole('button',{name:'Hiring team & emails',exact:true}).boundingBox(),editAction=await page.getByRole('button',{name:'Edit job',exact:true}).boundingBox();
+  assert.ok(editAction.x-teamAction.x-teamAction.width>=10 || editAction.y-teamAction.y-teamAction.height>=10,'Job actions have separation when inline or wrapped');
   if(artifacts)await page.screenshot({path:`${artifacts}/jobs-${width}.png`,fullPage:true});
   if(!process.env.HUB_LAYOUT_CAPTURE_ONLY){await noOverflow(page);if(width<=960){assert.ok((await page.locator('.hub-sidebar').boundingBox()).height<=100,'Collapsed mobile header is compact');await page.getByRole('button',{name:'Open workspace menu'}).focus();await page.keyboard.press('Enter');await page.keyboard.press('Escape');assert.equal(await page.getByRole('button',{name:'Open workspace menu'}).evaluate(e=>e===document.activeElement),true);await page.keyboard.press('Enter');await page.getByRole('navigation',{name:'Hiring workspace'}).getByRole('button',{name:'Applications',exact:true}).click();assert.equal(await page.getByRole('button',{name:'Open workspace menu'}).getAttribute('aria-expanded'),'false');assert.equal(await page.getByRole('button',{name:'Open workspace menu'}).evaluate(e=>e===document.activeElement),true);}}
   await page.goto(origin+'/?view=applications');await page.getByRole('button',{name:detail.name,exact:true}).waitFor();

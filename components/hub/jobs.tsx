@@ -231,9 +231,15 @@ export function Jobs({
                     : "Manual review"}
                 </p>
                 <p className="hub-muted">/jobs/{j.slug}</p>
-                <button className="hub-button secondary" aria-expanded={teamJob?.id === j.id} onClick={() => setTeamJob(teamJob?.id === j.id ? null : j)}>Hiring team & emails</button>
-                {admin && (
-                  <>
+                <div className="hub-button-row">
+                  <button
+                    className="hub-button secondary"
+                    aria-expanded={teamJob?.id === j.id}
+                    onClick={() => setTeamJob(teamJob?.id === j.id ? null : j)}
+                  >
+                    Hiring team & emails
+                  </button>
+                  {admin && (
                     <button
                       className="hub-button secondary"
                       disabled={mutation.busy}
@@ -241,6 +247,10 @@ export function Jobs({
                     >
                       Edit job
                     </button>
+                  )}
+                </div>
+                {admin && (
+                  <>
                     <button
                       className="hub-text-button"
                       disabled={mutation.busy}
