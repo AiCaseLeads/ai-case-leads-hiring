@@ -13,12 +13,20 @@ Choose **Jobs → Create job**, or use **Create job** on Home. Pick a starting p
 
 The setup has four steps:
 
-1. **Details:** title, work arrangement, location and description. Remote jobs can accept applicants worldwide or from a selected country. Hybrid/on-site jobs need a country and workplace city.
+1. **Details:** title, work arrangement, location, description and hiring team. Remote jobs can accept applicants worldwide or from a selected country. Hybrid/on-site jobs need a country and workplace city. Select the recruiters who should receive alerts and choose an applicant reply contact.
 2. **Application:** name and email are always required. Each additional question has a Required/Optional dropdown. Add from the question library or add a custom question; answer formats and instructions are under a disclosure.
 3. **Scorecard:** choose a reusable scorecard, create one by naming its criteria, or use manual review. The standard 1–5 scale and equal weights are ready to use; custom definitions are optional.
 4. **Review:** check the description, questions and criteria. Save a draft or approve the preview and publish. Qualification rules and automatic rejection are separate advanced controls and remain off for new postings.
 
 Use **Save draft** to pause setup. A draft needs a valid title, location and questions; unfinished custom criteria must be completed before saving them. **Save as draft (unpublish)** stops a currently published job accepting applications. **Edit job** updates that same posting and preserves its public address. **Duplicate job** creates a separate posting. **Previous postings** shows closed jobs. No batch number or batch name is required. Closing a job stops new applications and preserves its applicants and files. Legacy archive folder labels remain intact.
+
+## Assign recruiters and route job emails
+
+In **Settings → Team access**, add each recruiter's work email so they can sign in with their own Google account. Then choose **Jobs → Hiring team & emails** on a posting, or select its team in the first job-setup step. Managers can select multiple active recruiters/managers per job, choose a reply contact, and save the changes in the dashboard. Hiring-team assignment controls alerts, not dashboard permissions; authorized recruiters still have access to all hiring records.
+
+Toggle alerts for new applications, submitted assessments, applicant replies received in the connected mailbox, and overdue reviews. An empty saved team receives no alerts and does not fall back to sales. Saving a team does not send old application alerts. Duplicated jobs and templates start with an empty team so you can choose the people for the new posting.
+
+The Google account connected in Settings remains the sender. The job's chosen recruiter and that connected mailbox are included in Reply-To. Applicants should use **Reply all** to keep their conversation available in the dashboard; messages sent only to a recruiter's personal inbox cannot be imported by the shared connection. Staff login alone does not connect that person's Gmail. See [email routing details](JOB-TEAM-NOTIFICATIONS.md).
 
 ## Home and applicant review
 
@@ -74,7 +82,7 @@ Use **Record verification checks** to record timeline comparisons, portfolio con
 
 Home's overdue queue lists applications in Application Review with no scorecard after the configured waiting period (currently 48 hours). Notes and AI summaries do not count as completed human reviews. This is an initial-review queue: an existing scorecard removes a candidate even if they return to Application Review later.
 
-**Settings → Review reminders** controls the waiting period, fallback managers and daily staff emails. Assigned active reviewers receive their own queue; selected managers cover unassigned/unavailable owners. At most one digest per recipient per Bogotá calendar day is queued. Staff reminders never message candidates. Delivery activity shows Gmail processing status. Interview reminders are separate.
+**Settings → Review reminders** controls the waiting period, fallback managers and daily staff emails. Configured job teams receive overdue reminders for their postings when both the global reminder switch and that job's overdue toggle are enabled. Jobs without a saved team retain the earlier behavior: assigned active reviewers receive their own queue and selected managers cover unassigned/unavailable owners. At most one digest per recipient per Bogotá calendar day is queued. Staff reminders never message candidates. Delivery activity shows Gmail processing status. Interview reminders are separate.
 
 ## Storage and recovery
 

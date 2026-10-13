@@ -20,7 +20,9 @@ const port=reservation.address().port;await new Promise(resolve=>reservation.clo
 const origin=`http://127.0.0.1:${port}`,rawSession=randomBytes(32).toString('hex');
 const ownerCookie=`aicl_staff_session=${rawSession}`;
 const sqlite=new SQLiteD1Database(path.join(dataDir,'hiring.sqlite'));sqlite.migrate(path.resolve('drizzle'));
-sqlite.connection.prepare('INSERT INTO staff_sessions(token_hash,user_id,email,full_name,created_at,expires_at) VALUES(?,?,?,?,?,?)').run(createHash('sha256').update(rawSession).digest('hex'),'isolated-test-owner','sales@aicaseleads.com','Isolated test owner',Date.now(),Date.now()+3600_000);sqlite.close();
+sqlite.connection.prepare('INSERT INTO staff_sessions(token_hash,user_id,email,full_name,created_at,expires_at) VALUES(?,?,?,?,?,?)').run(createHash('sha256').update(rawSession).digest('hex'),'isolated-test-owner','sales@aicaseleads.com','Isolated test owner',Date.now(),Date.now()+3600_000);
+for(const name of ['maria','alex','sam'])sqlite.connection.prepare('INSERT INTO hub_members(id,email,role,active,created_at,updated_at) VALUES(?,?,?,1,?,?)').run(`synthetic-${name}`,`${name}@example.invalid`,'recruiter',Date.now(),Date.now());
+sqlite.close();
 let child,logs='',browser;
 async function start(enabled){
  logs='';child=spawn(process.execPath,['scripts/start-railway.mjs'],{env:{...process.env,NODE_ENV:'development',DATA_DIR:dataDir,RAILWAY_DEPLOYMENT_ID:'synthetic-isolated',RAILWAY_VOLUME_MOUNT_PATH:dataDir,PUBLIC_SITE_ORIGIN:origin,PORT:String(port),ADMIN_EMAILS:'sales@aicaseleads.com',GOOGLE_CLIENT_ID:'synthetic.apps.googleusercontent.com',GOOGLE_CLIENT_SECRET:'synthetic-only',GOOGLE_TOKEN_KEY:'1'.repeat(64),EXPECTED_RECRUITING_EMAIL:'mariam@aicaseleads.com',BACKGROUND_ENABLED:'false',APPLICATIONS_ENABLED:String(enabled)},stdio:['ignore','pipe','pipe']});
@@ -49,12 +51,12 @@ function verifyOneApplication(receipts){
   const lookup=db.prepare('SELECT application_id FROM hiring_submissions WHERE receipt_hash=? OR key_hash IN (SELECT submission_key_hash FROM hiring_receipts WHERE receipt_hash=?)');
   const ids=receipts.map(receipt=>{const hash=createHash('sha256').update(receipt).digest('hex');return lookup.get(hash,hash)?.application_id;});
   assert.ok(ids.every(Boolean));assert.equal(new Set(ids).size,1);
-  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM hub_tasks WHERE application_id=?').get(ids[0]).n,2);
+  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM hub_tasks WHERE application_id=?').get(ids[0]).n,4);
  }finally{db.close();}
 }
 try{
  await start(false);
- for(const url of ['/api/hub/overview','/api/hub/applications','/api/hub/settings','/api/files/unknown'])for(const forged of [false,true]){
+ for(const url of ['/api/hub/overview','/api/hub/applications','/api/hub/settings','/api/job-team','/api/files/unknown'])for(const forged of [false,true]){
   const response=await fetch(origin+url,{headers:forged?{'oai-authenticated-user-id':'attacker','oai-authenticated-user-email':'sales@aicaseleads.com','x-openai-user-email':'sales@aicaseleads.com'}:{}});assert.equal(response.status,403);
  }
  assert.equal((await fetch(origin+'/team?auth=__proto__')).status,200);
@@ -70,10 +72,13 @@ try{
  await team.goto(origin+'/team');await team.getByRole('button',{name:'Jobs',exact:true}).click();await team.getByRole('button',{name:'Create job',exact:true}).click();
  await team.getByRole('button',{name:'Create blank job',exact:true}).click();
  await team.getByLabel('Job title',{exact:true}).fill('Railway Test Engineer');await team.getByText('More details: department and page address',{exact:true}).click();await team.getByLabel('Public page address',{exact:true}).fill('railway-test-engineer');await team.getByLabel('Job description',{exact:true}).fill('Isolated Railway verification role. No real applications or outreach.');
+ await team.getByRole('checkbox',{name:/maria@example.invalid/}).check();await team.getByRole('checkbox',{name:/alex@example.invalid/}).check();await team.getByLabel('Applicant reply contact',{exact:true}).selectOption('maria@example.invalid');
  for(let n=0;n<3;n++)await team.getByRole('button',{name:'Continue',exact:true}).click();await team.getByRole('checkbox',{name:'I have reviewed the job description',exact:false}).check();
  await team.getByRole('button',{name:'Publish job',exact:true}).click();await team.getByRole('heading',{name:'Jobs',exact:true}).waitFor();
  let jobs=await api('/api/hub/jobs');assert.equal(jobs.length,1);const engineer=jobs[0];assert.equal(engineer.title,'Railway Test Engineer');assert.equal(engineer.status,'open');
+ const engineerTeam=await api('/api/job-team?jobId='+engineer.id);assert.deepEqual(engineerTeam.config.members,['maria@example.invalid','alex@example.invalid']);assert.equal(engineerTeam.config.replyTo,'maria@example.invalid');
  const creative=await api('/api/hub/jobs','POST',{title:'Railway Test Creative',slug:'railway-test-creative',department:'Isolated test',descriptionHtml:'<p>Isolated test role.</p>',status:'open',fields:engineer.fields,rules:[],autoReject:false,assessmentPrompt:'Isolated assessment',rejectionTemplate:'Isolated rejection for {{name}}.'});
+ await api('/api/job-team','PUT',{jobId:creative.id,expectedRevision:0,members:['sam@example.invalid'],replyTo:'sam@example.invalid',notifyNewApplications:true,notifyAssessmentSubmissions:true,notifyReplies:true,notifyOverdueReviews:true});
  // Every starting point uses the real built server; these remain private drafts.
  const jobCard=title=>team.locator('article').filter({has:team.getByRole('heading',{name:title,exact:true})});
  async function finishDraft(title){await team.getByLabel('Job title',{exact:true}).fill(title);for(let n=0;n<3;n++)await team.getByRole('button',{name:'Continue',exact:true}).click();await team.getByRole('button',{name:'Save draft',exact:true}).click();await team.getByRole('heading',{name:'Jobs',exact:true}).waitFor();}
@@ -163,8 +168,13 @@ try{
  resumeJourneys.sort((a,b)=>a-b);
  const duplicate=payload(engineer,4000),session=randomBytes(32).toString('hex');const repeats=await Promise.all(Array.from({length:20},()=>submit(engineer,4000,duplicate,session)));verifyOneApplication(repeats.map(value=>value.receipt));
  assert.equal((await api('/api/hub/reports')).applications,3003);
+ const routed=new DatabaseSync(path.join(dataDir,'hiring.sqlite'),{readOnly:true});
+ const notices=routed.prepare("SELECT a.job_id,json_extract(t.payload_json,'$.recipient') AS recipient,COUNT(*) AS n FROM hub_tasks t JOIN hub_applications a ON a.id=t.application_id WHERE json_extract(t.payload_json,'$.jobNotification')=1 GROUP BY a.job_id,recipient").all();
+ const totals=routed.prepare('SELECT job_id,COUNT(*) AS n FROM hub_applications GROUP BY job_id').all();
+ assert.equal(notices.length,3);for(const notice of notices){assert.ok((notice.job_id===engineer.id?['maria@example.invalid','alex@example.invalid']:['sam@example.invalid']).includes(notice.recipient));assert.equal(notice.n,totals.find(row=>row.job_id===notice.job_id).n);}routed.close();
  await stop();await start(false);
  assert.equal((await api('/api/hub/reports')).applications,3003);assert.equal((await api('/api/hub/applications/'+firstId)).grade.scorePercent,80);
+ assert.deepEqual((await api('/api/job-team?jobId='+engineer.id)).config.members,['maria@example.invalid','alex@example.invalid']);
  const after=await fetch(origin+'/api/files/'+firstFile,{headers:{Cookie:ownerCookie}});assert.deepEqual(Buffer.from(await after.arrayBuffer()),sample);
  const replay=await submit(engineer,4000,duplicate,session);verifyOneApplication([repeats[0].receipt,replay.receipt]);assert.equal((await api('/api/hub/reports')).applications,3003);
  for(const receipt of [repeats[0].receipt,replay.receipt]){const response=await fetch(origin+'/api/applications/'+receipt);assert.equal(response.status,200);assert.equal((await response.json()).status,'accepted');}

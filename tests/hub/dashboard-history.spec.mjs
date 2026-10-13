@@ -23,6 +23,7 @@ async function setup(t,query=''){
   if(url.pathname==='/api/scorecards')data={template:null,revision:0,templates:[],archived:[],bindings:{}};
   if(url.pathname==='/api/hub/jobs')data=[job];
   if(url.pathname==='/api/job-setup')data={revision:0,templates:[],requests:[],locations:{}};
+  if(url.pathname==='/api/job-team')data={config:null,staff:[{email:'sales@example.invalid',role:'admin'}],sender:'sales@example.invalid'};
   if(url.pathname==='/api/ai/config')data={configured:false,enabled:false,reviewOnly:true};
   if(url.pathname==='/api/review-reminders')data={total:0,applications:[],staff:[],config:{enabled:false,dueHours:48,fallbackAdmins:[]}};
   return route.fulfill({json:{data}});
