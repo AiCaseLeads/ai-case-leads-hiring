@@ -34,6 +34,8 @@ Applicant records have three views:
 
 Unsaved evidence and scorecard drafts survive switching these views. Reloading the entire browser or leaving the applicant can lose unsaved entries. The action panel records notes, assigns reviewers and explicitly sends assessments/interview booking links. Moving a stage alone sends no invitation.
 
+Browser Back/Forward follows dashboard sections, applicant profiles and job-setup steps. Returning from an applicant restores the applied filters and list page; opening from Home returns to Home. A direct applicant link closes into Applications. Job details remain while moving backward and forward inside the same setup; save a draft before reloading or leaving for another section. A pending save can finish on the server even if you navigate back, but its response cannot close a newer setup.
+
 ## Connect Google
 
 **Settings** has three guided steps:

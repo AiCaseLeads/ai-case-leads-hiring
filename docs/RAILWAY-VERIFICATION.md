@@ -8,6 +8,16 @@ Fresh read-only verification on 2026-10-12 confirmed Railway deployment `ac2f616
 
 Fresh authenticated Chrome verification on 2026-10-12 also completed owner Google sign-in at the custom-domain callback. Settings displayed sales as the connected and allowed recruiting account, the approved sales/Bogotá calendar window, the saved shared Drive location, zero pending/failed tasks and a current reply-poll timestamp. This establishes the current saved connection state; it does not substitute for a new test email, booking, Drive upload or known-thread reply. The mounted volume currently has a 50,000 MB capacity and approximately 1,054 MB used; the original 10 GB proposal is not the current observed capacity.
 
+## Navigation regression verification — 2026-10-12
+
+The reported browser Back failure was reproduced in Chrome: Jobs → Applications → Back left the dashboard for Google sign-in. Dashboard navigation previously replaced history and did not handle traversal. The fix records workspace history, restores applied filters/page and applicant origin, and handles owned same-path entries without triggering conflicting framework page fetches. External/page navigation remains separate. Wizard history preserves unsaved values within the mounted setup; full reloads or leaving for another section still require a saved draft.
+
+Independent browser review also reproduced and resolved pending-save/new-draft races, source switching during a pending save, completed-flow reentry, direct applicant return, invalid wizard steps and stale bulk approvals after records changed. Those cases now have committed regression coverage. An actual built-framework probe passed five rapid Jobs and five applicant Back/Forward cycles without the previously reproduced aborted-render error.
+
+Final integrated checks passed: 38 interface browser tests, 19 runtime tests, TypeScript/lint/build and the full HTTP/browser rehearsal. The latter passed the 20 existing recovery checks, all four job starts, real desktop/mobile uploads, human grades, browser Back/Forward, 3,000 synthetic load applications, 1,002 private PDFs, duplicate retry identity and restart preservation. Its local run took 43.2 seconds; PDF journey p95 was 912 ms and application POST p95 4,053 ms. Live providers were isolated, so these timings do not certify Railway or Google quotas. Independent Codex review completed; the new RuFlo execution attempt failed on its configured model route and is not counted as a completed review.
+
+The checklist reconciliation corrects Railway storage/processing and sales recruiting-account instructions. Backup restore, policy approval, separate real team identities and the full assessment/offer/provider acceptance rehearsal remain open; navigation tests do not close those gates.
+
 Dated hosted verification on 2026-10-10 established:
 
 | Hosted check | Evidence and boundary |

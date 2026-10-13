@@ -44,6 +44,7 @@ Checked items below reflect dated evidence, principally the hosted checks on 202
 
 ## Release evidence and ongoing checks
 
+- [x] Browser Back/Forward regression fixed and verified on the built app, including applicant origin/filters/page, job setup history, pending-save isolation and invalid-step recovery. The 2026-10-12 integrated interface suite passed 38 tests; the full application/load/restart rehearsal passed again. See the navigation section in [Railway verification](RAILWAY-VERIFICATION.md).
 - [x] Latest redesign checks: 279 backend/native OCR tests, 25 component browser tests, 19 Railway runtime tests, 20 production-browser recovery checks, TypeScript, lint and built HTTP rehearsal passed.
 - [x] Isolated intake/storage load: 3,000 synthetic applications, including 1,000 full PDF journeys at concurrency 100, another 1,000 simultaneous-submission phase, duplicate retries and restart preservation. Google/AI integrations were isolated; this does not establish hosted resource capacity or provider quotas.
 - [x] Actual deployed Linux OCR read scanned and mixed synthetic PDFs. Private originals were unchanged; manual fallback and extraction limits remain relevant.
