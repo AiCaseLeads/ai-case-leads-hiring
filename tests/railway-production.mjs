@@ -56,12 +56,18 @@ function verifyOneApplication(receipts){
 }
 try{
  await start(false);
- for(const url of ['/api/hub/overview','/api/hub/applications','/api/hub/settings','/api/job-team','/api/files/unknown'])for(const forged of [false,true]){
+ for(const url of ['/api/hub/overview','/api/hub/applications','/api/hub/settings','/api/job-team','/api/team','/api/personal-calendar','/api/files/unknown'])for(const forged of [false,true]){
   const response=await fetch(origin+url,{headers:forged?{'oai-authenticated-user-id':'attacker','oai-authenticated-user-email':'sales@aicaseleads.com','x-openai-user-email':'sales@aicaseleads.com'}:{}});assert.equal(response.status,403);
  }
  assert.equal((await fetch(origin+'/team?auth=__proto__')).status,200);
  const startResponse=await fetch(origin+'/api/auth/google/start?return_to=//attacker.invalid',{redirect:'manual'});assert.equal(startResponse.status,303);
  const authorize=new URL(startResponse.headers.get('location'));assert.equal(authorize.origin,'https://accounts.google.com');assert.equal(authorize.searchParams.get('redirect_uri'),origin+'/api/auth/google/callback');assert.equal(authorize.searchParams.get('scope'),'openid email profile');assert.equal(authorize.searchParams.has('client_secret'),false);
+ const personal=await api('/api/personal-calendar');assert.equal(personal.email,'sales@aicaseleads.com');assert.equal(personal.connected,false);assert.equal(personal.ready,false);assert.equal(personal.configured,true);
+ const hours={timeZone:'America/Bogota',weekdays:[1,2,3,4,5],startHour:10,endHour:16,durationMinutes:30,minimumNoticeHours:2,horizonDays:14};
+ const savedHours=await api('/api/personal-calendar','PUT',{availability:hours});assert.deepEqual(savedHours.availability,hours);assert.equal(savedHours.ready,false,'Hours alone do not authorize Google');
+ const invited=await api('/api/team','POST',{email:'head@example.invalid',role:'admin',active:true,sendInvite:true});assert.equal(invited.members.find(m=>m.email==='head@example.invalid').invite.status,'pending');assert.equal(invited.members.find(m=>m.email==='head@example.invalid').isOwner,false);
+ const repeated=await api('/api/team','POST',{email:'head@example.invalid',role:'admin',active:true,sendInvite:true});assert.equal(repeated.members.find(m=>m.email==='head@example.invalid').invite.createdAt,invited.members.find(m=>m.email==='head@example.invalid').invite.createdAt);
+ const guide=await fetch(origin+'/recruiter-guide.pdf');assert.equal(guide.status,200);assert.match(guide.headers.get('content-type'),/application\/pdf/);assert.equal(Buffer.from(await guide.arrayBuffer()).subarray(0,5).toString(),'%PDF-');
  const fixtureUi=await promisify(execFile)(process.execPath,['--test','tests/ui-flow.spec.mjs'],{env:{...process.env,TEST_BASE_URL:origin,TEST_HOSTING_PLATFORM:'railway',TEST_PRODUCTION_ASSETS:'true'},maxBuffer:1024*1024});
  assert.match(fixtureUi.stdout,/tests 20/);assert.match(fixtureUi.stdout,/pass 20/);assert.match(fixtureUi.stdout,/skipped 0/);console.log('Existing production browser recovery suite: 20 passed.');
  await stop();await start(true);
@@ -134,7 +140,7 @@ try{
  assert.equal((await api('/api/hub/applications/'+another.id)).grade.scorePercent,70);
  await team.getByText('Compare résumé, profile and application with AI',{exact:true}).click();await team.getByLabel('Text read from uploaded PDF',{exact:true}).waitFor();
  await team.waitForFunction(()=>document.querySelector('textarea[readonly]')?.value.includes('Synthetic isolated resume'));
- await team.getByRole('button',{name:'Settings',exact:true}).click();await team.getByRole('heading',{name:'Settings',exact:true}).waitFor();await team.getByText('Advanced admin setup',{exact:true}).click();await team.getByText('No Google Apps Script scheduler is needed.',{exact:false}).waitFor();assert.equal(await team.getByText('No Google Apps Script scheduler is needed.',{exact:false}).count(),1);assert.equal(await team.getByRole('button',{name:'Save Google client configuration',exact:true}).count(),0);
+ await team.getByRole('button',{name:'Settings',exact:true}).click();await team.getByRole('heading',{name:'Settings',exact:true}).waitFor();await team.getByRole('heading',{name:'My interview calendar',exact:true}).waitFor();await team.getByRole('button',{name:'Company setup',exact:true}).click();await team.getByText('Advanced admin setup',{exact:true}).click();await team.getByText('No Google Apps Script scheduler is needed.',{exact:false}).waitFor();assert.equal(await team.getByText('No Google Apps Script scheduler is needed.',{exact:false}).count(),1);assert.equal(await team.getByRole('button',{name:'Save Google client configuration',exact:true}).count(),0);
  await staff.close();assert.deepEqual(errors,[]);await browser.close();browser=undefined;console.log('Seeded owner browser job posting, desktop/mobile application uploads, private files and grading passed.');
  const payload=(job,seq)=>({jobPostingId:job.id,formVersion:job.formVersion,submissionKey:crypto.randomUUID(),fieldSubmissions:[{path:'_systemfield_name',value:`Isolated Load Candidate ${seq}`},{path:'_systemfield_email',value:`isolated-load-${seq}@example.invalid`}],utmData:{utm_source:'isolated-load'}});
  const submit=async(job,seq,input=payload(job,seq),session=randomBytes(32).toString('hex'))=>{

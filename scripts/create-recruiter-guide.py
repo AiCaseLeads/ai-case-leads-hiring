@@ -59,9 +59,9 @@ text('On a phone, use Menu to open these sections. Save unfinished job posts as 
 page('02 / FIRST SIGN-IN','Set up your account','Your invitation gives you a route into the workspace. Google sign-in verifies your identity; it does not automatically connect your calendar.')
 step(1,'Open the invitation','Follow the workspace link and choose Sign in with Google. Select exactly the work email that was invited. If the wrong Google account appears, switch accounts.')
 step(2,'Open My setup','Go to Settings and find your personal setup. Connect your own Google Calendar and approve the calendar permissions. No one else needs your password.')
-step(3,'Set your availability','Choose your time zone, working days, interview hours and interview duration. Check the settings before saving. Available booking times must fit these hours and avoid existing calendar events.')
+step(3,'Set your availability','Choose your time zone, working days, interview hours and interview duration. Check the settings before saving. Available booking times must fit these hours and avoid existing calendar events. Changes apply to new booking invitations; existing links keep the hours saved when they were issued.')
 step(4,'Check your job assignments','Open Jobs, choose Hiring team & emails on the relevant posting, and select the people who should receive its alerts. Choose an applicant reply contact. A posting can have several recruiters.')
-step(5,'Head recruiter: add the rest of the team','Use Settings → Team access to invite each recruiter by their work email. Each person completes their own sign-in and calendar setup. Do not share credentials.')
+step(5,'Head recruiter: add the rest of the team','Use Settings → Team access &amp; invitations to invite each recruiter by their work email. Each person completes their own sign-in and calendar setup. Do not share credentials.')
 callout('Email and calendar are separate','Job alerts go to the selected team. Applicant emails use the company sender. Replies sent only to a personal inbox do not appear in the dashboard; applicants should use Reply all so the connected company mailbox receives the conversation too.')
 text('All authorized staff can access hiring records. Job-team assignment routes notifications; it is not a restriction on who can view applicants.','SmallA')
 

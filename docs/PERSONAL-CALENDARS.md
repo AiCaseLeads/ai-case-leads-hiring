@@ -1,6 +1,6 @@
 # Recruiter calendars
 
-Staff connect their own primary Google Calendar under Settings → My calendar. The connected Google account must exactly match their signed-in staff email. This consent requests Calendar events, free/busy, and verified account email only; it does not replace the company Gmail/Drive account. Recruiters then save their time zone, days, hours and interview length. The owner must have configured the existing Google web OAuth client first. No new redirect URL is required.
+Staff connect their own primary Google Calendar under Settings → My setup → My interview calendar. The connected Google account must exactly match their signed-in staff email. This consent requests Calendar events, free/busy, and verified account email only; it does not replace the company Gmail/Drive account. Recruiters then save their time zone, days, hours and interview length. The owner must have configured the existing Google web OAuth client first. No new redirect URL is required.
 
 - `GET /api/personal-calendar`: current user's status/availability and active staff calendar readiness. No tokens, client secrets or grant fingerprints are returned.
 - `PUT /api/personal-calendar`: `{availability:{timeZone,weekdays,startHour,endHour,durationMinutes,minimumNoticeHours?,horizonDays?}}`; edits only the signed-in user's availability.
