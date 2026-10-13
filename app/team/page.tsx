@@ -1,5 +1,6 @@
 /* Native anchors avoid the reproduced Vinext production Link runtime failure. */
 /* eslint-disable @next/next/no-html-link-for-pages */
+import { HUB_HISTORY_GUARD } from "@/components/hub/history";
 import { getHubMember } from "@/lib/hub/auth";
 import {
   chatGPTSignInPath,
@@ -30,10 +31,13 @@ export default async function TeamPage({ searchParams }: { searchParams?: Promis
   const member = await getHubMember();
   if (member)
     return (
+      <>
+      <script dangerouslySetInnerHTML={{ __html: HUB_HISTORY_GUARD }} />
       <HiringDashboard
         member={member}
         signOutHref={chatGPTSignOutPath("/team")}
       />
+      </>
     );
   const identity = await getChatGPTUser();
   return (

@@ -83,6 +83,9 @@ export function HiringDashboard({
       } else readLocation();
     };
     window.addEventListener("popstate", pop, true);
+    // The pre-hydration guard owns real /team history traversal. The popstate
+    // listener remains a fallback for isolated renders without the server shell.
+    window.addEventListener("hub:navigate", readLocation);
     const params = new URLSearchParams(window.location.search), outcome = params.get("workspace"), personalOutcome = params.get("personalCalendar");
     if (personalOutcome) queueMicrotask(() => {
       setWorkspaceNotice(personalOutcome === "connected" ? "Your calendar is connected. Confirm your interview hours in My setup, then complete a test booking." : "Your calendar authorization did not complete. Connect again in My setup using your own dashboard account and approve Calendar access.");
@@ -103,7 +106,10 @@ export function HiringDashboard({
         window.history.replaceState(window.history.state, "", url); readLocation();
       }
     });
-    return () => window.removeEventListener("popstate", pop, true);
+    return () => {
+      window.removeEventListener("popstate", pop, true);
+      window.removeEventListener("hub:navigate", readLocation);
+    };
     // Location, rather than a captured React view, is the source of navigation state.
   }, [member.role]);
   const resource = useHubResource<Overview>("/api/hub/overview", refresh);
@@ -147,7 +153,7 @@ export function HiringDashboard({
   }
   function manageScorecards() { const url = viewUrl("settings"); url.searchParams.set("section", "scorecards"); navigate(url); }
   return (
-    <div className="hiring-hub">
+    <div className="hiring-hub" data-hiring-workspace>
       <a href="#hub-main" className="skip-link">
         Skip to hiring workspace
       </a>
