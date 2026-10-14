@@ -620,6 +620,20 @@ function Editor({
     );
     setStep(next);
   }
+  function validateNumericScreening() {
+    const incomplete = rules.some(
+      (r) =>
+        ["Number", "Score"].includes(
+          fields.find((f) => f.path === r.fieldPath)?.type || "",
+        ) &&
+        (typeof r.value !== "number" || !Number.isFinite(r.value)),
+    );
+    if (incomplete)
+      setError(
+        "Enter a number for every numeric screening rule, or remove the unfinished rule in Advanced rules.",
+      );
+    return !incomplete;
+  }
   function next() {
     setError("");
     if (
@@ -639,6 +653,7 @@ function Editor({
       return;
     }
     if (step === 1) {
+      if (!validateNumericScreening()) return;
       const invalid = fields.find(
         (f) =>
           !f.title.trim() ||
@@ -696,18 +711,7 @@ function Editor({
       );
       return;
     }
-    if (
-      rules.some(
-        (r) =>
-          ["Number", "Score"].includes(
-            fields.find((f) => f.path === r.fieldPath)?.type || "",
-          ) &&
-          (typeof r.value !== "number" || !Number.isFinite(r.value)),
-      )
-    ) {
-      setError(
-        "Enter a number for every numeric screening rule, or remove the unfinished rule in Advanced rules.",
-      );
+    if (!validateNumericScreening()) {
       setStep(1);
       return;
     }
@@ -1033,15 +1037,18 @@ function Editor({
                         <Field label={`Question ${i + 1} requirement`}>
                           <select
                             value={f.required ? "required" : "optional"}
-                            disabled={rules.some(
-                              (r) =>
-                                r.fieldPath === f.path &&
-                                r.enabled &&
-                                ((["Number", "Score"].includes(f.type) &&
-                                  r.operator === "gte") ||
-                                  (f.type === "Boolean" &&
-                                    r.operator === "equals")),
-                            )}
+                            disabled={
+                              f.required &&
+                              rules.some(
+                                (r) =>
+                                  r.fieldPath === f.path &&
+                                  r.enabled &&
+                                  ((["Number", "Score"].includes(f.type) &&
+                                    r.operator === "gte") ||
+                                    (f.type === "Boolean" &&
+                                      r.operator === "equals")),
+                              )
+                            }
                             onChange={(e) =>
                               updateField(i, {
                                 required: e.target.value === "required",
