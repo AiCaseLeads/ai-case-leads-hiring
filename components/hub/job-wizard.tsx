@@ -696,13 +696,25 @@ function Editor({
       );
       return;
     }
-    if (rules.some((r) => ["Number", "Score"].includes(fields.find((f) => f.path === r.fieldPath)?.type || "") && (typeof r.value !== "number" || !Number.isFinite(r.value)))) {
-      setError("Enter a number for every numeric screening rule, or remove the unfinished rule in Advanced rules.");
+    if (
+      rules.some(
+        (r) =>
+          ["Number", "Score"].includes(
+            fields.find((f) => f.path === r.fieldPath)?.type || "",
+          ) &&
+          (typeof r.value !== "number" || !Number.isFinite(r.value)),
+      )
+    ) {
+      setError(
+        "Enter a number for every numeric screening rule, or remove the unfinished rule in Advanced rules.",
+      );
       setStep(1);
       return;
     }
     if (autoReject && !rules.some((r) => r.enabled)) {
-      setError("Add an enabled qualifying answer, or turn off automatic rejection.");
+      setError(
+        "Add an enabled qualifying answer, or turn off automatic rejection.",
+      );
       setStep(1);
       return;
     }
@@ -1055,7 +1067,12 @@ function Editor({
                             ))}
                           </select>
                         </Field>
-                        {rules.some((r) => r.fieldPath === f.path) && <p className="hub-muted">Remove this question’s screening rules in Advanced rules before changing its answer format.</p>}
+                        {rules.some((r) => r.fieldPath === f.path) && (
+                          <p className="hub-muted">
+                            Remove this question’s screening rules in Advanced
+                            rules before changing its answer format.
+                          </p>
+                        )}
                         <Field
                           label={`Question ${i + 1} instructions (optional)`}
                         >
@@ -1068,7 +1085,16 @@ function Editor({
                           />
                         </Field>
                       </div>
-                      <QuestionScreening field={f} rules={rules} autoReject={autoReject} change={(value) => { setRules(value); setApproved(false); setRejectApproved(false); }} />
+                      <QuestionScreening
+                        field={f}
+                        rules={rules}
+                        autoReject={autoReject}
+                        change={(value) => {
+                          setRules(value);
+                          setApproved(false);
+                          setRejectApproved(false);
+                        }}
+                      />
                       {["ValueSelect", "MultiValueSelect"].includes(f.type) && (
                         <ChoiceInput
                           key={f.path + f.type}
@@ -1145,7 +1171,11 @@ function Editor({
             <AdvancedRules
               fields={fields}
               rules={rules}
-              change={(value) => { setRules(value); setApproved(false); setRejectApproved(false); }}
+              change={(value) => {
+                setRules(value);
+                setApproved(false);
+                setRejectApproved(false);
+              }}
               autoReject={autoReject}
               setAutoReject={setAutoReject}
               rejection={rejection}
@@ -1412,27 +1442,77 @@ function Editor({
                 needed.
               </p>
             </section>
-            <section className="hub-card"><h3>Screening decisions</h3>{autoReject && <label className="hub-checkbox"><input type="checkbox" checked={rejectApproved} onChange={(e) => setRejectApproved(e.target.checked)} />I approve these requirements and the rejection email for automatic decisions.</label>}<p>{autoReject ? "Automatic rejection is on. Applicants who fail any enabled requirement are rejected and receive the rejection email." : "Automatic rejection is off. Every application goes to recruiter review."}</p><ul>{rules.filter((r) => r.enabled).map((r, i) => <li key={i}>{fields.find((f) => f.path === r.fieldPath)?.title}: {r.operator === "gte" ? "at least" : r.operator === "lte" ? "at most" : r.operator === "equals" ? "must equal" : r.operator === "not_equals" ? "must not equal" : "must contain"} {typeof r.value === "boolean" ? r.value ? "Yes" : "No" : String(r.value)}</li>)}</ul><button type="button" className="hub-text-button" onClick={() => goToStep(1)}>Edit questions and screening</button></section>
+            <section className="hub-card">
+              <h3>Screening decisions</h3>
+              {autoReject && (
+                <label className="hub-checkbox">
+                  <input
+                    type="checkbox"
+                    checked={rejectApproved}
+                    onChange={(e) => setRejectApproved(e.target.checked)}
+                  />
+                  I approve these requirements and the rejection email for
+                  automatic decisions.
+                </label>
+              )}
+              <p>
+                {autoReject
+                  ? "Automatic rejection is on. Applicants who fail any enabled requirement are rejected and receive the rejection email."
+                  : "Automatic rejection is off. Every application goes to recruiter review."}
+              </p>
+              <ul>
+                {rules
+                  .filter((r) => r.enabled)
+                  .map((r, i) => (
+                    <li key={i}>
+                      {fields.find((f) => f.path === r.fieldPath)?.title}:{" "}
+                      {r.operator === "gte"
+                        ? "at least"
+                        : r.operator === "lte"
+                          ? "at most"
+                          : r.operator === "equals"
+                            ? "must equal"
+                            : r.operator === "not_equals"
+                              ? "must not equal"
+                              : "must contain"}{" "}
+                      {typeof r.value === "boolean"
+                        ? r.value
+                          ? "Yes"
+                          : "No"
+                        : String(r.value)}
+                    </li>
+                  ))}
+              </ul>
+              <button
+                type="button"
+                className="hub-text-button"
+                onClick={() => goToStep(1)}
+              >
+                Edit questions and screening
+              </button>
+            </section>
           </>
         )}
         <div className="hub-sticky-save">
-          {step > 0 && <button
-            type="button"
-            className="hub-button secondary"
-            disabled={step === 0}
-            onClick={() => {
-              setApproved(false);
-              setRejectApproved(false);
-              setError("");
-              const previous = new URL(window.location.href);
-              previous.searchParams.set("jobStep", String(step - 1));
-              if (window.history.state?.jobStepFrom === previous.href)
-                window.history.back();
-              else goToStep(step - 1);
-            }}
-          >
-            Back
-          </button>}
+          {step > 0 && (
+            <button
+              type="button"
+              className="hub-button secondary"
+              disabled={step === 0}
+              onClick={() => {
+                setApproved(false);
+                setRejectApproved(false);
+                setError("");
+                const previous = new URL(window.location.href);
+                previous.searchParams.set("jobStep", String(step - 1));
+                if (window.history.state?.jobStepFrom === previous.href)
+                  window.history.back();
+                else goToStep(step - 1);
+              }}
+            >
+              Back
+            </button>
+          )}
           <button
             type="button"
             className="hub-button secondary"
@@ -1480,25 +1560,115 @@ function Editor({
     </section>
   );
 }
-function QuestionScreening({ field, rules, autoReject, change }: { field: ApplicationField; rules: Rule[]; autoReject: boolean; change: (rules: Rule[]) => void }) {
+function QuestionScreening({
+  field,
+  rules,
+  autoReject,
+  change,
+}: {
+  field: ApplicationField;
+  rules: Rule[];
+  autoReject: boolean;
+  change: (rules: Rule[]) => void;
+}) {
   const numeric = ["Number", "Score"].includes(field.type);
-  if (!numeric && field.type !== "Boolean") return <p className="hub-muted">To add a minimum or a required Yes/No answer, choose Number or Yes/No as the answer format.</p>;
-  const index = rules.findIndex((r) => r.fieldPath === field.path && r.operator === (numeric ? "gte" : "equals"));
+  if (!numeric && field.type !== "Boolean")
+    return (
+      <p className="hub-muted">
+        To add a minimum or a required Yes/No answer, choose Number or Yes/No as
+        the answer format.
+      </p>
+    );
+  const index = rules.findIndex(
+    (r) =>
+      r.fieldPath === field.path && r.operator === (numeric ? "gte" : "equals"),
+  );
   const rule = rules[index];
   function update(patch: Partial<Rule>) {
-    if (rule) change(rules.map((r, i) => i === index ? { ...r, ...patch } : r));
-    else change([...rules, { fieldPath: field.path, operator: numeric ? "gte" : "equals", value: numeric ? "" : true, enabled: true, reason: `Does not meet the requirement for ${field.title || "this question"}.`, ...patch }]);
+    if (rule)
+      change(rules.map((r, i) => (i === index ? { ...r, ...patch } : r)));
+    else
+      change([
+        ...rules,
+        {
+          fieldPath: field.path,
+          operator: numeric ? "gte" : "equals",
+          value: numeric ? "" : true,
+          enabled: true,
+          reason: `Does not meet the requirement for ${field.title || "this question"}.`,
+          ...patch,
+        },
+      ]);
   }
-  return <section className="hub-screening-question" aria-label={`Screening for ${field.title || "new question"}`}>
-    <label className="hub-checkbox"><input type="checkbox" checked={rule?.enabled || false} onChange={(e) => update({ enabled: e.target.checked })} />Set a qualifying answer</label>
-    {rule?.enabled && <>
-      <Field label={numeric ? `Minimum accepted number for ${field.title || "this question"}` : `Qualifying answer for ${field.title || "this question"}`} hint={numeric ? "Example: 7 accepts 7 or more; anything below 7 does not qualify." : "Applicants must choose this answer to qualify."}>
-        {numeric ? <input type="number" step="any" value={String(rule.value)} onChange={(e) => update({ value: e.target.value.trim() === "" ? "" : Number(e.target.value) })} /> : <select value={String(rule.value)} onChange={(e) => update({ value: e.target.value === "true" })}><option value="true">Yes</option><option value="false">No</option></select>}
-      </Field>
-      <p className="hub-muted">{autoReject ? "Answers that do not qualify trigger automatic rejection when these settings are approved and saved." : "Answers that do not qualify are flagged for recruiter review. Turn on automatic rejection below to reject them automatically."} {!field.required && "This question is optional: a missing answer goes to human review, not automatic rejection. Choose Required above to ensure everyone answers."}</p>
-    </>}
-    {rules.filter((r) => r.fieldPath === field.path).length > (rule ? 1 : 0) && <p className="hub-muted">This question also has additional rules. Review them under Advanced rules below; they are preserved.</p>}
-  </section>;
+  return (
+    <section
+      className="hub-screening-question"
+      aria-label={`Screening for ${field.title || "new question"}`}
+    >
+      <label className="hub-checkbox">
+        <input
+          type="checkbox"
+          checked={rule?.enabled || false}
+          onChange={(e) => update({ enabled: e.target.checked })}
+        />
+        Set a qualifying answer
+      </label>
+      {rule?.enabled && (
+        <>
+          <Field
+            label={
+              numeric
+                ? `Minimum accepted number for ${field.title || "this question"}`
+                : `Qualifying answer for ${field.title || "this question"}`
+            }
+            hint={
+              numeric
+                ? "Example: 7 accepts 7 or more; anything below 7 does not qualify."
+                : "Applicants must choose this answer to qualify."
+            }
+          >
+            {numeric ? (
+              <input
+                type="number"
+                step="any"
+                value={String(rule.value)}
+                onChange={(e) =>
+                  update({
+                    value:
+                      e.target.value.trim() === ""
+                        ? ""
+                        : Number(e.target.value),
+                  })
+                }
+              />
+            ) : (
+              <select
+                value={String(rule.value)}
+                onChange={(e) => update({ value: e.target.value === "true" })}
+              >
+                <option value="true">Yes</option>
+                <option value="false">No</option>
+              </select>
+            )}
+          </Field>
+          <p className="hub-muted">
+            {autoReject
+              ? "Answers that do not qualify trigger automatic rejection when these settings are approved and saved."
+              : "Answers that do not qualify are flagged for recruiter review. Turn on automatic rejection below to reject them automatically."}{" "}
+            {!field.required &&
+              "This question is optional: a missing answer goes to human review, not automatic rejection. Choose Required above to ensure everyone answers."}
+          </p>
+        </>
+      )}
+      {rules.filter((r) => r.fieldPath === field.path).length >
+        (rule ? 1 : 0) && (
+        <p className="hub-muted">
+          This question also has additional rules. Review them under Advanced
+          rules below; they are preserved.
+        </p>
+      )}
+    </section>
+  );
 }
 
 function AdvancedRules({
@@ -1533,119 +1703,130 @@ function AdvancedRules({
         Without approved rules, every applicant goes to human review. AI does
         not reject applicants.
       </p>
-      <details><summary>Advanced rules ({rules.length})</summary>
-      {rules.map((r, i) => (
-        <article className="hub-question" key={i}>
-          <Field label={`Requirement ${i + 1} question`}>
-            <select
-              value={r.fieldPath}
-              onChange={(e) => {
-                const f = fields.find((f) => f.path === e.target.value);
-                update(i, {
-                  fieldPath: e.target.value,
-                  value:
-                    f?.type === "Boolean"
-                      ? false
-                      : ["Number", "Score"].includes(f?.type || "")
-                        ? 0
-                        : "",
-                });
-              }}
-            >
-              {fields
-                .filter((f) => f.type !== "File")
-                .map((f) => (
-                  <option key={f.path} value={f.path}>
-                    {f.title}
-                  </option>
-                ))}
-            </select>
-          </Field>
-          <Field label={`Requirement ${i + 1} comparison`}>
-            <select
-              value={r.operator}
-              onChange={(e) =>
-                update(i, { operator: e.target.value as Rule["operator"] })
-              }
-            >
-              <option value="equals">Must equal</option>
-              <option value="not_equals">Must not equal</option>
-              <option value="contains">Must contain</option>
-              <option value="gte">Must be at least</option>
-              <option value="lte">Must be at most</option>
-            </select>
-          </Field>
-          <Field label={`Requirement ${i + 1} expected answer`}>
-            {typeof r.value === "boolean" ? (
+      <details>
+        <summary>Advanced rules ({rules.length})</summary>
+        {rules.map((r, i) => (
+          <article className="hub-question" key={i}>
+            <Field label={`Requirement ${i + 1} question`}>
               <select
-                value={String(r.value)}
+                value={r.fieldPath}
+                onChange={(e) => {
+                  const f = fields.find((f) => f.path === e.target.value);
+                  update(i, {
+                    fieldPath: e.target.value,
+                    value:
+                      f?.type === "Boolean"
+                        ? false
+                        : ["Number", "Score"].includes(f?.type || "")
+                          ? 0
+                          : "",
+                  });
+                }}
+              >
+                {fields
+                  .filter((f) => f.type !== "File")
+                  .map((f) => (
+                    <option key={f.path} value={f.path}>
+                      {f.title}
+                    </option>
+                  ))}
+              </select>
+            </Field>
+            <Field label={`Requirement ${i + 1} comparison`}>
+              <select
+                value={r.operator}
                 onChange={(e) =>
-                  update(i, { value: e.target.value === "true" })
+                  update(i, { operator: e.target.value as Rule["operator"] })
                 }
               >
-                <option value="true">Yes</option>
-                <option value="false">No</option>
+                <option value="equals">Must equal</option>
+                <option value="not_equals">Must not equal</option>
+                <option value="contains">Must contain</option>
+                <option value="gte">Must be at least</option>
+                <option value="lte">Must be at most</option>
               </select>
-            ) : (
+            </Field>
+            <Field label={`Requirement ${i + 1} expected answer`}>
+              {typeof r.value === "boolean" ? (
+                <select
+                  value={String(r.value)}
+                  onChange={(e) =>
+                    update(i, { value: e.target.value === "true" })
+                  }
+                >
+                  <option value="true">Yes</option>
+                  <option value="false">No</option>
+                </select>
+              ) : (
+                <input
+                  type={
+                    ["Number", "Score"].includes(
+                      fields.find((f) => f.path === r.fieldPath)?.type || "",
+                    )
+                      ? "number"
+                      : "text"
+                  }
+                  value={String(r.value)}
+                  onChange={(e) =>
+                    update(i, {
+                      value:
+                        ["Number", "Score"].includes(
+                          fields.find((f) => f.path === r.fieldPath)?.type ||
+                            "",
+                        ) && e.target.value.trim() !== ""
+                          ? Number(e.target.value)
+                          : e.target.value,
+                    })
+                  }
+                />
+              )}
+            </Field>
+            <Field label={`Requirement ${i + 1} reason`}>
               <input
-                type={["Number", "Score"].includes(fields.find((f) => f.path === r.fieldPath)?.type || "") ? "number" : "text"}
-                value={String(r.value)}
-                onChange={(e) =>
-                  update(i, {
-                    value:
-                      ["Number", "Score"].includes(fields.find((f) => f.path === r.fieldPath)?.type || "") && e.target.value.trim() !== ""
-                        ? Number(e.target.value)
-                        : e.target.value,
-                  })
-                }
+                maxLength={500}
+                value={r.reason}
+                onChange={(e) => update(i, { reason: e.target.value })}
               />
-            )}
-          </Field>
-          <Field label={`Requirement ${i + 1} reason`}>
-            <input
-              maxLength={500}
-              value={r.reason}
-              onChange={(e) => update(i, { reason: e.target.value })}
-            />
-          </Field>
-          <label className="hub-checkbox">
-            <input
-              type="checkbox"
-              checked={r.enabled}
-              onChange={(e) => update(i, { enabled: e.target.checked })}
-            />{" "}
-            Enable requirement {i + 1}
-          </label>
-          <button
-            className="hub-text-button"
-            type="button"
-            onClick={() => {
-              change(rules.filter((_, n) => n !== i));
-              setApproved(false);
-            }}
-          >
-            Remove requirement
-          </button>
-        </article>
-      ))}
-      <button
-        type="button"
-        className="hub-button secondary"
-        onClick={() =>
-          change([
-            ...rules,
-            {
-              fieldPath: fields.find((f) => f.type !== "File")?.path || "",
-              operator: "equals",
-              value: "",
-              reason: "",
-              enabled: false,
-            },
-          ])
-        }
-      >
-        Add qualification rule
-      </button></details>
+            </Field>
+            <label className="hub-checkbox">
+              <input
+                type="checkbox"
+                checked={r.enabled}
+                onChange={(e) => update(i, { enabled: e.target.checked })}
+              />{" "}
+              Enable requirement {i + 1}
+            </label>
+            <button
+              className="hub-text-button"
+              type="button"
+              onClick={() => {
+                change(rules.filter((_, n) => n !== i));
+                setApproved(false);
+              }}
+            >
+              Remove requirement
+            </button>
+          </article>
+        ))}
+        <button
+          type="button"
+          className="hub-button secondary"
+          onClick={() =>
+            change([
+              ...rules,
+              {
+                fieldPath: fields.find((f) => f.type !== "File")?.path || "",
+                operator: "equals",
+                value: "",
+                reason: "",
+                enabled: false,
+              },
+            ])
+          }
+        >
+          Add qualification rule
+        </button>
+      </details>
       <Field
         label="Rejection email (optional)"
         hint="Leave blank to use the team’s saved email template."
