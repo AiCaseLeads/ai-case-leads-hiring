@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { sanitizeJobDescription, serializeDescriptionEditor, cleanDescriptionSpacing } from '../../lib/job-description';
+import { sanitizeJobDescription, serializeDescriptionEditor, cleanDescriptionSpacing, hasDescriptionText } from '../../lib/job-description';
 
 test('formatting survives repeated save and editing, including entities and legacy newlines', () => {
   const value = '<h2>R&amp;D</h2><p>Build <strong>great</strong> things &lt; safely</p><ol><li>First</li><li>Second &#38; third</li></ol>\nLegacy\nlines';
@@ -25,4 +25,10 @@ test('browser wrapper serialization keeps content and formatting', () => {
 test('spacing cleanup preserves word separators around inline formatting and list structure', () => {
   assert.equal(cleanDescriptionSpacing('<p>  Build   <strong>great</strong>   things </p><p><br></p><ol><li>First  item</li></ol>'), '<p>Build <strong>great</strong> things</p><ol><li>First item</li></ol>');
   assert.equal(cleanDescriptionSpacing('One\n\n\n\nTwo'), 'One\n\nTwo');
+});
+
+test('blank formatted descriptions cannot be published', () => {
+  assert.equal(hasDescriptionText('<p><br></p><p>&nbsp; &#32;</p>'), false);
+  assert.equal(hasDescriptionText('<h2>Role</h2>'), true);
+  assert.equal(hasDescriptionText('&lt;literal&gt;'), true);
 });

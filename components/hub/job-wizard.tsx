@@ -1,4 +1,5 @@
 "use client";
+import { hasDescriptionText } from "@/lib/job-description";
 import { DescriptionEditor } from "./description-editor";
 import { SafeDescription } from "../careers/safe-description";
 import { useEffect, useRef, useState } from "react";
@@ -658,7 +659,7 @@ function Editor({
       );
       return;
     }
-    if (status === "open" && (!approved || !description.trim())) {
+    if (status === "open" && (!approved || !hasDescriptionText(description))) {
       setError(
         "Add a job description and approve the final preview before publishing.",
       );
@@ -1350,7 +1351,7 @@ function Editor({
               <button
                 type="button"
                 className="hub-button"
-                disabled={!approved || !description.trim()}
+                disabled={!approved || !hasDescriptionText(description)}
                 onClick={() => void save("open")}
               >
                 {mutation.busy

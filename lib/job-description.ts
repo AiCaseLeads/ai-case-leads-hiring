@@ -36,3 +36,8 @@ export function cleanDescriptionSpacing(html: string): string {
     .replace(/(<(?:p|h[234]|li|blockquote)>)[ ]+/gi, '$1')
     .replace(/[ ]+(<\/(?:p|h[234]|li|blockquote)>)/gi, '$1').trim();
 }
+
+/** Formatting and blank lines alone are not a publishable job description. */
+export function hasDescriptionText(html: string): boolean {
+  return Boolean(sanitizeJobDescription(html).replace(/<[^>]*>/g, '').replace(/[\s\u200b-\u200d\ufeff]/g, ''));
+}

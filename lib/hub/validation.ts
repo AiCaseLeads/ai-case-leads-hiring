@@ -1,3 +1,4 @@
+import { hasDescriptionText } from "../job-description";
 import { z } from "zod";
 import { HiringError } from "../hiring/errors";
 import type { ApplicationField, FieldSubmission } from "../hiring/types";
@@ -265,7 +266,7 @@ export function validateJob(input: JobInput): void {
       "Approve and enable at least one screening requirement before activating automatic rejection.",
     );
   if (input.status === "open") {
-    if (!input.descriptionHtml.trim())
+    if (!hasDescriptionText(input.descriptionHtml))
       throw new HiringError(
         "invalid_job",
         422,
