@@ -1033,6 +1033,15 @@ function Editor({
                         <Field label={`Question ${i + 1} requirement`}>
                           <select
                             value={f.required ? "required" : "optional"}
+                            disabled={rules.some(
+                              (r) =>
+                                r.fieldPath === f.path &&
+                                r.enabled &&
+                                ((["Number", "Score"].includes(f.type) &&
+                                  r.operator === "gte") ||
+                                  (f.type === "Boolean" &&
+                                    r.operator === "equals")),
+                            )}
                             onChange={(e) =>
                               updateField(i, {
                                 required: e.target.value === "required",
@@ -1086,6 +1095,7 @@ function Editor({
                         </Field>
                       </div>
                       <QuestionScreening
+                        requireAnswer={() => updateField(i, { required: true })}
                         field={f}
                         rules={rules}
                         autoReject={autoReject}
@@ -1457,7 +1467,7 @@ function Editor({
               )}
               <p>
                 {autoReject
-                  ? "Automatic rejection is on. Applicants who fail any enabled requirement are rejected and receive the rejection email."
+                  ? "Automatic rejection is on. Applicants with complete screening answers who fail an enabled requirement are rejected and receive the rejection email. Missing optional screening answers always go to human review."
                   : "Automatic rejection is off. Every application goes to recruiter review."}
               </p>
               <ul>
@@ -1565,20 +1575,16 @@ function QuestionScreening({
   rules,
   autoReject,
   change,
+  requireAnswer,
 }: {
+  requireAnswer: () => void;
   field: ApplicationField;
   rules: Rule[];
   autoReject: boolean;
   change: (rules: Rule[]) => void;
 }) {
   const numeric = ["Number", "Score"].includes(field.type);
-  if (!numeric && field.type !== "Boolean")
-    return (
-      <p className="hub-muted">
-        To add a minimum or a required Yes/No answer, choose Number or Yes/No as
-        the answer format.
-      </p>
-    );
+  if (!numeric && field.type !== "Boolean") return null;
   const index = rules.findIndex(
     (r) =>
       r.fieldPath === field.path && r.operator === (numeric ? "gte" : "equals"),
@@ -1609,12 +1615,24 @@ function QuestionScreening({
         <input
           type="checkbox"
           checked={rule?.enabled || false}
-          onChange={(e) => update({ enabled: e.target.checked })}
+          onChange={(e) => {
+            if (e.target.checked) {
+              requireAnswer();
+              update({ enabled: true });
+            } else if (rule && rule.value === "") {
+              change(rules.filter((_, i) => i !== index));
+            } else update({ enabled: false });
+          }}
         />
         Set a qualifying answer
       </label>
       {rule?.enabled && (
         <>
+          <p className="hub-muted">
+            Qualifying questions are required when enabled so every applicant
+            supplies an answer. Turn off this requirement before making the
+            question optional.
+          </p>
           <Field
             label={
               numeric
