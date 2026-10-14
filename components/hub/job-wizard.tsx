@@ -696,6 +696,16 @@ function Editor({
       );
       return;
     }
+    if (rules.some((r) => ["Number", "Score"].includes(fields.find((f) => f.path === r.fieldPath)?.type || "") && (typeof r.value !== "number" || !Number.isFinite(r.value)))) {
+      setError("Enter a number for every numeric screening rule, or remove the unfinished rule in Advanced rules.");
+      setStep(1);
+      return;
+    }
+    if (autoReject && !rules.some((r) => r.enabled)) {
+      setError("Add an enabled qualifying answer, or turn off automatic rejection.");
+      setStep(1);
+      return;
+    }
     if (status !== "closed" && autoReject && !rejectApproved) {
       setError(
         "Approve the enabled qualification rules and rejection email before saving automatic rejection.",
@@ -1026,11 +1036,11 @@ function Editor({
                           </select>
                         </Field>
                       </div>
-                      <details>
-                        <summary>Answer format and instructions</summary>
+                      <div>
                         <Field label={`Question ${i + 1} answer format`}>
                           <select
                             value={f.type}
+                            disabled={rules.some((r) => r.fieldPath === f.path)}
                             onChange={(e) =>
                               updateField(i, {
                                 type: e.target.value as FieldType,
@@ -1045,6 +1055,7 @@ function Editor({
                             ))}
                           </select>
                         </Field>
+                        {rules.some((r) => r.fieldPath === f.path) && <p className="hub-muted">Remove this question’s screening rules in Advanced rules before changing its answer format.</p>}
                         <Field
                           label={`Question ${i + 1} instructions (optional)`}
                         >
@@ -1056,7 +1067,8 @@ function Editor({
                             }
                           />
                         </Field>
-                      </details>
+                      </div>
+                      <QuestionScreening field={f} rules={rules} autoReject={autoReject} change={(value) => { setRules(value); setApproved(false); setRejectApproved(false); }} />
                       {["ValueSelect", "MultiValueSelect"].includes(f.type) && (
                         <ChoiceInput
                           key={f.path + f.type}
@@ -1130,6 +1142,17 @@ function Editor({
             >
               <Plus size={16} /> Add custom question
             </button>
+            <AdvancedRules
+              fields={fields}
+              rules={rules}
+              change={(value) => { setRules(value); setApproved(false); setRejectApproved(false); }}
+              autoReject={autoReject}
+              setAutoReject={setAutoReject}
+              rejection={rejection}
+              setRejection={setRejection}
+              approved={rejectApproved}
+              setApproved={setRejectApproved}
+            />
             <p className="hub-muted">
               Profile links and experience answers are supplied by applicants.
               No LinkedIn login or scraping is used.
@@ -1389,21 +1412,11 @@ function Editor({
                 needed.
               </p>
             </section>
-            <AdvancedRules
-              fields={fields}
-              rules={rules}
-              change={setRules}
-              autoReject={autoReject}
-              setAutoReject={setAutoReject}
-              rejection={rejection}
-              setRejection={setRejection}
-              approved={rejectApproved}
-              setApproved={setRejectApproved}
-            />
+            <section className="hub-card"><h3>Screening decisions</h3>{autoReject && <label className="hub-checkbox"><input type="checkbox" checked={rejectApproved} onChange={(e) => setRejectApproved(e.target.checked)} />I approve these requirements and the rejection email for automatic decisions.</label>}<p>{autoReject ? "Automatic rejection is on. Applicants who fail any enabled requirement are rejected and receive the rejection email." : "Automatic rejection is off. Every application goes to recruiter review."}</p><ul>{rules.filter((r) => r.enabled).map((r, i) => <li key={i}>{fields.find((f) => f.path === r.fieldPath)?.title}: {r.operator === "gte" ? "at least" : r.operator === "lte" ? "at most" : r.operator === "equals" ? "must equal" : r.operator === "not_equals" ? "must not equal" : "must contain"} {typeof r.value === "boolean" ? r.value ? "Yes" : "No" : String(r.value)}</li>)}</ul><button type="button" className="hub-text-button" onClick={() => goToStep(1)}>Edit questions and screening</button></section>
           </>
         )}
         <div className="hub-sticky-save">
-          <button
+          {step > 0 && <button
             type="button"
             className="hub-button secondary"
             disabled={step === 0}
@@ -1419,7 +1432,7 @@ function Editor({
             }}
           >
             Back
-          </button>
+          </button>}
           <button
             type="button"
             className="hub-button secondary"
@@ -1467,6 +1480,27 @@ function Editor({
     </section>
   );
 }
+function QuestionScreening({ field, rules, autoReject, change }: { field: ApplicationField; rules: Rule[]; autoReject: boolean; change: (rules: Rule[]) => void }) {
+  const numeric = ["Number", "Score"].includes(field.type);
+  if (!numeric && field.type !== "Boolean") return <p className="hub-muted">To add a minimum or a required Yes/No answer, choose Number or Yes/No as the answer format.</p>;
+  const index = rules.findIndex((r) => r.fieldPath === field.path && r.operator === (numeric ? "gte" : "equals"));
+  const rule = rules[index];
+  function update(patch: Partial<Rule>) {
+    if (rule) change(rules.map((r, i) => i === index ? { ...r, ...patch } : r));
+    else change([...rules, { fieldPath: field.path, operator: numeric ? "gte" : "equals", value: numeric ? "" : true, enabled: true, reason: `Does not meet the requirement for ${field.title || "this question"}.`, ...patch }]);
+  }
+  return <section className="hub-screening-question" aria-label={`Screening for ${field.title || "new question"}`}>
+    <label className="hub-checkbox"><input type="checkbox" checked={rule?.enabled || false} onChange={(e) => update({ enabled: e.target.checked })} />Set a qualifying answer</label>
+    {rule?.enabled && <>
+      <Field label={numeric ? `Minimum accepted number for ${field.title || "this question"}` : `Qualifying answer for ${field.title || "this question"}`} hint={numeric ? "Example: 7 accepts 7 or more; anything below 7 does not qualify." : "Applicants must choose this answer to qualify."}>
+        {numeric ? <input type="number" step="any" value={String(rule.value)} onChange={(e) => update({ value: e.target.value.trim() === "" ? "" : Number(e.target.value) })} /> : <select value={String(rule.value)} onChange={(e) => update({ value: e.target.value === "true" })}><option value="true">Yes</option><option value="false">No</option></select>}
+      </Field>
+      <p className="hub-muted">{autoReject ? "Answers that do not qualify trigger automatic rejection when these settings are approved and saved." : "Answers that do not qualify are flagged for recruiter review. Turn on automatic rejection below to reject them automatically."} {!field.required && "This question is optional: a missing answer goes to human review, not automatic rejection. Choose Required above to ensure everyone answers."}</p>
+    </>}
+    {rules.filter((r) => r.fieldPath === field.path).length > (rule ? 1 : 0) && <p className="hub-muted">This question also has additional rules. Review them under Advanced rules below; they are preserved.</p>}
+  </section>;
+}
+
 function AdvancedRules({
   fields,
   rules,
@@ -1493,12 +1527,13 @@ function AdvancedRules({
     setApproved(false);
   }
   return (
-    <details className="hub-card">
-      <summary>Advanced: qualification rules and rejection emails</summary>
+    <section className="hub-card">
+      <h3>What happens when an applicant does not qualify?</h3>
       <p>
         Without approved rules, every applicant goes to human review. AI does
         not reject applicants.
       </p>
+      <details><summary>Advanced rules ({rules.length})</summary>
       {rules.map((r, i) => (
         <article className="hub-question" key={i}>
           <Field label={`Requirement ${i + 1} question`}>
@@ -1553,12 +1588,12 @@ function AdvancedRules({
               </select>
             ) : (
               <input
-                type={typeof r.value === "number" ? "number" : "text"}
+                type={["Number", "Score"].includes(fields.find((f) => f.path === r.fieldPath)?.type || "") ? "number" : "text"}
                 value={String(r.value)}
                 onChange={(e) =>
                   update(i, {
                     value:
-                      typeof r.value === "number"
+                      ["Number", "Score"].includes(fields.find((f) => f.path === r.fieldPath)?.type || "") && e.target.value.trim() !== ""
                         ? Number(e.target.value)
                         : e.target.value,
                   })
@@ -1610,7 +1645,7 @@ function AdvancedRules({
         }
       >
         Add qualification rule
-      </button>
+      </button></details>
       <Field
         label="Rejection email (optional)"
         hint="Leave blank to use the team’s saved email template."
@@ -1647,7 +1682,7 @@ function AdvancedRules({
           decisions.
         </label>
       )}
-    </details>
+    </section>
   );
 }
 
