@@ -802,16 +802,22 @@
   border-radius: 0;
 }
 .hub-sticky-save {
-  background: #ffffffee;
+  background: transparent;
   border-top: 1px solid #d5e3da;
-  padding: 17px 0;
-  position: sticky;
-  bottom: 0;
+  margin-top: 24px;
+  padding: 20px 0;
+  position: static;
   display: flex;
   flex-wrap: wrap;
   gap: 12px;
   align-items: center;
-  z-index: 2;
+}
+.hub-sticky-save > button {
+  flex: 0 0 auto;
+  max-width: 100%;
+  white-space: normal;
+  word-break: normal;
+  overflow-wrap: normal;
 }
 .hub-sticky-save .hub-notice {
   flex-basis: 100%;
@@ -1345,21 +1351,14 @@
 .hub-wizard-steps { margin-block: 20px; }
 .hub-text-button:disabled { opacity: 0.5; cursor: not-allowed; }
 
-/* Keep short requirement badges intact and leave focused fields above the save bar. */
+/* Keep short requirement badges intact. Wizard actions stay below the form. */
 .hub-question-heading { flex-wrap: wrap; }
 .hub-question-heading > strong { min-width: 0; flex: 1 1 120px; }
 .hub-question-heading > .hub-badge { flex: 0 0 auto; white-space: nowrap; overflow-wrap: normal; }
-.hub-sticky-save { background: #fff; }
-html:has(.hub-sticky-save) { scroll-padding-bottom: 180px; }
-.hub-main:has(.hub-sticky-save) { padding-bottom: 180px; }
-.hub-main:has(.hub-sticky-save) :is(input, select, textarea, button, summary) { scroll-margin-bottom: 180px; }
 @media (max-width: 640px) {
   .hub-question-heading { gap: 12px; }
   .hub-question-heading > strong { flex-basis: 100%; }
   .hub-question-heading > .hub-icon-button { margin-left: auto; }
-}
-@media (max-height: 540px) and (max-width: 960px) {
-  .hub-sticky-save { position: static; }
 }
 
 /* Separate self-service setup from company-wide configuration. */
@@ -1382,7 +1381,7 @@ html:has(.hub-sticky-save) { scroll-padding-bottom: 180px; }
 }
 
 /* Settings save actions stay with their form instead of covering other sections.
-   The job wizard keeps its separate sticky footer. */
+   The job wizard keeps its separate action row. */
 .hub-settings-stack {
   display: flex;
   flex-direction: column;
