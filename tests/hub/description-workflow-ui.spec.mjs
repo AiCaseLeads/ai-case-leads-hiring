@@ -289,3 +289,14 @@ test('pending job save locks the editor and formatting until the request complet
  assert.equal(await box.getAttribute('contenteditable'),'false');assert.equal(await page.getByRole('button',{name:'Bold',exact:true}).isDisabled(),true);
  release();await page.getByText('Draft saved.',{exact:false}).waitFor();
 });
+test('cleaning formatted numbered paragraphs removes empty numbered rows and Undo restores them',async t=>{
+ const {page}=await setup(t);const box=await edit(page);
+ await box.fill('Clear   responsibilities\n\nApproved   requirements\n\nHow   to   apply');
+ await selectAll(page,box);await page.getByRole('button',{name:'Bold',exact:true}).click();
+ await page.getByRole('button',{name:'Numbered list',exact:true}).click();
+ assert.equal(await box.locator('ol > li').count(),5);
+ await page.getByRole('button',{name:'Clean up spacing',exact:true}).click();
+ assert.deepEqual(await box.locator('ol > li').allTextContents(),['Clear responsibilities','Approved requirements','How to apply']);
+ assert.equal(await box.locator('ol > li').count(),3);
+ await page.getByRole('button',{name:'Undo',exact:true}).click();assert.equal(await box.locator('ol > li').count(),5);
+});
