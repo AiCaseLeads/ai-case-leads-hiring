@@ -1417,3 +1417,15 @@
 
 /* Scorecard actions use the shared wrapping row and clear the following panel. */
 .hub-scorecard-editor, .hub-scorecard-review > form { margin-bottom: 24px; }
+
+/* Keep screening choices visually attached to their question. */
+.hub-screening-question {
+  margin-top: 16px;
+  padding: 16px;
+  border: 1px solid var(--hub-line);
+  border-radius: 7px;
+  background: var(--hub-surface);
+}
+.hub-screening-question > .hub-checkbox { margin: 0; }
+.hub-screening-question > .hub-field { margin-top: 16px; }
+.hub-screening-question > p:last-child { margin-bottom: 0; }
