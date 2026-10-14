@@ -288,43 +288,8 @@ export function validateJob(input: JobInput): void {
       );
   }
 }
-const escape = (text: string) =>
-  text
-    .replace(
-      /&(amp|lt|gt|quot|apos|#39);/gi,
-      (_, entity: string) =>
-        ({ amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", "#39": "'" })[
-          entity.toLowerCase()
-        ]!,
-    )
-    .replace(
-      /[&<>"']/g,
-      (ch) =>
-        ({
-          "&": "&amp;",
-          "<": "&lt;",
-          ">": "&gt;",
-          '"': "&quot;",
-          "'": "&#39;",
-        })[ch]!,
-    );
 /** Permit formatting tags without attributes. Arbitrary HTML, URLs, scripts and styles are escaped. */
-export function sanitizeDescription(html: string): string {
-  let result = "",
-    position = 0;
-  const matcher = /<[^>]*>/g;
-  let match: RegExpExecArray | null;
-  while ((match = matcher.exec(html))) {
-    result += escape(html.slice(position, match.index));
-    const tag =
-      /^<\s*(\/?)\s*(p|br|ul|ol|li|h2|h3|h4|strong|em|b|i|blockquote)(?:\s[^<>]*)?\s*\/?\s*>$/i.exec(
-        match[0],
-      );
-    result += tag ? `<${tag[1]}${tag[2].toLowerCase()}>` : escape(match[0]);
-    position = matcher.lastIndex;
-  }
-  return result + escape(html.slice(position));
-}
+export { sanitizeJobDescription as sanitizeDescription } from "../job-description";
 export function evaluateRequirements(
   rules: Rule[],
   answers: FieldSubmission[],

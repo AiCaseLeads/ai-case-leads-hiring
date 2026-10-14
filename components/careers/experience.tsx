@@ -1,4 +1,5 @@
 "use client";
+import { SafeDescription } from "./safe-description";
 import { useCallback, useEffect, useState } from "react";
 import {
   Code2,
@@ -427,30 +428,6 @@ export function CareerDetail({ slug }: { slug: string }) {
         )}
       </main>
     </PageChrome>
-  );
-}
-function SafeDescription({ html }: { html: string }) {
-  // Provider content is rendered as text, never injected as executable HTML.
-  const text = html
-    .replace(/<(script|style)\b[^>]*>[\s\S]*?<\/\1>/gi, "")
-    .replace(/<\/(p|div|h[1-6]|li)>/gi, "\n\n")
-    .replace(/<br\s*\/?>/gi, "\n")
-    .replace(/<[^>]*>/g, "")
-    .replace(/&nbsp;/g, " ")
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'");
-  return (
-    <div className="description-copy">
-      {text
-        .split(/\n\s*\n/)
-        .filter((s) => s.trim())
-        .map((p, i) => (
-          <p key={i}>{p.trim()}</p>
-        ))}
-    </div>
   );
 }
 export function ApplicationConfirmation({ receipt }: { receipt: string }) {

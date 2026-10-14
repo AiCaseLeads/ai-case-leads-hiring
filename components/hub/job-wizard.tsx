@@ -1,4 +1,6 @@
 "use client";
+import { DescriptionEditor } from "./description-editor";
+import { SafeDescription } from "../careers/safe-description";
 import { useEffect, useRef, useState } from "react";
 import { ArrowLeft, Plus, Trash2 } from "lucide-react";
 import { hubRequest, useHubMutation } from "./api";
@@ -842,15 +844,10 @@ function Editor({
               label="Job description"
               hint="Use approved responsibilities and requirements. You can save a draft before this is ready."
             >
-              <textarea
-                rows={9}
-                maxLength={100000}
-                value={description}
-                onChange={(e) => {
-                  setDescription(e.target.value);
-                  setApproved(false);
-                }}
-              />
+              <DescriptionEditor value={description} onChange={(value) => {
+                setDescription(value);
+                setApproved(false);
+              }} />
             </Field>
             <details>
               <summary>More details: department and page address</summary>
@@ -1287,9 +1284,7 @@ function Editor({
               </p>
               <details>
                 <summary>Preview description</summary>
-                <div style={{ whiteSpace: "pre-wrap" }}>
-                  {description || "Add a description before publishing."}
-                </div>
+                <SafeDescription html={description || "Add a description before publishing."} />
               </details>
               <label className="hub-checkbox">
                 <input

@@ -1331,3 +1331,27 @@ nav a:hover {
   line-height: 1.6;
   margin: -0.25rem 0 0.5rem;
 }
+
+/* The public description and recruiter preview share one readable format. */
+.description-copy { white-space: pre-wrap; overflow-wrap: anywhere; }
+.description-copy p { margin: 0 0 1em; }
+.description-copy h2, .description-copy h3, .description-copy h4 { font-weight: 700; line-height: 1.35; margin: 1em 0 .6em; }
+.description-copy h2 { font-size: 1.4em; }
+.description-copy h3 { font-size: 1.2em; }
+.description-copy h4 { font-size: 1.1em; }
+.description-copy ul, .description-copy ol { padding-left: 1.6em; margin: .6em 0 1em; }
+.description-copy ul { list-style: disc; }
+.description-copy ol { list-style: decimal; }
+.description-copy li { margin: .3em 0; }
+.description-copy strong, .description-copy b { font-weight: 700; }
+.description-copy em, .description-copy i { font-style: italic; }
+.description-copy blockquote { padding-left: 1em; border-left: 3px solid #b9d3cd; margin: 1em 0; }
+.description-editor { min-width: 0; border: 1px solid #c4d8d6; border-radius: 10px; overflow: hidden; background: white; }
+.description-toolbar { display: flex; flex-wrap: wrap; gap: 8px; padding: 12px; background: #f1f6f5; border-bottom: 1px solid #c4d8d6; }
+.description-toolbar button { border: 1px solid #b8cecb; border-radius: 6px; background: white; padding: 8px 12px; min-height: 44px; color: #183e43; font-size: 14px; cursor: pointer; }
+.description-toolbar button:focus-visible, .description-editable:focus-visible { outline: 3px solid #26786a; outline-offset: -3px; }
+.description-toolbar button[aria-pressed=true] { background: #183e43; color: white; }
+.description-toolbar button:disabled { opacity: .5; cursor: default; }
+.description-editable, .description-preview { min-height: 300px; max-height: 620px; overflow: auto; padding: 20px; font-size: 16px; line-height: 1.65; }
+.description-help { margin: 0; padding: 10px 16px; font-size: 13px; line-height: 1.5; color: #526b70; }
+@media (max-width: 480px) { .description-toolbar { gap: 6px; padding: 8px; } .description-toolbar button { padding: 7px 9px; } .description-editable, .description-preview { padding: 14px; } }
