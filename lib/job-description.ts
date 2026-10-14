@@ -62,14 +62,22 @@ export function serializeDescriptionEditor(html: string): string {
 
 /** Explicit action only: preserve paragraphs and lists while reducing visual gaps. */
 export function cleanDescriptionSpacing(html: string): string {
-  return serializeDescriptionEditor(html)
-    .replace(/(?:\u00a0|&nbsp;|[\t ])+/g, " ")
-    .replace(/(?:<br>\s*){3,}/gi, "<br><br>")
-    .replace(/<(p|h[234])>\s*(?:<br>\s*)*<\/\1>/gi, "")
-    .replace(/\n[ \t]*\n(?:[ \t]*\n)+/g, "\n\n")
-    .replace(/(<(?:p|h[234]|li|blockquote)>)[ ]+/gi, "$1")
-    .replace(/[ ]+(<\/(?:p|h[234]|li|blockquote)>)/gi, "$1")
-    .trim();
+  return (
+    serializeDescriptionEditor(html)
+      .replace(/(?:\u00a0|&nbsp;|[\t ])+/g, " ")
+      .replace(/(?:<br>\s*){3,}/gi, "<br><br>")
+      // Empty list entries often retain bold/italic wrappers after formatting
+      // pasted paragraphs. Only empty inline/block wrappers may be consumed;
+      // nested lists with real text must stay attached to their parent item.
+      .replace(
+        /<(p|h[234]|li)>(?:\s|<br>|<\/?(?:b|strong|em|i|p)>)*<\/\1>/gi,
+        "",
+      )
+      .replace(/\n[ \t]*\n(?:[ \t]*\n)+/g, "\n\n")
+      .replace(/(<(?:p|h[234]|li|blockquote)>)[ ]+/gi, "$1")
+      .replace(/[ ]+(<\/(?:p|h[234]|li|blockquote)>)/gi, "$1")
+      .trim()
+  );
 }
 
 /** Formatting and blank lines alone are not a publishable job description. */

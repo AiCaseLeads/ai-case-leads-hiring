@@ -52,3 +52,26 @@ test("blank formatted descriptions cannot be published", () => {
   assert.equal(hasDescriptionText("<h2>Role</h2>"), true);
   assert.equal(hasDescriptionText("&lt;literal&gt;"), true);
 });
+
+test("spacing cleanup removes blank formatted list entries and paragraphs", () => {
+  const source =
+    "<ol><li><b>Clear   responsibilities</b></li><li><b><br></b></li><li><b>Approved   requirements</b></li><li><b><br></b></li><li><b>How   to   apply</b></li></ol>";
+  assert.equal(
+    cleanDescriptionSpacing(source),
+    "<ol><li><b>Clear responsibilities</b></li><li><b>Approved requirements</b></li><li><b>How to apply</b></li></ol>",
+  );
+  assert.equal(
+    cleanDescriptionSpacing(
+      "<p><strong><em><br></em></strong></p><h2><i> &nbsp; </i></h2><ul><li><p><strong><br></strong></p></li><li>Keep this</li></ul>",
+    ),
+    "<ul><li>Keep this</li></ul>",
+  );
+});
+test("spacing cleanup keeps meaningful nested list children and inline separators", () => {
+  const source =
+    "<ul><li><b><br></b><ol><li><em>Nested requirement</em></li><li><i><br></i></li></ol></li><li>Build <strong>great</strong> things</li></ul>";
+  assert.equal(
+    cleanDescriptionSpacing(source),
+    "<ul><li><b><br></b><ol><li><em>Nested requirement</em></li></ol></li><li>Build <strong>great</strong> things</li></ul>",
+  );
+});
