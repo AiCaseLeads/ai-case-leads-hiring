@@ -106,8 +106,9 @@ function formControl(
 ): node is React.ReactElement<Record<string, unknown>> {
   return (
     isValidElement<Record<string, unknown>>(node) &&
-    typeof node.type === "string" &&
-    ["input", "select", "textarea"].includes(node.type)
+    ((typeof node.type === "string" &&
+      ["input", "select", "textarea"].includes(node.type)) ||
+      node.props["data-field-control"] === true)
   );
 }
 function controlPath(children: React.ReactNode): number[] | null {

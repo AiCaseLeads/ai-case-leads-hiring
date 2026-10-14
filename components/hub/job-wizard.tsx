@@ -443,14 +443,33 @@ export function JobWizard({
   done: (m: string) => void;
   onManageScorecards?: () => void;
 }) {
-  return <>
-    <div hidden={!chooseStart}><StartChoices jobs={jobs} catalog={catalog} choose={onChoose} back={cancel}/></div>
-    {(!chooseStart || start || job) && <div hidden={chooseStart}><Editor
-      key={job?.id || JSON.stringify(start)}
-      job={job} start={start || {kind: "blank"}} jobs={jobs} catalog={catalog} scorecards={scorecards}
-      cancel={cancel} done={done} onManageScorecards={onManageScorecards}
-    /></div>}
-  </>;
+  return (
+    <>
+      <div hidden={!chooseStart}>
+        <StartChoices
+          jobs={jobs}
+          catalog={catalog}
+          choose={onChoose}
+          back={cancel}
+        />
+      </div>
+      {(!chooseStart || start || job) && (
+        <div hidden={chooseStart}>
+          <Editor
+            key={job?.id || JSON.stringify(start)}
+            job={job}
+            start={start || { kind: "blank" }}
+            jobs={jobs}
+            catalog={catalog}
+            scorecards={scorecards}
+            cancel={cancel}
+            done={done}
+            onManageScorecards={onManageScorecards}
+          />
+        </div>
+      )}
+    </>
+  );
 }
 
 function Editor({
@@ -566,22 +585,39 @@ function Editor({
       const value = new URLSearchParams(window.location.search).get("jobStep");
       if (value !== null && value !== "start") {
         const requested = Number(value);
-        const next = Number.isSafeInteger(requested) && requested >= 0 ? Math.min(highestValidatedStep.current, requested) : 0;
-        setStep(next); setApproved(false); setRejectApproved(false); setError("");
-        if (String(next) !== value) {const url = new URL(window.location.href); url.searchParams.set("jobStep", String(next)); window.history.replaceState(window.history.state, "", url);}
+        const next =
+          Number.isSafeInteger(requested) && requested >= 0
+            ? Math.min(highestValidatedStep.current, requested)
+            : 0;
+        setStep(next);
+        setApproved(false);
+        setRejectApproved(false);
+        setError("");
+        if (String(next) !== value) {
+          const url = new URL(window.location.href);
+          url.searchParams.set("jobStep", String(next));
+          window.history.replaceState(window.history.state, "", url);
+        }
       }
     };
     restore();
     window.addEventListener("popstate", restore);
     window.addEventListener("hub:navigate", restore);
-    return () => {window.removeEventListener("popstate", restore); window.removeEventListener("hub:navigate", restore);};
+    return () => {
+      window.removeEventListener("popstate", restore);
+      window.removeEventListener("hub:navigate", restore);
+    };
   }, []);
   function goToStep(next: number) {
     if (next === step) return;
     highestValidatedStep.current = Math.max(highestValidatedStep.current, next);
     const url = new URL(window.location.href);
     url.searchParams.set("jobStep", String(next));
-    window.history.pushState({aiclHub: true, jobStepFrom: window.location.href}, "", url);
+    window.history.pushState(
+      { aiclHub: true, jobStepFrom: window.location.href },
+      "",
+      url,
+    );
     setStep(next);
   }
   function next() {
@@ -644,6 +680,13 @@ function Editor({
   }
   async function save(status: HubJob["status"]) {
     setError("");
+    if (description.length > 100000) {
+      setError(
+        "The job description exceeds 100,000 characters including formatting. Shorten it before saving; your text has been preserved.",
+      );
+      setStep(0);
+      return;
+    }
     if (
       choice === "new" &&
       (!rubric.name.trim() || rubric.criteria.some((c) => !c.label.trim()))
@@ -688,16 +731,23 @@ function Editor({
         autoReject,
         ...(rejection.trim() ? { rejectionTemplate: rejection } : {}),
         assessmentPrompt: assessment,
-        archiveProject: job?.archiveProject || (source?.archiveProject && source.archiveProject !== source.title ? source.archiveProject : title.slice(0, 120)),
+        archiveProject:
+          job?.archiveProject ||
+          (source?.archiveProject && source.archiveProject !== source.title
+            ? source.archiveProject
+            : title.slice(0, 120)),
         archiveCountry,
         hiringRound: job?.hiringRound || postingLabel,
       },
       location,
       expectedBinding,
-      ...(hiringTeam.draft && hiringTeam.resource.data ? {
-        hiringTeam: hiringTeam.draft,
-        expectedTeamRevision: hiringTeam.resource.data.config?.revision ?? 0,
-      } : {}),
+      ...(hiringTeam.draft && hiringTeam.resource.data
+        ? {
+            hiringTeam: hiringTeam.draft,
+            expectedTeamRevision:
+              hiringTeam.resource.data.config?.revision ?? 0,
+          }
+        : {}),
       scorecard: binding,
       ...(choice === "new" ? { rubric } : {}),
       ...(request ? { requestId: request.id } : {}),
@@ -806,82 +856,107 @@ function Editor({
         </button>
       )}
       <fieldset disabled={mutation.busy}>
-        {step === 0 && (<>
-          <section className="hub-card">
-            <h3>Tell applicants about the job</h3>
-            <Field label="Job title">
-              <input
-                required
-                maxLength={160}
-                value={title}
-                onChange={(e) => {
-                  setTitle(e.target.value);
-                  setApproved(false);
-                }}
-                placeholder="For example, Creative Strategist"
-              />
-            </Field>
-            {job && !location && (
-              <p className="hub-notice">
-                Current location:{" "}
-                {job.location || job.archiveCountry || "Not set"}. Keep it
-                unchanged, or choose a work arrangement below.
-              </p>
-            )}
-            <LocationFields
-              value={
-                location || {
-                  workModel: "" as WorkLocation["workModel"],
-                  country: job?.archiveCountry || "International",
-                  city: "",
-                }
-              }
-              change={(v) => {
-                setLocation(v);
-                setApproved(false);
-              }}
-            />
-            <Field
-              label="Job description"
-              hint="Use approved responsibilities and requirements. You can save a draft before this is ready."
-            >
-              <DescriptionEditor value={description} onChange={(value) => {
-                setDescription(value);
-                setApproved(false);
-              }} />
-            </Field>
-            <details>
-              <summary>More details: department and page address</summary>
-              <Field label="Department (optional)">
+        {step === 0 && (
+          <>
+            <section className="hub-card">
+              <h3>Tell applicants about the job</h3>
+              <Field label="Job title">
                 <input
+                  required
                   maxLength={160}
-                  value={department}
-                  onChange={(e) => setDepartment(e.target.value)}
+                  value={title}
+                  onChange={(e) => {
+                    setTitle(e.target.value);
+                    setApproved(false);
+                  }}
+                  placeholder="For example, Creative Strategist"
                 />
               </Field>
+              {job && !location && (
+                <p className="hub-notice">
+                  Current location:{" "}
+                  {job.location || job.archiveCountry || "Not set"}. Keep it
+                  unchanged, or choose a work arrangement below.
+                </p>
+              )}
+              <LocationFields
+                value={
+                  location || {
+                    workModel: "" as WorkLocation["workModel"],
+                    country: job?.archiveCountry || "International",
+                    city: "",
+                  }
+                }
+                change={(v) => {
+                  setLocation(v);
+                  setApproved(false);
+                }}
+              />
               <Field
-                label="Public page address"
-                hint="Changing an existing address breaks links shared earlier."
+                label="Job description"
+                hint="Use approved responsibilities and requirements. You can save a draft before this is ready."
               >
-                <div className="hub-input-prefix">
-                  <span>/jobs/</span>
+                <DescriptionEditor
+                  data-field-control
+                  disabled={mutation.busy}
+                  value={description}
+                  onChange={(value) => {
+                    setDescription(value);
+                    setApproved(false);
+                  }}
+                />
+              </Field>
+              <details>
+                <summary>More details: department and page address</summary>
+                <Field label="Department (optional)">
                   <input
                     maxLength={160}
-                    pattern="[a-z0-9]+(?:-[a-z0-9]+)*"
-                    value={slug}
-                    onChange={(e) => setCustomSlug(e.target.value)}
+                    value={department}
+                    onChange={(e) => setDepartment(e.target.value)}
                   />
-                </div>
-              </Field>
-            </details>
-          </section>
-          <section className="hub-card hub-job-team-panel">
-            <h3>Who is hiring for this job?</h3>
-            <ResourceState loading={hiringTeam.resource.loading} error={hiringTeam.resource.error} retry={() => void hiringTeam.resource.reload()} />
-            {hiringTeam.resource.data && hiringTeam.draft && <JobTeamFields data={hiringTeam.resource.data} value={hiringTeam.draft} change={value => { hiringTeam.setDraft(value); setApproved(false); }} />}
-            {hiringTeam.resource.error && <p className="hub-muted">Your job details are preserved. You can save the job and configure its hiring team from Jobs later.</p>}
-          </section>
-        </>)}
+                </Field>
+                <Field
+                  label="Public page address"
+                  hint="Changing an existing address breaks links shared earlier."
+                >
+                  <div className="hub-input-prefix">
+                    <span>/jobs/</span>
+                    <input
+                      maxLength={160}
+                      pattern="[a-z0-9]+(?:-[a-z0-9]+)*"
+                      value={slug}
+                      onChange={(e) => setCustomSlug(e.target.value)}
+                    />
+                  </div>
+                </Field>
+              </details>
+            </section>
+            <section className="hub-card hub-job-team-panel">
+              <h3>Who is hiring for this job?</h3>
+              <ResourceState
+                loading={hiringTeam.resource.loading}
+                error={hiringTeam.resource.error}
+                retry={() => void hiringTeam.resource.reload()}
+              />
+              {hiringTeam.resource.data && hiringTeam.draft && (
+                <JobTeamFields
+                  data={hiringTeam.resource.data}
+                  value={hiringTeam.draft}
+                  change={(value) => {
+                    hiringTeam.setDraft(value);
+                    setApproved(false);
+                  }}
+                />
+              )}
+              {hiringTeam.resource.error && (
+                <p className="hub-muted">
+                  Your job details are preserved. You can save the job and
+                  configure its hiring team from Jobs later.
+                </p>
+              )}
+            </section>
+          </>
+        )}
         {step === 1 && (
           <section className="hub-card">
             <h3>What should applicants send?</h3>
@@ -1260,8 +1335,18 @@ function Editor({
                   : job?.location || job?.archiveCountry}
               </p>
               <p className="hub-muted">Public page: /jobs/{slug}</p>
-              <p>Hiring team: {hiringTeam.draft?.members.length ? hiringTeam.draft.members.join(", ") : "No team selected"}</p>
-              <p>Applicant reply contact: {hiringTeam.draft?.replyTo || hiringTeam.resource.data?.sender || "Connected recruiting mailbox"}</p>
+              <p>
+                Hiring team:{" "}
+                {hiringTeam.draft?.members.length
+                  ? hiringTeam.draft.members.join(", ")
+                  : "No team selected"}
+              </p>
+              <p>
+                Applicant reply contact:{" "}
+                {hiringTeam.draft?.replyTo ||
+                  hiringTeam.resource.data?.sender ||
+                  "Connected recruiting mailbox"}
+              </p>
               <p>
                 {fields.filter((f) => f.required).length} required fields ·{" "}
                 {fields.filter((f) => !f.required).length} optional fields
@@ -1285,7 +1370,9 @@ function Editor({
               </p>
               <details>
                 <summary>Preview description</summary>
-                <SafeDescription html={description || "Add a description before publishing."} />
+                <SafeDescription
+                  html={description || "Add a description before publishing."}
+                />
               </details>
               <label className="hub-checkbox">
                 <input
@@ -1326,7 +1413,8 @@ function Editor({
               setError("");
               const previous = new URL(window.location.href);
               previous.searchParams.set("jobStep", String(step - 1));
-              if (window.history.state?.jobStepFrom === previous.href) window.history.back();
+              if (window.history.state?.jobStepFrom === previous.href)
+                window.history.back();
               else goToStep(step - 1);
             }}
           >
