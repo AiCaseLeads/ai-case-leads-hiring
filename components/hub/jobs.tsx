@@ -49,6 +49,16 @@ export function Jobs({
     [templateJob, setTemplateJob] = useState<HubJob | null>(null),
     [templateName, setTemplateName] = useState("");
   const [teamJob, setTeamJob] = useState<HubJob | null>(null);
+  const reloadDrafts = drafts.reload;
+  const previousEditorVisible = useRef(editorVisible);
+  useEffect(() => {
+    // History traversal can close the editor without calling closeEditor.
+    // Refresh after every visible-to-hidden transition so discarded or saved
+    // recovery copies are reflected immediately in the Jobs list.
+    if (previousEditorVisible.current && !editorVisible) void reloadDrafts();
+    previousEditorVisible.current = editorVisible;
+  }, [editorVisible, reloadDrafts]);
+
   function editorUrl(editor: string | null, chosen?: JobStart) {
     const url = new URL(window.location.href);
     for (const key of [
@@ -116,7 +126,6 @@ export function Jobs({
   }
   function closeEditor() {
     setEditorVisible(false);
-    void drafts.reload();
     window.history.pushState({ aiclHub: true }, "", editorUrl(null));
   }
   useEffect(() => {
