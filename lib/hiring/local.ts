@@ -48,11 +48,12 @@ export async function acceptLocalApplication(db: D1Database, input: ApplicationI
   const hub = new HubStore(db,{sessionHash});
   const definition = await hub.jobDefinition(input.jobPostingId);
   if((requireFormVersion&&input.formVersion===undefined)||(input.formVersion!==undefined&&input.formVersion!==definition.formVersion))throw new HiringError("form_changed",422,"The role or application questions changed. Refresh this page and review the current questions before submitting.");
+  if(!input.fieldSubmissions.some(answer=>answer.path==="_systemfield_phone"))throw new HiringError("invalid_application",422,"Refresh this application form and include your phone number with + and country code.",{_systemfield_phone:"Phone number is required, including + and country code."});
   validateAnswers(input,definition.fields);
   const receipt = privateToken(), receiptHash = await sha256(receipt), appId = await applicationIdForSubmissionKey(input.submissionKey), now = Date.now();
   const statements = [db.prepare("INSERT INTO hiring_submissions (key_hash,session_hash,fingerprint,job_posting_id,job_title,status,receipt_hash,submitted_form_instance_id,application_id,created_at,updated_at) VALUES (?,?,?,?,?,'accepted',?,?,?,?,?) ON CONFLICT(key_hash) DO NOTHING")
     .bind(keyHash,sessionHash,fingerprint,input.jobPostingId,definition.job.title,receiptHash,appId,appId,now,now)];
-  await hub.acceptApplication(input,sessionHash,statements);
+  await hub.acceptApplication(input,sessionHash,statements,true);
   const accepted = await tracker.find(keyHash);
   if (!accepted) throw new HiringError("tracking_unavailable",503,"We could not confirm your application. Retry with the same submission.");
   check(accepted);

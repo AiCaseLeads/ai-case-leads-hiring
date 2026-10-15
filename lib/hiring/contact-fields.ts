@@ -18,3 +18,12 @@ export function internationalPhoneError(value: unknown): string | null {
 export function applicantDisplayName(answers: FieldSubmission[]): string {
   return ["_systemfield_name", "_systemfield_last_name"].map(path => String(answers.find(answer => answer.path === path)?.value || "").trim()).filter(Boolean).join(" ");
 }
+
+/** Public applications always collect a canonical international phone, including legacy jobs. */
+export function withRequiredPhone(fields: ApplicationField[]): ApplicationField[] {
+  const phone=withRequiredContacts([]).find(field=>field.path==="_systemfield_phone")!;
+  if(fields.some(field=>field.path===phone.path))return fields.map(field=>field.path===phone.path?phone:field);
+  // Preserve legacy/custom fields and their answers; add the fixed contact without deleting them.
+  const position=fields.findIndex(field=>field.path==="_systemfield_email");
+  const result=[...fields];result.splice(position<0?0:position+1,0,phone);return result;
+}

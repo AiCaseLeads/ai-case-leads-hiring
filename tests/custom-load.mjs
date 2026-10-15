@@ -26,7 +26,7 @@ const submit=async(input,session)=>{
  const before=performance.now();const response=await fetch(`${origin}/api/applications`,{method:'POST',headers:{'Content-Type':'application/json',Origin:origin,Cookie:`hiring_session=${session}`},body:JSON.stringify(input)});
  const body=await response.json();latencies.push(performance.now()-before);assert.equal(response.status,201,JSON.stringify(body));assert.equal(body.status,'accepted');assert.match(body.receipt,/^[a-f0-9]{64}$/);return body;
 };
-const payload=(jobId,seq)=>({jobPostingId:jobId,formVersion:jobId===engineer.id?engineer.formVersion:creative.formVersion,submissionKey:crypto.randomUUID(),fieldSubmissions:[{path:'_systemfield_name',value:`Synthetic Applicant ${seq}`},{path:'_systemfield_email',value:`synthetic-${seq}@example.invalid`}],utmData:{utm_source:seq%2?'synthetic-careers':'synthetic-referral'}});
+const payload=(jobId,seq)=>({jobPostingId:jobId,formVersion:jobId===engineer.id?engineer.formVersion:creative.formVersion,submissionKey:crypto.randomUUID(),fieldSubmissions:[{path:"_systemfield_phone",value:"+1 305 555 0123"},{path:'_systemfield_name',value:`Synthetic Applicant ${seq}`},{path:'_systemfield_email',value:`synthetic-${seq}@example.invalid`}],utmData:{utm_source:seq%2?'synthetic-careers':'synthetic-referral'}});
 try{
  for(let batch=0;batch<30;batch++){
   const results=await Promise.all(Array.from({length:100},(_,index)=>{const seq=batch*100+index;return submit(payload(seq%2?creative.id:engineer.id,seq),randomBytes(32).toString('hex'));}));receipts.push(...results.map(r=>r.receipt));

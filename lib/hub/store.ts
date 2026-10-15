@@ -4,7 +4,7 @@ import { canonicalJson, privateToken, sha256 } from "../hiring/crypto";
 import { HiringError } from "../hiring/errors";
 import { validateAnswers, MAX_APPLICATION_FILE_BYTES } from "../hiring/validation";
 import { matchDetail } from "../ai/matching";
-import { applicantDisplayName } from "../hiring/contact-fields";
+import { applicantDisplayName, withRequiredPhone } from "../hiring/contact-fields";
 import { applicationReceipt } from "../hiring/receipt-email";
 import { gradeForScorecards } from "./grading";
 import type {
@@ -305,7 +305,7 @@ export class HubStore {
         descriptionHtml: value.descriptionHtml,
         ...(value.location ? { location: value.location } : {}),
       },
-      fields: value.fields,
+      fields: withRequiredPhone(value.fields),
       formVersion: value.formVersion,
     };
   }
@@ -503,6 +503,7 @@ export class HubStore {
     input: ApplicationInput,
     sessionHash = this.options.sessionHash,
     acceptanceStatements: D1PreparedStatement[] = [],
+    publicApplication = false,
   ): Promise<{ id: string }> {
     if (!sessionHash)
       throw new HiringError(
@@ -556,6 +557,7 @@ export class HubStore {
         422,
         "The application questions or requirements changed. Refresh the job before submitting.",
       );
+    if(publicApplication)posting.fields=withRequiredPhone(posting.fields);
     validateAnswers(input, posting.fields);
     const now = Date.now();
     const fileEntries: { path: string; id: string }[] = [];

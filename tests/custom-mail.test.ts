@@ -5,9 +5,10 @@ import { acceptLocalApplication } from "../lib/hiring/local";
 import { syncHiringReplies } from "../lib/mail-sync";
 import type { GoogleWorkspace } from "../lib/google/workspace";
 async function outgoing(store:ReturnType<typeof customDatabase>["store"],db:D1Database,jobId:string,thread:string){
-  await acceptLocalApplication(db,{jobPostingId:jobId,submissionKey:crypto.randomUUID(),fieldSubmissions:[{path:"_systemfield_name",value:"Synthetic"},{path:"_systemfield_email",value:"synthetic@example.invalid"}]},"a".repeat(64),true);
+  await acceptLocalApplication(db,{jobPostingId:jobId,submissionKey:crypto.randomUUID(),fieldSubmissions:[{path:"_systemfield_phone",value:"+1 305 555 0123"},{path:"_systemfield_name",value:"Synthetic"},{path:"_systemfield_email",value:"synthetic@example.invalid"}]},"a".repeat(64),true);
   const row=await db.prepare("SELECT c.task_id,c.application_id,t.payload_json FROM hub_communications c JOIN hub_tasks t ON t.id=c.task_id WHERE c.thread_id IS NULL ORDER BY c.created_at DESC LIMIT 1").first<{task_id:string;application_id:string;payload_json:string}>();
   await db.prepare("UPDATE hub_communications SET status='sent',thread_id=?,provider_id=? WHERE task_id=?").bind(thread,`out-${thread}`,row!.task_id).run();
+  await db.prepare("UPDATE hub_tasks SET payload_json=json_set(payload_json,'$.deliveryAccount','recruiting@example.invalid') WHERE id=?").bind(row!.task_id).run();
   return {...row!,messageId:JSON.parse(row!.payload_json).messageId};
 }
 function deltaFixture(google:GoogleWorkspace):GoogleWorkspace{
@@ -21,9 +22,9 @@ test("one unreadable hiring thread cannot starve replies and imported records/ar
     assert.equal(await syncHiringReplies(store,db,deltaFixture(google),10),1);
     const received=await db.prepare("SELECT * FROM hub_communications WHERE status='received'").first<{application_id:string;body:string}>();
     assert.equal(received?.application_id,healthy.application_id);assert.equal(received?.body.includes("f".repeat(64)),false);
-    assert.equal(await store.setting<string>("gmail_thread_error:deleted",""),"Google could not read this hiring thread. Check mailbox access or reconnect Workspace.");
+    assert.equal(await store.setting<string>("gmail_thread_error:recruiting@example.invalid:deleted",""),"Google could not read this hiring thread. Check mailbox access or reconnect Workspace.");
     assert.match(await store.setting<string>("mail_sync_last_error",""),/Other threads continue/);
-    await store.setSetting("gmail_thread_next_poll:healthy",0);
+    await store.setSetting("gmail_thread_next_poll:recruiting@example.invalid:healthy",0);
     assert.equal(await syncHiringReplies(store,db,deltaFixture(google),10),0);
     assert.equal(database.prepare("SELECT COUNT(*) AS n FROM hub_communications WHERE status='received'").get()?.n,1);
     assert.equal(database.prepare("SELECT COUNT(*) AS n FROM hub_tasks WHERE id LIKE 'drive:%:mail:%'").get()?.n,1);
