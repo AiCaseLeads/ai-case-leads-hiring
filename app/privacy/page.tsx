@@ -39,13 +39,15 @@ export default function PrivacyPage() {
           </p>
           <h2>Optional AI-assisted review</h2>
           <p>
-            If enabled by the hiring team, a reviewer may send relevant application
-            answers and résumé or candidate-supplied professional profile excerpts
-            to OpenRouter and OpenAI to summarize evidence against job requirements
-            and suggest follow-up questions. A human reviews that evidence. This
-            feature does not assign candidate scores, automatically reject
-            applications, or determine whether text was written with AI.
-            Review notes become part of the hiring record. Contact us to correct
+            If enabled for a job by the hiring team, relevant application answers
+            and résumé text are sent to OpenRouter and OpenAI to compare evidence
+            with that job’s requirements. This may run automatically and produce
+            a job-match evidence score used to order applications for human review.
+            Reviewers can also request evidence summaries and follow-up questions.
+            Scores are not hiring decisions or predictions of success. Missing
+            evidence may need clarification; AI matching does not automatically
+            reject applications or determine whether text was written with AI.
+            Results become part of the hiring record. Contact us to correct
             information or discuss how your information is used.
           </p>
           <h2>Questions about your information</h2>

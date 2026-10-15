@@ -421,7 +421,7 @@ function SettingsForm({
           </div>
         </fieldset>
       </form>
-      <details className="hub-card hub-setup-details"><summary>AI evidence review</summary><AiReviewSettings /></details>
+      <details className="hub-card hub-setup-details"><summary>AI connection</summary><AiReviewSettings /></details>
       <details className="hub-card hub-setup-details">
         <summary>Advanced admin setup</summary>
         <p className="hub-muted">Only needed when installing the app or changing its Google client or background processing. Day-to-day hiring uses the three steps above.</p>

@@ -17,21 +17,21 @@ export function AiReviewSettings() {
     const result = await mutation.run("/api/ai/config", "PATCH", {
       ...(apiKey.trim() ? { apiKey: apiKey.trim() } : {}),
       enabled: enable ?? config.data?.enabled ?? false,
-    }, "AI review settings saved. Candidate data is sent only when a reviewer requests a review.");
+    }, "AI review settings saved. AI reviews follow each job’s automatic matching setting, or an explicit reviewer request.");
     if (result !== undefined) { setApiKey(""); setEnable(null); await config.reload(); }
   }
   return <section className="hub-card" id="ai-review-setup">
-    <h3>Optional AI evidence review</h3>
-    <p>OpenRouter connects this app to OpenAI GPT-5 Mini. Manager grades continue to determine the sorted shortlist. AI helps you check the evidence; it does not assign grades or reject applicants.</p>
+    <h3>AI connection</h3>
+    <p>OpenRouter connects this app to OpenAI GPT-5 Mini. Enable AI matching for individual jobs to compare résumés and answers with the job description. Human grades remain separate, and AI does not reject applicants.</p>
     <ResourceState loading={config.loading} error={config.error} retry={() => void config.reload()} />
     {config.data && <form onSubmit={save}>
-      <Badge tone={config.data.enabled && config.data.configured ? "success" : "neutral"}>{config.data.enabled && config.data.configured ? "Enabled for manual reviews" : "AI review off"}</Badge>
+      <Badge tone={config.data.enabled && config.data.configured ? "success" : "neutral"}>{config.data.enabled && config.data.configured ? "Connected" : "AI review off"}</Badge>
       <p className="hub-muted">Model: {config.data.model}. {config.data.configured ? "A key is saved securely. Leave the field empty to keep it." : "No API key is saved yet."} Usage is billed to your OpenRouter account separately.</p>
       <Field label={config.data.configured ? "Replace OpenRouter API key (optional)" : "OpenRouter API key"} hint="Paste the key here, not in chat. It is encrypted on the server and never displayed again.">
         <input type="password" autoComplete="new-password" value={apiKey} maxLength={500} onChange={e => setApiKey(e.target.value)} />
       </Field>
-      <label className="hub-checkbox"><input type="checkbox" checked={enable ?? config.data.enabled} onChange={e => setEnable(e.target.checked)} /> Enable reviewer-requested AI evidence reviews</label>
-      <p className="hub-muted">Each review requires confirmation before sharing the selected application answers and selected résumé text/profile excerpts with OpenRouter and OpenAI. PDFs are read locally, with OCR for scanned pages. Set a spending limit on the OpenRouter key.</p>
+      <label className="hub-checkbox"><input type="checkbox" checked={enable ?? config.data.enabled} onChange={e => setEnable(e.target.checked)} /> Enable AI reviews</label>
+      <p className="hub-muted">Automatic reviews run only for jobs where AI matching is enabled. Relevant résumé text and application answers are shared with OpenRouter and OpenAI. PDFs are read locally, with OCR for scanned pages. Missing or unreadable documents need human review. Set a spending limit on the OpenRouter key.</p>
       <button className="hub-button secondary" disabled={mutation.busy || (!(config.data.configured || apiKey.trim()) && (enable ?? config.data.enabled))}>{mutation.busy ? "Saving…" : "Save AI connection"}</button>
       <Feedback error={mutation.error} success={mutation.success} />
     </form>}

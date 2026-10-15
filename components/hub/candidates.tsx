@@ -10,6 +10,7 @@ import {
 import { Badge, EmptyState, Feedback, Field, ResourceState } from "./shared";
 import { ReusableScorecard, useScorecardDraft } from "./scorecards";
 import { CandidateEvidence, useEvidenceDraft } from "./ai-review";
+import { MatchScore, JobMatchSetup, CandidateMatch } from "./ai-match";
 import { InterviewerChoice } from "./personal-calendar";
 import { jobGroup, jobLocation } from "./job-organization";
 import { applicationsCsv, downloadApplication, downloadFile } from "./export";
@@ -63,6 +64,7 @@ export function CandidateTable({
             <th scope="col" role="columnheader">Role</th>
             <th scope="col" role="columnheader">Stage</th>
             <th scope="col" role="columnheader">Qualification</th>
+            <th scope="col" role="columnheader">AI job match</th>
             <th scope="col" role="columnheader">Reviewer grade</th>
             <th scope="col" role="columnheader">Owner</th>
             <th scope="col" role="columnheader">Applied</th>
@@ -102,6 +104,7 @@ export function CandidateTable({
                     : item.qualification === "pass" ? "Requirements met" : "Requirement not met"}
                 </Badge>
               </td>
+              <td role="cell" data-label="AI job match"><MatchScore match={item.aiMatch} /></td>
               <td role="cell" data-label="Reviewer grade"><GradeSummary grade={item.grade} /></td>
               <td role="cell" data-label="Owner">{item.assignee || "Unassigned"}</td>
               <td role="cell" data-label="Applied" className="hub-nowrap">{displayDate(item.createdAt)}</td>
@@ -272,7 +275,7 @@ export function Candidates({
           <Field label="Search"><input value={q} onChange={e=>setQ(e.target.value)} placeholder="Name or email" type="search" /></Field>
           <Field label="Job posting"><select value={jobId} onChange={e=>{setJobId(e.target.value);setGrade("");setSort("");}}><option value="">All job postings</option>{jobs.map(job=><option key={job.id} value={job.id}>{jobGroup(job)} · {job.location || jobLocation(job)} · {job.status} · /{job.slug}</option>)}</select></Field>
           <Field label="Stage"><select value={stage} onChange={e=>setStage(e.target.value)}><option value="">All stages</option>{stages.map(value=><option key={value}>{value}</option>)}</select></Field>
-          <Field label="Order" hint={!jobId ? "Choose a posting to compare grades." : undefined}><select value={sort} disabled={!jobId} onChange={e=>setSort(e.target.value)}><option value="">Newest applications</option><option value="grade_desc">Highest reviewer grade first</option></select></Field>
+          <Field label="Order" hint={!jobId ? "Choose a posting to compare job matches." : undefined}><select value={sort} disabled={!jobId} onChange={e=>setSort(e.target.value)}><option value="">Newest applications</option><option value="ai_match_desc">Highest AI match first</option><option value="grade_desc">Highest reviewer grade first</option></select></Field>
         </div>
         <details>
           <summary>More filters{[qualification,grade,assignee,duplicate].filter(Boolean).length ? ` · ${[qualification,grade,assignee,duplicate].filter(Boolean).length} selected` : ""}</summary>
@@ -285,6 +288,7 @@ export function Candidates({
         </details>
         <div className="hub-button-row"><button className="hub-button" type="submit"><Search size={16} /> Apply filters</button><button className="hub-button secondary" type="button" onClick={()=>{setQ("");setJobId("");setStage("");setAssignee("");setQualification("");setGrade("");setSort("");setDuplicate(false);onFilterChange?.("",1);setFilter("");setPage(1);setSelected([]);}}>Clear filters</button></div>
       </form>
+      {new URLSearchParams(filter).get("jobId") && <JobMatchSetup key={new URLSearchParams(filter).get("jobId")} jobId={new URLSearchParams(filter).get("jobId")!} changed={()=>void resource.reload()}/> }
       <details className="hub-card hub-review-queues">
         <summary>Saved review queues · this browser only</summary><p className="hub-muted">These filters stay in this browser for your account. Apply filters above before saving a queue; candidate records remain private in the hiring hub.</p>
         <div className="hub-button-row">{queues.map((queue) => <button key={queue.name} type="button" className="hub-button secondary" onClick={() => applySavedQueue(queue.filter)}>{queue.name}</button>)}</div>
@@ -293,6 +297,7 @@ export function Candidates({
       <p className="hub-muted">CSV export includes up to 1,000 matching application summaries; files and assessment answers remain in each candidate record.</p>
       {queueMessage && <p role="status">{queueMessage}</p>}<Feedback error={mutation.error} success={mutation.success} />
       {new URLSearchParams(filter).get("sort") === "grade_desc" && <p className="hub-notice">Comparing applications for one role. Grades use the latest overall score from each reviewer, weighted equally. Active graded applications come first, followed by active ungraded applications and closed outcomes. Qualification rules do not change the grade.</p>}
+      {new URLSearchParams(filter).get("sort") === "ai_match_desc" && <p className="hub-notice">Comparing evidence against the same job requirements. Current completed AI reviews sort highest first; unreadable, pending and outdated reviews stay unscored. AI match is separate from qualification rules and human grades.</p>}
       <ResourceState
         loading={resource.loading}
         error={resource.error}
@@ -750,8 +755,10 @@ export function CandidateDetail({
               </form>
             </aside>
             <div className="hub-detail-main">
-              <div className="hub-button-row" role="tablist" aria-label="Applicant record">{([{id:"application",label:"Application & files"},{id:"review",label:"Review & scorecard"},{id:"activity",label:"Activity & messages"}] as const).map(tab=><button key={tab.id} type="button" role="tab" id={`candidate-tab-${tab.id}`} aria-selected={section===tab.id} tabIndex={section===tab.id?0:-1} onKeyDown={event=>{const ids=["application","review","activity"] as const;const index=ids.indexOf(section);const next=event.key==="ArrowRight"?ids[(index+1)%3]:event.key==="ArrowLeft"?ids[(index+2)%3]:event.key==="Home"?ids[0]:event.key==="End"?ids[2]:null;if(next){event.preventDefault();setSection(next);document.getElementById(`candidate-tab-${next}`)?.focus();}}} aria-controls={`candidate-panel-${tab.id}`} className={"hub-button " + (section===tab.id ? "" : "secondary")} onClick={()=>setSection(tab.id)}>{tab.label}</button>)}</div>
+              <div className="hub-button-row" role="tablist" aria-label="Applicant record">{([{id:"application",label:"Application & files"},{id:"review",label:"AI review & notes"},{id:"activity",label:"Activity & messages"}] as const).map(tab=><button key={tab.id} type="button" role="tab" id={`candidate-tab-${tab.id}`} aria-selected={section===tab.id} tabIndex={section===tab.id?0:-1} onKeyDown={event=>{const ids=["application","review","activity"] as const;const index=ids.indexOf(section);const next=event.key==="ArrowRight"?ids[(index+1)%3]:event.key==="ArrowLeft"?ids[(index+2)%3]:event.key==="Home"?ids[0]:event.key==="End"?ids[2]:null;if(next){event.preventDefault();setSection(next);document.getElementById(`candidate-tab-${next}`)?.focus();}}} aria-controls={`candidate-panel-${tab.id}`} className={"hub-button " + (section===tab.id ? "" : "secondary")} onClick={()=>setSection(tab.id)}>{tab.label}</button>)}</div>
               <div role="tabpanel" id="candidate-panel-review" aria-labelledby="candidate-tab-review" hidden={section!=="review"}>
+              {section === "review" && <CandidateMatch applicationId={detail.id}/>}
+              <details className="hub-card"><summary>Optional: human grades and scorecards</summary>
               <section className="hub-card">
                 <h3>Reviewer grade</h3>
                 <GradeSummary grade={detail.grade} />
@@ -760,7 +767,10 @@ export function CandidateDetail({
                 {detail.grade?.reviewerCount === 1 && <p className="hub-notice">One reviewer has graded this application. A second or third review can give you more evidence before deciding.</p>}
               </section>
               <ReusableScorecard detail={detail} draft={scorecardDraft} saved={() => { void resource.reload(); changed(); }} />
+              </details>
+              <details className="hub-card"><summary>Advanced: evidence and verification tools</summary>
               <CandidateEvidence key={detail.id} detail={detail} draft={evidenceDraft} saved={() => { void resource.reload(); changed(); }} />
+              </details>
               </div>
               <div role="tabpanel" id="candidate-panel-application" aria-labelledby="candidate-tab-application" hidden={section!=="application"}>
               <section className="hub-card">
@@ -926,7 +936,7 @@ export function CandidateDetail({
                   ))
                 ) : (
                   <p className="hub-muted">
-                    No scorecards yet. Use Review & scorecard to record a review.
+                    No scorecards yet. Use AI review & notes to record a review.
                   </p>
                 )}
               </section>
