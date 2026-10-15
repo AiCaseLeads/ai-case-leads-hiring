@@ -1,3 +1,4 @@
+import { downloadApplications } from "./exports";
 import type { HubMember } from "./auth";
 import { HiringError } from "../hiring/errors";
 import { assertSameOrigin, errorResponse, jsonResponse } from "../hiring/http";
@@ -35,6 +36,7 @@ function admin(member: HubMember): void {
 
 function applicationFilters(request: Request) {
       const params = new URL(request.url).searchParams;
+      if(params.has("top") && params.get("top")!=="10") throw new HiringError("invalid_top",422,"Only the top 10 shortcut is supported.");
       const q = params.get("q") || undefined,
         page = params.get("page") || "1";
       const qualification = params.get("qualification") || undefined,
@@ -55,6 +57,7 @@ function applicationFilters(request: Request) {
         throw new HiringError("invalid_filter", 422, "Choose one role before comparing reviewer grades, and check the application filters.");
       return {
         q,
+        top: params.get("top") === "10" ? 10 as const : undefined,
         jobId,
         stage: params.get("stage") || undefined,
         assignee: params.get("assignee") || undefined,
@@ -106,9 +109,17 @@ export async function handleHubRequest(
         id,
         formVersion ?? existing.formVersion,
       );
+    } else if(section === "application-counts" && request.method === "GET") {
+      data=await store.applicationCounts();
     } else if (section === "applications" && request.method === "GET" && !id) {
       data = await store.applications(applicationFilters(request));
     } else if (section === "applications-export" && request.method === "GET" && !id) {
+      if(new URL(request.url).searchParams.has("format")) {
+        const format=new URL(request.url).searchParams.get("format");
+        if(format !== "csv" && format !== "zip") throw new HiringError("invalid_export_format",422,"Choose CSV or ZIP.");
+        const bucket=format === "zip" ? (await import("../hiring/runtime")).getHiringEnv().BUCKET : undefined;
+        return await downloadApplications(request,store,applicationFilters(request),bucket);
+      }
       data = await store.exportApplications(applicationFilters(request));
     } else if (
       section === "applications" &&

@@ -39,7 +39,7 @@ export const DEFAULT_REJECTION =
 type Bind = string | number | null;
 export type ApplicationFilters = {
   q?:string;jobId?:string;stage?:string;assignee?:string;qualification?:"pass"|"review"|"fail";
-  grade?:"reviewed"|"ungraded";sort?:"grade_desc"|"ai_match_desc";duplicate?:boolean;page?:number;
+  top?:10;grade?:"reviewed"|"ungraded";sort?:"grade_desc"|"ai_match_desc";duplicate?:boolean;page?:number;
 };
 const SUMMARY_COLUMNS = "id,revision,name,email,job_id,job_title,stage,qualification,assignee,created_at,updated_at,source,drive_folder_url";
 export type HubOptions = {
@@ -754,6 +754,10 @@ export class HubStore {
     const cte = graded ? "WITH latest_scores AS (SELECT c.application_id,c.score,row_number() OVER (PARTITION BY c.application_id,lower(trim(c.actor)) ORDER BY c.created_at DESC,c.id DESC) AS n FROM hub_scorecards c JOIN hub_applications j ON j.id=c.application_id WHERE j.job_id=? AND c.score BETWEEN 1 AND 5 AND trim(c.actor)<>''), grades AS (SELECT application_id,AVG(score) AS average_score FROM latest_scores WHERE n=1 GROUP BY application_id) " : "";
     let join = graded ? " LEFT JOIN grades g ON g.application_id=a.id" : "";
     if(filters.grade) where.push(filters.grade === "reviewed" ? "g.average_score IS NOT NULL" : "g.average_score IS NULL");
+    if(filters.top) {
+      if(!filters.jobId || filters.sort !== "ai_match_desc") throw new HiringError("invalid_top",422,"Choose a job and AI match order for the top 10.");
+      where.push("match_result.status='ready' AND match_result.score IS NOT NULL AND a.stage NOT IN ('Rejected','Withdrawn','Hired')");
+    }
     const clause = where.length ? ` WHERE ${where.join(" AND ")}` : "";
     join += " LEFT JOIN hub_jobs match_job ON match_job.id=a.job_id LEFT JOIN hub_ai_matches match_result ON match_result.application_id=a.id AND match_result.form_version=match_job.form_version AND match_job.ai_match_enabled=1";
     const matchReady = "match_result.status='ready' AND match_result.score IS NOT NULL";
@@ -783,13 +787,36 @@ export class HubStore {
     const selected=this.applicationSelection(filters), page=Math.max(1,Math.min(100000,filters.page||1)),pageSize=30;
     const count=await this.stmt(`${selected.cte}SELECT COUNT(*) AS total FROM hub_applications a${selected.join}${selected.clause}`,...selected.values).first<{total:number}>();
     const rows=await this.rows<ApplicationRow>(`${selected.cte}SELECT ${SUMMARY_COLUMNS.split(",").map((column)=>`a.${column}`).join(",")},(SELECT COUNT(*) FROM hub_applications d WHERE d.email=a.email) AS duplicate_application_count FROM hub_applications a${selected.join}${selected.clause} ORDER BY ${selected.order} LIMIT ? OFFSET ?`,...selected.values,pageSize,(page-1)*pageSize);
-    return {items:await this.summaries(rows),total:count?.total||0,page,pageSize};
+    return {items:await this.summaries(filters.top ? rows.slice(0,Math.max(0,10-(page-1)*pageSize)) : rows),total:filters.top?Math.min(10,count?.total||0):count?.total||0,page,pageSize};
   }
   async exportApplications(filters:ApplicationFilters={}) {
-    const selected=this.applicationSelection(filters),limit=1000;
+    const selected=this.applicationSelection(filters),limit=filters.top?10:1000;
     const count=await this.stmt(`${selected.cte}SELECT COUNT(*) AS total FROM hub_applications a${selected.join}${selected.clause}`,...selected.values).first<{total:number}>();
     const rows=await this.rows<ApplicationRow>(`${selected.cte}SELECT ${SUMMARY_COLUMNS.split(",").map((column)=>`a.${column}`).join(",")},(SELECT COUNT(*) FROM hub_applications d WHERE d.email=a.email) AS duplicate_application_count FROM hub_applications a${selected.join}${selected.clause} ORDER BY ${selected.order} LIMIT ?`,...selected.values,limit);
-    return {items:await this.summaries(rows),total:count?.total||0,truncated:(count?.total||0)>limit,limit};
+    return {items:await this.summaries(rows),total:filters.top?Math.min(10,count?.total||0):count?.total||0,truncated:!filters.top&&(count?.total||0)>limit,limit};
+  }
+  async applicationCounts() {
+    return {items:await this.rows<{jobId:string;total:number;needsReview:number;aiReady:number}>(`SELECT j.id AS jobId,COUNT(a.id) AS total,COALESCE(SUM(a.stage='Application Review'),0) AS needsReview,COALESCE(SUM(m.status='ready' AND m.score IS NOT NULL),0) AS aiReady FROM hub_jobs j LEFT JOIN hub_applications a ON a.job_id=j.id LEFT JOIN hub_ai_matches m ON m.application_id=a.id AND m.form_version=j.form_version AND j.ai_match_enabled=1 GROUP BY j.id`)};
+  }
+  async exportIds(filters:ApplicationFilters,ids?:string[]) {
+    if(!filters.jobId) throw new HiringError("export_job_required",422,"Choose a job before downloading applications.");
+    const selected=this.applicationSelection(filters);
+    // Snapshot IDs, not PDFs or entire application histories. A download never silently truncates.
+    let rows=await this.rows<{id:string}>(`${selected.cte}SELECT a.id FROM hub_applications a${selected.join}${selected.clause} ORDER BY ${selected.order} LIMIT ${filters.top?10:10001}`, ...selected.values);
+    if(rows.length>10000) throw new HiringError("export_too_large",422,"Narrow the filters to at most 10,000 applications per download.");
+    if(filters.top) rows=rows.slice(0,10);
+    if(ids) {
+      const requested=new Set(ids),allowed=new Set(rows.map(row=>row.id));
+      if(ids.some(id=>!allowed.has(id))) throw new HiringError("export_selection_changed",409,"Some selected applications no longer match this job and its filters. Refresh and select them again.");
+      rows=rows.filter(row=>requested.has(row.id));
+    }
+    return rows.map(row=>row.id);
+  }
+  async exportRecord(id:string) {
+    const app=await this.applicationRow(id);
+    const [summary]=await this.summaries([app]);
+    const files=await this.rows<{id:string;filename:string;object_key:string;size:number}>("SELECT id,filename,object_key,size FROM hub_files WHERE application_id=? AND uploaded_at>0 ORDER BY id",id);
+    return {...summary,answers:decode(app.answers_json,[]),questions:decode(app.fields_json,[]),files};
   }
   async getApplication(id: string): Promise<ApplicationDetail> {
     const app = await this.applicationRow(id);
