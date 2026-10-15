@@ -168,3 +168,17 @@ test('diagnostics report unqueued applications and missing encryption without le
   assert.equal((await matchDiagnostics(f.deps,f.job.id)).criteria.error,'ai_match_failed');assert.equal(f.calls(),0);
  }finally{f.database.close();}
 });
+
+
+test('diagnostic retry estimate respects criteria dependency and exhausted attempts',async()=>{
+ const {matchDiagnostics}=await import('../../lib/ai/match-diagnostics');
+ const f=await fixture();try{
+  await reconcileMatches(f.store);const now=Date.now(),later=now+300000;
+  await f.store.stmt("UPDATE hub_ai_criteria SET status='failed',attempts=2,run_after=? WHERE job_id=?",later,f.job.id).run();
+  assert.equal((await matchDiagnostics(f.deps,f.job.id,now)).nextRetryAt,later);
+  await f.store.stmt("UPDATE hub_ai_criteria SET attempts=5 WHERE job_id=?",f.job.id).run();
+  assert.equal((await matchDiagnostics(f.deps,f.job.id,now)).nextRetryAt,null);
+  await f.store.stmt("UPDATE hub_ai_criteria SET status='ready' WHERE job_id=?",f.job.id).run();
+  assert.equal((await matchDiagnostics({...f.deps,encryptionKey:undefined},f.job.id,now)).nextRetryAt,null);
+ }finally{f.database.close();}
+});

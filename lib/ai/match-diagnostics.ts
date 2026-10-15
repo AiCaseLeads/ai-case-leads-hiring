@@ -28,8 +28,9 @@ export async function matchDiagnostics(deps:MatchDeps,jobId:string,now=Date.now(
  if(!criteria)reasons.push('criteria_not_queued');
  if(rows.some(row=>row.exhausted>0))reasons.push('applicant_retry_limit');
  if(count('needs_review'))reasons.push('resume_needs_review');
- const candidates=rows.map(row=>row.next_retry).filter((value):value is number=>value!==null);
- if(criteria&&criteria.status!=='ready'&&criteria.attempts<5)candidates.push(criteria.run_after);
- const nextRetryAt=candidates.length?Math.max(now,Math.min(...candidates),remaining?0:resetsAt):null;
+ // Candidate work cannot run until the current job's criteria are ready.
+ const candidates=criteria?.status==='ready'?rows.map(row=>row.next_retry).filter((value):value is number=>value!==null):criteria&&criteria.attempts<5?[criteria.run_after]:[];
+ const canRun=job.aiMatchEnabled&&config.enabled&&!!config.sealedKey&&!!deps.encryptionKey&&enabled!==false;
+ const nextRetryAt=canRun&&candidates.length?Math.max(now,Math.min(...candidates),remaining?0:resetsAt):null;
  return {counts:{pending:count('pending'),running:count('running'),complete:count('ready'),failed:count('failed'),needsReview:count('needs_review'),notQueued:Math.max(0,total-queued),total},criteria:{status:criteria?.status||'not_queued',error:safeError(criteria?.error),attempts:criteria?.attempts||0,nextRetryAt:criteria&&criteria.status!=='ready'&&criteria.attempts<5?Math.max(now,criteria.run_after):null},budget:{limit:120,used,remaining,resetsAt},worker:{enabled,encryptionKeyConfigured:!!deps.encryptionKey,leaseUntil:lease&&lease.updated_at>now?lease.updated_at:null},nextRetryAt,reasons,errors:errors.map(item=>({code:safeError(item.error),count:item.count}))};
 }
