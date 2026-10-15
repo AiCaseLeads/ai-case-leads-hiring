@@ -231,16 +231,15 @@ function JobCandidates({
       const params = new URLSearchParams(exportScope === "all" ? { jobId } : filter);
       params.set("format", format);
       if (exportScope === "selected") params.set("ids", selected.join(","));
-      const response = await fetch("/api/hub/applications-export?" + params, {credentials:"same-origin",cache:"no-store"});
+      const downloadUrl = "/api/hub/applications-export?" + params;
+      const response = await fetch(downloadUrl, {method:"HEAD",credentials:"same-origin",cache:"no-store"});
       if (!response.ok) {
-        const error = await response.json().catch(() => null) as {error?:{message?:string}} | null;
-        throw new Error(error?.error?.message || "The download could not be prepared. Please try again.");
+        throw new Error(response.headers.get("X-Export-Error") || `The download could not be prepared (status ${response.status}). Try a smaller selection or refresh and try again.`);
       }
-      const blob = await response.blob();
-      const url = URL.createObjectURL(blob), link = document.createElement("a");
-      link.href = url; link.download = `applications-${selectedJob?.slug || jobId}.${format}`;
-      document.body.appendChild(link); link.click(); link.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000);
-      setExportMessage(format === "csv" ? "Application spreadsheet downloaded." : "Application files downloaded. Check the included manifest for any unavailable files.");
+      const link = document.createElement("a");
+      link.href = downloadUrl; link.download = `applications-${selectedJob?.slug || jobId}.${format}`;
+      document.body.appendChild(link); link.click(); link.remove();
+      setExportMessage(format === "csv" ? "Spreadsheet download started. Check your browser’s downloads for completion." : "Application files download started. Check your browser’s downloads for completion and the included manifest for unavailable files.");
     } catch (error) {setExportError(error instanceof Error ? error.message : "Download failed.");}
     finally {setExporting(false);}
   }
