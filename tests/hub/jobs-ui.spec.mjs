@@ -1,3 +1,4 @@
+import {installDraftFixture} from "./draft-ui-fixture.mjs";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { createServer } from "node:http";
@@ -96,7 +97,7 @@ async function setup(
 ) {
   const { outputFiles } = await build({
     stdin: {
-      contents: `import React from 'react';import{createRoot}from'react-dom/client';import{Jobs}from'./components/hub/jobs';createRoot(document.getElementById('root')).render(<Jobs admin refresh={0} changed={()=>{}} startCreating={${startCreating}}/>);`,
+      contents: `import React from 'react';import{createRoot}from'react-dom/client';import{Jobs}from'./components/hub/jobs';import{HUB_HISTORY_GUARD}from'./components/hub/history';(0,eval)(HUB_HISTORY_GUARD);createRoot(document.getElementById('root')).render(<main data-hiring-workspace><Jobs admin refresh={0} changed={()=>{}} startCreating={${startCreating}}/></main>);`,
       resolveDir: process.cwd(),
       loader: "tsx",
     },
@@ -186,6 +187,8 @@ async function setup(
       },
     });
   });
+  page.setDefaultTimeout(10000);
+  await installDraftFixture(page, {team: true});
   await page.goto(`http://127.0.0.1:${server.address().port}`);
   await page
     .getByRole("heading", {
@@ -304,8 +307,9 @@ test("editing a legacy posting preserves its address, archive labels, form revis
   const { page, writes } = await setup(t);
   await page.getByRole("button", { name: "Edit job", exact: true }).click();
   assert.equal(await page.getByLabel("Work arrangement").inputValue(), "");
+  await next(page);await next(page);await next(page);
   await page
-    .getByRole("button", { name: "Save as draft (unpublish)", exact: true })
+    .getByRole("button", { name: "Unpublish job", exact: true })
     .click();
   await page.getByText("Draft saved.", { exact: false }).waitFor();
   assert.equal(writes[0].jobId, prior.id);
@@ -331,7 +335,7 @@ test("duplicate and saved-template entry points create a separate posting with p
   await page
     .getByLabel("Where can applicants work from?")
     .selectOption("United States");
-  await page.getByRole("button", { name: "Save draft", exact: true }).click();
+  await page.getByRole("button", { name: "Save draft job", exact: true }).click();
   await page.getByText("Draft saved.", { exact: false }).waitFor();
   assert.equal(writes[0].jobId, undefined);
   assert.equal(writes[0].job.autoReject, false);
@@ -353,7 +357,7 @@ test("duplicate and saved-template entry points create a separate posting with p
     await page.getByLabel("Where can applicants work from?").inputValue(),
     "Spain",
   );
-  await page.getByRole("button", { name: "Save draft", exact: true }).click();
+  await page.getByRole("button", { name: "Save draft job", exact: true }).click();
   await page.getByText("Draft saved.", { exact: false }).waitFor();
   assert.equal(writes[1].job.descriptionHtml, prior.descriptionHtml);
   assert.deepEqual(writes[1].scorecard, scores.bindings[prior.id]);
@@ -394,7 +398,7 @@ test("home shortcut opens creation and a saved form request becomes an editable 
     await page.getByLabel("City", { exact: true }).inputValue(),
     "Bogotá",
   );
-  await page.getByRole("button", { name: "Save draft", exact: true }).click();
+  await page.getByRole("button", { name: "Save draft job", exact: true }).click();
   await page.getByText("Draft saved.", { exact: false }).waitFor();
   assert.equal(catalogWrites.length, 1);
   assert.equal(catalogWrites[0].action, "request");
@@ -432,7 +436,7 @@ test("duplicating a posting visibly preserves its pinned rubric instead of silen
       .count(),
     1,
   );
-  await page.getByRole("button", { name: "Save draft", exact: true }).click();
+  await page.getByRole("button", { name: "Save draft job", exact: true }).click();
   await page.getByText("Draft saved.", { exact: false }).waitFor();
   assert.equal(writes[0].scorecard.version, 1);
 });
@@ -461,11 +465,13 @@ test("browser Back and Forward navigate wizard steps while retaining the unsaved
  await next(page);await page.getByRole('heading',{name:'What should applicants send?',exact:true}).waitFor();
  await page.goBack();await page.getByRole('heading',{name:'Tell applicants about the job',exact:true}).waitFor();
  assert.equal(await page.getByLabel('Job title',{exact:true}).inputValue(),'Unpublished navigation draft');
- await page.goBack();await page.getByRole('heading',{name:'Create a job',exact:true}).waitFor();
- await page.goForward();await page.getByRole('heading',{name:'Tell applicants about the job',exact:true}).waitFor();
+ await page.goBack();await page.getByRole('button',{name:'Save draft & leave',exact:true}).click();await page.getByRole('heading',{name:'Create a job',exact:true}).waitFor();
+ await page.goForward();await page.getByText(/Saved draft restored/).waitFor();
  assert.equal(await page.getByLabel('Job title',{exact:true}).inputValue(),'Unpublished navigation draft');
  assert.equal(await page.getByLabel('Where can applicants work from?',{exact:true}).inputValue(),'Spain');
- await page.goForward();await page.getByRole('heading',{name:'What should applicants send?',exact:true}).waitFor();
+ await page.goForward();await page.getByRole('heading',{name:'Tell applicants about the job',exact:true}).waitFor();
+ // Recovery restores the saved step; later historical steps must be validated again.
+ await next(page);await page.getByRole('heading',{name:'What should applicants send?',exact:true}).waitFor();
  await page.getByRole('button',{name:'Back',exact:true}).click();await page.getByRole('heading',{name:'Tell applicants about the job',exact:true}).waitFor();
  assert.equal(await page.getByLabel('Job title',{exact:true}).inputValue(),'Unpublished navigation draft');
  assert.equal(writes.length,0);
@@ -476,8 +482,8 @@ test('pending save must not close a newer draft after browser history',async t=>
  let release;const held=new Promise(resolve=>release=resolve);t.after(()=>release());
  await page.route('**/api/job-setup',async route=>{if(route.request().method()!=='POST')return route.fallback();await held;return route.fulfill({json:{data:{id:'saved-first',...route.request().postDataJSON().job}}});});
  await page.getByRole('button',{name:'Create job',exact:true}).click();await page.getByRole('button',{name:'Create blank job',exact:true}).click();await page.getByLabel('Job title',{exact:true}).fill('First pending draft');
- const req=page.waitForRequest(r=>r.method()==='POST');await page.getByRole('button',{name:'Save draft',exact:true}).click();await req;
- await page.goBack();await page.getByRole('heading',{name:'Create a job',exact:true}).waitFor();
+ const req=page.waitForRequest(r=>r.method()==='POST');await page.getByRole('button',{name:'Save draft job',exact:true}).click();await req;
+ await page.goBack();await page.getByRole('button',{name:'Save draft & leave',exact:true}).click();await page.getByRole('heading',{name:'Create a job',exact:true}).waitFor();
  await page.goBack();await page.getByRole('heading',{name:'Jobs',exact:true}).waitFor();
  await page.getByRole('button',{name:'Create job',exact:true}).click();await page.getByRole('button',{name:'Create blank job',exact:true}).click();await page.getByLabel('Job title',{exact:true}).fill('Second independent draft');
  release();await page.waitForResponse(r=>r.request().method()==='POST');await page.waitForTimeout(200);
@@ -487,6 +493,6 @@ test('pending save must not close a newer draft after browser history',async t=>
 test('invalid step must not enter Publish before validation',async t=>{
  const {page}=await setup(t,{jobs:[]});await page.goto(new URL('/?view=jobs&jobEditor=new&jobStart=blank&jobStep=3',page.url()).href);await page.getByRole('heading',{name:'Tell applicants about the job',exact:true}).waitFor({timeout:2500});
 });
-test('completed save history never revives a duplicate submission, fresh creation and cancellation still work',async t=>{const{page,writes}=await setup(t,{jobs:[]});await page.getByRole('button',{name:'Create job',exact:true}).click();await page.getByRole('button',{name:'Create blank job',exact:true}).click();await page.getByLabel('Job title',{exact:true}).fill('Completed posting');await page.getByRole('button',{name:'Continue',exact:true}).click();await page.getByRole('button',{name:'Save draft',exact:true}).click();await page.getByText('Draft saved.',{exact:false}).waitFor();await page.goBack();await page.getByRole('heading',{name:'Jobs',exact:true}).waitFor();assert.equal(new URL(page.url()).searchParams.has('jobEditor'),false);assert.equal(writes.length,1);await page.goForward();await page.getByRole('heading',{name:'Jobs',exact:true}).waitFor();await page.getByRole('button',{name:'Create job',exact:true}).click();await page.getByRole('button',{name:'Create blank job',exact:true}).click();assert.equal(await page.getByLabel('Job title',{exact:true}).inputValue(),'');await page.getByLabel('Job title',{exact:true}).fill('Fresh cancelled draft');await page.getByRole('button',{name:'Back to jobs',exact:true}).click();await page.getByRole('heading',{name:'Jobs',exact:true}).waitFor();await page.goBack();await page.getByRole('heading',{name:'Tell applicants about the job',exact:true}).waitFor();assert.equal(await page.getByLabel('Job title',{exact:true}).inputValue(),'Fresh cancelled draft');assert.equal(writes.length,1);});
+test('completed save history never revives a duplicate submission, fresh creation and cancellation still work',async t=>{const{page,writes}=await setup(t,{jobs:[]});await page.getByRole('button',{name:'Create job',exact:true}).click();await page.getByRole('button',{name:'Create blank job',exact:true}).click();await page.getByLabel('Job title',{exact:true}).fill('Completed posting');await page.getByRole('button',{name:'Continue',exact:true}).click();await page.getByRole('button',{name:'Save draft job',exact:true}).click();await page.getByText('Draft saved.',{exact:false}).waitFor();await page.goBack();await page.getByRole('heading',{name:'Jobs',exact:true}).waitFor();assert.equal(new URL(page.url()).searchParams.has('jobEditor'),false);assert.equal(writes.length,1);await page.goForward();await page.getByRole('heading',{name:'Jobs',exact:true}).waitFor();await page.getByRole('button',{name:'Create job',exact:true}).click();await page.getByRole('button',{name:'Create blank job',exact:true}).click();assert.equal(await page.getByLabel('Job title',{exact:true}).inputValue(),'');await page.getByLabel('Job title',{exact:true}).fill('Fresh cancelled draft');await page.getByRole('button',{name:'Back to jobs',exact:true}).click();await page.getByRole('button',{name:'Save draft & leave',exact:true}).click();await page.getByRole('heading',{name:'Jobs',exact:true}).waitFor();await page.goBack();await page.getByText(/Saved draft restored/).waitFor();assert.equal(await page.getByLabel('Job title',{exact:true}).inputValue(),'Fresh cancelled draft');assert.equal(writes.length,1);});
 test('fractional and nonfinite direct wizard steps normalize to validated Details',async t=>{const{page}=await setup(t,{jobs:[]});for(const step of ['1.5','Infinity','NaN','-2','999']){await page.goto(new URL('/?view=jobs&jobEditor=new&jobStart=blank&jobStep='+step,page.url()).href);await page.getByRole('heading',{name:'Tell applicants about the job',exact:true}).waitFor();assert.equal(new URL(page.url()).searchParams.get('jobStep'),'0');}});
-test('pending save must not close a newly chosen template in the same chooser history',async t=>{const{page}=await setup(t);let release;const held=new Promise(resolve=>release=resolve);t.after(()=>release());await page.route('**/api/job-setup',async route=>{if(route.request().method()!=='POST')return route.fallback();await held;return route.fulfill({json:{data:{id:'saved-first',...route.request().postDataJSON().job}}});});await page.getByRole('button',{name:'Create job',exact:true}).click();await page.getByRole('button',{name:'Create blank job',exact:true}).click();await page.getByLabel('Job title',{exact:true}).fill('First pending draft');const req=page.waitForRequest(r=>r.method()==='POST');await page.getByRole('button',{name:'Save draft',exact:true}).click();await req;await page.goBack();await page.getByRole('heading',{name:'Create a job',exact:true}).waitFor();await page.getByRole('button',{name:'Choose template',exact:true}).click();await page.getByLabel('Job template',{exact:true}).selectOption(savedTemplate.id);await page.getByRole('button',{name:'Use this template',exact:true}).click();await page.getByLabel('Job title',{exact:true}).fill('Second template draft');release();await page.waitForResponse(r=>r.request().method()==='POST');await page.waitForTimeout(200);assert.equal(await page.getByLabel('Job title',{exact:true}).count(),1);assert.equal(await page.getByLabel('Job title',{exact:true}).inputValue(),'Second template draft');});
+test('pending save must not close a newly chosen template in the same chooser history',async t=>{const{page}=await setup(t);let release;const held=new Promise(resolve=>release=resolve);t.after(()=>release());await page.route('**/api/job-setup',async route=>{if(route.request().method()!=='POST')return route.fallback();await held;return route.fulfill({json:{data:{id:'saved-first',...route.request().postDataJSON().job}}});});await page.getByRole('button',{name:'Create job',exact:true}).click();await page.getByRole('button',{name:'Create blank job',exact:true}).click();await page.getByLabel('Job title',{exact:true}).fill('First pending draft');const req=page.waitForRequest(r=>r.method()==='POST');await page.getByRole('button',{name:'Save draft job',exact:true}).click();await req;await page.goBack();await page.getByRole('button',{name:'Save draft & leave',exact:true}).click();await page.getByRole('heading',{name:'Create a job',exact:true}).waitFor();await page.getByRole('button',{name:'Choose template',exact:true}).click();await page.getByLabel('Job template',{exact:true}).selectOption(savedTemplate.id);await page.getByRole('button',{name:'Use this template',exact:true}).click();await page.getByLabel('Job title',{exact:true}).fill('Second template draft');release();await page.waitForResponse(r=>r.request().method()==='POST');await page.waitForTimeout(200);assert.equal(await page.getByLabel('Job title',{exact:true}).count(),1);assert.equal(await page.getByLabel('Job title',{exact:true}).inputValue(),'Second template draft');});

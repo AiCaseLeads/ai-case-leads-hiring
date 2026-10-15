@@ -1,3 +1,4 @@
+import {installDraftFixture} from "./draft-ui-fixture.mjs";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { createServer } from "node:http";
@@ -42,6 +43,7 @@ async function setup(t, { mode = "panel", failFirst = false, admin = true } = {}
     }
     await route.fulfill({ json: { data: { revision: 0, templates: [], requests: [], locations: {} } } });
   });
+  await installDraftFixture(page, {team: false});
   await page.goto(`http://127.0.0.1:${server.address().port}/team?view=jobs`);
   return { page, writes, jobWrites };
 }
@@ -87,7 +89,7 @@ test("new blank job saves selected team atomically with the job and wizard Back 
   await page.goBack();
   await page.getByLabel("Job title", { exact: true }).waitFor();
   assert.equal(await page.getByRole("checkbox", { name: /alex@example.invalid/ }).isChecked(), true);
-  await page.getByRole("button", { name: "Save draft", exact: true }).click();
+  await page.getByRole("button", { name: "Save draft job", exact: true }).click();
   await page.getByText("Draft saved.", { exact: false }).waitFor();
   assert.equal(jobWrites.length, 1);
   assert.deepEqual(jobWrites[0].hiringTeam.members, [staff[1].email, staff[2].email]);
@@ -104,7 +106,8 @@ test("duplicating a posting starts with an empty team; editing loads the existin
   await page.getByRole("button", { name: "Edit job", exact: true }).click();
   await page.getByRole("checkbox", { name: /maria@example.invalid/ }).waitFor();
   assert.equal(await page.getByRole("checkbox", { name: /maria@example.invalid/ }).isChecked(), true);
-  await page.getByRole("button", { name: "Save as draft (unpublish)", exact: true }).click();
+  for(let i=0;i<3;i++)await page.getByRole("button",{name:"Continue",exact:true}).click();
+  await page.getByRole("button", { name: "Unpublish job", exact: true }).click();
   await page.getByText("Draft saved.", { exact: false }).waitFor();
   assert.equal(jobWrites[0].expectedTeamRevision, 2);
   assert.deepEqual(jobWrites[0].hiringTeam.members, [staff[1].email]);

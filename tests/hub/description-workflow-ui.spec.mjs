@@ -1,3 +1,4 @@
+import {installDraftFixture} from "./draft-ui-fixture.mjs";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { createServer } from "node:http";
@@ -12,7 +13,7 @@ const prior = {
   slug: "creative-strategist-spain",
   department: "Creative",
   location: "Spain — approved location",
-  status: "open",
+  status: "draft",
   descriptionHtml: "Approved creative role description",
   fields: [
     {
@@ -194,6 +195,7 @@ async function setup(
       },
     });
   });
+  await installDraftFixture(page, {team: true});
   await page.goto(`http://127.0.0.1:${server.address().port}`);
   await page
     .getByRole("heading", {
@@ -222,7 +224,7 @@ test('formatted job survives save, edit, duplicate and applicant preview without
  assert.equal(await preview.locator('strong').textContent(),'great');assert.equal(await preview.locator('ol li').count(),2);
  await page.getByRole('button',{name:'Back to editing',exact:true}).click();
  await box.press('End');await page.keyboard.type(' Updated');
- await page.getByRole('button',{name:'Save as draft (unpublish)',exact:true}).click();
+ await page.getByRole('button',{name:'Save draft job',exact:true}).click();
  await page.getByText('Draft saved.',{exact:false}).waitFor();
  assert.match(writes[0].job.descriptionHtml,/Updated/);assert.match(writes[0].job.descriptionHtml,/<strong>great<\/strong>/);
  await page.reload();await edit(page);assert.equal(await page.getByRole('textbox',{name:'Job description',exact:true}).locator('ol li').count(),2);
@@ -285,7 +287,7 @@ test('deleting all content can be undone without losing the draft',async t=>{
 test('pending job save locks the editor and formatting until the request completes',async t=>{
  let release;const held=new Promise(resolve=>release=resolve);t.after(()=>release());
  const {page}=await setup(t,{holdJobSave:held});const box=await edit(page);
- const requested=page.waitForRequest(r=>r.method()==='POST');await page.getByRole('button',{name:'Save as draft (unpublish)',exact:true}).click();await requested;
+ const requested=page.waitForRequest(r=>r.method()==='POST');await page.getByRole('button',{name:'Save draft job',exact:true}).click();await requested;
  assert.equal(await box.getAttribute('contenteditable'),'false');assert.equal(await page.getByRole('button',{name:'Bold',exact:true}).isDisabled(),true);
  release();await page.getByText('Draft saved.',{exact:false}).waitFor();
 });

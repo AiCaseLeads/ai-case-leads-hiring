@@ -1,3 +1,4 @@
+import {installDraftFixture} from "./draft-ui-fixture.mjs";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { createServer } from "node:http";
@@ -12,7 +13,7 @@ const prior = {
   slug: "creative-strategist-spain",
   department: "Creative",
   location: "Spain — approved location",
-  status: "open",
+  status: "draft",
   descriptionHtml: "Approved creative role description",
   fields: [
     {
@@ -194,6 +195,7 @@ async function setup(
       },
     });
   });
+  await installDraftFixture(page, {team: true});
   await page.goto(`http://127.0.0.1:${server.address().port}`);
   await page
     .getByRole("heading", {
@@ -218,7 +220,7 @@ async function questions(page){await edit(page);await next(page);await page.getB
 const autoLabel='Automatically reject applicants who fail enabled requirements';
 const approvalLabel='I approve these requirements and the rejection email for automatic decisions.';
 async function enable(page,title){await page.getByRole('region',{name:`Screening for ${title}`,exact:true}).getByRole('checkbox',{name:'Set a qualifying answer'}).check();}
-async function save(page){await page.getByRole('button',{name:'Save as draft (unpublish)',exact:true}).click();}
+async function save(page){await page.getByRole('button',{name:'Save draft job',exact:true}).click();}
 test('numeric and yes/no qualifying values persist and editing resets approval',async t=>{
  const {page,writes}=await setup(t,{jobs:[screenedJob]});await questions(page);
  await enable(page,'Years of experience');await page.getByLabel('Minimum accepted number for Years of experience',{exact:true}).fill('7');
@@ -230,7 +232,7 @@ test('numeric and yes/no qualifying values persist and editing resets approval',
  await page.getByRole('checkbox',{name:approvalLabel,exact:true}).check();await save(page);await page.getByText('Draft saved.',{exact:false}).waitFor();
  assert.deepEqual(writes[0].job.rules.map(({fieldPath,operator,value,enabled})=>({fieldPath,operator,value,enabled})),[{fieldPath:'years',operator:'gte',value:7,enabled:true},{fieldPath:'briefs',operator:'gte',value:21,enabled:true},{fieldPath:'available',operator:'equals',value:false,enabled:true}]);assert.equal(writes[0].job.autoReject,true);
  await page.reload();await questions(page);assert.equal(await page.getByLabel('Minimum accepted number for Years of experience',{exact:true}).inputValue(),'7');assert.equal(await page.getByLabel('Qualifying answer for Available for interviews',{exact:true}).inputValue(),'false');
- await page.getByLabel('Qualifying answer for Available for interviews',{exact:true}).selectOption('true');await page.getByRole('checkbox',{name:approvalLabel,exact:true}).check();await page.getByRole('button',{name:'Save draft',exact:true}).click();await page.getByText('Draft saved.',{exact:false}).waitFor();assert.equal(writes[1].job.rules.find(r=>r.fieldPath==='available').value,true);
+ await page.getByLabel('Qualifying answer for Available for interviews',{exact:true}).selectOption('true');await page.getByRole('checkbox',{name:approvalLabel,exact:true}).check();await page.getByRole('button',{name:'Save draft job',exact:true}).click();await page.getByText('Draft saved.',{exact:false}).waitFor();assert.equal(writes[1].job.rules.find(r=>r.fieldPath==='available').value,true);
 });
 test('cleared minimum never becomes zero and rules must be explicitly removed before format changes',async t=>{
  const {page,writes}=await setup(t,{jobs:[screenedJob]});await questions(page);await enable(page,'Years of experience');const minimum=page.getByLabel('Minimum accepted number for Years of experience',{exact:true});await minimum.fill('7');await minimum.fill('');await save(page);await page.getByText('Enter a number for every numeric screening rule, or remove the unfinished rule in Advanced rules.',{exact:true}).waitFor();assert.equal(writes.length,0);assert.equal(await minimum.inputValue(),'');
