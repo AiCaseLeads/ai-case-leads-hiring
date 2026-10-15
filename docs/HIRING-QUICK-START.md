@@ -34,7 +34,7 @@ Recruiters connect their own Gmail under **Settings → My setup → My recruiti
 
 Home shows work to review, your job postings, recent applicants and a compact connection status. Technical delivery details are available through **Delivery activity**.
 
-In **Applications**, choose the job whose applicants you want to review. Each posting keeps its own applications, including closed postings. Use **Top 10 AI matches** to see the highest completed scores for that job, or filter by stage and qualification. Unscored applicants remain available in the full list. Clear filters keeps you within the selected job; Back to jobs returns to the job chooser. Bulk downloads support a spreadsheet of application data and a ZIP of original uploaded files. Choose the filtered set or select individual applicants before downloading.
+In **Applications**, choose the job whose applicants you want to review. Each posting keeps its own applications, including closed postings. Use **Top 10 AI matches** to see the highest completed scores for that job, or filter by stage and qualification. Unscored applicants remain available in the full list. Clear filters keeps you within the selected job; Back to jobs returns to the job chooser. Each job card has **Download all CSV** and **Download all files ZIP**. Inside a job, **Bulk download applications** appears above filters: select the page, individual applicants, or **Select all matching for download** to include every matching page. The scope summary shows what will download. Selecting all matching does not select everyone for rejection or other record changes. CSV includes answers; ZIP includes answers and original uploads. Each download supports up to 10,000 applications; ZIP attachments are limited to 3 GB. Narrow the filters if needed.
 
 Applicant records have three views:
 
@@ -93,3 +93,7 @@ The worker drains ready tasks sequentially, checking every five seconds while bu
 ## Design references
 
 The guided setup and starting choices use patterns documented in [Recruitee job creation](https://support.recruitee.com/en/articles/1066242-create-a-new-job), [job templates](https://support.recruitee.com/en/articles/10233676-how-to-use-job-templates) and [hiring requests](https://support.recruitee.com/en/articles/6999536-use-requisition-approvals-in-your-hiring-process). This app remains a custom system; no Recruitee subscription is required.
+
+### Recruiting email setup holds
+
+**Delivery activity → Setup required** means recruiting email needs attention, not that Drive failed. Open **Connect recruiting email** and have the assigned recruiter authorize their own Gmail in **My setup**. A shared company Google connection does not authorize recruiter mail. Fix any sender alias, permissions, reply contact, or template issue shown. Previously held messages remain held after connection; an administrator must review a message and explicitly retry it.

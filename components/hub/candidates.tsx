@@ -44,11 +44,13 @@ export function CandidateTable({
   select,
   selected,
   toggle,
+  togglePage,
 }: {
   items: ApplicationSummary[];
   select: (id: string) => void;
   selected?: string[];
   toggle?: (id: string) => void;
+  togglePage?: () => void;
 }) {
   return (
     <div className="hub-table-wrap">
@@ -57,7 +59,7 @@ export function CandidateTable({
           <tr role="row">
             {toggle && (
               <th scope="col" role="columnheader">
-                <span className="sr-only">Select candidate</span>
+                {togglePage ? <input type="checkbox" aria-label="Select all applicants on this page" checked={items.length > 0 && items.every(item => selected?.includes(item.id))} ref={input => { if (input) input.indeterminate = items.some(item => selected?.includes(item.id)) && !items.every(item => selected?.includes(item.id)); }} onChange={togglePage} /> : <span className="sr-only">Select candidate</span>}
               </th>
             )}
             <th scope="col" role="columnheader">Candidate</th>
@@ -124,13 +126,29 @@ type CandidatesProps = {
 export function Candidates(props: CandidatesProps) {
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("all");
+  const [downloadBusy, setDownloadBusy] = useState("");
+  const [downloadError, setDownloadError] = useState("");
+  const [downloadNotice, setDownloadNotice] = useState("");
+  async function downloadJob(job: HubJob, format: "csv" | "zip") {
+    setDownloadBusy(job.id); setDownloadError(""); setDownloadNotice("");
+    try {
+      const url = "/api/hub/applications-export?" + new URLSearchParams({jobId:job.id,format});
+      const response = await fetch(url + "&check=1", {credentials:"same-origin",cache:"no-store"});
+      const result = await response.json().catch(() => null) as {error?: {message?: string}} | null;
+      if (!response.ok) throw new Error(result?.error?.message || "Download could not be prepared. Open this job and narrow the filters, then try again.");
+      const link = document.createElement("a"); link.href=url; link.download=`applications-${job.slug}.${format}`; document.body.appendChild(link); link.click(); link.remove();
+      setDownloadNotice(`${job.title}: download started for all applications. Check your browser’s downloads for completion.`);
+    } catch (error) {setDownloadError(error instanceof Error ? error.message : "Download failed.");}
+    finally {setDownloadBusy("");}
+  }
   const counts = useHubResource<{items: {jobId:string;total:number;needsReview:number;aiReady:number}[]}>("/api/hub/application-counts", props.refresh);
   if (props.initialJobId && props.jobs.some(job => job.id === props.initialJobId)) return <JobCandidates {...props} />;
   const jobs = props.jobs.filter(job => (status === "all" || job.status === status) && `${job.title} ${job.location || ""} ${jobGroup(job)} ${job.hiringRound || ""}`.toLowerCase().includes(search.toLowerCase()));
   return <section aria-labelledby="application-jobs-title">
     <div className="hub-section-heading"><div><p className="hub-kicker">APPLICATIONS</p><h2 id="application-jobs-title">Choose a job</h2><p>Open a job to review its applicants, see the best AI matches, or download applications in bulk.</p></div></div>
     <div className="hub-card hub-filter-grid"><Field label="Find a job"><input type="search" value={search} onChange={event => setSearch(event.target.value)} placeholder="Job title or location" /></Field><Field label="Job status"><select value={status} onChange={event => setStatus(event.target.value)}><option value="all">All jobs</option><option value="open">Open jobs</option><option value="closed">Closed jobs</option><option value="draft">Draft jobs</option></select></Field></div>
-    <div className="hub-application-jobs">{jobs.map(job => <article className="hub-card hub-application-job" key={job.id}><div><Badge>{job.status}</Badge><h3>{job.title}</h3><p>{job.location || jobLocation(job)}</p><p className="hub-muted">{job.aiMatchEnabled ? "AI matching enabled" : "AI matching off"}</p><p>{counts.data ? `${counts.data.items.find(item => item.jobId === job.id)?.total || 0} applicants · ${counts.data.items.find(item => item.jobId === job.id)?.needsReview || 0} awaiting review` : counts.loading ? "Loading applicant counts…" : "Open to view applicants"}</p></div><button className="hub-button" type="button" onClick={() => {const params = new URLSearchParams(); params.set("jobId", job.id); if (props.initialStage) params.set("stage", props.initialStage); props.onFilterChange?.(params.toString(), 1);}}>View applications<span className="sr-only"> for {job.title}</span></button></article>)}</div>
+    <Feedback error={downloadError} success={downloadNotice}/><p className="hub-muted">Download all includes every application for that job, across all pages and stages. CSV contains answers; ZIP contains answers and uploaded files (up to 10,000 applications and 3 GB of attachments).</p>
+    <div className="hub-application-jobs">{jobs.map(job => <article className="hub-card hub-application-job" key={job.id}><div><Badge>{job.status}</Badge><h3>{job.title}</h3><p>{job.location || jobLocation(job)}</p><p className="hub-muted">{job.aiMatchEnabled ? "AI matching enabled" : "AI matching off"}</p><p>{counts.data ? `${counts.data.items.find(item => item.jobId === job.id)?.total || 0} applicants · ${counts.data.items.find(item => item.jobId === job.id)?.needsReview || 0} awaiting review` : counts.loading ? "Loading applicant counts…" : "Open to view applicants"}</p></div><button className="hub-button" type="button" onClick={() => {const params = new URLSearchParams(); params.set("jobId", job.id); if (props.initialStage) params.set("stage", props.initialStage); props.onFilterChange?.(params.toString(), 1);}}>View applications<span className="sr-only"> for {job.title}</span></button><div className="hub-button-row"><button className="hub-button secondary" type="button" disabled={!!downloadBusy} onClick={() => void downloadJob(job,"csv")}>Download all CSV<span className="sr-only"> for {job.title}</span></button><button className="hub-button secondary" type="button" disabled={!!downloadBusy} onClick={() => void downloadJob(job,"zip")}>Download all files ZIP<span className="sr-only"> for {job.title}</span></button></div></article>)}</div>
     {!jobs.length && <EmptyState title="No jobs found"><p>Try another search or create a posting from Jobs.</p></EmptyState>}
   </section>;
 }
@@ -229,6 +247,8 @@ function JobCandidates({
     setExporting(true); setExportError(""); setExportMessage("");
     try {
       const params = new URLSearchParams(exportScope === "all" ? { jobId } : filter);
+      params.set("jobId", jobId);
+      params.delete("page");
       params.set("format", format);
       if (exportScope === "selected") params.set("ids", selected.join(","));
       const downloadUrl = "/api/hub/applications-export?" + params;
@@ -298,6 +318,15 @@ function JobCandidates({
           {resource.data ? resource.data.total + " applications" : ""}
         </span><button type="button" className="hub-button secondary" disabled={resource.loading} onClick={() => void resource.reload()}>Refresh applications</button></div>
       </div>
+      <div className="hub-card hub-application-downloads">
+        <div><h3>Bulk download applications</h3><p>Select applicants using their checkboxes, or download everyone in this job or the current filtered view.</p><p className="hub-muted">Top 10 shows completed AI matches for active applicants in your current filters. Rejected, withdrawn, hired, and unscored applicants stay available in the full list.</p></div>
+        <div className="hub-button-row"><button className="hub-button secondary" type="button" onClick={() => applyView((() => { const params = new URLSearchParams(filter); params.set("sort", "ai_match_desc"); params.set("top", "10"); return params.toString(); })())}>Top 10 AI matches</button>{isTopTen && <button className="hub-text-button" type="button" onClick={() => applyView((() => {const params = new URLSearchParams(filter); params.delete("top"); return params.toString();})())}>Show all applicants</button>}<button className="hub-button secondary" type="button" disabled={resource.loading || !resource.data?.items.length} onClick={() => {setSelected(resource.data?.items.map(item => item.id) || []); setExportScope("selected");}}>Select this page ({resource.data?.items.length || 0})</button><button className="hub-button secondary" type="button" disabled={resource.loading || !resource.data?.total} onClick={() => {setSelected([]); setExportScope("filtered");}}>Select all matching for download ({resource.data?.total || 0})</button>{selected.length > 0 && <button className="hub-text-button" type="button" onClick={() => {setSelected([]); setExportScope("filtered");}}>Clear selection ({selected.length})</button>}</div>
+        <div className="hub-button-row"><Field label="Download scope"><select value={exportScope} onChange={event => setExportScope(event.target.value)}><option value="filtered">Current view{isTopTen ? " · Top 10" : " · all pages"}</option><option value="all">All applicants for this job</option><option value="selected">Selected applicants ({selected.length})</option></select></Field><button className="hub-button secondary" type="button" disabled={exporting || resource.loading || (exportScope === "filtered" && !resource.data?.total) || (exportScope === "selected" && !selected.length)} onClick={() => void exportApplications("csv")}><Download size={16} /> Download spreadsheet (CSV)</button><button className="hub-button" type="button" disabled={exporting || resource.loading || (exportScope === "filtered" && !resource.data?.total) || (exportScope === "selected" && !selected.length)} onClick={() => void exportApplications("zip")}><Download size={16} /> Download application files (ZIP)</button></div>
+        <p className="hub-notice" aria-live="polite">{exportScope === "selected" ? `${selected.length} selected applicants` : exportScope === "all" ? "Every applicant for this job, across all pages and stages" : `${resource.data?.total || 0} matching applicants across all pages`} will be downloaded. CSV includes answers; ZIP includes answers and original uploaded files.</p>
+        <p className="hub-muted">Downloads are limited to this job and 10,000 applications per download. ZIP limit: 3 GB of attachments; narrow the filters for larger archives. Page selections apply to bulk record changes; selecting all matching is for download only.</p>
+        {exporting && <p role="status">Preparing your download… Larger downloads may take a moment.</p>}
+        <Feedback error={exportError} success={exportMessage}/>
+      </div>
       <form className="hub-card" onSubmit={filterSubmit}>
         <div className="hub-filter-grid">
           <Field label="Search"><input value={q} onChange={e=>setQ(e.target.value)} placeholder="Name or email" type="search" /></Field>
@@ -317,13 +346,6 @@ function JobCandidates({
         <div className="hub-button-row"><button className="hub-button" type="submit"><Search size={16} /> Apply filters</button><button className="hub-button secondary" type="button" onClick={()=>applyView(new URLSearchParams({jobId}).toString())}>Clear filters</button></div>
       </form>
       {new URLSearchParams(filter).get("jobId") && <JobMatchSetup key={new URLSearchParams(filter).get("jobId")} jobId={new URLSearchParams(filter).get("jobId")!} changed={()=>void resource.reload()}/> }
-      <div className="hub-card hub-application-downloads">
-        <div><h3>Review and download</h3><p>Select applicants using their checkboxes, or download everyone in this job or the current filtered view.</p><p className="hub-muted">Top 10 shows completed AI matches for active applicants in your current filters. Rejected, withdrawn, hired, and unscored applicants stay available in the full list.</p></div>
-        <div className="hub-button-row"><button className="hub-button secondary" type="button" onClick={() => applyView((() => { const params = new URLSearchParams(filter); params.set("sort", "ai_match_desc"); params.set("top", "10"); return params.toString(); })())}>Top 10 AI matches</button>{isTopTen && <button className="hub-text-button" type="button" onClick={() => applyView((() => {const params = new URLSearchParams(filter); params.delete("top"); return params.toString();})())}>Show all applicants</button>}<button className="hub-text-button" type="button" disabled={resource.loading || !resource.data?.items.length} onClick={() => {setSelected(resource.data?.items.map(item => item.id) || []); setExportScope("selected");}}>Select this page</button>{selected.length > 0 && <button className="hub-text-button" type="button" onClick={() => {setSelected([]); setExportScope("filtered");}}>Clear selection ({selected.length})</button>}</div>
-        <div className="hub-button-row"><Field label="Download scope"><select value={exportScope} onChange={event => setExportScope(event.target.value)}><option value="filtered">Current view{isTopTen ? " · Top 10" : " · all pages"}</option><option value="all">All applicants for this job</option><option value="selected">Selected applicants ({selected.length})</option></select></Field><button className="hub-button secondary" type="button" disabled={exporting || resource.loading || (exportScope === "filtered" && !resource.data?.total) || (exportScope === "selected" && !selected.length)} onClick={() => void exportApplications("csv")}><Download size={16} /> Download spreadsheet (CSV)</button><button className="hub-button" type="button" disabled={exporting || resource.loading || (exportScope === "filtered" && !resource.data?.total) || (exportScope === "selected" && !selected.length)} onClick={() => void exportApplications("zip")}><Download size={16} /> Download application files (ZIP)</button></div>
-        {exporting && <p role="status">Preparing your download… Larger downloads may take a moment.</p>}
-        <Feedback error={exportError} success={exportMessage}/>
-      </div>
       <Feedback error={mutation.error} success={mutation.success} />
       {new URLSearchParams(filter).get("sort") === "grade_desc" && <p className="hub-notice">Comparing applications for one role. Grades use the latest overall score from each reviewer, weighted equally. Active graded applications come first, followed by active ungraded applications and closed outcomes. Qualification rules do not change the grade.</p>}
       {new URLSearchParams(filter).get("sort") === "ai_match_desc" && <p className="hub-notice">Comparing evidence against the same job requirements. Current completed AI reviews sort highest first; unreadable, pending and outdated reviews stay unscored. AI match is separate from qualification rules and human grades.</p>}
@@ -339,6 +361,7 @@ function JobCandidates({
               items={resource.data.items}
               select={onSelect || setDetailId}
               selected={selected}
+              togglePage={() => {const ids = resource.data?.items.map(item => item.id) || []; setSelected(ids.every(id => selected.includes(id)) ? [] : ids); setExportScope("selected");}}
               toggle={(id) => {
                 setExportScope("selected");
                 setSelected((current) =>

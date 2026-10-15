@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
+import { isMailSetupError } from "../../lib/google/mail-setup";
 import { ExternalLink } from "lucide-react";
 import {
   displayDate,
@@ -450,6 +451,17 @@ export function Tasks({
       refresh,
     ),
     mutation = useHubMutation();
+  const mail = useHubResource<{candidateConnected:boolean;candidateAccount:string|null}>("/api/personal-mail", refresh);
+  const mailSetupError = (task: Task) => task.kind === "gmail" && isMailSetupError(task.lastError || "");
+  const setupExplanation = (error: string) => ({
+    candidate_mail_account_not_configured: "An administrator must assign the automatic recruiting email account.",
+    candidate_mail_account_connection_required: "The assigned recruiter must connect their own recruiting Gmail.",
+    gmail_sender_alias_not_verified: "Verify the no-reply sender in the recruiter’s Gmail Send mail as settings.",
+    google_oauth_reconnect_required: "Reconnect the recruiting Gmail account; its authorization has expired or changed.",
+    google_required_permissions_missing: "Reconnect recruiting Gmail and grant the required permissions.",
+    recruiter_reply_contact_required: "Assign a connected recruiter as the job’s reply contact.",
+    candidate_mail_exposes_staff_address: "Update the email template to remove the private staff address before sending.",
+  }[error] || "Recruiting email setup needs attention.");
   const [processResult, setProcessResult] = useState<{
     processed?: number;
     replies?: number;
@@ -517,6 +529,7 @@ export function Tasks({
           )}
         </div>
       </div>
+      {mail.data?.candidateConnected === false && <p className="hub-notice">Recruiting email is not connected. {mail.data.candidateAccount || "The assigned recruiter"} must sign in and connect their own Gmail under Settings → My setup. Company Drive and Calendar connections do not enable recruiting email. <a className="hub-button secondary" href="/team?view=settings">Connect recruiting email</a></p>}
       <Feedback error={mutation.error} success={mutation.success} />
       {processResult && (
         <p
@@ -580,14 +593,16 @@ export function Tasks({
                               : "neutral"
                         }
                       >
-                        {task.status}
+                        {mailSetupError(task) ? "Setup required" : task.status}
                       </Badge>
                     </td>
                     <td>{task.attempts}</td>
                     <td>{displayDate(task.updatedAt)}</td>
-                    <td className="hub-task-error">{task.lastError || "—"}</td>
+                    <td className="hub-task-error">{mailSetupError(task) ? setupExplanation(task.lastError || "") + " This message is held; connecting Gmail alone will not send it." : task.lastError || "—"}</td>
                     <td>
-                      {task.status === "uncertain" && task.kind === "calendar" ? (
+                      {mailSetupError(task) ? (
+                        <div><a className="hub-button secondary" href="/team?view=settings">Connect recruiting email</a>{admin && mail.data?.candidateConnected === true && task.status === "failed" && <button type="button" className="hub-button secondary" disabled={mutation.busy} onClick={() => {if (window.confirm("Have you reviewed this held message and corrected its sender, permissions and template? Retrying can send it to the applicant.")) void retry(task.id);}}>Review and retry held message</button>}</div>
+                      ) : task.status === "uncertain" && task.kind === "calendar" ? (
                         <button
                           className="hub-button secondary"
                           disabled={mutation.busy}
