@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { AUTOMATED_MAIL_NOTICE } from "../hiring/receipt-email";
 import type { HubStore } from "../hub/store";
 import type { Task } from "../hub/types";
 import type { MailInput } from "../google/gmail";
@@ -61,5 +62,5 @@ export async function candidateMail(store:HubStore,input:MailInput,owners:string
  const addresses=`${input.subject} ${input.body}`.match(/[A-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi)||[];
  if(addresses.some(address=>address.toLowerCase()!==CANDIDATE_SENDER&&privateAddresses.has(address.toLowerCase())))throw new HiringError("candidate_mail_exposes_staff_address",422,"Remove staff email addresses from the applicant email template before retrying.");
  // Copy only the supported envelope fields: queued legacy replyTo/sender cannot leak through.
- return {to:input.to,subject:input.subject,body:input.body,messageId:input.messageId,sender:CANDIDATE_SENDER,replyTo:[CANDIDATE_SENDER]};
+ return {to:input.to,subject:input.subject,body:input.body.includes(AUTOMATED_MAIL_NOTICE)?input.body:`${input.body}\n\n${AUTOMATED_MAIL_NOTICE}`,messageId:input.messageId,sender:CANDIDATE_SENDER,replyTo:[CANDIDATE_SENDER]};
 }
