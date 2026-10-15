@@ -23,8 +23,8 @@ export function JobMatchSetup({jobId, changed}:{jobId:string;changed:()=>void}) 
     const result=await mutation.run("/api/ai/match","POST",{jobId},"Applications queued for AI review. Results appear as background reviews finish.");
     if(result!==undefined){await resource.reload();changed();}
   }
-  return <section className="hub-card" aria-label="AI matching for this job">
-    <h3>AI matching for this job</h3>
+  return <details className="hub-card" aria-label="AI matching for this job">
+    <summary>AI settings for this job{resource.data ? resource.data.enabled ? " · On" : " · AI matching is off — open to enable" : ""}{resource.error || resource.data?.error ? " · Needs attention" : ""}</summary>
     <p>Compare résumés and application answers with the same requirements from this job’s description. No scorecard setup needed.</p>
     <ResourceState loading={resource.loading} error={resource.error} retry={()=>void resource.reload()}/>
     {resource.data && <>
@@ -36,7 +36,7 @@ export function JobMatchSetup({jobId, changed}:{jobId:string;changed:()=>void}) 
     </>}
     <div className="hub-button-row"><button type="button" className="hub-button secondary" disabled={resource.loading || mutation.busy} onClick={()=>void resource.reload()}>Refresh AI settings</button></div>
     <Feedback error={mutation.error} success={mutation.success}/>
-  </section>;
+  </details>;
 }
 export function CandidateMatch({applicationId}:{applicationId:string}) {
   const resource=useHubResource<MatchDetail>("/api/ai/match?applicationId="+encodeURIComponent(applicationId));
