@@ -78,6 +78,10 @@ export async function downloadApplications(request:Request,store:HubStore,filter
       for(const file of row.files){
         let object;try{object=await bucket!.get(file.object_key);}catch{missing.push({applicationId:id,fileId:file.id,filename:file.filename,reason:'Storage read failed'});continue;}
         if(!object){missing.push({applicationId:id,fileId:file.id,filename:file.filename,reason:'File missing from storage'});continue;}
+        if(object.size!==file.size || object.customMetadata?.fileId!==file.id){
+          await object.body.cancel().catch(()=>undefined);
+          missing.push({applicationId:id,fileId:file.id,filename:file.filename,reason:'Stored file identity or size does not match the application'});continue;
+        }
         yield {name:folder+'/'+safeFilename(file.id)+'-'+safeFilename(file.filename),data:bodyData(object.body)};included++;
       }
     }

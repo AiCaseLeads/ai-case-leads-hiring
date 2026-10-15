@@ -70,3 +70,21 @@ test('readable answers use saved labels, yes/no, option names and attachment fil
  assert.equal(readable,'Years of experience: 7\nAvailable?: No\nTools: TypeScript; Python\nResume: Resume.pdf');
  assert.ok(csvCell(readableAnswers([{path:'danger',value:'something'}],[{path:'danger',title:'=malicious',type:'String',required:false}])).startsWith('"\''));
 });
+
+test('ZIP verifies original object identity and size before including bytes',async()=>{
+ const {store,database}=createStore();const dir=mkdtempSync(join(tmpdir(),'hiring-export-'));
+ try {
+  const job=await store.saveJob(jobInput()),app=await store.acceptApplication(applicationInput(job.id));
+  for(const id of ['good','wrong-id','wrong-size','missing-id'])database.prepare("INSERT INTO hub_files(id,session_hash,job_id,field_path,filename,content_type,size,object_key,expires_at,uploaded_at,application_id) VALUES(?,'test',?,'resume',?,'application/pdf',4,?,1,1,?)").run(id,job.id,id+'.pdf',id,app.id);
+  let cancelled=0;
+  const bucket={get:async(key:string)=>({size:key==='wrong-size'?5:4,customMetadata:key==='missing-id'?{}:{fileId:key==='wrong-id'?'another-applicant-file':key},body:new ReadableStream<Uint8Array>({start(controller){controller.enqueue(new TextEncoder().encode(key==='good'?'GOOD':'NOPE'));if(key==='good')controller.close();},cancel(){cancelled++;}})})} as unknown as Pick<R2Bucket,'get'>;
+  const response=await downloadApplications(new Request('https://jobs.example.invalid/api/hub/applications-export?format=zip'),store,{jobId:job.id},bucket);
+  const path=join(dir,'verified.zip');writeFileSync(path,Buffer.from(await response.arrayBuffer()));
+  execFileSync('python3',['-c',`import zipfile,sys,json
+z=zipfile.ZipFile(sys.argv[1]);assert z.testzip() is None
+m=json.loads(z.read('manifest.json'));assert m['includedFiles']==1;assert len(m['missingFiles'])==3
+pdfs=[p for p in z.namelist() if p.endswith('.pdf')];assert len(pdfs)==1;assert z.read(pdfs[0])==b'GOOD'
+assert all('identity or size' in f['reason'] for f in m['missingFiles'])`,path]);
+  assert.equal(cancelled,3);
+ } finally {database.close();rmSync(dir,{recursive:true,force:true});}
+});
