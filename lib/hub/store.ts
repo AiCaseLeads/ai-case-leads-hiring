@@ -1,3 +1,4 @@
+import { MAIL_SETUP_ERRORS } from "../google/mail-setup";
 import { personalCalendarSnapshot,interviewCalendar,interviewCalendarKey } from "../personal-calendar/service";
 import { jobNotificationStatements } from "../job-team/service";
 import { canonicalJson, privateToken, sha256 } from "../hiring/crypto";
@@ -1663,7 +1664,7 @@ export class HubStore {
     const eligible =
       "((candidate.status IN ('pending','failed') AND candidate.run_after<=? AND candidate.attempts<8) OR (candidate.kind='calendar' AND candidate.status='uncertain' AND candidate.run_after<=? AND candidate.attempts<8) OR (candidate.kind<>'gmail' AND candidate.status='running' AND candidate.lease_until<=? AND candidate.attempts<8))";
     const row = await this.stmt(
-      `UPDATE hub_tasks SET status='running',attempts=attempts+1,lease_token=?,lease_until=?,updated_at=? WHERE id=(SELECT candidate.id FROM hub_tasks candidate WHERE ${eligible} AND NOT EXISTS (SELECT 1 FROM hub_tasks active WHERE active.application_id=candidate.application_id AND active.id<>candidate.id AND active.status='running' AND active.lease_until>?) ORDER BY candidate.run_after,candidate.created_at,candidate.id LIMIT 1) RETURNING *`,
+      `UPDATE hub_tasks SET status='running',attempts=attempts+1,lease_token=?,lease_until=?,updated_at=? WHERE id=(SELECT candidate.id FROM hub_tasks candidate WHERE ${eligible} AND NOT (candidate.kind='gmail' AND COALESCE(candidate.last_error,'') IN (${MAIL_SETUP_ERRORS.map(code=>`'${code}'`).join(",")})) AND NOT EXISTS (SELECT 1 FROM hub_tasks active WHERE active.application_id=candidate.application_id AND active.id<>candidate.id AND active.status='running' AND active.lease_until>?) ORDER BY candidate.run_after,candidate.created_at,candidate.id LIMIT 1) RETURNING *`,
       token,
       now + 10 * 60000,
       now,
@@ -1694,6 +1695,7 @@ export class HubStore {
       result?: Record<string, unknown>;
       error?: string;
       runAfter?: number;
+      setupHold?: boolean;
     },
   ): Promise<void> {
     const now = Date.now();
@@ -1717,13 +1719,14 @@ export class HubStore {
       );
     const statements = [
       this.stmt(
-        "UPDATE hub_tasks SET run_after=CASE WHEN lease_token=? AND status='running' AND lease_until>? THEN ? ELSE NULL END,status=?,result_json=?,last_error=?,lease_until=NULL,updated_at=? WHERE id=?",
+        "UPDATE hub_tasks SET run_after=CASE WHEN lease_token=? AND status='running' AND lease_until>? THEN ? ELSE NULL END,status=?,result_json=?,last_error=?,attempts=MAX(0,attempts-?),lease_until=NULL,updated_at=? WHERE id=?",
         leaseToken,
         now,
         result.runAfter || now,
         result.status,
         result.result ? JSON.stringify(result.result) : null,
         result.error?.slice(0, 1000) || null,
+        result.setupHold ? 1 : 0,
         now,
         id,
       ),
@@ -2009,7 +2012,7 @@ export class HubStore {
     }
     const statements = [
       this.stmt(
-        `UPDATE hub_tasks SET run_after=CASE WHEN ${guards.join(" AND ")} THEN ? ELSE NULL END,status='pending',attempts=0,lease_token=NULL,lease_until=NULL,last_error=NULL,updated_at=? WHERE id=?`,
+        `UPDATE hub_tasks SET run_after=CASE WHEN ${guards.join(" AND ")} THEN ? ELSE NULL END,status='pending',attempts=0,lease_token=NULL,lease_until=NULL,last_error=NULL,result_json=NULL,updated_at=? WHERE id=?`,
         ...values,
         now,
         now,

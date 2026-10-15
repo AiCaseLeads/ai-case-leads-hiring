@@ -145,3 +145,25 @@ test("missing recruiter Gmail never falls back to company sales and does not blo
   assert.equal(database.prepare("SELECT last_error FROM hub_tasks WHERE kind='gmail'").get()?.last_error,"candidate_mail_account_connection_required");
  }finally{database.close();}
 });
+
+
+test("missing mail setup is held without consuming retries; connecting never sends the backlog until explicit review",async(t)=>{
+ const prior=process.env.CANDIDATE_MAIL_ACCOUNT;process.env.CANDIDATE_MAIL_ACCOUNT="mariam@aicaseleads.com";
+ t.after(()=>{if(prior===undefined)delete process.env.CANDIDATE_MAIL_ACCOUNT;else process.env.CANDIDATE_MAIL_ACCOUNT=prior;});
+ const {database,db,store}=customDatabase();try{
+  const role=await openSyntheticRole(store);await application(store,role.id);
+  const company=googleArchive(async()=>({folderId:"folder",folderUrl:"https://drive.google.com/drive/folders/folder"}));
+  company.sendMail=async()=>assert.fail("sales must never send");
+  await processHubTasks(store,db,bucket,company,5,[],async()=>null);
+  const held=(await store.tasks()).find(task=>task.kind==="gmail")!;
+  assert.equal(held.attempts,0);assert.equal(held.result?.setupRequired,true);assert.equal(held.result?.retryRequiresReview,true);
+  let sends=0;const mail=googleArchive(async()=>({}));mail.sendMail=async()=>{sends++;return{id:"sent",threadId:"thread"};};
+  // Even forcing the old retry time due cannot bypass the setup-error exclusion.
+  database.prepare("UPDATE hub_tasks SET run_after=0,attempts=7 WHERE id=?").run(held.id);
+  await processHubTasks(store,db,bucket,company,5,[],async()=>mail);
+  assert.equal(sends,0);assert.equal((await store.tasks()).find(task=>task.id===held.id)!.attempts,7);
+  await store.retryTask(held.id);
+  await processHubTasks(store,db,bucket,company,5,[],async()=>mail);
+  assert.equal(sends,1);assert.equal((await store.tasks()).find(task=>task.id===held.id)!.status,"done");
+ }finally{database.close();}
+});

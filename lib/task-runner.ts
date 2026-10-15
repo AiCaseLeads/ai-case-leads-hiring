@@ -1,3 +1,4 @@
+import { isMailSetupError } from "./google/mail-setup";
 import { processStaffInvites } from "./staff/service";
 import { interviewCalendar } from "./personal-calendar/service";
 import { personalCalendarEffect } from "./personal-calendar/client";
@@ -158,8 +159,9 @@ export async function processHubTasks(store:HubStore,db:D1Database,bucket:R2Buck
       }catch(error){
         const ambiguous=["gmail","calendar"].includes(task.kind)&&(providerCompleted||!!(error&&typeof error==="object"&&"uncertain"in error&&error.uncertain));
         const status=ambiguous?"uncertain":"failed";
+        const code=safeCode(error),setupHold=task.kind==="gmail"&&!ambiguous&&isMailSetupError(code);
         const delay=Math.min(6*60*60*1000,5000*2**Math.min(task.attempts,12));
-        await store.finishTask(task.id,task.leaseToken,{status,error:safeCode(error),runAfter:Date.now()+delay});
+        await store.finishTask(task.id,task.leaseToken,{status,error:code,runAfter:setupHold?Number.MAX_SAFE_INTEGER:Date.now()+delay,setupHold,...(setupHold?{result:{setupRequired:true,retryRequiresReview:true,instructions:"Connect the correct recruiting Gmail and verify its sender. Review this queued message before explicitly retrying; connecting Gmail alone will not send it."}}:{})});
         if(ambiguous)uncertain++;else failed++;
       }
     }
