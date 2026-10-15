@@ -135,3 +135,36 @@ test('automatic matching hourly provider budget survives shared background clean
   assert.equal(f.calls(),1);
  } finally {f.database.close();}
 });
+
+test('admin AI diagnostics expose bounded current-version aggregates without writes or provider calls',async()=>{
+ const f=await fixture();try{
+  await reconcileMatches(f.store);
+  const now=Date.now();
+  await f.store.stmt("UPDATE hub_ai_criteria SET status='failed',error='ai_provider_unavailable',attempts=5,run_after=? WHERE job_id=?",now+60000,f.job.id).run();
+  await f.store.stmt("UPDATE hub_ai_matches SET status='failed',error='ai_match_failed',attempts=5 WHERE job_id=?",f.job.id).run();
+  await f.store.stmt("INSERT INTO hiring_rate_limits(key_hash,window,attempts) VALUES('ai-match-global',?,120)",hourlyRateWindow(now)).run();
+  const before=f.database.prepare('SELECT total_changes() AS n').get()!.n;
+  const url=new Request(`${origin}/api/ai/match?jobId=${f.job.id}`);
+  const result=await handleAiMatch(url,MANAGER,f.deps);assert.equal(result.status,200);
+  const data=(await result.json() as {data:{diagnostics:Awaited<ReturnType<typeof import("../../lib/ai/match-diagnostics").matchDiagnostics>>}}).data;
+  assert.equal(data.diagnostics.criteria.status,'failed');assert.equal(data.diagnostics.criteria.error,'ai_provider_unavailable');
+  assert.deepEqual(data.diagnostics.counts,{pending:0,running:0,complete:0,failed:1,needsReview:0,notQueued:0,total:1});
+  assert.equal(data.diagnostics.budget.remaining,0);assert.equal(data.diagnostics.budget.used,120);
+  assert.ok(data.diagnostics.reasons.includes('hourly_budget_exhausted'));assert.ok(data.diagnostics.reasons.includes('criteria_retry_limit'));assert.ok(data.diagnostics.reasons.includes('applicant_retry_limit'));
+  assert.equal(f.database.prepare('SELECT total_changes() AS n').get()!.n,before);assert.equal(f.calls(),0);
+  assert.ok(!JSON.stringify(data).includes('sealedKey'));assert.ok(!JSON.stringify(data).includes('sk-or-'));
+  const recruiter=await handleAiMatch(url,RECRUITER,f.deps);assert.equal((await recruiter.json() as {data:{diagnostics?:unknown}}).data.diagnostics,undefined);
+  assert.equal((await handleAiMatch(url,null,f.deps)).status,403);
+ }finally{f.database.close();}
+});
+
+test('diagnostics report unqueued applications and missing encryption without leaking raw errors',async()=>{
+ const {matchDiagnostics}=await import('../../lib/ai/match-diagnostics');
+ const f=await fixture();try{
+  const initial=await matchDiagnostics({...f.deps,encryptionKey:undefined},f.job.id);
+  assert.equal(initial.counts.notQueued,1);assert.ok(initial.reasons.includes('encryption_key_missing'));assert.ok(initial.reasons.includes('criteria_not_queued'));
+  await reconcileMatches(f.store);
+  await f.store.stmt("UPDATE hub_ai_criteria SET error=? WHERE job_id=?",'sensitive provider response must not escape',f.job.id).run();
+  assert.equal((await matchDiagnostics(f.deps,f.job.id)).criteria.error,'ai_match_failed');assert.equal(f.calls(),0);
+ }finally{f.database.close();}
+});

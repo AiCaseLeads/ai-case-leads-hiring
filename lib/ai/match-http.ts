@@ -1,3 +1,4 @@
+import { matchDiagnostics } from './match-diagnostics';
 import { z } from 'zod';
 import type { HubMember } from '../hub/auth-core';
 import { parse } from '../hub/validation';
@@ -14,7 +15,7 @@ export async function handleAiMatch(request:Request,member:HubMember|null,deps:M
   if(request.method==='GET'){
    const params=new URL(request.url).searchParams,jobId=params.get('jobId'),applicationId=params.get('applicationId');
    if((!jobId&&!applicationId)||(jobId&&applicationId)||(jobId||applicationId||'').length>128)throw new HiringError('invalid_request',422,'Choose one job or application.');
-   return jsonResponse({data:applicationId?await matchDetail(deps.store,applicationId):await matchJobStatus(deps.store,jobId!)});
+   return jsonResponse({data:applicationId?await matchDetail(deps.store,applicationId):{...await matchJobStatus(deps.store,jobId!),...(member.role==='admin'?{diagnostics:await matchDiagnostics(deps,jobId!)}:{})}});
   }
   assertSameOrigin(request);
   let raw:unknown;try{raw=JSON.parse(new TextDecoder().decode(await boundedBytes(request,4096)));}catch{throw new HiringError('invalid_request',400,'The request could not be read.');}
