@@ -52,10 +52,10 @@ export default function PrivacyPage() {
           </p>
           <h2>Questions about your information</h2>
           <p>
-            Email <a href="mailto:no-reply@aicaseleads.com?subject=Recruiting%20privacy%20request">no-reply@aicaseleads.com</a>
-            {" "}for questions about your application information, to correct
-            information, withdraw an application, or request removal of your
-            information. Despite its name, this address is monitored for recruiting and privacy requests. Include the job title and the email address used to apply, but do not send sensitive documents.
+            Recruiting emails are sent from an automated no-reply address. Replies
+            are not accepted. Requests to correct information, withdraw an
+            application, or remove your information must be made through this
+            hiring website.
           </p>
           <p className="privacy-note">
             Closing a job or creating another job posting does not delete earlier
