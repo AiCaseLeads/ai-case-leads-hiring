@@ -8,7 +8,7 @@ const origin="https://jobs.example.invalid";
 function request(path:string,body?:unknown,method=body?"POST":"GET",source=origin){return new Request(`${origin}/api/ai/${path}`,{method,headers:{"content-type":"application/json",origin:source},...(body?{body:JSON.stringify(body)}:{})});}
 const review:Review={criteria:[{criterion:"Build React applications",status:"evidence_found",explanation:"The supplied resume claims React experience; verify in the interview.",citations:[{source:"resume",quote:"Built React applications for two years."}]}],checks:[{question:"Describe a React application you built and how you tested it.",citations:[]}]};
 const sources={resume:"Built React applications for two years.",linkedin:"",answers:""};
-const response=()=>Response.json({choices:[{finish_reason:"stop",message:{content:JSON.stringify(review)}}]});
+const response=()=>Response.json({choices:[{finish_reason:"stop",message:{content:JSON.stringify({...review,criteria:review.criteria.map(item=>({...item,citations:[{id:"resume:0"}]}))})}}]});
 async function fixture(fetcher:typeof fetch=async()=>response()){
   const f=createStore();
   const job=await f.store.saveJob(jobInput());
@@ -37,7 +37,7 @@ test("AI config is inactive by default, admin only, same-origin, encrypted and w
 });
 test("authorized review saves an audited note and Drive task without scoring, qualification or stage changes; replay is free",async()=>{
   let calls=0;
-  const f=await fixture(async(_url,init)=>{calls++;const body=JSON.parse(init!.body as string);assert.equal(body.model,MODEL);assert.deepEqual(body.provider,{only:["OpenAI"],allow_fallbacks:false,data_collection:"deny",require_parameters:true});assert.ok(!body.messages[1].content.includes(f.app.email));return response();});
+  const f=await fixture(async(_url,init)=>{calls++;const body=JSON.parse(init!.body as string);assert.equal(body.model,MODEL);assert.deepEqual(body.provider,{only:["OpenAI"],allow_fallbacks:false,data_collection:"deny",require_parameters:true});assert.ok(!body.messages.at(-1).content.includes(f.app.email));return response();});
   const first=await handleAiReview(request("review",f.input),RECRUITER,f.deps);
   assert.equal(first.status,200,await first.clone().text());
   const result=(await first.json() as {data:{application:typeof f.app}}).data;
@@ -116,7 +116,7 @@ test("source selection keeps management and language evidence while excluding pe
   input.fieldSubmissions.push(...eligible.map(field=>({path:field.path,value:`Evidence for ${field.path}`})),...excluded.map(field=>({path:field.path,value:`Private value for ${field.path}`})));
   const {id}=await f.store.acceptApplication(input),app=await f.store.getApplication(id);
   let answers="";
-  const deps:AiDependencies={store:f.store,encryptionKey,fetcher:async(_url,init)=>{answers=JSON.parse(JSON.parse(init!.body as string).messages[1].content).sources.answers;return response();}};
+  const deps:AiDependencies={store:f.store,encryptionKey,fetcher:async(_url,init)=>{answers=JSON.parse(JSON.parse(init!.body as string).messages.at(-1).content).sources.answers;return response();}};
   await handleAiConfig(request("config",{apiKey:key,enabled:true},"PATCH"),MANAGER,deps);
   const result=await handleAiReview(request("review",{applicationId:id,expectedRevision:app.revision,resumeText:sources.resume,linkedinText:"",jobCriteria:"Build React applications",consent:true}),MANAGER,deps);
   assert.equal(result.status,200,await result.clone().text());
@@ -127,7 +127,7 @@ test("source selection keeps management and language evidence while excluding pe
 test("selected original PDF is authoritative over browser text and must belong to the application",async()=>{
   const {makePdf}=await import("../pdf/fixtures");
   const bytes=makePdf(sources.resume);let calls=0;
-  const f=await fixture(async(_url,init)=>{calls++;const sent=JSON.parse(init!.body as string);assert.ok(sent.messages[1].content.includes(sources.resume));assert.ok(!sent.messages[1].content.includes("INVENTED BROWSER TEXT"));return response();});
+  const f=await fixture(async(_url,init)=>{calls++;const sent=JSON.parse(init!.body as string);assert.ok(sent.messages.at(-1).content.includes(sources.resume));assert.ok(!sent.messages.at(-1).content.includes("INVENTED BROWSER TEXT"));return response();});
   const fileId="a".repeat(64);
   await f.store.stmt("INSERT INTO hub_files(id,job_id,field_path,filename,content_type,size,object_key,uploaded_at,application_id,expires_at,session_hash) VALUES (?,?,?,?,?,?,?,?,?,?,?)",fileId,f.app.jobId,"resume","resume.pdf","application/pdf",bytes.length,"private/original",Date.now(),f.app.id,Date.now()+100000,"b".repeat(64)).run();
   const deps={...f.deps,bucket:{get:async()=>({size:bytes.length,customMetadata:{fileId},body:new Response(bytes.buffer as ArrayBuffer).body!})} as unknown as R2Bucket};
@@ -151,7 +151,7 @@ test('provider schema mirrors exact criteria, string bounds and evidence citatio
  assert.equal(schema.properties.checks.items.properties.question.maxLength,300);
  let calls=0;
  await generateReview(key,sources,[review.criteria[0].criterion],async(_url,init)=>{
-  calls++;const sent=JSON.parse(String(init?.body));assert.deepEqual(sent.response_format.json_schema.schema,reviewJsonSchema([review.criteria[0].criterion]));return response();
+  calls++;const sent=JSON.parse(String(init?.body));assert.deepEqual(sent.response_format.json_schema.schema,(await import("../../lib/ai/review")).referencedReviewSchema([review.criteria[0].criterion],(await import("../../lib/ai/review")).sourceSpans(sources)));return response();
  });assert.equal(calls,1);
 });
 
@@ -184,4 +184,26 @@ test('provider completion diagnostics distinguish truncation, refusal, JSON and 
   });
  }
  await assert.rejects(generateReview(key,sources,criteria,async()=>{throw new DOMException('private provider detail','TimeoutError');}),{code:'ai_request_timeout'});
+});
+
+
+test('source references preserve exact PDF whitespace and boundaries without accepting invented evidence',async()=>{
+ const {sourceSpans,resolveReviewReferences}=await import('../../lib/ai/review');
+ const text='x'.repeat(215)+' Built\nReact  applications\tfor seven years. '+'y'.repeat(250)+'😀';
+ const input={resume:text,linkedin:'Independent profile text',answers:'Brief count: 12'};
+ const spans=sourceSpans(input);
+ for(const span of spans){assert.equal(input[span.source].slice(span.start,span.start+span.quote.length),span.quote);assert.ok(span.quote.length<=240);}
+ assert.ok(spans.some(span=>span.quote.includes('Built\nReact  applications\tfor seven years.')));
+ const chosen=spans.find(span=>span.quote.includes('Built\nReact'))!;
+ const wire={criteria:[{criterion:'React experience',status:'evidence_found',explanation:'Resume reports React experience.',citations:[{id:chosen.id}]}],checks:[]};
+ const result=await generateReview(key,input,['React experience'],async(_url,init)=>{
+  const request=JSON.parse(String(init?.body));assert.deepEqual(request.reasoning,{effort:'low',exclude:true});assert.equal(request.max_tokens,5000);
+  const sent=JSON.parse(request.messages.at(-1).content);assert.deepEqual(sent.sources,input);assert.deepEqual(sent.sourceSpans,spans);
+  return Response.json({choices:[{finish_reason:'stop',message:{content:JSON.stringify(wire)}}]});
+ });assert.equal(result.criteria[0].citations[0].quote,chosen.quote);
+ assert.throws(()=>resolveReviewReferences({...wire,criteria:[{...wire.criteria[0],citations:[{id:'resume:99999'}]}]},spans),{code:'ai_response_quote_unverified'});
+ assert.throws(()=>resolveReviewReferences({...wire,criteria:[{...wire.criteria[0],citations:[{id:chosen.id,quote:'Invented'}]}]},spans),{code:'ai_response_schema_invalid'});
+ const duplicate={...wire,criteria:[{...wire.criteria[0],status:'needs_verification',citations:[{id:chosen.id},{id:chosen.id}]}]};
+ assert.throws(()=>validateReview(resolveReviewReferences(duplicate,spans),input,['React experience']),{code:'ai_response_citation_policy'});
+ assert.throws(()=>resolveReviewReferences(wire,[]),{code:'ai_response_quote_unverified'});
 });

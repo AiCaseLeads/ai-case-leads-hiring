@@ -19,7 +19,7 @@ async function fixture(){
   calls++;const data=JSON.parse(init!.body as string),isCriteria=data.response_format.json_schema.name==='job_requirements';
   assert.equal(data.model,'openai/gpt-5-mini');
   if(!isCriteria)assert.match(data.messages[0].content,/clearly satisfies the COMPLETE criterion/);
-  return Response.json({choices:[{finish_reason:'stop',message:{content:JSON.stringify(isCriteria?{criteria:[{criterion,quote:criterion}]}:{criteria:[{criterion,status:'evidence_found',explanation:'Résumé reports React work.',citations:[{source:'resume',quote:resume}]}],checks:[]})}}]});
+  return Response.json({choices:[{finish_reason:'stop',message:{content:JSON.stringify(isCriteria?{criteria:[{criterion,quote:criterion}]}:{criteria:[{criterion,status:'evidence_found',explanation:'Résumé reports React work.',citations:[{id:'resume:0'}]}],checks:[]})}}]});
  },readPdf:async(_app,id)=>({status:'ready',text:resume,pages:1,truncated:false,message:'Read',fileId:id,filename:'resume.pdf',cached:false})};
  return {...f,job,id:accepted.id,deps,calls:()=>calls};
 }
