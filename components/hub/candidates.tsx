@@ -201,7 +201,7 @@ function JobCandidates({
   const visibleRevisions = resource.data?.items.map(item => `${item.id}:${item.revision}`).join("|");
   useEffect(() => {
     // A previous selection or rejection approval must not carry over to changed records.
-    queueMicrotask(() => {setSelected([]); setApprove(false);});
+    queueMicrotask(() => {setSelected([]); setApprove(false); setExportScope(current => current === "selected" ? "filtered" : current);});
   }, [refresh, visibleRevisions]);
   function filterSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -319,8 +319,8 @@ function JobCandidates({
       {new URLSearchParams(filter).get("jobId") && <JobMatchSetup key={new URLSearchParams(filter).get("jobId")} jobId={new URLSearchParams(filter).get("jobId")!} changed={()=>void resource.reload()}/> }
       <div className="hub-card hub-application-downloads">
         <div><h3>Review and download</h3><p>Select applicants using their checkboxes, or download everyone in this job or the current filtered view.</p></div>
-        <div className="hub-button-row"><button className="hub-button secondary" type="button" onClick={() => applyView(new URLSearchParams({jobId, sort:"ai_match_desc", top:"10"}).toString())}>Top 10 AI matches</button>{isTopTen && <button className="hub-text-button" type="button" onClick={() => applyView(new URLSearchParams({jobId, sort:"ai_match_desc"}).toString())}>Show all applicants</button>}<button className="hub-text-button" type="button" disabled={resource.loading || !resource.data?.items.length} onClick={() => setSelected(resource.data?.items.map(item => item.id) || [])}>Select this page</button>{selected.length > 0 && <button className="hub-text-button" type="button" onClick={() => setSelected([])}>Clear selection ({selected.length})</button>}</div>
-        <div className="hub-button-row"><Field label="Download scope"><select value={exportScope} onChange={event => setExportScope(event.target.value)}><option value="filtered">Current view{isTopTen ? " · Top 10" : " · all pages"}</option><option value="all">All applicants for this job</option><option value="selected">Selected applicants ({selected.length})</option></select></Field><button className="hub-button secondary" type="button" disabled={exporting || resource.loading || !resource.data?.total || (exportScope === "selected" && !selected.length)} onClick={() => void exportApplications("csv")}><Download size={16} /> Download spreadsheet (CSV)</button><button className="hub-button" type="button" disabled={exporting || resource.loading || !resource.data?.total || (exportScope === "selected" && !selected.length)} onClick={() => void exportApplications("zip")}><Download size={16} /> Download application files (ZIP)</button></div>
+        <div className="hub-button-row"><button className="hub-button secondary" type="button" onClick={() => applyView((() => { const params = new URLSearchParams(filter); params.set("sort", "ai_match_desc"); params.set("top", "10"); return params.toString(); })())}>Top 10 AI matches</button>{isTopTen && <button className="hub-text-button" type="button" onClick={() => applyView((() => {const params = new URLSearchParams(filter); params.delete("top"); return params.toString();})())}>Show all applicants</button>}<button className="hub-text-button" type="button" disabled={resource.loading || !resource.data?.items.length} onClick={() => {setSelected(resource.data?.items.map(item => item.id) || []); setExportScope("selected");}}>Select this page</button>{selected.length > 0 && <button className="hub-text-button" type="button" onClick={() => {setSelected([]); setExportScope("filtered");}}>Clear selection ({selected.length})</button>}</div>
+        <div className="hub-button-row"><Field label="Download scope"><select value={exportScope} onChange={event => setExportScope(event.target.value)}><option value="filtered">Current view{isTopTen ? " · Top 10" : " · all pages"}</option><option value="all">All applicants for this job</option><option value="selected">Selected applicants ({selected.length})</option></select></Field><button className="hub-button secondary" type="button" disabled={exporting || resource.loading || (exportScope === "filtered" && !resource.data?.total) || (exportScope === "selected" && !selected.length)} onClick={() => void exportApplications("csv")}><Download size={16} /> Download spreadsheet (CSV)</button><button className="hub-button" type="button" disabled={exporting || resource.loading || (exportScope === "filtered" && !resource.data?.total) || (exportScope === "selected" && !selected.length)} onClick={() => void exportApplications("zip")}><Download size={16} /> Download application files (ZIP)</button></div>
         {exporting && <p role="status">Preparing your download… Larger downloads may take a moment.</p>}
         <Feedback error={exportError} success={exportMessage}/>
       </div>
@@ -339,15 +339,16 @@ function JobCandidates({
               items={resource.data.items}
               select={onSelect || setDetailId}
               selected={selected}
-              toggle={(id) =>
+              toggle={(id) => {
+                setExportScope("selected");
                 setSelected((current) =>
                   current.includes(id)
                     ? current.filter((value) => value !== id)
                     : current.length < 100
                       ? [...current, id]
                       : current,
-                )
-              }
+                );
+              }}
             />
           ) : (
             <EmptyState title={isTopTen ? "No completed AI matches yet" : "No applications in this view"}>
