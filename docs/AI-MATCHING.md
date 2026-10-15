@@ -2,7 +2,7 @@
 
 In a job’s **AI review** step, enable **Use AI to score and rank applicants for this job**, then save the job. Manual scorecards are optional. Existing jobs remain off until their hiring team enables matching.
 
-Alternatively, in **Applications**, select a job, apply the filter, and enable **Automatically review applicants for this job**. Choose **Highest AI match first** and apply filters to compare completed reviews. The company AI connection is managed in **Settings → Company setup → AI connection**.
+Alternatively, open **Applications**, choose a job, and enable **Automatically review applicants for this job**. Choose **Top 10 AI matches** for a shortlist of completed reviews for that posting, or **Highest AI match first** to compare its full list. Pending, unreadable and outdated reviews are excluded from the top 10. Scores are compared within one posting, never across different jobs. The company AI connection is managed in **Settings → Company setup → AI connection**.
 
 ## What the score means
 

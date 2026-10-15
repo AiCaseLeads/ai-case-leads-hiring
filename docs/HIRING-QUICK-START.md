@@ -17,7 +17,7 @@ The setup has four steps:
 
 1. **Details:** title, work arrangement, location, description and hiring team. Remote jobs can accept applicants worldwide or from a selected country. Hybrid/on-site jobs need a country and workplace city. Select the recruiters who should receive alerts and choose an applicant reply contact.
 2. **Application:** name and email are always required. Each additional question has a Required/Optional dropdown. Add from the question library or add a custom question; answer formats and instructions are under a disclosure.
-3. **Scorecard:** choose a reusable scorecard, create one by naming its criteria, or use manual review. The standard 1–5 scale and equal weights are ready to use; custom definitions are optional.
+3. **AI review:** optionally enable automatic résumé and answer matching against the job description. No manual scorecard is required. Manual scorecards remain an optional tool for your team.
 4. **Review:** check the description, questions and criteria. Save a draft or approve the preview and publish. Qualification rules and automatic rejection are separate advanced controls and remain off for new postings.
 
 Use **Save draft** to pause setup. A draft needs a valid title, location and questions; unfinished custom criteria must be completed before saving them. **Save as draft (unpublish)** stops a currently published job accepting applications. **Edit job** updates that same posting and preserves its public address. **Duplicate job** creates a separate posting. **Previous postings** shows closed jobs. No batch number or batch name is required. Closing a job stops new applications and preserves its applicants and files. Legacy archive folder labels remain intact.
@@ -34,12 +34,12 @@ The Google account connected in Settings remains the sender. The job's chosen re
 
 Home shows work to review, your job postings, recent applicants and a compact connection status. Technical delivery details are available through **Delivery activity**.
 
-In **Applications**, choose a posting to compare grades, then choose **Highest reviewer grade first**. Additional qualification, reviewer and shared-email filters are under **More filters**. Clear filters removes both visible and additional filters.
+In **Applications**, choose the job whose applicants you want to review. Each posting keeps its own applications, including closed postings. Use **Top 10 AI matches** to see the highest completed scores for that job, or filter by stage and qualification. Unscored applicants remain available in the full list. Clear filters keeps you within the selected job; Back to jobs returns to the job chooser. Bulk downloads support a spreadsheet of application data and a ZIP of original uploaded files. Choose the filtered set or select individual applicants before downloading.
 
 Applicant records have three views:
 
 - **Application & files:** answers, private original uploads, Drive link and qualification evidence.
-- **Review & scorecard:** reviewer grades, reusable criteria and optional evidence checks/AI review.
+- **AI review & notes:** job-match score and evidence, with optional manual reviewer grades and verification checks.
 - **Activity & messages:** assessments, interviews, earlier reviews, notes, emails and hiring history.
 
 Unsaved evidence and scorecard drafts survive switching these views. Reloading the entire browser or leaving the applicant can lose unsaved entries. The action panel records notes, assigns reviewers and explicitly sends assessments/interview booking links. Moving a stage alone sends no invitation.
