@@ -48,10 +48,10 @@ async function setup(t, { mode = "panel", failFirst = false, admin = true } = {}
   return { page, writes, jobWrites };
 }
 
-test("job team saves multiple recruiters and reply contact, preserves entries after failed save, and uses latest revision", async t => {
+test("job team saves private recruiter recipients without an applicant reply selector, preserves failed saves and revision", async t => {
   const { page, writes } = await setup(t, { failFirst: true });
   await page.getByRole("checkbox", { name: /alex@example.invalid/ }).check();
-  await page.getByLabel("Applicant reply contact", { exact: true }).selectOption(staff[2].email);
+  assert.equal(await page.getByLabel("Applicant reply contact", { exact: true }).count(), 0);
   await page.getByRole("checkbox", { name: "Submitted assessments", exact: true }).uncheck();
   await page.getByRole("button", { name: "Save hiring team", exact: true }).click();
   await page.getByRole("alert").filter({ hasText: "Temporary connection" }).waitFor();
@@ -59,10 +59,10 @@ test("job team saves multiple recruiters and reply contact, preserves entries af
   await page.getByRole("button", { name: "Save hiring team", exact: true }).click();
   await page.getByRole("status").filter({ hasText: "Hiring team saved" }).waitFor();
   assert.deepEqual(writes[1].members, [staff[1].email, staff[2].email]);
-  assert.equal(writes[1].replyTo, staff[2].email);
+  assert.equal(writes[1].replyTo, staff[1].email); // Legacy stored contact is preserved but never used for applicant mail.
   assert.equal(writes[1].notifyAssessmentSubmissions, false);
   await page.getByRole("checkbox", { name: /alex@example.invalid/ }).uncheck();
-  assert.equal(await page.getByLabel("Applicant reply contact", { exact: true }).inputValue(), "");
+  assert.equal(await page.getByLabel("Applicant reply contact", { exact: true }).count(), 0);
   await page.getByRole("button", { name: "Save hiring team", exact: true }).click();
   await page.getByRole("status").filter({ hasText: "Hiring team saved" }).waitFor();
   assert.equal(writes[2].expectedRevision, 3);
@@ -84,7 +84,7 @@ test("new blank job saves selected team atomically with the job and wizard Back 
   await page.getByLabel("Job title", { exact: true }).fill("Engineer Spain");
   await page.getByRole("checkbox", { name: /maria@example.invalid/ }).check();
   await page.getByRole("checkbox", { name: /alex@example.invalid/ }).check();
-  await page.getByLabel("Applicant reply contact", { exact: true }).selectOption(staff[1].email);
+  assert.equal(await page.getByLabel("Applicant reply contact", { exact: true }).count(), 0);
   await page.getByRole("button", { name: "Continue", exact: true }).click();
   await page.goBack();
   await page.getByLabel("Job title", { exact: true }).waitFor();
@@ -93,7 +93,7 @@ test("new blank job saves selected team atomically with the job and wizard Back 
   await page.getByText("Draft saved.", { exact: false }).waitFor();
   assert.equal(jobWrites.length, 1);
   assert.deepEqual(jobWrites[0].hiringTeam.members, [staff[1].email, staff[2].email]);
-  assert.equal(jobWrites[0].hiringTeam.replyTo, staff[1].email);
+  assert.equal(jobWrites[0].hiringTeam.replyTo, null);
   assert.equal(jobWrites[0].expectedTeamRevision, 0);
 });
 
