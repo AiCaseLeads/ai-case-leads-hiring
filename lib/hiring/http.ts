@@ -100,7 +100,7 @@ export async function postApplication(request: Request, deps: HiringDependencies
     const existing = await deps.store?.find(await sha256(input.submissionKey));
     if (!existing || existing.sessionHash !== await sha256(session)) {
       await requireGrant(request.headers.get("x-application-verification"),session,input.submissionKey,input.jobPostingId);
-      const email = input.fieldSubmissions.find(field => /email/i.test(field.path))?.value;
+      const email = input.fieldSubmissions.find(field => field.path === "_systemfield_email")?.value;
       if (typeof email === "string" && deps.store && !await deps.store.takeRateLimit(await sha256(`application:email:${email.trim().toLowerCase()}`),Math.floor(Date.now()/3600000),10)) throw new HiringError("rate_limited",429,"Too many applications for this email address. Please try again later.");
     }
     const result = deps.customSubmit ? await deps.customSubmit(input, session) : await service(deps).submit(input, session);
