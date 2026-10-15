@@ -1,3 +1,4 @@
+import { hourlyRateWindow } from "../hiring/rate-window";
 import { z } from "zod";
 import { HubStore } from "../hub/store";
 import type { HubMember } from "../hub/auth-core";
@@ -45,7 +46,7 @@ export async function handleAiConfig(request:Request,member:HubMember|null,deps:
 }
 type Cache={status:"pending"|"complete"|"failed";review?:Review};
 async function limit(store:HubStore,key:string,max:number){
-  const result=await store.stmt("INSERT INTO hiring_rate_limits(key_hash,window,attempts) VALUES (?,?,1) ON CONFLICT(key_hash,window) DO UPDATE SET attempts=attempts+1 WHERE attempts<? RETURNING attempts",await sha256(key),Math.floor(Date.now()/3600000),max).first();
+  const result=await store.stmt("INSERT INTO hiring_rate_limits(key_hash,window,attempts) VALUES (?,?,1) ON CONFLICT(key_hash,window) DO UPDATE SET attempts=attempts+1 WHERE attempts<? RETURNING attempts",await sha256(key),hourlyRateWindow(),max).first();
   if(!result)throw new HiringError("ai_rate_limited",429,"AI review's hourly limit was reached. Continue manual review or try later.");
 }
 export function answerSource(application:Awaited<ReturnType<HubStore["getApplication"]>>):string{

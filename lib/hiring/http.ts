@@ -1,3 +1,4 @@
+import { hourlyRateWindow } from "./rate-window";
 import { requireGrant, verifyChallenge, spamStatus } from "./antispam";
 import { privateToken, sha256 } from "./crypto";
 import { HiringError } from "./errors";
@@ -101,7 +102,7 @@ export async function postApplication(request: Request, deps: HiringDependencies
     if (!existing || existing.sessionHash !== await sha256(session)) {
       await requireGrant(request.headers.get("x-application-verification"),session,input.submissionKey,input.jobPostingId);
       const email = input.fieldSubmissions.find(field => field.path === "_systemfield_email")?.value;
-      if (typeof email === "string" && deps.store && !await deps.store.takeRateLimit(await sha256(`application:email:${email.trim().toLowerCase()}`),Math.floor(Date.now()/3600000),10)) throw new HiringError("rate_limited",429,"Too many applications for this email address. Please try again later.");
+      if (typeof email === "string" && deps.store && !await deps.store.takeRateLimit(await sha256(`application:email:${email.trim().toLowerCase()}`),hourlyRateWindow(),10)) throw new HiringError("rate_limited",429,"Too many applications for this email address. Please try again later.");
     }
     const result = deps.customSubmit ? await deps.customSubmit(input, session) : await service(deps).submit(input, session);
     return jsonResponse(result, result.status === "pending" ? 202 : result.status === "accepted" ? 201 : 200);
