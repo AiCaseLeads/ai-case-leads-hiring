@@ -59,7 +59,7 @@ export type ApplicationSummary = {
   duplicateEmail?: boolean;
   duplicateApplicationCount?: number;
   grade?: ReviewerGrade;
-  aiMatch?: import("./ai-match").MatchSummary;
+  aiMatch?: import("../../lib/ai/matchtypes").AiMatchSummary;
 };
 export type ReviewerGrade = {
   reviewed: boolean;

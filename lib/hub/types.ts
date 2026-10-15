@@ -18,6 +18,7 @@ export type Rule = {
   enabled: boolean;
 };
 export type HubJob = Job & {
+  aiMatchEnabled?: boolean;
   archiveProject?: string;
   archiveCountry?: string;
   hiringRound?: string;
@@ -52,6 +53,7 @@ export type ApplicationSummary = {
   duplicateEmail: boolean;
   duplicateApplicationCount: number;
   grade: Grade;
+  aiMatch?: import("../ai/matchtypes").AiMatchSummary;
 };
 export type Grade = {
   reviewed: boolean;

@@ -796,7 +796,7 @@ function Editor({
       (!rubric.name.trim() || rubric.criteria.some((c) => !c.label.trim()))
     ) {
       setError(
-        "Finish the scorecard name and criteria, or choose manual review before saving a draft.",
+        "Finish the optional scorecard, or choose No manual scorecard to continue with AI review only.",
       );
       return;
     }
@@ -1347,7 +1347,7 @@ function Editor({
               <input type="checkbox" checked={aiMatchEnabled}
                 onChange={(e) => setAiMatchEnabled(e.target.checked)} />
               <span><strong>Use AI to score and rank applicants for this job</strong>
-                <span className="hub-ai-match-help">Allow the connected AI provider to review resumes and answers for this job.</span>
+                <span className="hub-ai-match-help">Allow OpenRouter and OpenAI to review résumé text and answers for this job.</span>
               </span>
             </label>
             <ul className="hub-ai-match-explainer">
@@ -1360,7 +1360,7 @@ function Editor({
               after processing; unreadable or missing evidence is flagged for review.
               Minimum-answer rejection rules from the Application step work separately.
             </p>
-            <details className="hub-optional-scorecard">
+            <details className="hub-optional-scorecard" open={choice === "new" ? true : undefined}>
               <summary>Optional: manual reviewer scorecard</summary>
               <p className="hub-muted">For teams that also want to record interview or portfolio ratings. This does not control the AI match score.</p>
             <Field label="Review scorecard">
@@ -1369,7 +1369,7 @@ function Editor({
                 onChange={(e) => setChoice(e.target.value)}
               >
                 <option value="none">
-                  Manual review — set up a scorecard later
+                  No manual scorecard
                 </option>
                 {pinned &&
                   !available.some(
