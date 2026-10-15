@@ -13,7 +13,7 @@ import { CandidateEvidence, useEvidenceDraft } from "./ai-review";
 import { MatchScore, JobMatchSetup, CandidateMatch } from "./ai-match";
 import { InterviewerChoice } from "./personal-calendar";
 import { jobGroup, jobLocation } from "./job-organization";
-import { applicationsCsv, downloadApplication, downloadFile } from "./export";
+import { downloadApplication } from "./export";
 import {
   stages,
   type ApplicationDetail,
@@ -115,11 +115,30 @@ export function CandidateTable({
     </div>
   );
 }
-export function Candidates({
+type CandidatesProps = {
+  jobs: HubJob[]; refresh: number; changed: () => void; reviewerEmail: string;
+  initialStage?: string; initialJobId?: string; initialFilter?: string; initialPage?: number;
+  onSelect?: (id: string) => void; onFilterChange?: (filter: string, page: number) => void;
+};
+
+export function Candidates(props: CandidatesProps) {
+  const [search, setSearch] = useState("");
+  const [status, setStatus] = useState("all");
+  const counts = useHubResource<{items: {jobId:string;total:number;needsReview:number;aiReady:number}[]}>("/api/hub/application-counts", props.refresh);
+  if (props.initialJobId && props.jobs.some(job => job.id === props.initialJobId)) return <JobCandidates {...props} />;
+  const jobs = props.jobs.filter(job => (status === "all" || job.status === status) && `${job.title} ${job.location || ""} ${jobGroup(job)} ${job.hiringRound || ""}`.toLowerCase().includes(search.toLowerCase()));
+  return <section aria-labelledby="application-jobs-title">
+    <div className="hub-section-heading"><div><p className="hub-kicker">APPLICATIONS</p><h2 id="application-jobs-title">Choose a job</h2><p>Open a job to review its applicants, see the best AI matches, or download applications in bulk.</p></div></div>
+    <div className="hub-card hub-filter-grid"><Field label="Find a job"><input type="search" value={search} onChange={event => setSearch(event.target.value)} placeholder="Job title, location, or hiring round" /></Field><Field label="Job status"><select value={status} onChange={event => setStatus(event.target.value)}><option value="all">All jobs</option><option value="open">Open jobs</option><option value="closed">Closed jobs</option><option value="draft">Draft jobs</option></select></Field></div>
+    <div className="hub-application-jobs">{jobs.map(job => <article className="hub-card hub-application-job" key={job.id}><div><Badge>{job.status}</Badge><h3>{job.title}</h3><p>{job.location || jobLocation(job)}</p>{job.hiringRound && <p className="hub-muted">Hiring round: {job.hiringRound}</p>}<p className="hub-muted">{job.aiMatchEnabled ? "AI matching enabled" : "AI matching off"}</p><p>{counts.data ? `${counts.data.items.find(item => item.jobId === job.id)?.total || 0} applicants · ${counts.data.items.find(item => item.jobId === job.id)?.needsReview || 0} awaiting review` : counts.loading ? "Loading applicant counts…" : "Open to view applicants"}</p></div><button className="hub-button" type="button" onClick={() => {const params = new URLSearchParams(); params.set("jobId", job.id); if (props.initialStage) params.set("stage", props.initialStage); props.onFilterChange?.(params.toString(), 1);}}>View applications<span className="sr-only"> for {job.title}</span></button></article>)}</div>
+    {!jobs.length && <EmptyState title="No jobs found"><p>Try another search or create a posting from Jobs.</p></EmptyState>}
+  </section>;
+}
+
+function JobCandidates({
   jobs,
   refresh,
   changed,
-  reviewerEmail,
   initialStage = "",
   initialJobId = "",
   initialFilter,
@@ -144,7 +163,7 @@ export function Candidates({
   else {initial.delete("jobId"); initial.delete("grade"); initial.delete("sort");}
   if (!initialStage) initial.delete("stage");
   const [q, setQ] = useState(initial.get("q") || ""),
-    [jobId, setJobId] = useState(initialJobId),
+    [jobId] = useState(initialJobId),
     [stage, setStage] = useState(initialStage),
     [assignee, setAssignee] = useState(initial.get("assignee") || ""),
     [qualification, setQualification] = useState(initial.get("qualification") || ""),
@@ -155,15 +174,12 @@ export function Candidates({
     [filter, setFilter] = useState(initial.toString()),
     [selected, setSelected] = useState<string[]>([]),
     [detailId, setDetailId] = useState<string | null>(null);
-  const [queues, setQueues] = useState<{name: string; filter: string}[]>([]),
-    [queueName, setQueueName] = useState(""), [queueMessage, setQueueMessage] = useState("");
-  const queueStorage = "aicl:reviewqueues:" + reviewerEmail.toLowerCase();
-  useEffect(() => {
-    try {
-      const saved: unknown = JSON.parse(localStorage.getItem(queueStorage) || "[]");
-      if (Array.isArray(saved)) queueMicrotask(() => setQueues(saved.filter((item) => item && typeof item.name === "string" && typeof item.filter === "string").slice(0, 20)));
-    } catch { /* A queue never affects authoritative hiring records. */ }
-  }, [queueStorage]);
+  const [exportMessage, setExportMessage] = useState("");
+  const [exportError, setExportError] = useState("");
+  const [exporting, setExporting] = useState(false);
+  const [exportScope, setExportScope] = useState("filtered");
+  const selectedJob = jobs.find(job => job.id === jobId);
+  const isTopTen = new URLSearchParams(filter).get("top") === "10";
   const [bulkAction, setBulkAction] = useState("stage"),
     [bulkStage, setBulkStage] = useState("Screening"),
     [bulkAssignee, setBulkAssignee] = useState(""),
@@ -203,25 +219,30 @@ export function Candidates({
     setPage(1);
     setSelected([]);
   }
-  function applySavedQueue(value: string) {
+  function applyView(value: string) {
     const params = new URLSearchParams(value);
-    setQ(params.get("q") || ""); setJobId(params.get("jobId") || ""); setStage(params.get("stage") || ""); setAssignee(params.get("assignee") || "");
+    setQ(params.get("q") || ""); setStage(params.get("stage") || ""); setAssignee(params.get("assignee") || "");
     setQualification(params.get("qualification") || ""); setGrade(params.get("grade") || ""); setSort(params.get("sort") || ""); setDuplicate(params.get("duplicate") === "true");
-    onFilterChange?.(value, 1);
-    setFilter(value); setPage(1); setSelected([]);
+    onFilterChange?.(value, 1); setFilter(value); setPage(1); setSelected([]);
   }
-  function saveQueue() {
-    if (!queueName.trim()) return;
-    const next = [...queues.filter((queue) => queue.name !== queueName.trim()), {name:queueName.trim().slice(0,80),filter}].slice(-20);
-    try { localStorage.setItem(queueStorage, JSON.stringify(next)); setQueues(next); setQueueName(""); setQueueMessage("Review queue saved in this browser only."); }
-    catch { setQueueMessage("This browser could not save your queue. Your filters are still active."); }
-  }
-  async function exportApplications() {
-    const result = await mutation.run<{items:ApplicationSummary[];total:number;truncated:boolean;limit:number}>("/api/hub/applications-export?" + filter, "GET", undefined, "Application export prepared.");
-    if (result) {
-      downloadFile(applicationsCsv(result.items), "applications.csv", "text/csv;charset=utf-8");
-      setQueueMessage(result.truncated ? `Exported the first ${result.limit} of ${result.total} matching applications. Narrow your filters to export the rest.` : `Exported ${result.items.length} matching applications.`);
-    }
+  async function exportApplications(format: "csv" | "zip") {
+    setExporting(true); setExportError(""); setExportMessage("");
+    try {
+      const params = new URLSearchParams(exportScope === "all" ? { jobId } : filter);
+      params.set("format", format);
+      if (exportScope === "selected") params.set("ids", selected.join(","));
+      const response = await fetch("/api/hub/applications-export?" + params, {credentials:"same-origin",cache:"no-store"});
+      if (!response.ok) {
+        const error = await response.json().catch(() => null) as {error?:{message?:string}} | null;
+        throw new Error(error?.error?.message || "The download could not be prepared. Please try again.");
+      }
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob), link = document.createElement("a");
+      link.href = url; link.download = `applications-${selectedJob?.slug || jobId}.${format}`;
+      document.body.appendChild(link); link.click(); link.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+      setExportMessage(format === "csv" ? "Application spreadsheet downloaded." : "Application files downloaded. Check the included manifest for any unavailable files.");
+    } catch (error) {setExportError(error instanceof Error ? error.message : "Download failed.");}
+    finally {setExporting(false);}
   }
   async function applyBulk(e: React.FormEvent) {
     e.preventDefault();
@@ -267,20 +288,20 @@ export function Candidates({
       <div className="hub-section-heading">
         <div>
           <p className="hub-kicker">RECRUITER WORKSPACE</p>
-          <h2 id="candidates-title">Applications</h2>
+          <button className="hub-text-button" type="button" onClick={() => onFilterChange?.("", 1)}><ArrowLeft size={16} /> All jobs</button>
+          <h2 id="candidates-title">{selectedJob?.title || "Job applications"}</h2>
           <p>
-            Review each application, record decisions, and initiate the next
-            step.
+            {selectedJob?.location || (selectedJob ? jobLocation(selectedJob) : "")} · Applications for this posting
           </p>
         </div>
         <div className="hub-button-row"><span className="hub-count">
           {resource.data ? resource.data.total + " applications" : ""}
-        </span><button type="button" className="hub-button secondary" disabled={resource.loading} onClick={() => void resource.reload()}>Refresh applications</button><button type="button" className="hub-button secondary" disabled={mutation.busy || !resource.data} onClick={() => void exportApplications()}><Download size={16} /> Export filtered applications</button></div>
+        </span><button type="button" className="hub-button secondary" disabled={resource.loading} onClick={() => void resource.reload()}>Refresh applications</button></div>
       </div>
       <form className="hub-card" onSubmit={filterSubmit}>
         <div className="hub-filter-grid">
           <Field label="Search"><input value={q} onChange={e=>setQ(e.target.value)} placeholder="Name or email" type="search" /></Field>
-          <Field label="Job posting"><select value={jobId} onChange={e=>{setJobId(e.target.value);setGrade("");setSort("");}}><option value="">All job postings</option>{jobs.map(job=><option key={job.id} value={job.id}>{jobGroup(job)} · {job.location || jobLocation(job)} · {job.status} · /{job.slug}</option>)}</select></Field>
+
           <Field label="Stage"><select value={stage} onChange={e=>setStage(e.target.value)}><option value="">All stages</option>{stages.map(value=><option key={value}>{value}</option>)}</select></Field>
           <Field label="Order" hint={!jobId ? "Choose a posting to compare job matches." : undefined}><select value={sort} disabled={!jobId} onChange={e=>setSort(e.target.value)}><option value="">Newest applications</option><option value="ai_match_desc">Highest AI match first</option><option value="grade_desc">Highest reviewer grade first</option></select></Field>
         </div>
@@ -293,16 +314,17 @@ export function Candidates({
             <label className="hub-checkbox"><input type="checkbox" checked={duplicate} onChange={e=>setDuplicate(e.target.checked)} /> Shared-email applications</label>
           </div>
         </details>
-        <div className="hub-button-row"><button className="hub-button" type="submit"><Search size={16} /> Apply filters</button><button className="hub-button secondary" type="button" onClick={()=>{setQ("");setJobId("");setStage("");setAssignee("");setQualification("");setGrade("");setSort("");setDuplicate(false);onFilterChange?.("",1);setFilter("");setPage(1);setSelected([]);}}>Clear filters</button></div>
+        <div className="hub-button-row"><button className="hub-button" type="submit"><Search size={16} /> Apply filters</button><button className="hub-button secondary" type="button" onClick={()=>applyView(new URLSearchParams({jobId}).toString())}>Clear filters</button></div>
       </form>
       {new URLSearchParams(filter).get("jobId") && <JobMatchSetup key={new URLSearchParams(filter).get("jobId")} jobId={new URLSearchParams(filter).get("jobId")!} changed={()=>void resource.reload()}/> }
-      <details className="hub-card hub-review-queues">
-        <summary>Saved review queues · this browser only</summary><p className="hub-muted">These filters stay in this browser for your account. Apply filters above before saving a queue; candidate records remain private in the hiring hub.</p>
-        <div className="hub-button-row">{queues.map((queue) => <button key={queue.name} type="button" className="hub-button secondary" onClick={() => applySavedQueue(queue.filter)}>{queue.name}</button>)}</div>
-        <div className="hub-button-row"><Field label="Name this review queue"><input value={queueName} maxLength={80} onChange={(e) => setQueueName(e.target.value)} placeholder="Engineer · needs review" /></Field><button type="button" className="hub-button secondary" disabled={!queueName.trim()} onClick={saveQueue}>Save current filters</button></div>
-      </details>
-      <p className="hub-muted">CSV export includes up to 1,000 matching application summaries; files and assessment answers remain in each candidate record.</p>
-      {queueMessage && <p role="status">{queueMessage}</p>}<Feedback error={mutation.error} success={mutation.success} />
+      <div className="hub-card hub-application-downloads">
+        <div><h3>Review and download</h3><p>Select applicants using their checkboxes, or download everyone in this job or the current filtered view.</p></div>
+        <div className="hub-button-row"><button className="hub-button secondary" type="button" onClick={() => applyView(new URLSearchParams({jobId, sort:"ai_match_desc", top:"10"}).toString())}>Top 10 AI matches</button>{isTopTen && <button className="hub-text-button" type="button" onClick={() => applyView(new URLSearchParams({jobId, sort:"ai_match_desc"}).toString())}>Show all applicants</button>}<button className="hub-text-button" type="button" disabled={resource.loading || !resource.data?.items.length} onClick={() => setSelected(resource.data?.items.map(item => item.id) || [])}>Select this page</button>{selected.length > 0 && <button className="hub-text-button" type="button" onClick={() => setSelected([])}>Clear selection ({selected.length})</button>}</div>
+        <div className="hub-button-row"><Field label="Download scope"><select value={exportScope} onChange={event => setExportScope(event.target.value)}><option value="filtered">Current view{isTopTen ? " · Top 10" : " · all pages"}</option><option value="all">All applicants for this job</option><option value="selected">Selected applicants ({selected.length})</option></select></Field><button className="hub-button secondary" type="button" disabled={exporting || resource.loading || !resource.data?.total || (exportScope === "selected" && !selected.length)} onClick={() => void exportApplications("csv")}><Download size={16} /> Download spreadsheet (CSV)</button><button className="hub-button" type="button" disabled={exporting || resource.loading || !resource.data?.total || (exportScope === "selected" && !selected.length)} onClick={() => void exportApplications("zip")}><Download size={16} /> Download application files (ZIP)</button></div>
+        {exporting && <p role="status">Preparing your download… Larger downloads may take a moment.</p>}
+        <Feedback error={exportError} success={exportMessage}/>
+      </div>
+      <Feedback error={mutation.error} success={mutation.success} />
       {new URLSearchParams(filter).get("sort") === "grade_desc" && <p className="hub-notice">Comparing applications for one role. Grades use the latest overall score from each reviewer, weighted equally. Active graded applications come first, followed by active ungraded applications and closed outcomes. Qualification rules do not change the grade.</p>}
       {new URLSearchParams(filter).get("sort") === "ai_match_desc" && <p className="hub-notice">Comparing evidence against the same job requirements. Current completed AI reviews sort highest first; unreadable, pending and outdated reviews stay unscored. AI match is separate from qualification rules and human grades.</p>}
       <ResourceState
@@ -328,14 +350,11 @@ export function Candidates({
               }
             />
           ) : (
-            <EmptyState title="No applications in this view">
-              <p>
-                New accepted applications appear here. Try another filter if
-                records already exist.
-              </p>
+            <EmptyState title={isTopTen ? "No completed AI matches yet" : "No applications in this view"}>
+              <p>{isTopTen ? "Enable AI matching for this job and wait for reviews to finish. Only active applicants with current, completed scores appear in the Top 10." : "New accepted applications appear here. Try another filter if records already exist."}</p>
             </EmptyState>
           )}
-          <div className="hub-pagination">
+          {!isTopTen && <div className="hub-pagination">
             <button
               className="hub-button secondary"
               disabled={page <= 1}
@@ -364,7 +383,7 @@ export function Candidates({
             >
               Next
             </button>
-          </div>
+          </div>}
         </>
       )}
       {selected.length > 0 && (
