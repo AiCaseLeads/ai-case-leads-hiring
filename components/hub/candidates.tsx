@@ -232,9 +232,10 @@ function JobCandidates({
       params.set("format", format);
       if (exportScope === "selected") params.set("ids", selected.join(","));
       const downloadUrl = "/api/hub/applications-export?" + params;
-      const response = await fetch(downloadUrl, {method:"HEAD",credentials:"same-origin",cache:"no-store"});
+      const response = await fetch(downloadUrl + "&check=1", {credentials:"same-origin",cache:"no-store"});
       if (!response.ok) {
-        throw new Error(response.headers.get("X-Export-Error") || `The download could not be prepared (status ${response.status}). Try a smaller selection or refresh and try again.`);
+        const error = await response.json().catch(() => null) as {error?:{message?:string}} | null;
+        throw new Error(error?.error?.message || `The download could not be prepared (status ${response.status}). Try a smaller selection or refresh and try again.`);
       }
       const link = document.createElement("a");
       link.href = downloadUrl; link.download = `applications-${selectedJob?.slug || jobId}.${format}`;
