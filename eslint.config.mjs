@@ -18,7 +18,7 @@ const eslintConfig = defineConfig([
     "next-env.d.ts",
   ]),
   {
-    files: ["components/careers/**/*.tsx", "app/privacy/page.tsx"],
+    files: ["components/careers/**/*.tsx", "app/privacy/page.tsx", "app/help/page.tsx"],
     rules: {
       // Native anchors avoid the reproduced Vinext production Link runtime failure.
       "@next/next/no-html-link-for-pages": "off",
