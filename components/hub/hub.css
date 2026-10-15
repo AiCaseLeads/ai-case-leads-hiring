@@ -1429,3 +1429,5 @@
 .hub-screening-question > .hub-checkbox { margin: 0; }
 .hub-screening-question > .hub-field { margin-top: 16px; }
 .hub-screening-question > p:last-child { margin-bottom: 0; }
+
+.hub-screening-decisions { margin-top: 24px; }

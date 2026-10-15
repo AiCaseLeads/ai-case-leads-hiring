@@ -1722,7 +1722,7 @@ function AdvancedRules({
     setApproved(false);
   }
   return (
-    <section className="hub-card">
+    <section className="hub-card hub-screening-decisions">
       <h3>What happens when an applicant does not qualify?</h3>
       <p>
         Without approved rules, every applicant goes to human review. AI does
