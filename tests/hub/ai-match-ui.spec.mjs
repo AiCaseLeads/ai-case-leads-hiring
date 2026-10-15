@@ -50,22 +50,22 @@ test('pending, stale, failed and unreadable reviews never display misleading num
 });
 
 test('enabling one job is explicit and queues existing applicants only on request',async t=>{
- const {page,writes}=await setup(t,{mode:'setup',data:{jobId:job.id,enabled:false,status:'disabled',criteria:['React experience']}});
+ const {page,writes}=await setup(t,{mode:'setup',data:{jobId:job.id,version:1,enabled:false,status:'disabled',criteria:['React experience']}});
  const toggle=page.getByRole('checkbox',{name:'Automatically review applicants for this job'});await toggle.waitFor();assert.equal(await toggle.isChecked(),false);assert.equal(writes.length,0);
  assert.equal(await page.getByText(/Enabling this sends relevant résumé text and answers to OpenRouter/).isVisible(),true);
- await toggle.click();await page.getByRole('status').filter({hasText:'AI matching enabled'}).waitFor();assert.deepEqual(writes,[{method:'PATCH',jobId:job.id,enabled:true,consent:true}]);
+ await toggle.click();await page.getByRole('status').filter({hasText:'AI matching enabled'}).waitFor();assert.deepEqual(writes,[{method:'PATCH',jobId:job.id,enabled:true,expectedVersion:1,consent:true}]);
  await page.getByRole('button',{name:'Review existing applicants',exact:true}).click();await page.getByRole('status').filter({hasText:'Applications queued'}).waitFor();assert.deepEqual(writes[1],{method:'POST',jobId:job.id});
  await page.getByText('Requirements used for every applicant',{exact:true}).click();assert.equal(await page.getByText('React experience',{exact:true}).isVisible(),true);
  await toggle.click();await page.getByRole('status').filter({hasText:'Automatic AI matching is off'}).waitFor();assert.equal(writes[2].enabled,false);
 });
 
 test('failed enable stays off and explains the error instead of claiming success',async t=>{
- const {page,writes}=await setup(t,{mode:'setup',data:{jobId:job.id,enabled:false,status:'disabled',criteria:[]},failWrite:true});
+ const {page,writes}=await setup(t,{mode:'setup',data:{jobId:job.id,version:1,enabled:false,status:'disabled',criteria:[]},failWrite:true});
  const toggle=page.getByRole('checkbox',{name:'Automatically review applicants for this job'});await toggle.click();await page.getByRole('alert').filter({hasText:'Provider unavailable'}).waitFor();assert.equal(await toggle.isChecked(),false);assert.equal(writes.length,1);assert.equal(await page.getByRole('button',{name:'Review existing applicants'}).count(),0);
 });
 
 test('AI sorting is scoped to a selected posting and clear filters removes it',async t=>{
- const {page,queries}=await setup(t,{mode:'list',data:{jobId:job.id,enabled:false,status:'disabled',criteria:[]}});
+ const {page,queries}=await setup(t,{mode:'list',data:{jobId:job.id,version:1,enabled:false,status:'disabled',criteria:[]}});
  const order=page.getByLabel('Order',{exact:true});await order.waitFor();assert.equal(await order.isDisabled(),true);
  await page.getByLabel('Job posting',{exact:true}).selectOption(job.id);await order.selectOption('ai_match_desc');
  await Promise.all([page.waitForResponse(r=>r.url().includes('sort=ai_match_desc')),page.getByRole('button',{name:'Apply filters',exact:true}).click()]);
@@ -78,7 +78,7 @@ test('AI sorting is scoped to a selected posting and clear filters removes it',a
 
 test('mobile AI evidence and consent remain within the viewport',async t=>{
  for(const mode of ['candidate','setup']){
-  const {page}=await setup(t,{mode,data:{jobId:job.id,enabled:true,status:'ready',score:75,criteria:mode==='setup'?['Clear job requirement']:[{criterion:'Relevant experience',status:'evidence_found',explanation:'Application includes relevant work.',citations:[{source:'resume',quote:'Delivered customer projects.'}]}]}});
+  const {page}=await setup(t,{mode,data:{jobId:job.id,version:1,enabled:true,status:'ready',score:75,criteria:mode==='setup'?['Clear job requirement']:[{criterion:'Relevant experience',status:'evidence_found',explanation:'Application includes relevant work.',citations:[{source:'resume',quote:'Delivered customer projects.'}]}]}});
   await page.getByRole('heading',{name:mode==='setup'?'AI matching for this job':'AI job match',exact:true}).waitFor();
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth+1),true);
  }
