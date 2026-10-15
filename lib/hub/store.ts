@@ -1285,6 +1285,8 @@ export class HubStore {
               "Your application to AI Case Leads",
               template(posting.rejectionTemplate, app.name, app.job_title),
               now,
+              template(posting.rejectionTemplate, app.name, app.job_title),
+              {metadata:{mailMode:"recruiter",actor:member.email}},
             ),
           );
         }
@@ -1311,7 +1313,7 @@ export class HubStore {
               input.body,
               now,
               input.body,
-              {metadata:{actor:member.email,actionId:input.actionId!.toLowerCase()}},
+              {metadata:{mailMode:"recruiter",actor:member.email,actionId:input.actionId!.toLowerCase()}},
             ),
           );
           text = `Email queued: ${input.subject.trim()}`;
@@ -1426,6 +1428,7 @@ export class HubStore {
             `Hi ${app.name},\n\nYou are invited to complete the next assessment for ${app.job_title}. Use your private link within seven days:\n${url}\n\nAI Case Leads Hiring Team`,
             now,
             "Assessment invitation with a private candidate link.",
+            {metadata:{mailMode:"recruiter",actor:member.email}},
           ),
         );
         stage = renewing ? app.stage : "Assessment";
@@ -1496,6 +1499,7 @@ export class HubStore {
             `Hi ${app.name},\n\nYou are invited to interview for ${app.job_title}. Choose a time using your private link within fourteen days:\n${url}\n\nAI Case Leads Hiring Team`,
             now,
             "Interview invitation with a private candidate link.",
+            {metadata:{mailMode:"recruiter",actor:member.email}},
           ),
         );
         stage = renewing ? app.stage : "Interview";

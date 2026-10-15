@@ -2,7 +2,7 @@ import type { GoogleClient } from "./client";
 import { base64, base64url, emailAddress, fromBase64url, GoogleError, json, utf8 } from "./http";
 
 const API = "https://gmail.googleapis.com/gmail/v1/users/me";
-export interface MailInput { to: string; subject: string; body: string; messageId: string; replyTo?: string[]; sender?: string }
+export interface MailInput { to: string; subject: string; body: string; messageId: string; replyTo?: string[]; sender?: string; candidateMail?: boolean; candidateAccount?: string }
 export interface SentMail { id: string; threadId: string }
 interface GmailMessage extends SentMail { internalDate?: string; labelIds?: string[]; payload?: MimePart }
 interface MimePart { partId?: string; filename?: string; mimeType?: string; headers?: Array<{ name: string; value: string }>; body?: { data?: string; attachmentId?: string; size?: number }; parts?: MimePart[] }
@@ -96,6 +96,11 @@ export class Gmail {
     const sender = emailAddress(input.sender || this.sender).toLowerCase();
     const raw = base64url(utf8(mimeMessage(sender, input)));
     const profile = await this.profile();
+    if (input.candidateMail) {
+      const required = input.candidateAccount?.trim().toLowerCase() || process.env.CANDIDATE_MAIL_ACCOUNT?.trim().toLowerCase();
+      if (!required || required === "sales@aicaseleads.com") throw new GoogleError("candidate_mail_account_not_configured");
+      if (profile.email !== emailAddress(required)) throw new GoogleError("candidate_mail_account_connection_required");
+    }
     if (profile.email !== sender) {
       // Read the provider-approved identities on every send: revoked aliases must fail closed.
       const identities = await json<{ sendAs?: Array<{ sendAsEmail: string; verificationStatus?: string }> }>(await this.client.request(`${API}/settings/sendAs`));

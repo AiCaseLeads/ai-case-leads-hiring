@@ -92,25 +92,27 @@ test("100 permanent archive reconciliation failures cannot starve a new applicat
     assert.deepEqual(archived,[ids[100]]);
   }finally{database.close();}
 });
-test("a Gmail send followed by local result-persistence failure remains uncertain and never resends",async()=>{
+test("a Gmail send followed by local result-persistence failure remains uncertain and never resends",async(t)=>{
+ const prior=process.env.CANDIDATE_MAIL_ACCOUNT;process.env.CANDIDATE_MAIL_ACCOUNT="mariam@aicaseleads.com";t.after(()=>{if(prior===undefined)delete process.env.CANDIDATE_MAIL_ACCOUNT;else process.env.CANDIDATE_MAIL_ACCOUNT=prior;});
   const {database,db,store}=customDatabase();try{
     const role=await openSyntheticRole(store),app=await application(store,role.id);
     database.exec("CREATE TRIGGER test_sent_archive_failure BEFORE INSERT ON hub_tasks WHEN NEW.kind='drive' AND NEW.id LIKE '%:effect:%' AND EXISTS (SELECT 1 FROM hub_tasks WHERE kind='gmail' AND status='done') BEGIN SELECT RAISE(ABORT,'synthetic post-send database outage'); END");
     let sends=0;
     const google=googleArchive(async()=>({folderId:"synthetic-folder",folderUrl:"https://drive.google.com/drive/folders/synthetic-folder"}));
     google.sendMail=async()=>{sends++;return{id:"synthetic-sent-id",threadId:"synthetic-thread"};};
-    await processHubTasks(store,db,bucket,google,5);
+    await processHubTasks(store,db,bucket,google,5,[],async()=>google);
     assert.equal(sends,1);
     assert.equal(database.prepare("SELECT status FROM hub_tasks WHERE kind='gmail'").get()?.status,"uncertain");
     assert.equal((await store.getApplication(app.id)).communications[0].status,"uncertain");
     database.exec("UPDATE hub_tasks SET run_after=0 WHERE kind='gmail'");
-    await processHubTasks(store,db,bucket,google,5);
+    await processHubTasks(store,db,bucket,google,5,[],async()=>google);
     assert.equal(sends,1);
     assert.equal(database.prepare("SELECT status FROM hub_tasks WHERE kind='gmail'").get()?.status,"uncertain");
   }finally{database.close();}
 });
 for(const scenario of ["current","disabled","cancelled","rescheduled","past","inactive"]){
-  test(`interview reminder processor: ${scenario} booking is checked before Gmail`,async()=>{
+  test(`interview reminder processor: ${scenario} booking is checked before Gmail`,async(t)=>{
+ const prior=process.env.CANDIDATE_MAIL_ACCOUNT;process.env.CANDIDATE_MAIL_ACCOUNT="mariam@aicaseleads.com";t.after(()=>{if(prior===undefined)delete process.env.CANDIDATE_MAIL_ACCOUNT;else process.env.CANDIDATE_MAIL_ACCOUNT=prior;});
     const {database,db,store}=customDatabase();try{
       const role=await openSyntheticRole(store),app=await application(store,role.id);
       database.exec("DELETE FROM hub_communications; DELETE FROM hub_tasks");
@@ -124,7 +126,7 @@ for(const scenario of ["current","disabled","cancelled","rescheduled","past","in
       let sends=0;
       const google=googleArchive(async()=>({folderId:"synthetic-folder",folderUrl:"https://drive.google.com/drive/folders/synthetic-folder"}));
       google.sendMail=async()=>{sends++;return{id:"synthetic-message",threadId:"synthetic-thread"};};
-      await processHubTasks(store,db,bucket,google,5);
+      await processHubTasks(store,db,bucket,google,5,[],async()=>google);
       assert.equal(sends,scenario==="current"?1:0);
       assert.equal(database.prepare("SELECT status FROM hub_communications WHERE task_id=?").get(id)?.status,scenario==="current"?"sent":"cancelled");
     }finally{database.close();}

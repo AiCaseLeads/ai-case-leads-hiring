@@ -165,10 +165,10 @@ test("cancellation contacts the original calendar despite a changed global defau
 test("shared reconciliation deadline stops before processing all slow reads",async()=>{
  const f=await fixture(),original=Date.now;let clock=original(),calls=0;
  try{
-  f.database.exec("DELETE FROM hub_communications; DELETE FROM hub_tasks");for(let n=0;n<5;n++)await f.store.taskStatement(`uncertain${n}`,f.app.id,"gmail",{messageId:`<${n}@example.invalid>`},clock).run();f.database.exec("UPDATE hub_tasks SET status='uncertain'");
+  f.database.exec("DELETE FROM hub_communications; DELETE FROM hub_tasks");for(let n=0;n<5;n++)await f.store.taskStatement(`uncertain${n}`,f.app.id,"gmail",{messageId:`<${n}@example.invalid>`,deliveryAccount:"mariam@aicaseleads.com"},clock).run();f.database.exec("UPDATE hub_tasks SET status='uncertain'");
   Date.now=()=>clock;
   const google={async reconcileMail(){calls++;clock+=20000;return null;},async threadMessages(){return[];}} as unknown as GoogleWorkspace;
-  await processHubTasks(f.store,f.db,{} as R2Bucket,google,5);assert.equal(calls,2);assert.equal(clock-original()<41000,true);const health=await f.store.setting<{error:string;uncertain:number}>("worker_health",{error:"",uncertain:0});assert.match(health.error,/attention/);assert.equal(health.uncertain,5);
+  await processHubTasks(f.store,f.db,{} as R2Bucket,google,5,[],async()=>google);assert.equal(calls,2);assert.equal(clock-original()<41000,true);const health=await f.store.setting<{error:string;uncertain:number}>("worker_health",{error:"",uncertain:0});assert.match(health.error,/attention/);assert.equal(health.uncertain,5);
  }finally{Date.now=original;f.database.close();}
 });
 test("expired budgets prevent new Google requests and over-budget retry sleeps",async()=>{

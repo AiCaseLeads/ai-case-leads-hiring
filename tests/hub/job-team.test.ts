@@ -90,17 +90,18 @@ test("actual assessment submission enqueues once with its event and retries leav
  assert.equal((await submit()).status,200);assert.equal((await submit()).status,200);
  assert.equal((await f.store.tasks()).filter(t=>t.payload.event==="assessmentSubmission").length,1);f.database.close();
 });
-test("worker routes recipient envelopes, keeps private staff addresses out of candidate mail, and reconciles uncertain job notifications without resending",async()=>{
+test("worker routes recipient envelopes, keeps private staff addresses out of candidate mail, and reconciles uncertain job notifications without resending",async(t)=>{
+ const prior=process.env.CANDIDATE_MAIL_ACCOUNT;process.env.CANDIDATE_MAIL_ACCOUNT="mariam@aicaseleads.com";t.after(()=>{if(prior===undefined)delete process.env.CANDIDATE_MAIL_ACCOUNT;else process.env.CANDIDATE_MAIL_ACCOUNT=prior;});
  const {processHubTasks}=await import("../../lib/task-runner");
  const f=await fixture(),job=await f.store.saveJob(jobInput());await configure(f,job.id,[RECRUITER.email],{replyTo:RECRUITER.email});await f.store.setSetting("google_sender",MANAGER.email);await f.store.acceptApplication(applicationInput(job.id));
  f.database.prepare("UPDATE hub_tasks SET status='done',result_json=? WHERE kind='drive'").run(JSON.stringify({archivedRevision:999}));
  const sent:import("../../lib/google/gmail").MailInput[]=[];
  const google={async sendMail(mail:import("../../lib/google/gmail").MailInput){sent.push(mail);if(mail.to===RECRUITER.email)throw {code:"gmail_outcome_unknown",uncertain:true};return {id:"candidate-delivered",threadId:"candidate-thread"};},async reconcileMail(){return {id:"notice-delivered",threadId:"team-thread"};}} as unknown as import("../../lib/google/workspace").GoogleWorkspace;
- await processHubTasks(f.store,f.db,undefined,google,5,[MANAGER.email]);assert.equal(sent.length,2,JSON.stringify(await f.store.tasks()));
+ await processHubTasks(f.store,f.db,undefined,google,5,[MANAGER.email],async()=>google);assert.equal(sent.length,2,JSON.stringify(await f.store.tasks()));
  assert.deepEqual(sent.find(mail=>mail.to!==RECRUITER.email)!.replyTo,["no-reply@aicaseleads.com"]);assert.equal(sent.find(mail=>mail.to===RECRUITER.email)!.replyTo,undefined);
  const notice=(await f.store.tasks()).find(t=>t.payload.jobNotification)!;assert.equal(notice.status,"uncertain");
  f.database.prepare("UPDATE hub_tasks SET run_after=0 WHERE id=?").run(notice.id);
- await processHubTasks(f.store,f.db,undefined,google,1,[MANAGER.email]);assert.equal(sent.length,2);assert.equal((await f.store.tasks()).find(t=>t.id===notice.id)!.status,"done");f.database.close();
+ await processHubTasks(f.store,f.db,undefined,google,1,[MANAGER.email],async()=>google);assert.equal(sent.length,2);assert.equal((await f.store.tasks()).find(t=>t.id===notice.id)!.status,"done");f.database.close();
 });
 test("actual inbound reply sync creates a single job-team notice and never sends for external outbound mail",async()=>{
  const {syncHiringReplies}=await import("../../lib/mail-sync");
@@ -132,5 +133,16 @@ test("candidate template guard includes inactive staff and owners outside active
  const input={to:"candidate@example.invalid",subject:"Application received",body:`Contact ${RECRUITER.email}`,messageId:"notice@example.invalid"};
  await assert.rejects(()=>candidateMail(f.store,input),/Remove staff email addresses/);
  await assert.rejects(()=>candidateMail(f.store,{...input,body:"Contact private-owner@example.invalid"},["private-owner@example.invalid"]),/Remove staff email addresses/);
+ f.database.close();
+});
+
+test("recruiter initiated mail replies only to its authenticated active recruiter",async()=>{
+ const {candidateMail}=await import("../../lib/job-team/service");
+ const f=await fixture(),job=await f.store.saveJob(jobInput());const app=await f.store.acceptApplication(applicationInput(job.id));
+ const input={to:"candidate@example.invalid",subject:"Next step",body:"Please reply with availability",messageId:"next@example.invalid"};
+ const mail=await candidateMail(f.store,input,[],{mailMode:"recruiter",actor:RECRUITER.email,applicationId:app.id});
+ assert.deepEqual(mail.replyTo,[RECRUITER.email]);assert.equal(mail.sender,RECRUITER.email);assert.equal(mail.candidateAccount,RECRUITER.email);assert.equal(mail.candidateMail,true);assert.ok(!mail.body.includes("Replies are rejected"));
+ assert.match(mail.body,/reply to this email to contact your recruiter/);
+ await assert.rejects(()=>candidateMail(f.store,input,["sales@aicaseleads.com"],{mailMode:"recruiter",actor:"sales@aicaseleads.com",applicationId:app.id}),/Assign an active recruiter/);
  f.database.close();
 });

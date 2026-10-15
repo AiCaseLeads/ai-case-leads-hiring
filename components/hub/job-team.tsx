@@ -61,7 +61,7 @@ export function JobTeamFields({ data, value, change, readOnly = false }: {
     </fieldset>
     <p className="hub-muted">Add or remove staff login access in Settings → Team access, then return here to assign them.</p>
     {!value.members.length && <p className="hub-notice">No recruiters selected. This job will not send team alerts. Applications still appear in the dashboard.</p>}
-    <p className="hub-muted">Applicant emails use the verified no-reply address. Team assignments are private and only control internal notifications. Calendar invitations can show the interview organizer’s address.</p>
+    <p className="hub-muted">Automatic receipts and screening rejections use no-reply. Messages and invitations sent by a recruiter direct replies to that recruiter; their email is intentionally visible in Reply-To. Team assignments control internal notifications. Calendar invitations can show the interview organizer’s address.</p>
     <fieldset disabled={readOnly} className="hub-team-alert-picker">
       <legend>Email this team about</legend>
       {([

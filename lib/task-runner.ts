@@ -11,6 +11,17 @@ import { withinDeadline } from "./hiring/deadline";
 import { syncHiringReplies } from "./mail-sync";
 import { enqueueReviewReminders, reviewReminderMail } from "./review-reminders/service";
 
+export type CandidateMailResolver=(account:string)=>Promise<GoogleWorkspace|null>;
+async function candidateTransport(store:HubStore,account:string|undefined,resolver?:CandidateMailResolver){
+ if(!account||account.toLowerCase()==="sales@aicaseleads.com")throw {code:"candidate_mail_account_not_configured"};
+ const client=resolver?await resolver(account):await (async()=>{
+  const {personalMailWorkspace}=await import("./personal-mail/service");
+  const {resolvedWorkspaceEnv}=await import("./workspace-config");
+  return personalMailWorkspace(store,account,await resolvedWorkspaceEnv());
+ })();
+ if(!client)throw {code:"candidate_mail_account_connection_required"};
+ return client;
+}
 function safeCode(error:unknown):string{
   const code=error&&typeof error==="object"&&"code"in error?error.code:null;
   return typeof code==="string"&&/^[a-z0-9_]{1,100}$/.test(code)?code:"workspace_task_failed";
@@ -22,9 +33,9 @@ async function reconcileArchives(db:D1Database,store:HubStore){
   const now=Date.now();
   if(result.results.length)await db.batch(result.results.map(app=>store.taskStatement(`drive:${app.id}:reconcile:${app.revision}`,app.id,"drive",{applicationId:app.id},now)));
 }
-async function reconcileUncertain(db:D1Database,store:HubStore,google:GoogleWorkspace,max:number,deadline:number){
+async function reconcileUncertain(db:D1Database,store:HubStore,google:GoogleWorkspace,max:number,deadline:number,resolver?:CandidateMailResolver){
   const now=Date.now();
-  const result=await db.prepare("SELECT id,payload_json FROM hub_tasks WHERE kind='gmail' AND status='uncertain' AND run_after<=? ORDER BY updated_at LIMIT ?").bind(now,max).all<{id:string;payload_json:string}>();
+  const result=await db.prepare("SELECT id,application_id,payload_json FROM hub_tasks WHERE kind='gmail' AND status='uncertain' AND run_after<=? ORDER BY updated_at LIMIT ?").bind(now,max).all<{id:string;application_id:string;payload_json:string}>();
   let reconciled=0;
   for(const item of result.results){
     if(Date.now()>=deadline-1000)break;
@@ -32,15 +43,18 @@ async function reconcileUncertain(db:D1Database,store:HubStore,google:GoogleWork
     const claimed=await db.prepare("UPDATE hub_tasks SET status='running',lease_token=?,lease_until=?,updated_at=? WHERE id=? AND status='uncertain' AND run_after<=? RETURNING id").bind(lease,Date.now()+5*60*1000,Date.now(),item.id,Date.now()).first();
     if(!claimed)continue;
     try{
-      const payload=JSON.parse(item.payload_json) as MailInput;
-      const found=await google.reconcileMail(payload.messageId);
+      const payload=JSON.parse(item.payload_json) as MailInput & {jobNotification?:boolean;reviewReminder?:boolean;deliveryAccount?:string};
+      const internal=payload.jobNotification===true||payload.reviewReminder===true;
+      const transport=internal?google:await candidateTransport(store,payload.deliveryAccount,resolver);
+      transport.setDeadline?.(deadline);
+      const found=await transport.reconcileMail(payload.messageId);
       await store.finishTask(item.id,lease,found?{status:"done",result:{...found}}:{status:"uncertain",error:"gmail_delivery_not_yet_confirmed",runAfter:Date.now()+15*60*1000});
       if(found)reconciled++;
     }catch(error){await store.finishTask(item.id,lease,{status:"uncertain",error:safeCode(error),runAfter:Date.now()+15*60*1000});}
   }
   return reconciled;
 }
-async function taskEffect(task:Task,store:HubStore,db:D1Database,bucket:R2Bucket|undefined,google:GoogleWorkspace,deadline:number,owners:string[]):Promise<Record<string,unknown>>{
+async function taskEffect(task:Task,store:HubStore,db:D1Database,bucket:R2Bucket|undefined,google:GoogleWorkspace,deadline:number,owners:string[],resolver?:CandidateMailResolver):Promise<Record<string,unknown>>{
   if(task.kind==="gmail"){
     if(task.payload.jobNotification===true){
       const mail=await jobNotificationMail(task,store,owners);
@@ -55,7 +69,13 @@ async function taskEffect(task:Task,store:HubStore,db:D1Database,bucket:R2Bucket
       if(!await store.setting("interview_reminders_enabled",false)||!current||current.status!=="booked"||current.revision!==Number(task.payload.revision)||current.start!==task.payload.interviewStart||!current.start||!Number.isFinite(Date.parse(current.start))||Date.parse(current.start)<=Date.now()||["Rejected","Withdrawn","Hired"].includes((await store.applicationRow(task.applicationId)).stage))return {stale:true};
     }
     if(/:(assessment|interview):/.test(task.id)&&["Rejected","Withdrawn","Hired"].includes((await store.applicationRow(task.applicationId)).stage))return {stale:true};
-    return {...await google.sendMail(await candidateMail(store,task.payload as unknown as MailInput,owners))};
+    const mail=await candidateMail(store,task.payload as unknown as MailInput,owners,{mailMode:task.payload.mailMode || (/:(manual|assessment|interview):/.test(task.id)||/:rejection:/.test(task.id)?"recruiter":undefined),actor:task.payload.actor,applicationId:task.applicationId});
+    const transport=await candidateTransport(store,mail.candidateAccount,resolver);
+    transport.setDeadline?.(deadline);
+    // Pin transport before the irreversible send so an uncertain response is reconciled in the same mailbox.
+    const pinned=await db.prepare("UPDATE hub_tasks SET payload_json=? WHERE id=? AND lease_token=? AND status='running' RETURNING id").bind(JSON.stringify({...task.payload,deliveryAccount:mail.candidateAccount}),task.id,task.leaseToken).first();
+    if(!pinned)throw {code:"task_lease_expired"};
+    return {...await transport.sendMail(mail)};
   }
   if(task.kind==="calendar"){
     const payload=task.payload as unknown as InterviewInput&{operation:string;interviewId:string};
@@ -101,7 +121,7 @@ async function taskEffect(task:Task,store:HubStore,db:D1Database,bucket:R2Bucket
   };
   return {...await google.archiveApplication(detail,files,existing?.drive_folder_id||undefined,continuation),archivedRevision:detail.revision};
 }
-export async function processHubTasks(store:HubStore,db:D1Database,bucket:R2Bucket|undefined,google:GoogleWorkspace,max=5,owners:string[]=(process.env.ADMIN_EMAILS||"").split(",")){
+export async function processHubTasks(store:HubStore,db:D1Database,bucket:R2Bucket|undefined,google:GoogleWorkspace,max=5,owners:string[]=(process.env.ADMIN_EMAILS||"").split(","),candidateResolver?:CandidateMailResolver){
   const began=Date.now(),deadline=began+40_000;
   google.setDeadline?.(deadline);
   const previous=await store.setting<Record<string,unknown>>("worker_health",{});
@@ -111,14 +131,14 @@ export async function processHubTasks(store:HubStore,db:D1Database,bucket:R2Buck
     await processStaffInvites(store,google,owners,3);
     await enqueueReviewReminders(store,owners);
     await reconcileArchives(db,store);
-    reconciled=await reconcileUncertain(db,store,google,Math.min(max,5),deadline);
+    reconciled=await reconcileUncertain(db,store,google,Math.min(max,5),deadline,candidateResolver);
     for(let index=0;index<Math.max(1,Math.min(max,10));index++){
       if(Date.now()>=deadline-1000)break;
       const task=await store.claimTask(Date.now());if(!task)break;
       if(!task.leaseToken)throw new Error("task_lease_missing");
       let providerCompleted=false;
       try{
-        const result=await taskEffect(task,store,db,bucket,google,deadline,owners);
+        const result=await taskEffect(task,store,db,bucket,google,deadline,owners,candidateResolver);
         providerCompleted=true;
         await store.finishTask(task.id,task.leaseToken,{status:"done",result});processed++;
       }catch(error){

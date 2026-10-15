@@ -120,3 +120,27 @@ for (const status of ["accepted", "pending", "missing", "forbidden"]) test(`cand
   if(status==="accepted")await pending;else await assert.rejects(pending);
   assert.equal(sends,status==="accepted"?1:0);
 });
+
+test("candidate sending requires its explicitly configured Google account, never sales transport",async()=>{
+ const previous=process.env.CANDIDATE_MAIL_ACCOUNT;
+ const f=fixture(async()=>assert.fail("wrong account must never send"));
+ try {
+  delete process.env.CANDIDATE_MAIL_ACCOUNT;
+  await assert.rejects(f.workspace.sendMail({...mail,candidateMail:true}),/candidate_mail_account_not_configured/);
+  process.env.CANDIDATE_MAIL_ACCOUNT="sales@aicaseleads.com";
+  await assert.rejects(f.workspace.sendMail({...mail,candidateMail:true}),/candidate_mail_account_not_configured/);
+  process.env.CANDIDATE_MAIL_ACCOUNT="mariam@aicaseleads.com";
+  await assert.rejects(f.workspace.sendMail({...mail,candidateMail:true}),/candidate_mail_account_connection_required/);
+  assert.equal(f.counts().sends,0);
+ }finally{if(previous===undefined)delete process.env.CANDIDATE_MAIL_ACCOUNT;else process.env.CANDIDATE_MAIL_ACCOUNT=previous;}
+});
+
+test("recruiter transport sends through its exact own Google profile",async()=>{
+ const f=fixture(async(init)=>{
+  const raw=Buffer.from(JSON.parse(String(init.body)).raw,"base64url").toString();
+  assert.match(raw,/From: recruiting@example.com\r\n/);assert.match(raw,/Reply-To: recruiting@example.com\r\n/);
+  assert.ok(!raw.includes("sales@"));return response({id:"sent123",threadId:"thread123"});
+ });
+ await f.workspace.sendMail({...mail,sender:config.sender,replyTo:[config.sender],candidateMail:true,candidateAccount:config.sender});
+ assert.equal(f.counts().sends,1);
+});
