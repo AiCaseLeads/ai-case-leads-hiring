@@ -1,0 +1,19 @@
+'use client';
+import {safeNavigation,useHubMutation,useHubResource} from './api';
+import {Badge,Feedback,ResourceState} from './shared';
+import type {Member} from './types';
+type MailStatus={email:string;configured:boolean;connected:boolean;connectedAt:number|null;candidateAccount:string|null;candidateConnected?:boolean;canConnect?:boolean};
+export function PersonalMailSetup({member,refresh=0}:{member:Member;refresh?:number}){
+ const blocked=member.email.toLowerCase()==='sales@aicaseleads.com';
+ const resource=useHubResource<MailStatus>('/api/personal-mail',refresh),mutation=useHubMutation();
+ async function connect(){const result=await mutation.run<{url:string}>('/api/personal-mail/connect','POST',{},'Opening your Google email authorization…');if(result?.url&&safeNavigation(result.url))window.location.assign(result.url);}
+ if(blocked)return <section className="hub-card"><h3>Maria manages automated hiring email</h3><ResourceState loading={resource.loading} error={resource.error} retry={()=>void resource.reload()}/><p>Recruiting email account: <strong>{resource.data?.candidateAccount||'Not configured'}</strong>.</p><p>{resource.data?.candidateConnected?'Maria’s email account is connected; sender setup and delivery still need verification.':'Pending Maria’s connection. She must sign in with her own account and open My setup → My recruiting email.'}</p><p>The sales account is not used for applicant email and cannot connect here. Its existing company Drive and fallback Calendar connection is separate.</p><button className="hub-button secondary" onClick={()=>void resource.reload()}>Check Maria’s email connection</button></section>;
+ return <section className="hub-card" aria-labelledby="personal-mail-title"><div className="hub-section-heading compact"><div><h3 id="personal-mail-title">My recruiting email</h3><p>Connect your own account: {member.email}. Only you can approve this connection.</p></div>{resource.data&&<Badge tone={resource.data.connected?'success':'warning'}>{resource.data.connected?'Account connected':'Not connected'}</Badge>}</div>
+ <ResourceState loading={resource.loading} error={resource.error} retry={()=>void resource.reload()}/>
+ <p>Recruiter conversations use the connected recruiter’s mailbox. The company Drive and fallback Calendar connection stays separate.</p>
+ {resource.data?.candidateAccount&&<p>Automatic applicant email is assigned to <strong>{resource.data.candidateAccount}</strong>. That person must connect here and configure the approved no-reply sender in their own Gmail.</p>}
+ <ol><li>Click Connect recruiting email and choose the same account you used to sign in.</li><li>Approve Gmail sending, reading, sender settings, and verified email access. Read permission supports sent-message delivery checks that prevent duplicate sends; Google grants access to the mailbox, not just recruiting messages.</li><li>If you own automatic applicant email, add the company’s no-reply alias under Gmail → Settings → Accounts → Send mail as. Then send a controlled test from the hiring system.</li></ol>
+ <p className="hub-muted">Connecting does not prove email delivery or enable automatic inbox synchronization. Delivery must be tested. Automated no-reply messages do not accept replies; conversations sent from your recruiter address can receive replies in your Gmail.</p>
+ {resource.data&&!resource.data.configured&&<p role="alert">The owner needs to finish Google client setup before you can connect.</p>}
+ <div className="hub-button-row"><button className="hub-button" disabled={!resource.data?.configured||mutation.busy} onClick={()=>void connect()}>{mutation.busy?'Opening Google…':resource.data?.connected?'Reconnect recruiting email':'Connect recruiting email'}</button><button className="hub-button secondary" onClick={()=>void resource.reload()}>Check email connection</button></div><Feedback error={mutation.error} success={mutation.success}/></section>;
+}

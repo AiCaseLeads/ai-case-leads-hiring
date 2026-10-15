@@ -53,6 +53,7 @@ export function HiringDashboard({
   function readLocation() {
     setMenuOpen(false);
     const params = new URLSearchParams(window.location.search);
+    if(params.get("personalMail"))queueMicrotask(()=>setWorkspaceNotice(params.get("personalMail")==="connected"?"Your recruiting email account is connected. Confirm your sender setup and test delivery before using it.":"Your recruiting email was not connected. Choose your signed-in account and approve all requested permissions, then try again."));
     const requested = params.get("view");
     const allowed = ["home", "overview", "applications", "jobs", "reports", "tasks", "settings"];
     const next = requested && allowed.includes(requested) ? (requested === "home" ? "overview" : requested as View) : params.has("application") ? "applications" : "overview";

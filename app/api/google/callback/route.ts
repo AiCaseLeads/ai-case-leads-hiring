@@ -1,3 +1,4 @@
+import { savePersonalMailGrant } from "@/lib/personal-mail/oauth";
 import { savePersonalGrant } from "@/lib/personal-calendar/oauth";
 import { requireHubMember,requireHubOwner } from "@/lib/hub/auth";
 import { resolvedWorkspaceEnv,readSetting } from "@/lib/workspace-config";
@@ -7,16 +8,21 @@ import { assertRecruitingSender } from "@/lib/google/sender";
 export const dynamic="force-dynamic";
 export async function GET(request:Request){
   const origin=new URL(request.url).origin;
-  let personal=false;
+  let personal=false,mail=false;
   try{
     const member=await requireHubMember(request);
     const env=await resolvedWorkspaceEnv(),url=new URL(request.url),state=url.searchParams.get("state"),code=url.searchParams.get("code");
     if(!env.DB||!env.GOOGLE_CLIENT_ID||!env.GOOGLE_CLIENT_SECRET||!env.GOOGLE_TOKEN_KEY||!state||!/^[a-f0-9]{64}$/.test(state))throw new Error("oauth_invalid");
     const {binding,stateHash,claimedAt}=await claimOAuthBinding(env.DB,state,member.userId);
+    mail=binding.flow==="personal-mail";
     personal=binding.flow==="personal-calendar";
-    if(!personal)requireHubOwner(member);
+    if(!personal&&!mail)requireHubOwner(member);
     if(!code||url.searchParams.has("error"))throw new Error("oauth_invalid");
     if(binding.revision!==(env.GOOGLE_CLIENT_REVISION??0)||binding.fingerprint!==await configurationFingerprint(env))throw new Error("configuration_changed");
+    if(mail){
+      await savePersonalMailGrant(env.DB,{binding,member,stateHash,claimedAt,clientId:env.GOOGLE_CLIENT_ID,clientSecret:env.GOOGLE_CLIENT_SECRET,tokenKey:env.GOOGLE_TOKEN_KEY,redirectUri:`${origin}/api/google/callback`,code});
+      return Response.redirect(`${origin}/team?view=settings&personalMail=connected`,303);
+    }
     if(personal){
       await savePersonalGrant(env.DB,{binding,member,stateHash,claimedAt,clientId:env.GOOGLE_CLIENT_ID,clientSecret:env.GOOGLE_CLIENT_SECRET,tokenKey:env.GOOGLE_TOKEN_KEY,redirectUri:`${origin}/api/google/callback`,code});
       return Response.redirect(`${origin}/team?view=settings&personalCalendar=connected`,303);
@@ -33,7 +39,7 @@ export async function GET(request:Request){
     return Response.redirect(`${origin}/team?workspace=connected${calendar?"":"&calendar=setup"}`,303);
   }catch(error){
     const code=error&&typeof error==="object"&&"code"in error?error.code:error instanceof Error?error.message:"";
-    const reason=["wrong_sender","google_required_permissions_missing","missing_permissions","offline_grant_missing","configuration_changed","wrong_calendar_account"].includes(String(code))?`&reason=${String(code)}`:"";
-    return Response.redirect(`${origin}/team?${personal?"view=settings&personalCalendar":"workspace"}=connection_failed${reason}`,303);
+    const reason=["wrong_sender","google_required_permissions_missing","missing_permissions","offline_grant_missing","configuration_changed","wrong_calendar_account","wrong_mail_account"].includes(String(code))?`&reason=${String(code)}`:"";
+    return Response.redirect(`${origin}/team?${mail?"view=settings&personalMail":personal?"view=settings&personalCalendar":"workspace"}=connection_failed${reason}`,303);
   }
 }

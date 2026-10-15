@@ -61,8 +61,8 @@ export function GoogleConfiguration() {
         error={resource.error}
         retry={() => void resource.reload()}
       />
-      <p className="hub-notice"><span>Authorize the recruiting account <strong>{resource.data?.expectedSender || "shown after configuration loads"}</strong>. This company account sends recruiting email and manages the shared Drive archive and fallback Calendar. Recruiters connect their own calendars under My setup. Choosing another account will not complete setup.</span></p>
-      {resource.data?.hostingPlatform === "railway" && <p className="hub-muted">Your staff login and the recruiting connection are separate. Stay signed in to this dashboard as the owner, then choose the recruiting Google account when granting access. Workspace administrators still need that account’s authorization.</p>}
+      <p className="hub-notice"><span>Authorize the company storage account <strong>{resource.data?.expectedSender || "shown after configuration loads"}</strong>. This company account manages the shared Drive archive and fallback Calendar. Recruiters connect their own email and calendars under My setup. Choosing another account will not complete setup.</span></p>
+      {resource.data?.hostingPlatform === "railway" && <p className="hub-muted">Your staff login and the company storage connection are separate. Stay signed in to this dashboard as the owner, then choose the company storage Google account when granting access. Workspace administrators still need that account’s authorization.</p>}
       <details className="hub-setup-details" open={!resource.data?.configured}>
         <summary>OAuth client setup instructions</summary>
         <ol>

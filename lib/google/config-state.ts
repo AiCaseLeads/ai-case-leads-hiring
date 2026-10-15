@@ -2,7 +2,7 @@ import { sha256 } from "../hiring/crypto";
 import { expectedRecruitingSender } from "./sender";
 
 type Client = {GOOGLE_CLIENT_ID?:string;GOOGLE_CLIENT_SECRET?:string;EXPECTED_RECRUITING_EMAIL?:string};
-export type OAuthStateBinding={verifier:string;revision:number;fingerprint:string;flow?:"personal-calendar";email?:string};
+export type OAuthStateBinding={verifier:string;revision:number;fingerprint:string;flow?:"personal-calendar"|"personal-mail";email?:string};
 export async function configurationFingerprint(client:Client){
  return sha256(JSON.stringify([client.GOOGLE_CLIENT_ID,client.GOOGLE_CLIENT_SECRET,expectedRecruitingSender(client)]));
 }

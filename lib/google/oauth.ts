@@ -10,6 +10,7 @@ export const GOOGLE_SCOPES = [
   // Verify the no-reply send-as identity before candidate mail is sent.
   "https://www.googleapis.com/auth/gmail.settings.basic",
 ] as const;
+export const PERSONAL_MAIL_SCOPES=["https://www.googleapis.com/auth/gmail.send","https://www.googleapis.com/auth/gmail.readonly","https://www.googleapis.com/auth/gmail.settings.basic","https://www.googleapis.com/auth/userinfo.email"] as const;
 export const PERSONAL_CALENDAR_SCOPES=["https://www.googleapis.com/auth/calendar.events","https://www.googleapis.com/auth/calendar.freebusy","https://www.googleapis.com/auth/userinfo.email"] as const;
 export interface OAuthClient { clientId: string; clientSecret: string }
 export interface OAuthTokens { accessToken: string; refreshToken?: string; expiresIn: number; scope: string; refreshTokenExpiresIn?: number }
@@ -54,6 +55,17 @@ export async function exchangeCalendarCode(input:OAuthClient&{redirectUri:string
  const tokens=await tokenRequest({client_id:input.clientId,client_secret:input.clientSecret,redirect_uri:redirectUri(input.redirectUri),code:input.code,grant_type:"authorization_code",code_verifier:input.codeVerifier},fetcher);
  const scopes=new Set(tokens.scope.split(" "));
  if(PERSONAL_CALENDAR_SCOPES.some(scope=>!scopes.has(scope)))throw new GoogleError("missing_permissions");
+ const response=await googleFetch("https://www.googleapis.com/oauth2/v2/userinfo",{headers:{Authorization:`Bearer ${tokens.accessToken}`}},fetcher);
+ if(!response.ok)throw new GoogleError("google_profile_unavailable",response.status);
+ const profile=await json<{email?:string;verified_email?:boolean}>(response);
+ if(!profile.email||profile.verified_email!==true)throw new GoogleError("google_profile_invalid");
+ return {...tokens,email:emailAddress(profile.email).toLowerCase()};
+}
+export async function exchangeMailCode(input:OAuthClient&{redirectUri:string;code:string;codeVerifier:string},fetcher:typeof fetch=fetch):Promise<OAuthTokens&{email:string}>{
+ if(!/^[A-Za-z0-9._~-]{43,128}$/.test(input.codeVerifier)||!input.code||input.code.length>4096)throw new GoogleError("invalid_oauth_configuration");
+ const tokens=await tokenRequest({client_id:input.clientId,client_secret:input.clientSecret,redirect_uri:redirectUri(input.redirectUri),code:input.code,grant_type:"authorization_code",code_verifier:input.codeVerifier},fetcher);
+ const scopes=new Set(tokens.scope.split(" "));
+ if(PERSONAL_MAIL_SCOPES.some(scope=>!scopes.has(scope)))throw new GoogleError("missing_permissions");
  const response=await googleFetch("https://www.googleapis.com/oauth2/v2/userinfo",{headers:{Authorization:`Bearer ${tokens.accessToken}`}},fetcher);
  if(!response.ok)throw new GoogleError("google_profile_unavailable",response.status);
  const profile=await json<{email?:string;verified_email?:boolean}>(response);

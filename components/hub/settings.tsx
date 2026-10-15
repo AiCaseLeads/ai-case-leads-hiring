@@ -15,6 +15,7 @@ import { driveFolderId } from "./drive-folder";
 import { AiReviewSettings } from "./ai-review";
 import { ScorecardTemplates } from "./scorecards";
 import { ReviewReminderSettings } from "./review-reminders";
+import { PersonalMailSetup } from "./personal-mail";
 import { PersonalCalendarSetup } from "./personal-calendar";
 import { TeamAccess } from "./team-access";
 
@@ -54,8 +55,9 @@ export function HubSettings({
         <section className="hub-card"><h3>Welcome, {member.email}</h3><p>You sign in with your own Google Workspace account. Never share your password with another teammate.</p>
           <ol className="hub-onboarding-steps"><li><strong>Connect your calendar below.</strong> Google will ask you to approve access to your own interview calendar.</li><li><strong>Set your interview hours.</strong> Choose your time zone, days, and hours, then save.</li><li><strong>Create or join a job.</strong> Open Jobs to create a posting. Under Hiring team &amp; emails, select the people who should receive its alerts.</li><li><strong>Review, then invite.</strong> Open an applicant, choose an interviewer, and send a booking link after your review.</li></ol>
           <p><a className="hub-button secondary" href="/recruiter-guide.pdf" target="_blank" rel="noopener noreferrer">Open recruiter guide (PDF) <ExternalLink size={15} /></a></p>
-          <p className="hub-muted">Company email and applicant files use the shared connection managed by the owner. You do not need the owner’s or another recruiter’s password. Your personal connection only handles your calendar.</p>
+          <p className="hub-muted">{member.email.toLowerCase() === "sales@aicaseleads.com" ? "Maria manages recruiting email from her own account. You can check her connection below and manage your own interview calendar separately." : "Connect your recruiting email and calendar separately below."} Applicant files use the company Drive connection. You do not need another teammate’s password.</p>
         </section>
+        <PersonalMailSetup member={member} refresh={refresh} />
         <PersonalCalendarSetup key={member.email} member={member} refresh={refresh} />
       </>}
       {section === "team" && managesTeam && <><TeamAccess member={member} changed={changed} refresh={refresh} /><details className="hub-card hub-setup-details"><summary>Review reminders</summary><ReviewReminderSettings /></details></>}
@@ -156,7 +158,7 @@ function SettingsForm({
   return (
     <div className="hub-settings-stack hub-company-settings">
       <p className="hub-notice">
-        Company setup is managed by the owner. This shared account sends recruiting emails and stores applicant files. Recruiters connect their own calendars under My setup.
+        Company setup is managed by the owner. This shared connection stores applicant files and supports the fallback calendar. Recruiters connect their own recruiting email and calendar under My setup.
         Changes in steps 2 and 3 take effect when you click Save settings.
       </p>
       <ResourceState loading={runtime.loading} error={runtime.error} retry={() => void runtime.reload()} />
@@ -173,22 +175,22 @@ function SettingsForm({
       <section className="hub-card">
         <div className="hub-section-heading compact">
           <div>
-            <h3>1. Company email & applicant archive</h3>
+            <h3>1. Company Drive & fallback calendar</h3>
             <p>
-              The shared company account sends Gmail messages and saves applicant files to Drive. Each recruiter can connect a separate interview calendar under My setup.
+              The shared company account saves applicant files to Drive and supports the fallback calendar. Applicant messages use each recruiter’s separate email connection.
             </p>
           </div>
           <Badge tone={initial.google.connected ? "success" : "warning"}>
             {initial.google.connected ? "Connected" : "Not connected"}
           </Badge>
         </div>
-        <p className="hub-notice">A connected account does not confirm applicant email delivery. Applicant messages require a verified no-reply address. Reconnect Google and approve all requested permissions if the connection predates no-reply setup; then send a test and check Delivery activity. Calendar and Drive can remain connected while email setup needs attention.</p>
+        <p className="hub-notice">This connection is for company files and the fallback calendar. For applicant email, open My setup → My recruiting email. The recruiter assigned to automatic email must authorize their own account and configure the no-reply alias in their Gmail. Do not configure applicant sending in the owner’s sales mailbox.</p>
         <dl className="hub-connection-details">
           <div>
-            <dt>Connected account</dt>
+            <dt>Company storage/calendar account</dt>
             <dd>{connectedAccount || "No active connection"}</dd>
           </div>
-          <div><dt>Account allowed to connect</dt><dd>{initial.google.expectedSender || "Check Google connection setup"}</dd></div>
+          <div><dt>Storage/calendar account allowed to connect</dt><dd>{initial.google.expectedSender || "Check Google connection setup"}</dd></div>
           <div>
             <dt>Applications</dt>
             <dd>

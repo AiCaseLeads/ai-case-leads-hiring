@@ -25,7 +25,7 @@ function PersonalCalendarForm({initial,reload,saved}:{initial:PersonalCalendarSt
   async function connect(){const result=await connection.run<{url:string}>("/api/personal-calendar/connect","POST",{},"Opening your Google calendar authorization…");if(result?.url && safeNavigation(result.url))window.location.assign(result.url);}
   async function submit(event:React.FormEvent){event.preventDefault();const result=await save.run("/api/personal-calendar","PUT",{availability},"Your interview hours are saved.");if(result!==undefined)saved();}
   return <>
-    <p className="hub-muted">This connects your primary Google Calendar for availability, interview events, and Meet links. Recruiting emails and applicant files continue through the company’s shared Gmail and Drive connection.</p>
+    <p className="hub-muted">This connects your primary Google Calendar for availability, interview events, and Meet links. Recruiting emails use My recruiting email, while applicant files use the company Drive connection.</p>
     {!initial.configured && <p className="hub-notice hub-error" role="alert">The owner needs to finish the company’s Google client setup before you can connect. Your account access is already separate from that setup.</p>}
     <div className="hub-button-row"><button type="button" className="hub-button" onClick={()=>void connect()} disabled={!initial.configured||connection.busy}>{connection.busy?"Opening Google…":initial.connected?"Reconnect my calendar":"Connect my Google Calendar"}<ExternalLink size={15}/></button><button type="button" className="hub-button secondary" onClick={reload}>Check connection</button></div>
     <Feedback error={connection.error} success={connection.success}/>
@@ -55,5 +55,5 @@ export function InterviewerChoice({value,change,renew}:{value:string;change:(val
       <option value="__shared__">Shared company calendar</option>
       {(resource.data?.interviewers || []).map(person=><option value={person.email} key={person.email} disabled={!person.ready}>{person.email}{person.ready?"":" — setup needed"}</option>)}
     </select>
-  </Field><ResourceState loading={resource.loading} error={resource.error} retry={()=>void resource.reload()}/><p className="hub-muted">Each recruiter connects in Settings → My setup. Interview emails use the company sender; the selected person’s calendar controls available times.</p></div>;
+  </Field><ResourceState loading={resource.loading} error={resource.error} retry={()=>void resource.reload()}/><p className="hub-muted">Each recruiter connects in Settings → My setup. Interview emails use the configured recruiting email account; the selected person’s calendar controls available times.</p></div>;
 }
