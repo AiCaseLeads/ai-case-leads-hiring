@@ -73,6 +73,6 @@ export function SubmissionRecovery({ slug }: { slug: string }) {
       <button type="button" className="button ink" disabled={busyKey !== null} onClick={() => void recover(journal)}>{busyKey === journal.key ? "Checking submission…" : journal.receipt ? "View saved confirmation" : "Check earlier application status"}</button>
     </div>)}
     {message && <p role="alert">{message}</p>}
-    <p>Keep your saved confirmation. Automated recruiting email does not accept replies.</p>
+    <p>Keep your saved confirmation. Automated recruiting email does not accept replies. <a href="/help">Send an application help request</a>.</p>
   </section>;
 }

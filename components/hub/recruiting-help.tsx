@@ -1,0 +1,12 @@
+'use client';
+import {useState} from 'react';
+import {useHubResource,useHubMutation,displayDate} from './api';
+import {ResourceState,Feedback} from './shared';
+import type {HelpRecord} from '@/lib/recruiting-help/service';
+export function RecruitingRequests(){
+ const [page,setPage]=useState(1);const resource=useHubResource<{items:(HelpRecord&{key:string})[];hasMore:boolean}>(`/api/hub/recruiting-help?page=${page}`);const mutation=useHubMutation();
+ return <section className="hub-card"><div className="hub-section-heading"><div><h2>Applicant help &amp; privacy requests</h2><p>Requests submitted through the website. No staff notification email is sent.</p></div><button className="hub-button secondary" onClick={()=>void resource.reload()}>Refresh requests</button></div><ResourceState loading={resource.loading} error={resource.error} retry={()=>void resource.reload()}/><Feedback error={mutation.error} success={mutation.success}/>
+ {resource.data?.items.length===0&&<p>No requests yet.</p>}
+ {resource.data?.items.map(item=><details key={item.key} className="hub-card" style={{overflowWrap:'anywhere'}}><summary>{item.status==='open'?'Open':'Resolved'} · {item.kind} · {item.email} · {displayDate(item.createdAt)}</summary><p><strong>Job:</strong> {item.job||'Not specified'}</p><p><strong>Reference:</strong> {item.id}</p><p style={{whiteSpace:'pre-wrap',overflowWrap:'anywhere'}}>{item.message}</p><p className="hub-muted">The email address is self-reported. Verify identity before changing or deleting applicant data. Marking this resolved does not send a message or change an application.</p><button disabled={mutation.busy} className="hub-button secondary" onClick={async()=>{const result=await mutation.run('/api/hub/recruiting-help','PATCH',{key:item.key,status:item.status==='open'?'resolved':'open'},'Request updated.');if(result)await resource.reload();}}>{item.status==='open'?'Mark resolved':'Reopen request'}</button></details>)}
+ <div className="hub-button-row"><button className="hub-button secondary" disabled={page===1||resource.loading} onClick={()=>setPage(value=>value-1)}>Previous requests</button><span>Page {page}</span><button className="hub-button secondary" disabled={!resource.data?.hasMore||resource.loading} onClick={()=>setPage(value=>value+1)}>Next requests</button></div></section>;
+}

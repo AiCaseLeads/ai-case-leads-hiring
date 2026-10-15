@@ -37,6 +37,7 @@ export function Footer() {
         <p>Good people. Meaningful work.</p>
         <div>
           <a href="/privacy">Applicant privacy</a>
+          <a href="/help">Application help</a>
           <a href="/team">Hiring team</a>
         </div>
         <span className="footer-copyright">

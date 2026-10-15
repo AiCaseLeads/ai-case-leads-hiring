@@ -1,0 +1,3 @@
+import {PageChrome} from '@/components/careers/chrome';
+import {RecruitingHelpForm} from '@/components/careers/help-form';
+export default function HelpPage(){return <PageChrome><main id="main" className="site-width privacy-page"><a className="back-link" href="/">Careers home</a><h1>Application help &amp; privacy requests</h1><p>Send your request directly to the recruiting team’s private dashboard. Automated recruiting emails do not accept replies. This form does not send email to staff mailboxes.</p><p>Open requests are kept until handled. Resolved requests become eligible for removal after 90 days and are removed when staff open the request queue. This does not delete your application.</p><RecruitingHelpForm/></main></PageChrome>;}

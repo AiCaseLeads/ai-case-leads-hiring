@@ -299,3 +299,9 @@ export const hubAiCriteria = sqliteTable("hub_ai_criteria", {
 export const hubAiMatches = sqliteTable("hub_ai_matches", {
  applicationId:text("application_id").notNull().references(()=>hubApplications.id),jobId:text("job_id").notNull().references(()=>hubJobs.id),formVersion:integer("form_version").notNull(),status:text("status").notNull().default("pending"),score:real("score"),reviewJson:text("review_json"),warningsJson:text("warnings_json").notNull().default("[]"),attempts:integer("attempts").notNull().default(0),runAfter:integer("run_after").notNull().default(0),leaseToken:text("lease_token"),leaseUntil:integer("lease_until"),error:text("error"),updatedAt:integer("updated_at").notNull()
 },t=>[primaryKey({columns:[t.applicationId,t.formVersion]}),index("hub_ai_matches_queue").on(t.status,t.runAfter,t.updatedAt),index("hub_ai_matches_job").on(t.jobId,t.formVersion,t.score)]);
+
+export const recruitingHelp = sqliteTable("hub_recruiting_help", {
+  id: text("id").primaryKey().notNull(), requestId: text("request_id").notNull(),fingerprint: text("fingerprint").notNull(),
+  email: text("email").notNull(), job: text("job").notNull(), kind: text("kind").notNull(), message: text("message").notNull(),
+  status: text("status").notNull().default("open"), createdAt: integer("created_at").notNull(), updatedAt: integer("updated_at").notNull(), resolvedBy: text("resolved_by"),
+}, table => [index("hub_recruiting_help_queue").on(table.status,table.createdAt),index("hub_recruiting_help_retention").on(table.status,table.updatedAt),check("recruiting_help_status",sql`${table.status} in ('open','resolved')`)]);

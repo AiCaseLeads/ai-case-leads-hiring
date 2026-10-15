@@ -18,7 +18,8 @@ export default function PrivacyPage() {
             Application forms collect the information
             shown on each form, such as your name, contact details, resume,
             portfolio, and responses to job-specific questions. Application
-            source information may also be recorded.
+            source information may also be recorded. Help and privacy request forms
+            also store your email address, optional job title, request type, and message.
           </p>
           <h2>How it is used</h2>
           <p>
@@ -55,8 +56,9 @@ export default function PrivacyPage() {
             Recruiting emails are sent from an automated no-reply address. Replies
             are not accepted. Requests to correct information, withdraw an
             application, or remove your information must be made through this
-            hiring website.
+            hiring website. Use our <a href="/help">application help and privacy request form</a>.
           </p>
+          <p>Open help requests are kept until handled. Resolved help requests become eligible for removal after 90 days and are removed in bounded batches when staff open the request queue. This cleanup does not delete applications.</p>
           <p className="privacy-note">
             Closing a job or creating another job posting does not delete earlier
             applications. Access is restricted to authorized hiring staff.

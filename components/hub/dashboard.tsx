@@ -1,4 +1,5 @@
 "use client";
+import {RecruitingRequests} from "./recruiting-help";
 import { requestDraftNavigation } from "./draft-navigation";
 import { useEffect, useRef, useState } from "react";
 import {
@@ -258,6 +259,7 @@ export function HiringDashboard({
                 <button className="hub-button" onClick={beginJob}>Create job</button>
               </div>
               <ResourceState loading={resource.loading} error={resource.error} retry={() => void resource.reload()} />
+              <RecruitingRequests />
               {data && !resource.loading && <>
                 <div className="hub-home-actions">
                   <button className="hub-card hub-home-action" onClick={openReviewQueue}><strong>{(data.stageCounts.find(stage => stage.stage === "Application Review")?.count || 0).toLocaleString()}</strong><span>In application review</span><small>Open applicant list →</small></button>
