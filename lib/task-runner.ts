@@ -1,7 +1,7 @@
 import { processStaffInvites } from "./staff/service";
 import { interviewCalendar } from "./personal-calendar/service";
 import { personalCalendarEffect } from "./personal-calendar/client";
-import { jobNotificationMail,candidateReplyTo } from "./job-team/service";
+import { jobNotificationMail,candidateMail } from "./job-team/service";
 import { HubStore } from "./hub/store";
 import type { Task } from "./hub/types";
 import type { GoogleWorkspace, OriginalFileSource, InterviewInput, MailInput } from "./google/workspace";
@@ -55,7 +55,7 @@ async function taskEffect(task:Task,store:HubStore,db:D1Database,bucket:R2Bucket
       if(!await store.setting("interview_reminders_enabled",false)||!current||current.status!=="booked"||current.revision!==Number(task.payload.revision)||current.start!==task.payload.interviewStart||!current.start||!Number.isFinite(Date.parse(current.start))||Date.parse(current.start)<=Date.now()||["Rejected","Withdrawn","Hired"].includes((await store.applicationRow(task.applicationId)).stage))return {stale:true};
     }
     if(/:(assessment|interview):/.test(task.id)&&["Rejected","Withdrawn","Hired"].includes((await store.applicationRow(task.applicationId)).stage))return {stale:true};
-    return {...await google.sendMail({...task.payload as unknown as MailInput,replyTo:await candidateReplyTo(store,task.applicationId,owners)})};
+    return {...await google.sendMail(await candidateMail(store,task.payload as unknown as MailInput,owners))};
   }
   if(task.kind==="calendar"){
     const payload=task.payload as unknown as InterviewInput&{operation:string;interviewId:string};

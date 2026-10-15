@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { useHubMutation, useHubResource } from "./api";
-import { Feedback, Field, ResourceState } from "./shared";
+import { Feedback, ResourceState } from "./shared";
 
 export type JobTeamDraft = {
   members: string[];
@@ -61,13 +61,7 @@ export function JobTeamFields({ data, value, change, readOnly = false }: {
     </fieldset>
     <p className="hub-muted">Add or remove staff login access in Settings → Team access, then return here to assign them.</p>
     {!value.members.length && <p className="hub-notice">No recruiters selected. This job will not send team alerts. Applications still appear in the dashboard.</p>}
-    <Field label="Applicant reply contact" hint="Choose who applicants should reply to. The connected mailbox is also included in Reply-To; replies reach the dashboard when the applicant uses Reply all. Replies sent only to a recruiter’s inbox do not sync here.">
-      <select disabled={readOnly} value={value.replyTo || ""} onChange={event => change({ ...value, replyTo: event.target.value || null })}>
-        <option value="">Connected recruiting mailbox{data.sender ? ` (${data.sender})` : ""}</option>
-        {value.members.filter(email => active.has(email)).map(email => <option key={email} value={email}>{email}</option>)}
-        {value.replyTo && !active.has(value.replyTo) && <option value={value.replyTo}>{value.replyTo} — no longer active</option>}
-      </select>
-    </Field>
+    <p className="hub-muted">Applicant emails use the verified no-reply address. Team assignments are private and only control internal notifications. Calendar invitations can show the interview organizer’s address.</p>
     <fieldset disabled={readOnly} className="hub-team-alert-picker">
       <legend>Email this team about</legend>
       {([

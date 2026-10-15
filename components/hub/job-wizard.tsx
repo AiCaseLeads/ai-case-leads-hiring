@@ -1570,12 +1570,7 @@ function Editor({
                   ? hiringTeam.draft.members.join(", ")
                   : "No team selected"}
               </p>
-              <p>
-                Applicant reply contact:{" "}
-                {hiringTeam.draft?.replyTo ||
-                  hiringTeam.resource.data?.sender ||
-                  "Connected recruiting mailbox"}
-              </p>
+              <p>Applicant emails: verified no-reply address. Hiring-team addresses stay private.</p>
               <p>
                 {fields.filter((f) => f.required).length} required fields ·{" "}
                 {fields.filter((f) => !f.required).length} optional fields

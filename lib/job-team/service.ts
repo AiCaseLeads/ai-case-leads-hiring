@@ -48,12 +48,18 @@ export async function jobNotificationMail(task:Task,store:HubStore,owners:string
  const link=new URL(`/team?view=applications&application=${encodeURIComponent(app.id)}`,store.options.origin||"https://jobs.aicaseleads.com");
  return {to:recipient,messageId,subject:`${label}: ${app.job_title}`,body:`${label} for ${app.job_title}.\n\nReview the application in the hiring dashboard: ${link}\n\nYou received this because you are on this job's hiring team. Managers can change its team and notification settings under Jobs.`};
 }
-export async function candidateReplyTo(store:HubStore,applicationId:string,owners:string[]=[]):Promise<string[]|undefined>{
- const app=await store.applicationRow(applicationId),config=await jobTeam(store,app.job_id);
- if(!config?.replyTo||!config.members.includes(config.replyTo))return undefined;
+/** Candidate envelopes never inherit private staff routing. */
+export const CANDIDATE_SENDER = "no-reply@aicaseleads.com";
+export async function candidateReplyTo(_store:HubStore,_applicationId:string,_owners:string[]=[]):Promise<string[]>{
+ void _store; void _applicationId; void _owners;
+ return [CANDIDATE_SENDER];
+}
+export async function candidateMail(store:HubStore,input:MailInput,owners:string[]=[]):Promise<MailInput>{
  const staff=await activeJobStaff(store,owners);
- if(!staff.some(person=>person.email===config.replyTo))return undefined;
- const sender=await store.setting<string>("google_sender","");
- // Keep the shared mailbox in the reply envelope so clients can preserve history.
- return [...new Set([config.replyTo,...(sender?[sender]:[])])];
+ const connected=await store.setting<string>("google_sender","");
+ const privateAddresses=new Set([...staff.map(person=>person.email),connected].filter(Boolean).map(value=>value.toLowerCase()));
+ const addresses=`${input.subject} ${input.body}`.match(/[A-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi)||[];
+ if(addresses.some(address=>address.toLowerCase()!==CANDIDATE_SENDER&&privateAddresses.has(address.toLowerCase())))throw new HiringError("candidate_mail_exposes_staff_address",422,"Remove staff email addresses from the applicant email template before retrying.");
+ // Copy only the supported envelope fields: queued legacy replyTo/sender cannot leak through.
+ return {to:input.to,subject:input.subject,body:input.body,messageId:input.messageId,sender:CANDIDATE_SENDER,replyTo:[CANDIDATE_SENDER]};
 }

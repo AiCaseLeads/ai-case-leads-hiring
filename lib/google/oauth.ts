@@ -7,6 +7,8 @@ export const GOOGLE_SCOPES = [
   "https://www.googleapis.com/auth/calendar.freebusy",
   // A user-configured existing Drive root is not accessible with drive.file without Google Picker.
   "https://www.googleapis.com/auth/drive",
+  // Verify the no-reply send-as identity before candidate mail is sent.
+  "https://www.googleapis.com/auth/gmail.settings.basic",
 ] as const;
 export const PERSONAL_CALENDAR_SCOPES=["https://www.googleapis.com/auth/calendar.events","https://www.googleapis.com/auth/calendar.freebusy","https://www.googleapis.com/auth/userinfo.email"] as const;
 export interface OAuthClient { clientId: string; clientSecret: string }

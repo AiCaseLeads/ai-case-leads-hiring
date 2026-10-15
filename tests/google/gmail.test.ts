@@ -96,3 +96,27 @@ test("known-thread reply sync returns reference headers for exact application ma
   assert.equal(messages[0].body, "Thank you, confirmed"); assert.equal(messages[0].inReplyTo, "<decision-123@jobs.example.com>"); assert.equal(messages[0].references, "<decision-123@jobs.example.com>"); assert.equal(messages[0].sent, false);
   assert.ok(!paths.some((path) => path.endsWith("/messages")));
 });
+
+for (const status of ["accepted", "pending", "missing", "forbidden"]) test(`candidate no-reply alias ${status}: verify identity before sending`, async () => {
+  let sends=0;
+  const workspace=new GoogleWorkspace(config,async(input,init={})=>{
+    const url=String(input);
+    if(url.includes("oauth2.googleapis.com"))return response({access_token:"test",token_type:"Bearer",expires_in:3600});
+    if(url.endsWith("/profile"))return response({emailAddress:config.sender});
+    if(url.endsWith("/settings/sendAs"))return status==="forbidden"?response({},403):response({sendAs:status==="missing"?[]:[{sendAsEmail:"no-reply@aicaseleads.com",verificationStatus:status}]});
+    if(url.includes("/messages?"))return response({messages:[]});
+    if(url.endsWith("/messages/send")){
+      sends++;
+      const raw=Buffer.from(JSON.parse(String(init.body)).raw,"base64url").toString();
+      assert.match(raw,/From: no-reply@aicaseleads.com\r\n/);
+      assert.match(raw,/Reply-To: no-reply@aicaseleads.com\r\n/);
+      assert.ok(!raw.includes(config.sender));
+      assert.ok(!/^Cc:|^Bcc:|^Sender:/m.test(raw));
+      return response({id:"sent123",threadId:"thread123"});
+    }
+    throw new Error("unexpected_request");
+  });
+  const pending=workspace.sendMail({...mail,sender:"no-reply@aicaseleads.com",replyTo:["no-reply@aicaseleads.com"]});
+  if(status==="accepted")await pending;else await assert.rejects(pending);
+  assert.equal(sends,status==="accepted"?1:0);
+});

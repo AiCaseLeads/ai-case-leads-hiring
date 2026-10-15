@@ -2,7 +2,7 @@ import type { GoogleClient } from "./client";
 import { base64, base64url, emailAddress, fromBase64url, GoogleError, json, utf8 } from "./http";
 
 const API = "https://gmail.googleapis.com/gmail/v1/users/me";
-export interface MailInput { to: string; subject: string; body: string; messageId: string; replyTo?: string[] }
+export interface MailInput { to: string; subject: string; body: string; messageId: string; replyTo?: string[]; sender?: string }
 export interface SentMail { id: string; threadId: string }
 interface GmailMessage extends SentMail { internalDate?: string; labelIds?: string[]; payload?: MimePart }
 interface MimePart { partId?: string; filename?: string; mimeType?: string; headers?: Array<{ name: string; value: string }>; body?: { data?: string; attachmentId?: string; size?: number }; parts?: MimePart[] }
@@ -93,8 +93,14 @@ export class Gmail {
   }
   async send(input: MailInput): Promise<SentMail> {
     // Validate the complete envelope before any external request.
-    const raw = base64url(utf8(mimeMessage(this.sender, input)));
-    if ((await this.profile()).email !== this.sender.toLowerCase()) throw new GoogleError("gmail_sender_must_match_connected_account");
+    const sender = emailAddress(input.sender || this.sender).toLowerCase();
+    const raw = base64url(utf8(mimeMessage(sender, input)));
+    const profile = await this.profile();
+    if (profile.email !== sender) {
+      // Read the provider-approved identities on every send: revoked aliases must fail closed.
+      const identities = await json<{ sendAs?: Array<{ sendAsEmail: string; verificationStatus?: string }> }>(await this.client.request(`${API}/settings/sendAs`));
+      if (!identities.sendAs?.some(identity => identity.sendAsEmail.toLowerCase() === sender && identity.verificationStatus === "accepted")) throw new GoogleError("gmail_sender_alias_not_verified");
+    }
     const present = await this.reconcile(input.messageId);
     if (present) return present;
     const response = await this.client.request(`${API}/messages/send`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ raw }) }, true);
