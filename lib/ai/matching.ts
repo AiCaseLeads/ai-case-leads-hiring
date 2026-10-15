@@ -1,3 +1,4 @@
+import { hourlyRateWindow } from "../hiring/rate-window";
 import { z } from 'zod';
 import type { HubStore } from '../hub/store';
 import type { HubJob } from '../hub/types';
@@ -66,7 +67,7 @@ export async function reconcileMatches(store:HubStore){
 function code(error:unknown){return error instanceof HiringError?error.code:'ai_match_failed';}
 async function consumeBudget(store:HubStore){
  // Shared hourly budget includes criteria and candidate requests, across restarts.
- return !!await store.stmt("INSERT INTO hiring_rate_limits(key_hash,window,attempts) VALUES('ai-match-global',?,1) ON CONFLICT(key_hash,window) DO UPDATE SET attempts=attempts+1 WHERE attempts<120 RETURNING attempts",Math.floor(Date.now()/3600000)).first();
+ return !!await store.stmt("INSERT INTO hiring_rate_limits(key_hash,window,attempts) VALUES('ai-match-global',?,1) ON CONFLICT(key_hash,window) DO UPDATE SET attempts=attempts+1 WHERE attempts<120 RETURNING attempts",hourlyRateWindow()).first();
 }
 export async function processAiMatches(deps:MatchDeps):Promise<{hasMore:boolean}>{
  const {store}=deps,config=await store.setting<AiConfig>('ai_openrouter_config_v1',{enabled:false});

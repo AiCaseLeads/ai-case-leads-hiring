@@ -1,3 +1,5 @@
+import { hourlyRateWindow } from "../../lib/hiring/rate-window";
+import { cleanupExpiredUploads } from "../../lib/hiring/upload-cleanup";
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createStore,jobInput,applicationInput,MANAGER,RECRUITER} from '../hub/fixtures';
@@ -62,7 +64,7 @@ test('leases, missing configuration, retry backoff and global budget prevent dup
  const f=await fixture();await f.store.setSetting('ai_match_worker_lease',{lease:'other'});await f.store.stmt("UPDATE hub_settings SET updated_at=? WHERE key='ai_match_worker_lease'",Date.now()+100000).run();
  await processAiMatches(f.deps);assert.equal(f.calls(),0);
  await f.store.stmt("DELETE FROM hub_settings WHERE key='ai_match_worker_lease'").run();
- await f.store.stmt("INSERT INTO hiring_rate_limits(key_hash,window,attempts) VALUES('ai-match-global',?,120)",Math.floor(Date.now()/3600000)).run();await processAiMatches(f.deps);assert.equal(f.calls(),0);
+ await f.store.stmt("INSERT INTO hiring_rate_limits(key_hash,window,attempts) VALUES('ai-match-global',?,120)",hourlyRateWindow()).run();await processAiMatches(f.deps);assert.equal(f.calls(),0);
  await f.store.setSetting('ai_openrouter_config_v1',{enabled:false});await processAiMatches(f.deps);assert.equal(f.calls(),0);assert.equal((await matchJobStatus(f.store,f.job.id)).status,'setup_required');
  f.database.close();
 });
@@ -117,4 +119,19 @@ test('failed job criteria show an actionable failed candidate status rather than
  const detail=await matchDetail(f.store,f.id);assert.equal(detail.status,'failed');assert.equal(detail.score,null);assert.equal(detail.error,'ai_provider_unavailable');
  const list=await f.store.applications({jobId:f.job.id});assert.equal(list.items[0].aiMatch?.status,'failed');
  f.database.close();
+});
+
+test('automatic matching hourly provider budget survives shared background cleanup',async()=>{
+ const f=await fixture();
+ try {
+  await processAiMatches(f.deps);
+  assert.equal(f.calls(),1);
+  const budget=await f.store.stmt("SELECT window,attempts FROM hiring_rate_limits WHERE key_hash='ai-match-global'").first<{window:number;attempts:number}>();
+  assert.equal(budget?.window,hourlyRateWindow());
+  assert.equal(budget?.attempts,1);
+  await f.store.stmt("UPDATE hiring_rate_limits SET attempts=120 WHERE key_hash='ai-match-global'").run();
+  await cleanupExpiredUploads(f.db,{delete:async()=>{}} as unknown as R2Bucket);
+  await processAiMatches(f.deps);
+  assert.equal(f.calls(),1);
+ } finally {f.database.close();}
 });
