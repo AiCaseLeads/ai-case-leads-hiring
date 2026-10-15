@@ -110,24 +110,25 @@ test("Bogota day boundaries and queue filters are consistent",async()=>{
   assert.equal((await overdueQueue(f.store,f.config,now,0,"")).total,0);
   f.database.close();
 });
-test("worker uses Gmail outbox once, reconciles uncertain delivery without resending and skips disabled queued mail",async()=>{
+test("worker uses Gmail outbox once, reconciles uncertain delivery without resending and skips disabled queued mail",async(t)=>{
+ const prior=process.env.CANDIDATE_MAIL_ACCOUNT;process.env.CANDIDATE_MAIL_ACCOUNT="mariam@aicaseleads.com";t.after(()=>{if(prior===undefined)delete process.env.CANDIDATE_MAIL_ACCOUNT;else process.env.CANDIDATE_MAIL_ACCOUNT=prior;});
   const { processHubTasks }=await import("../../lib/task-runner");
   const f=await fixture(),live=Date.now();
   f.database.prepare("UPDATE hub_applications SET stage_entered_at=?").run(live-49*3600000);
   f.database.prepare("UPDATE hub_tasks SET status='done',result_json=?").run(JSON.stringify({archivedRevision:999}));
   let sends=0,reconciles=0;
   const google={async sendMail(){sends++;throw {code:"gmail_outcome_unknown",uncertain:true};},async reconcileMail(){reconciles++;return {id:"delivered",threadId:"digest-thread"};}} as unknown as import("../../lib/google/workspace").GoogleWorkspace;
-  await processHubTasks(f.store,f.db,undefined,google,1,f.owners);
+  await processHubTasks(f.store,f.db,undefined,google,1,f.owners,async()=>google);
   const task=(await f.store.tasks()).find(t=>t.payload.reviewReminder)!;
   assert.equal(task.status,"uncertain");assert.equal(sends,1);
   f.database.prepare("UPDATE hub_tasks SET run_after=0 WHERE id=?").run(task.id);
-  await processHubTasks(f.store,f.db,undefined,google,1,f.owners);
+  await processHubTasks(f.store,f.db,undefined,google,1,f.owners,async()=>google);
   assert.equal(sends,1);assert.equal(reconciles,1);assert.equal((await f.store.tasks()).find(t=>t.id===task.id)!.status,"done");
   // A distinct queued digest can be safely cancelled when the switch is off.
   const extraId="review-reminder:test-stale";
   await f.store.taskStatement(extraId,f.app.id,"gmail",{...task.payload},Date.now()).run();
   await f.store.setSetting(CONFIG_KEY,{...f.config,enabled:false});
-  await processHubTasks(f.store,f.db,undefined,google,1,f.owners);
+  await processHubTasks(f.store,f.db,undefined,google,1,f.owners,async()=>google);
   assert.equal(sends,1);const stale=(await f.store.tasks()).find(t=>t.id===extraId)!;assert.equal(stale.status,"done");assert.deepEqual(stale.result,{stale:true});
   f.database.close();
 });

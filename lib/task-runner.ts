@@ -45,7 +45,7 @@ async function reconcileUncertain(db:D1Database,store:HubStore,google:GoogleWork
     try{
       const payload=JSON.parse(item.payload_json) as MailInput & {jobNotification?:boolean;reviewReminder?:boolean;deliveryAccount?:string};
       const internal=payload.jobNotification===true||payload.reviewReminder===true;
-      const transport=internal?google:await candidateTransport(store,payload.deliveryAccount,resolver);
+      const transport=await candidateTransport(store,payload.deliveryAccount || (internal?process.env.CANDIDATE_MAIL_ACCOUNT:undefined),resolver);
       transport.setDeadline?.(deadline);
       const found=await transport.reconcileMail(payload.messageId);
       await store.finishTask(item.id,lease,found?{status:"done",result:{...found}}:{status:"uncertain",error:"gmail_delivery_not_yet_confirmed",runAfter:Date.now()+15*60*1000});
@@ -58,11 +58,21 @@ async function taskEffect(task:Task,store:HubStore,db:D1Database,bucket:R2Bucket
   if(task.kind==="gmail"){
     if(task.payload.jobNotification===true){
       const mail=await jobNotificationMail(task,store,owners);
-      return mail?{...await google.sendMail(mail)}:{stale:true};
+      if(!mail)return {stale:true};
+      const account=process.env.CANDIDATE_MAIL_ACCOUNT?.trim().toLowerCase();
+      const transport=await candidateTransport(store,account,resolver);transport.setDeadline?.(deadline);
+      const pinned=await db.prepare("UPDATE hub_tasks SET payload_json=? WHERE id=? AND lease_token=? AND status='running' RETURNING id").bind(JSON.stringify({...task.payload,deliveryAccount:account}),task.id,task.leaseToken).first();
+      if(!pinned)throw {code:"task_lease_expired"};
+      return {...await transport.sendMail(mail)};
     }
     if(task.payload.reviewReminder===true){
       const mail=await reviewReminderMail(task,store,owners);
-      return mail?{...await google.sendMail(mail)}:{stale:true};
+      if(!mail)return {stale:true};
+      const account=process.env.CANDIDATE_MAIL_ACCOUNT?.trim().toLowerCase();
+      const transport=await candidateTransport(store,account,resolver);transport.setDeadline?.(deadline);
+      const pinned=await db.prepare("UPDATE hub_tasks SET payload_json=? WHERE id=? AND lease_token=? AND status='running' RETURNING id").bind(JSON.stringify({...task.payload,deliveryAccount:account}),task.id,task.leaseToken).first();
+      if(!pinned)throw {code:"task_lease_expired"};
+      return {...await transport.sendMail(mail)};
     }
     if(task.payload.reminder===true){
       const current=await db.prepare("SELECT revision,status,start FROM hub_interviews WHERE id=? AND application_id=?").bind(String(task.payload.interviewId||""),task.applicationId).first<{revision:number;status:string;start:string|null}>();
@@ -128,7 +138,11 @@ export async function processHubTasks(store:HubStore,db:D1Database,bucket:R2Buck
   await store.setSetting("worker_health",{...previous,lastStartedAt:began});
   let processed=0,failed=0,uncertain=0,reconciled=0,replies=0;
   try {
-    await processStaffInvites(store,google,owners,3);
+    // Mail authorization is independent of the company Drive/calendar connection.
+    // A missing recruiter grant must not stop accepted applications being archived.
+    let recruitingMail:GoogleWorkspace|null=null;
+    try{recruitingMail=await candidateTransport(store,process.env.CANDIDATE_MAIL_ACCOUNT,candidateResolver);recruitingMail.setDeadline?.(deadline);}catch{/* Individual queued mail exposes setup errors below. */}
+    if(recruitingMail)await processStaffInvites(store,recruitingMail,owners,3);
     await enqueueReviewReminders(store,owners);
     await reconcileArchives(db,store);
     reconciled=await reconcileUncertain(db,store,google,Math.min(max,5),deadline,candidateResolver);
@@ -149,7 +163,7 @@ export async function processHubTasks(store:HubStore,db:D1Database,bucket:R2Buck
         if(ambiguous)uncertain++;else failed++;
       }
     }
-    if(Date.now()<deadline-1000)replies=await syncHiringReplies(store,db,google,50,deadline,bucket);
+    if(recruitingMail&&Date.now()<deadline-1000)replies=await syncHiringReplies(store,db,recruitingMail,50,deadline,bucket);
     const cleanup=Date.now()<deadline-1000?await cleanupExpiredUploads(db,bucket,deadline,2):{deleted:0,failed:0};
     const count=await db.prepare("SELECT SUM(CASE WHEN status IN ('pending','running') THEN 1 ELSE 0 END) AS pending,SUM(CASE WHEN status='failed' THEN 1 ELSE 0 END) AS failed,SUM(CASE WHEN status='uncertain' THEN 1 ELSE 0 END) AS uncertain FROM hub_tasks").first<{pending:number;failed:number;uncertain:number}>();
     const mailError=await store.setting("mail_sync_last_error","");
