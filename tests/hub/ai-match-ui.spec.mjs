@@ -7,7 +7,7 @@ import {chromium} from 'playwright';
 
 const job={id:'job-test',title:'Test engineer',slug:'engineer',status:'open',location:'Remote',fields:[],rules:[]};
 const applicant={id:'app-test',name:'Synthetic Applicant',email:'applicant@example.invalid',jobId:job.id,jobTitle:job.title,stage:'Application Review',qualification:'review',createdAt:1,revision:1};
-async function setup(t,{mode='candidate',data={status:'ready',score:80,criteria:[]},failWrite=false,width=390}={}){
+async function setup(t,{mode='candidate',data={status:'ready',score:80,criteria:[]},failWrite=false,width=390,clock=false}={}){
  const view=mode==='candidate'?'<CandidateMatch applicationId="app-test"/>':mode==='setup'?'<JobMatchSetup jobId="job-test" changed={()=>{}}/>':`<Candidates jobs={${JSON.stringify([job])}} refresh={0} changed={()=>{}} reviewerEmail="reviewer@example.invalid"/>`;
  const {outputFiles}=await build({stdin:{contents:`import React from 'react';import{createRoot}from'react-dom/client';import{CandidateMatch,JobMatchSetup}from'./components/hub/ai-match';import{Candidates}from'./components/hub/candidates';createRoot(document.getElementById('root')).render(${view});`,loader:'tsx',resolveDir:process.cwd()},bundle:true,write:false,format:'iife',jsx:'automatic'});
  // Keep application CSS, excluding build-only Tailwind directives.
@@ -27,6 +27,7 @@ async function setup(t,{mode='candidate',data={status:'ready',score:80,criteria:
   return route.fulfill({json:{data:current}});
  });
  await page.route('**/api/hub/applications*',route=>{queries.push(new URL(route.request().url()).searchParams);return route.fulfill({json:{data:{items:[{...applicant,aiMatch:{status:'ready',score:80}},{...applicant,id:'app-pending',name:'Pending applicant',aiMatch:{status:'pending',score:null}}],total:2,page:1,pageSize:50}}});});
+ if(clock)await page.clock.install();
  await page.goto(`http://127.0.0.1:${server.address().port}`);
  return {page,writes,queries,errors};
 }
@@ -52,7 +53,7 @@ test('pending, stale, failed and unreadable reviews never display misleading num
 test('enabling one job is explicit and retrying existing applicants is a separate request',async t=>{
  const {page,writes}=await setup(t,{mode:'setup',data:{jobId:job.id,version:1,enabled:false,status:'disabled',criteria:['React experience']}});
  const toggle=page.getByRole('checkbox',{name:'Automatically review applicants for this job'});await toggle.waitFor();assert.equal(await toggle.isChecked(),false);assert.equal(writes.length,0);
- assert.equal(await page.getByText(/Enabling this sends relevant résumé text and answers to OpenRouter/).isVisible(),true);
+ assert.equal(await page.getByText(/Enabling this reviews existing and new applicants, sending relevant résumé text and answers to OpenRouter/).isVisible(),true);
  await toggle.click();await page.getByRole('status').filter({hasText:'AI matching enabled'}).waitFor();assert.deepEqual(writes,[{method:'PATCH',jobId:job.id,enabled:true,expectedVersion:1,consent:true}]);
  await page.getByRole('button',{name:'Review existing applicants',exact:true}).click();await page.getByRole('status').filter({hasText:'Applications queued'}).waitFor();assert.deepEqual(writes[1],{method:'POST',jobId:job.id});
  await page.getByText('Requirements used for every applicant',{exact:true}).click();assert.equal(await page.getByText('React experience',{exact:true}).isVisible(),true);
@@ -83,3 +84,14 @@ test('mobile AI evidence and consent remain within the viewport',async t=>{
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth+1),true);
  }
 });
+
+ test('pending AI results refresh automatically and the list has an explicit refresh control',async t=>{
+  const {page,queries}=await setup(t,{mode:'list',clock:true});
+  await page.getByText('Waiting for AI review',{exact:true}).waitFor();
+  const before=queries.length;
+  await Promise.all([page.waitForResponse(r=>r.url().includes('/api/hub/applications?')),page.clock.fastForward(15001)]);
+  assert.ok(queries.length>before);
+  await page.getByRole('button',{name:'Refresh applications',exact:true}).waitFor();
+  await Promise.all([page.waitForResponse(r=>r.url().includes('/api/hub/applications?')),page.getByRole('button',{name:'Refresh applications',exact:true}).click()]);
+  assert.ok(queries.length>before+1);
+ });

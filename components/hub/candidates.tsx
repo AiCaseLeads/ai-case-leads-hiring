@@ -175,6 +175,13 @@ export function Candidates({
       refresh,
     ),
     mutation = useHubMutation();
+  const waitingForAi = resource.data?.items.some(item => item.aiMatch?.status === "pending");
+  const reloadApplications = resource.reload;
+  useEffect(() => {
+    if (!waitingForAi) return;
+    const timer = setInterval(() => void reloadApplications(), 15000);
+    return () => clearInterval(timer);
+  }, [waitingForAi, reloadApplications]);
   const visibleRevisions = resource.data?.items.map(item => `${item.id}:${item.revision}`).join("|");
   useEffect(() => {
     // A previous selection or rejection approval must not carry over to changed records.
@@ -268,7 +275,7 @@ export function Candidates({
         </div>
         <div className="hub-button-row"><span className="hub-count">
           {resource.data ? resource.data.total + " applications" : ""}
-        </span><button type="button" className="hub-button secondary" disabled={mutation.busy || !resource.data} onClick={() => void exportApplications()}><Download size={16} /> Export filtered applications</button></div>
+        </span><button type="button" className="hub-button secondary" disabled={resource.loading} onClick={() => void resource.reload()}>Refresh applications</button><button type="button" className="hub-button secondary" disabled={mutation.busy || !resource.data} onClick={() => void exportApplications()}><Download size={16} /> Export filtered applications</button></div>
       </div>
       <form className="hub-card" onSubmit={filterSubmit}>
         <div className="hub-filter-grid">
