@@ -137,3 +137,35 @@ test("selected original PDF is authoritative over browser text and must belong t
   assert.match((await f.store.getApplication(f.app.id)).notes[0].text,/Original PDF: resume.pdf/);
   f.database.close();
 });
+
+test('provider schema mirrors exact criteria, string bounds and evidence citation rules',async()=>{
+ const {reviewJsonSchema}=await import('../../lib/ai/review');
+ const criteria=['Build React applications','Write automated tests'];
+ const schema=reviewJsonSchema(criteria),items=schema.properties.criteria.items.anyOf;
+ assert.equal(schema.properties.criteria.minItems,2);assert.equal(schema.properties.criteria.maxItems,2);
+ for(const item of items){assert.deepEqual(item.properties.criterion.enum,criteria);assert.equal(item.properties.explanation.maxLength,400);}
+ assert.equal(items.find(item=>item.properties.status.enum[0]==='not_found')!.properties.citations.maxItems,0);
+ assert.equal(items.find(item=>item.properties.status.enum[0]==='evidence_found')!.properties.citations.minItems,1);
+ assert.equal(items.find(item=>item.properties.status.enum[0]==='needs_verification')!.properties.citations.minItems,2);
+ assert.equal(schema.$defs.citation.properties.quote.maxLength,240);
+ assert.equal(schema.properties.checks.items.properties.question.maxLength,300);
+ let calls=0;
+ await generateReview(key,sources,[review.criteria[0].criterion],async(_url,init)=>{
+  calls++;const sent=JSON.parse(String(init?.body));assert.deepEqual(sent.response_format.json_schema.schema,reviewJsonSchema([review.criteria[0].criterion]));return response();
+ });assert.equal(calls,1);
+});
+
+test('AI failures distinguish structure, criterion identity, citation policy and exact source validation',()=>{
+ const criteria=[review.criteria[0].criterion],copy=()=>structuredClone(review);
+ const long=copy();long.criteria[0].explanation='x'.repeat(401);
+ assert.throws(()=>validateReview(long,sources,criteria),{code:'ai_response_schema_invalid'});
+ const renamed=copy();renamed.criteria[0].criterion='Related but different requirement';
+ assert.throws(()=>validateReview(renamed,sources,criteria),{code:'ai_response_criteria_mismatch'});
+ const policy=copy();policy.criteria[0].status='not_found';
+ assert.throws(()=>validateReview(policy,sources,criteria),{code:'ai_response_citation_policy'});
+ const invented=copy();invented.criteria[0].citations[0].quote='Built React applications for seven years.';
+ assert.throws(()=>validateReview(invented,sources,criteria),{code:'ai_response_quote_unverified'});
+ const normalized=copy();normalized.criteria[0].citations[0].quote='Built  React applications for two years.';
+ assert.throws(()=>validateReview(normalized,sources,criteria),{code:'ai_response_quote_unverified'});
+ assert.deepEqual(validateReview(review,sources,criteria),review);
+});
