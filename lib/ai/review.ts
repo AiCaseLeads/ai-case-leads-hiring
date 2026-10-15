@@ -46,6 +46,15 @@ export function validateReview(value:unknown,sources:Sources,criteria:string[]):
   if(quotes.some(c=>!sources[c.source].includes(c.quote)))throw new HiringError("ai_response_quote_unverified",502,"The AI response quoted text that is not present exactly in the supplied source. No review was saved.");
   return review;
 }
+/** Only fixed error codes/messages escape; provider bodies and refusals never do. */
+export function providerReviewContent(body:unknown):unknown {
+ const value=body as {choices?:Array<{finish_reason?:unknown;message?:{content?:unknown;refusal?:unknown}}>};
+ const choice=value?.choices?.[0];
+ if(choice?.finish_reason==="length")throw new HiringError("ai_response_truncated",502,"AI reached its output limit before finishing. No review was saved.");
+ if(choice?.finish_reason==="content_filter"||choice?.message?.refusal)throw new HiringError("ai_response_refused",502,"The provider declined this review. No review was saved.");
+ if(choice?.finish_reason!=="stop"||typeof choice?.message?.content!=="string")throw new HiringError("ai_response_incomplete",502,"The provider did not finish a complete review. No review was saved.");
+ try{return JSON.parse(choice.message.content);}catch{throw new HiringError("ai_response_json_invalid",502,"The provider returned unreadable review data. No review was saved.");}
+}
 export async function generateReview(key:string,sources:Sources,criteria:string[],fetcher:typeof fetch=fetch,matching=false):Promise<Review>{
   try{
     const response=await fetcher("https://openrouter.ai/api/v1/chat/completions",{
@@ -53,12 +62,13 @@ export async function generateReview(key:string,sources:Sources,criteria:string[
       body:JSON.stringify({model:MODEL,provider:{only:["OpenAI"],allow_fallbacks:false,data_collection:"deny",require_parameters:true},max_tokens:5000,response_format:{type:"json_schema",json_schema:{name:"hiring_evidence",strict:true,schema:reviewJsonSchema(criteria)}},messages:[{role:"system",content:matching ? `${system} For this evidence-match review, evidence_found means the supplied evidence clearly satisfies the COMPLETE criterion, including any explicit minimum number, duration or required skill. Mere mention or related but insufficient experience is not sufficient. Use not_found if evidence is absent, below the stated minimum, ambiguous or does not establish the complete requirement. Do not infer proficiency from a title or inflate years. Do not count demographic, personal or contact facts. The application and resume remain unverified claims.` : system},{role:"user",content:JSON.stringify({criteria,sources})}]})
     });
     if(!response.ok){await response.body?.cancel();throw new HiringError("ai_provider_unavailable",502,"AI review is unavailable. Check the OpenRouter key, balance, and model access. No review was saved.");}
-    const body=JSON.parse(new TextDecoder().decode(await boundedBytes({headers:response.headers,body:response.body} as Request,128*1024)));
-    const content=body?.choices?.[0]?.message?.content;
-    if(body?.choices?.[0]?.finish_reason!=="stop"||typeof content!=="string")throw new Error("incomplete");
-    return validateReview(JSON.parse(content),sources,criteria);
+    let body:unknown;
+    const raw=new TextDecoder().decode(await boundedBytes({headers:response.headers,body:response.body} as Request,128*1024));
+    try{body=JSON.parse(raw);}catch{throw new HiringError("ai_response_json_invalid",502,"The provider returned unreadable review data. No review was saved.");}
+    return validateReview(providerReviewContent(body),sources,criteria);
   }catch(error){
     if(error instanceof HiringError)throw error;
+    if(error instanceof Error&&["TimeoutError","AbortError"].includes(error.name))throw new HiringError("ai_request_timeout",504,"The AI provider did not finish within the time limit. No review was saved.");
     throw new HiringError("ai_review_failed",502,"AI review did not finish or returned an invalid response. No review was saved. Wait a minute before retrying.");
   }
 }

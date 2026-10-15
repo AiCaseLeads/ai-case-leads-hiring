@@ -169,3 +169,19 @@ test('AI failures distinguish structure, criterion identity, citation policy and
  assert.throws(()=>validateReview(normalized,sources,criteria),{code:'ai_response_quote_unverified'});
  assert.deepEqual(validateReview(review,sources,criteria),review);
 });
+
+test('provider completion diagnostics distinguish truncation, refusal, JSON and timeout without leaking content',async()=>{
+ const criteria=[review.criteria[0].criterion];
+ for(const [body,code] of [
+  [{choices:[{finish_reason:'length',message:{content:'private-content'}}]},'ai_response_truncated'],
+  [{choices:[{finish_reason:'stop',message:{refusal:'private refusal details',content:''}}]},'ai_response_refused'],
+  [{choices:[{finish_reason:'content_filter',message:{content:'private-content'}}]},'ai_response_refused'],
+  [{choices:[{finish_reason:'error',message:{content:'private-content'}}]},'ai_response_incomplete'],
+  [{choices:[{finish_reason:'stop',message:{content:'private malformed json'}}]},'ai_response_json_invalid'],
+ ] as const){
+  await assert.rejects(generateReview(key,sources,criteria,async()=>Response.json(body)),error=>{
+   assert.equal((error as {code:string}).code,code);assert.ok(!String(error).includes('private'));return true;
+  });
+ }
+ await assert.rejects(generateReview(key,sources,criteria,async()=>{throw new DOMException('private provider detail','TimeoutError');}),{code:'ai_request_timeout'});
+});
