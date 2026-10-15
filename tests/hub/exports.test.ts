@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createStore,jobInput,applicationInput,MANAGER} from './fixtures';
-import {csvCell,downloadApplications,safeFilename,zipStream} from '../../lib/hub/exports';
+import {csvCell,downloadApplications,safeFilename,zipStream,readableAnswers} from '../../lib/hub/exports';
 import {handleHubRequest} from '../../lib/hub/http';
 import {writeFileSync,mkdtempSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
@@ -19,7 +19,7 @@ test('download requires one job, preserves answers and rejects cross-job selecte
  await assert.rejects(downloadApplications(request('&ids='+b.id),store,{jobId:job.id}),{code:'export_selection_changed'});
  const response=await downloadApplications(request('&ids='+a.id),store,{jobId:job.id});
  assert.equal(response.headers.get('X-Application-Count'),'1');assert.equal(response.headers.get('Cache-Control'),'private, no-store');
- const csv=await response.text();assert.match(csv,/Application answers JSON/);assert.match(csv,/experience/);assert.match(csv,new RegExp(a.id));assert.ok(!csv.includes(b.id));
+ const csv=await response.text();assert.match(csv,/Application answers JSON/);assert.match(csv,/experience/);assert.match(csv,/Years of experience: 5/);assert.match(csv,new RegExp(a.id));assert.ok(!csv.includes(b.id));
  const counts=await handleHubRequest(new Request('https://jobs.example.invalid/api/hub/application-counts'),['application-counts'],MANAGER,store);
  assert.equal(counts.status,200);assert.equal((await store.applicationCounts()).items.find(row=>row.jobId===job.id)?.total,1);
  }finally{database.close();}
@@ -62,4 +62,11 @@ test('1000 applications export incrementally without accumulating answers or fil
  assert.equal(response.headers.get('X-Application-Count'),'1000');assert.ok(read<=1,'No eager full-cohort materialization');
  const reader=response.body!.getReader();let chunks=0;while(!(await reader.read()).done)chunks++;assert.equal(chunks,1001);assert.equal(read,1000);
  }finally{database.close();}
+});
+
+test('readable answers use saved labels, yes/no, option names and attachment filenames',()=>{
+ const fields=[{path:'years',title:'Years of experience',type:'Number' as const,required:false},{path:'ready',title:'Available?',type:'Boolean' as const,required:false},{path:'tools',title:'Tools',type:'MultiValueSelect' as const,required:false,options:[{value:'ts',label:'TypeScript'},{value:'py',label:'Python'}]},{path:'resume',title:'Resume',type:'File' as const,required:false}];
+ const readable=readableAnswers([{path:'years',value:7},{path:'ready',value:false},{path:'tools',value:['ts','py']},{path:'resume',value:'file-1'}],fields,[{id:'file-1',filename:'Resume.pdf'}]);
+ assert.equal(readable,'Years of experience: 7\nAvailable?: No\nTools: TypeScript; Python\nResume: Resume.pdf');
+ assert.ok(csvCell(readableAnswers([{path:'danger',value:'something'}],[{path:'danger',title:'=malicious',type:'String',required:false}])).startsWith('"\''));
 });

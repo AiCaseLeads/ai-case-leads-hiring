@@ -1,4 +1,5 @@
 import { HiringError } from "../hiring/errors";
+import type { ApplicationField, FieldSubmission } from "../hiring/types";
 import type { ApplicationFilters, HubStore } from "./store";
 const encoder=new TextEncoder();
 export function csvCell(value:unknown):string {
@@ -7,9 +8,23 @@ export function csvCell(value:unknown):string {
   if(/^[\s\u0000-\u001f]*[=+@-]/.test(text))text="'"+text;
   return '"'+text.replaceAll('"','""')+'"';
 }
-const headers=['Application ID','Name','Email','Job','Stage','Qualification','AI match score','AI match status','Reviewer grade percent','Applied at','Drive archive','Application answers JSON','Questions JSON'];
+const headers=['Application ID','Name','Email','Job','Stage','Qualification','AI match score','AI match status','Reviewer grade percent','Applied at','Drive archive','Application answers','Application answers JSON','Questions JSON'];
 type RecordRow=Awaited<ReturnType<HubStore['exportRecord']>>;
-function csvRow(row:RecordRow){return [row.id,row.name,row.email,row.jobTitle,row.stage,row.qualification,row.aiMatch?.score,row.aiMatch?.status,row.grade?.scorePercent,new Date(row.createdAt).toISOString(),row.driveFolderUrl,row.answers,row.questions].map(csvCell).join(',')+'\r\n';}
+export function readableAnswers(answers:FieldSubmission[],questions:ApplicationField[],files:{id:string;filename:string}[]=[]):string {
+  const fields=new Map(questions.map(field=>[field.path,field]));
+  return answers.map(answer=>{
+    const field=fields.get(answer.path);
+    const plain=(value:unknown):string=>{
+      if(value===null||value===undefined||value==='')return 'Not provided';
+      if(Array.isArray(value))return value.map(plain).join('; ');
+      if(typeof value==='boolean')return value?'Yes':'No';
+      if(field?.type==='File')return files.find(file=>file.id===value)?.filename||'Uploaded attachment';
+      return field?.options?.find(option=>option.value===value)?.label||(typeof value==='object'?JSON.stringify(value):String(value));
+    };
+    return `${field?.title||answer.path}: ${plain(answer.value)}`;
+  }).join('\n');
+}
+function csvRow(row:RecordRow){return [row.id,row.name,row.email,row.jobTitle,row.stage,row.qualification,row.aiMatch?.score,row.aiMatch?.status,row.grade?.scorePercent,new Date(row.createdAt).toISOString(),row.driveFolderUrl,readableAnswers(row.answers as FieldSubmission[],row.questions as ApplicationField[],row.files),row.answers,row.questions].map(csvCell).join(',')+'\r\n';}
 function streamOf(generator:AsyncGenerator<Uint8Array>):ReadableStream<Uint8Array> {
   return new ReadableStream({async pull(controller){try{const next=await generator.next();if(next.done)controller.close();else controller.enqueue(next.value);}catch(error){controller.error(error);}},async cancel(){await generator.return(undefined);}});
 }
