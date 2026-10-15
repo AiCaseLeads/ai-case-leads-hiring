@@ -49,7 +49,7 @@ test('pending, stale, failed and unreadable reviews never display misleading num
  }
 });
 
-test('enabling one job is explicit and queues existing applicants only on request',async t=>{
+test('enabling one job is explicit and retrying existing applicants is a separate request',async t=>{
  const {page,writes}=await setup(t,{mode:'setup',data:{jobId:job.id,version:1,enabled:false,status:'disabled',criteria:['React experience']}});
  const toggle=page.getByRole('checkbox',{name:'Automatically review applicants for this job'});await toggle.waitFor();assert.equal(await toggle.isChecked(),false);assert.equal(writes.length,0);
  assert.equal(await page.getByText(/Enabling this sends relevant résumé text and answers to OpenRouter/).isVisible(),true);
