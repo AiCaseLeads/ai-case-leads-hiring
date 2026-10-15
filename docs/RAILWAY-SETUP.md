@@ -6,11 +6,11 @@ The current deployment has dated evidence for Google authorization, volume persi
 
 ## 1. Current owner and recruiting account
 
-`sales@aicaseleads.com` is the owner login and the currently connected recruiting account for Gmail, Calendar/Meet and shared Drive. This replaces the earlier plan to connect `mariam@aicaseleads.com`. The owner authorized sales directly because Mariam's login was unavailable. Managers and recruiters can be added explicitly under **Settings → Team access**; do not share the owner's session.
+`sales@aicaseleads.com` remains the owner login and existing company Drive/fallback Calendar connection. It is not an applicant-mail transport. Recruiters authorize their own Gmail separately through **Settings → My setup → My recruiting email**, while signed in as themselves.
 
-To switch recruiting email to Mariam later, update `EXPECTED_RECRUITING_EMAIL` to her exact address in Railway, redeploy, and have her authorize **Settings → Connect Google Workspace** using her own account. The hub staff session can remain signed in as sales. Workspace ownership does not itself grant mailbox access. The current implementation uses user OAuth and does not implement domain-wide delegation.
+`CANDIDATE_MAIL_ACCOUNT=mariam@aicaseleads.com` assigns automatic mail to Maria. Maria must authorize her own personal-mail connection and configure the verified no-reply alias in her Gmail. No-reply replies are rejected; recruiter conversations use the acting recruiter’s own address. **Live Maria Gmail consent and controlled delivery are still pending** until verified. Do not replace the company Drive grant or change `EXPECTED_RECRUITING_EMAIL` to connect Maria’s mail.
 
-Switching only the calendar may use the sales grant if sales has permission to edit that calendar. Resolve active/unresolved bookings before changing the calendar ID, then verify a controlled new booking. This is separate from changing the recruiting sender or granting dashboard access.
+Each interviewer connects a personal calendar separately. Existing invitations retain their original organizer; the shared fallback calendar remains available. Workspace ownership does not authorize another employee’s mailbox. The app uses user OAuth, not domain-wide delegation.
 
 [Google describes user authorization and administrator-managed domain-wide delegation separately.](https://developers.google.com/workspace/guides/create-credentials)
 
@@ -34,7 +34,7 @@ Copy names and ordinary values from `.env.railway.example`. Enter secrets direct
 | `DATA_DIR` | `/data`; the attached volume mount |
 | `PUBLIC_SITE_ORIGIN` | Current deployment: `https://jobs.aicaseleads.com`. New environment: its own HTTPS origin, without a path or trailing slash |
 | `ADMIN_EMAILS` | `sales@aicaseleads.com`; explicit owner access |
-| `EXPECTED_RECRUITING_EMAIL` | `sales@aicaseleads.com` for the current recruiting connection |
+| `EXPECTED_RECRUITING_EMAIL` | `sales@aicaseleads.com` for the existing company Drive/fallback Calendar connection |
 | `GOOGLE_CLIENT_ID` | The Google Web application OAuth client ID created below |
 | `GOOGLE_CLIENT_SECRET` | The same client’s secret; server-only |
 | `GOOGLE_TOKEN_KEY` | 32 cryptographically random bytes encoded as 64 hexadecimal characters; securely back it up |

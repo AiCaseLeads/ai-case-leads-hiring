@@ -1,6 +1,6 @@
 # Railway launch checklist
 
-Reconciled 2026-10-12. Production is https://jobs.aicaseleads.com; the private dashboard is `/team`. The live system uses Node 24 on Railway, an authoritative SQLite database and private originals on the `/data` volume, and an in-process integration worker. Google Workspace is connected as `sales@aicaseleads.com` for recruiting email, the temporary calendar, and the shared Drive archive. There is no Sites/D1/R2 or Apps Script setup requirement for this deployment.
+Reconciled 2026-10-12. Production is https://jobs.aicaseleads.com; the private dashboard is `/team`. The live system uses Node 24 on Railway, an authoritative SQLite database and private originals on the `/data` volume, and an in-process integration worker. The existing company Google connection retains the temporary calendar and shared Drive archive. Recruiting Gmail now uses separate recruiter-owned grants; sales is blocked from applicant-mail transport. Maria’s live consent and controlled mail delivery remain pending. There is no Sites/D1/R2 or Apps Script setup requirement for this deployment.
 
 Checked items below reflect dated evidence, principally the hosted checks on 2026-10-10 and the deployment/Google verification ledger. Fresh 2026-10-12 checks additionally confirmed the successful Railway deployment, active domain/TLS, both public jobs accepting submissions, and existing backup snapshots. They do not certify that every integration will remain healthy. Open items are separate from features already implemented. See [Railway verification](RAILWAY-VERIFICATION.md), [the setup guide](RAILWAY-SETUP.md), and [the hiring quick start](HIRING-QUICK-START.md).
 
@@ -32,7 +32,7 @@ Checked items below reflect dated evidence, principally the hosted checks on 202
 - [ ] Rehearse a controlled provider outage/revoked grant and recovery. Accepted applications must stay intact; retry only safe failures and reconcile uncertain Calendar/Gmail work without duplication.
 - [ ] If enabling interview reminders, prove actual 24-hour/1-hour delivery once, with the correct timezone/Meet link, and suppression for pending/cancelled/replaced/past bookings. Default-off code behavior has isolated coverage; timed live delivery is separate.
 - [ ] Observe the first genuine overdue-review digest reaching the authorized staff recipient once after the saved 48-hour threshold. Recipient/day deduplication and revalidation passed isolated tests; zero overdue records did not exercise live delivery.
-- [ ] Recruiter onboarding release: invite Mariam as Head recruiter, verify her own sign-in and personal calendar consent, save her availability, and verify a booking/reschedule/cancellation on her calendar. Personal calendar setup no longer requires replacing the company Gmail/Drive grant or changing its expected sender. Existing invitations retain their calendar identity. Her consent and real delivery must be confirmed separately from isolated tests.
+- [ ] Recruiter onboarding release: invite Mariam as Head recruiter, verify her own sign-in and personal calendar consent, save her availability, and verify a booking/reschedule/cancellation on her calendar. Personal Gmail and calendar setup do not replace the company Drive grant or change its expected account. Existing invitations retain their calendar identity. Her consent and real delivery must be confirmed separately from isolated tests.
 
 ## Controlled end-to-end rehearsal
 
@@ -54,3 +54,10 @@ Checked items below reflect dated evidence, principally the hosted checks on 202
 ## Rollback and incident handling
 
 If submission integrity is uncertain, set `APPLICATIONS_ENABLED=false` and close affected postings. Preserve accepted applications, original files, receipts, history and queued tasks; do not reset the production database or send compensating rejections. Google outages are integration-task recovery problems; SQLite remains authoritative. A public portal is already deployed, while LinkedIn/Indeed hiring can continue independently. Remaining checklist items must be tracked explicitly rather than represented as completed.
+
+## Recruiter-owned Gmail cutover
+
+- [ ] Maria signs in herself, connects My recruiting email, and verifies the no-reply Send mail as identity.
+- [ ] Verify automatic mail uses Maria’s account with no-reply From, no sales identity in received headers, and replies to no-reply are rejected.
+- [ ] Verify a recruiter conversation sends from the acting recruiter and receives replies in that recruiter’s Gmail; separately verify any supported dashboard reply synchronization.
+- [ ] Confirm existing Drive archival and Calendar behavior still work after the mail cutover.

@@ -28,7 +28,7 @@ In **Settings → Team access & invitations**, invite each recruiter's work emai
 
 Toggle alerts for new applications, submitted assessments, applicant replies received in the connected mailbox, and overdue reviews. An empty saved team receives no alerts and does not fall back to sales. Saving a team does not send old application alerts. Duplicated jobs and templates start with an empty team so you can choose the people for the new posting.
 
-The Google account connected in Settings remains the sender. The job's chosen recruiter and that connected mailbox are included in Reply-To. Applicants should use **Reply all** to keep their conversation available in the dashboard; messages sent only to a recruiter's personal inbox cannot be imported by the shared connection. Staff login alone does not connect that person's Gmail. See [email routing details](JOB-TEAM-NOTIFICATIONS.md).
+Recruiters connect their own Gmail under **Settings → My setup → My recruiting email**. Human correspondence uses the acting recruiter's connected mailbox. Automatic messages use the approved no-reply alias on the configured `CANDIDATE_MAIL_ACCOUNT`; replies to no-reply are rejected. Sales is never an applicant-mail fallback. Applicants can use the website's `/help` form for private support requests. Staff login alone does not connect Gmail. See [email routing details](CANDIDATE-EMAIL-PRIVACY.md).
 
 ## Home and applicant review
 
@@ -52,7 +52,7 @@ Browser Back/Forward follows dashboard sections, applicant profiles and job-setu
 
 When sending a booking link, explicitly choose **Who will conduct this interview?** A recruiter is available only after connecting their calendar and saving their hours. The shared company calendar is an explicit alternative. Existing invitations keep their original interviewer/calendar, including during rescheduling and cancellation. Reconnecting a personal calendar must use the same email; a failed personal connection never silently switches the booking to the company calendar.
 
-**Settings → Company setup** is owner-only. The existing company sender and shared Drive archive remain connected as sales@aicaseleads.com. They are separate from personal interview calendars. Recruiters do not need to reconnect the company account or change the archive root. The legacy shared calendar retains the approved Monday-Friday, 10:00-16:00 America/Bogota, 30-minute schedule until the owner changes it.
+**Settings → Company setup** is owner-only. The existing company Drive archive and fallback calendar stay separate from personal Gmail and interview calendars. Recruiters do not reconnect the company account or change its archive root. Maria connects her own Gmail and configures the approved no-reply Send mail as identity; the owner can see her connection status but cannot authorize her account.
 
 **Team access & invitations** appears for head recruiters and the owner. **Scorecard templates** are available to recruiting staff. Company AI credentials and hosting controls are restricted to the owner. Connection status is not proof of email, calendar or archive delivery; inspect Delivery activity and the actual record.
 

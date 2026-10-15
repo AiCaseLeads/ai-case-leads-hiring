@@ -1,13 +1,13 @@
 # Google Workspace setup — Railway
 
-The current production hub is https://jobs.aicaseleads.com/team. **`sales@aicaseleads.com` is both the owner login and the connected recruiting account** for Gmail, the temporary Calendar/Meet setup and the shared Drive archive. Actual Google consent and controlled Gmail/Calendar/Drive behavior have dated evidence; see [Railway verification](RAILWAY-VERIFICATION.md). The previous Mariam sender plan and private Sites setup do not describe current production.
+The production hub is https://jobs.aicaseleads.com/team. The company connection remains responsible for Drive archival and the fallback Calendar. Recruiter-owned Gmail uses separate OAuth grants under **Settings → My setup → My recruiting email**. `CANDIDATE_MAIL_ACCOUNT=mariam@aicaseleads.com` selects Maria for automatic mail; she must authorize her own account and configure the approved no-reply alias in her Gmail. Sales cannot connect as a recruiting mail account.
 
-Staff login and the recruiting connection are separate OAuth flows. A manager can sign in to the hiring hub without becoming the recruiting sender. Workspace ownership does not authorize another employee's mailbox.
+Staff sign-in, personal Gmail, personal Calendar, and company storage consent are separate. Workspace ownership does not authorize another employee's mailbox. Historical verification notes describe their dated test state, not current mail ownership.
 
 ## Check the existing connection
 
-1. Sign in as an approved administrator and open **Settings**. The guided Google steps show the connected sender, interview calendar and shared Drive folder.
-2. Confirm the intended sender is sales. Do not disconnect/recreate the working grant just to repeat setup.
+1. Sign in as an approved administrator and open **Settings**. The guided Google steps show the company storage account, interview calendar and shared Drive folder.
+2. Confirm the existing company storage account. Do not disconnect/recreate the working grant just to repeat setup.
 3. Current approved temporary availability is Monday–Friday, 10:00–16:00 `America/Bogota`, 30-minute interviews. Confirm calendar editing rights before changing IDs, and resolve active/unresolved bookings first.
 4. The shared recruiting root must permit the connected account to create folders/files and remain private. Archives use Recruiting → Job → Location → Posting → Applicant; existing application/folder identities are preserved.
 5. Save calendar/Drive changes using **Save settings**. Inspect **Delivery activity** for actual completed or failed tasks; a connected status alone is not delivery evidence.
@@ -25,15 +25,15 @@ https://jobs.aicaseleads.com/api/google/callback
 ```
 
 3. Save `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` privately in Railway Variables, with a stable backed-up `GOOGLE_TOKEN_KEY`. No secret belongs in source, browser code or chat. Replacing the encryption key invalidates saved encrypted credentials.
-4. Set `ADMIN_EMAILS` to explicitly approved owners and `EXPECTED_RECRUITING_EMAIL=sales@aicaseleads.com` for the selected sales connection. Redeploy, sign in through Google, then separately choose **Connect Google Workspace** and authorize the recruiting account. Verify its actual displayed sender.
+4. Set `ADMIN_EMAILS` to explicitly approved owners and `EXPECTED_RECRUITING_EMAIL=sales@aicaseleads.com` for the existing company storage connection. Redeploy, sign in through Google, then separately choose **Connect Google Workspace** and authorize the company storage account. Do not replace this grant to connect Maria’s mail.
 5. Save the calendar ID, timezone/window/duration and private shared Drive root. The consent grant requires Gmail send/read, Calendar and Drive scopes plus offline access. [Google web-server OAuth](https://developers.google.com/identity/protocols/oauth2/web-server).
 6. Use a controlled inbox/posting to verify delivery, availability/conflicts, Meet, booking changes/cancellation and archive identity. Complete the remaining [launch acceptance checks](LAUNCH-CHECKLIST.md), including reply/recovery and offer rehearsal.
 
-## Switch to Mariam later
+## Connect Maria’s recruiting Gmail
 
-To change the **recruiting mailbox**, the operator must update `EXPECTED_RECRUITING_EMAIL` to Mariam's exact address, redeploy, and have Mariam authorize her account in the Google connection step. Do not ask for or share her password. Her dashboard access is granted separately through **Settings → Team access**.
+Maria signs in using her invited work account, opens **Settings → My setup → My recruiting email**, and chooses **Connect recruiting email**. Consent requires Gmail send/read, sender-settings access, and verified identity; read access supports sent-message reconciliation to prevent duplicate deliveries. No Drive or Calendar scope is requested by this mail flow. Configure the approved no-reply alias in Maria’s Gmail Send mail as settings and verify a controlled delivery. No-reply replies must be rejected by Workspace routing. The owner’s dashboard shows Maria’s connection status but cannot authorize her Gmail.
 
-To change **only the calendar**, the sales connection can remain if sales has event-editing rights to Mariam's calendar. Resolve active bookings before switching and test one new invitation afterward. User OAuth is implemented; administrator domain-wide delegation is not.
+Each recruiter separately connects their interview Calendar and saves availability. Existing interviews retain their original calendar identity. Do not modify the company Drive grant or `EXPECTED_RECRUITING_EMAIL` to connect personal mail.
 
 ## Processing and recovery
 

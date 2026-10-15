@@ -61,7 +61,7 @@ export default async function TeamPage({ searchParams }: { searchParams?: Promis
             {usesGoogleStaffAuth() ? "Sign in with Google" : "Sign in to the hiring hub"}
           </a>
         )}
-        {usesGoogleStaffAuth() && <p className="team-boundary">Sign in with your own invited Google Workspace account. In Settings → My setup, connect your calendar and set interview hours. The owner manages the shared company Gmail and Drive connection.</p>}
+        {usesGoogleStaffAuth() && <p className="team-boundary">Sign in with your own invited Google Workspace account. In Settings → My setup, recruiters connect their own recruiting email and calendar. The owner manages company Drive storage and the fallback calendar separately.</p>}
         <p>
           <a className="back-link" href="/">
             Back to the applicant website
