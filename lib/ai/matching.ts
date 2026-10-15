@@ -1,3 +1,4 @@
+import { recoverLegacyMatches } from "./match-recovery";
 import { hourlyRateWindow } from "../hiring/rate-window";
 import { z } from 'zod';
 import type { HubStore } from '../hub/store';
@@ -78,6 +79,7 @@ export async function processAiMatches(deps:MatchDeps):Promise<{hasMore:boolean}
  const claimed=await store.stmt("INSERT INTO hub_settings(key,value,updated_at) VALUES('ai_match_worker_lease',?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_at=excluded.updated_at WHERE hub_settings.updated_at<? RETURNING key",JSON.stringify({lease}),until,now).first();
  if(!claimed)return {hasMore:false};
  try{
+ await recoverLegacyMatches(store,now);
  const pending=await store.stmt("SELECT c.job_id,c.form_version,c.attempts FROM hub_ai_criteria c JOIN hub_jobs j ON j.id=c.job_id AND j.form_version=c.form_version WHERE j.ai_match_enabled=1 AND c.status<>'ready' AND c.attempts<5 AND c.run_after<=? ORDER BY c.updated_at LIMIT 1",now).first<{job_id:string;form_version:number;attempts:number}>();
  if(pending){
   if(!await consumeBudget(store))return {hasMore:false};
