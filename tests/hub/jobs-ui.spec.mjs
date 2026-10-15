@@ -250,6 +250,7 @@ test("mobile blank job follows real steps, required questions and scorecard; fai
     .fill("What did you personally contribute?");
   await page.getByLabel("Question 6 requirement").selectOption("required");
   await next(page);
+  await page.getByText("Optional: manual reviewer scorecard", {exact:true}).click();
   await page
     .getByLabel("Review scorecard", { exact: true })
     .selectOption("new");
@@ -424,6 +425,7 @@ test("duplicating a posting visibly preserves its pinned rubric instead of silen
   await page.getByLabel("Work arrangement").selectOption("remote");
   await next(page);
   await next(page);
+  await page.getByText("Optional: manual reviewer scorecard", {exact:true}).click();
   const select = page.getByLabel("Review scorecard", { exact: true });
   assert.equal(await select.inputValue(), scores.templates[0].id + ":1");
   assert.match(

@@ -1431,3 +1431,12 @@
 .hub-screening-question > p:last-child { margin-bottom: 0; }
 
 .hub-screening-decisions { margin-top: 24px; }
+
+/* Remove closed disclosure descendants from layout in all engines. Native
+   details clipping alone can leave off-screen geometry in Safari. */
+.hiring-hub details:not([open]) > :not(summary) { display: none !important; }
+.hub-ai-match-choice { border: 1px solid var(--hub-line); border-radius: 8px; padding: 16px; margin-block: 20px; background: var(--hub-surface); }
+.hub-ai-match-help { display: block; margin-top: 6px; color: var(--hub-muted); font-size: 14px; }
+.hub-ai-match-explainer { padding-left: 22px; margin-block: 20px; }
+.hub-ai-match-explainer li { margin-block: 8px; }
+.hub-optional-scorecard { border-top: 1px solid var(--hub-line); padding-top: 12px; margin-top: 24px; }

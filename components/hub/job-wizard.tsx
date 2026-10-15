@@ -551,6 +551,7 @@ function Editor({
     [assessment, setAssessment] = useState(source?.assessmentPrompt || ""),
     [rules, setRules] = useState<Rule[]>(structuredClone(source?.rules || [])),
     [autoReject, setAutoReject] = useState(job?.autoReject || false),
+    [aiMatchEnabled, setAiMatchEnabled] = useState(job?.aiMatchEnabled || false),
     [rejection, setRejection] = useState(source?.rejectionTemplate || ""),
     [approved, setApproved] = useState(false),
     [rejectApproved, setRejectApproved] = useState(false),
@@ -595,6 +596,7 @@ function Editor({
     assessment,
     rules,
     autoReject,
+    aiMatchEnabled,
     rejection,
     choice,
     rubric,
@@ -627,6 +629,7 @@ function Editor({
       setAssessment(draft.assessment);
       setRules(draft.rules.map((r) => ({ ...r, value: r.value ?? "" })));
       setAutoReject(draft.autoReject);
+      setAiMatchEnabled(draft.aiMatchEnabled || false);
       setRejection(draft.rejection);
       setChoice(draft.choice);
       setRubric(draft.rubric);
@@ -843,6 +846,7 @@ function Editor({
         fields,
         rules,
         autoReject,
+        aiMatchEnabled,
         ...(rejection.trim() ? { rejectionTemplate: rejection } : {}),
         assessmentPrompt: assessment,
         archiveProject:
@@ -937,7 +941,7 @@ function Editor({
               [
                 "Job details",
                 "Application form",
-                "Review scorecard",
+                "AI review",
                 "Review and publish",
               ][step]
             }
@@ -960,7 +964,7 @@ function Editor({
           paddingLeft: "1.5rem",
         }}
       >
-        {["Details", "Application", "Scorecard", "Publish"].map((label, i) => (
+        {["Details", "Application", "AI review", "Publish"].map((label, i) => (
           <li key={label} aria-current={i === step ? "step" : undefined}>
             <button
               type="button"
@@ -1333,12 +1337,32 @@ function Editor({
         )}
         {step === 2 && (
           <section className="hub-card">
-            <h3>How will reviewers compare applicants?</h3>
+            <h3>Find the strongest matches for this job</h3>
             <p>
-              Reviewers score job-related evidence from 1 to 5. Grades come from
-              their scorecards; AI provides optional supporting evidence and
-              does not rank or reject people.
+              AI compares each applicant’s resume and application answers with the
+              job-related requirements in your description. You do not need to build
+              a scorecard.
             </p>
+            <label className="hub-checkbox hub-ai-match-choice">
+              <input type="checkbox" checked={aiMatchEnabled}
+                onChange={(e) => setAiMatchEnabled(e.target.checked)} />
+              <span><strong>Use AI to score and rank applicants for this job</strong>
+                <span className="hub-ai-match-help">Allow the connected AI provider to review resumes and answers for this job.</span>
+              </span>
+            </label>
+            <ul className="hub-ai-match-explainer">
+              <li>See a match score, supporting evidence and missing information.</li>
+              <li>Compare applicants within this job, with the strongest matches first.</li>
+              <li>Your team decides who moves forward. AI scores do not reject applicants.</li>
+            </ul>
+            <p className="hub-muted">
+              AI review needs the company’s AI connection in Settings. Scores appear
+              after processing; unreadable or missing evidence is flagged for review.
+              Minimum-answer rejection rules from the Application step work separately.
+            </p>
+            <details className="hub-optional-scorecard">
+              <summary>Optional: manual reviewer scorecard</summary>
+              <p className="hub-muted">For teams that also want to record interview or portfolio ratings. This does not control the AI match score.</p>
             <Field label="Review scorecard">
               <select
                 value={choice}
@@ -1502,6 +1526,7 @@ function Editor({
                 leaving the job setup.
               </p>
             )}
+            </details>
             <details>
               <summary>Optional: assessment instructions</summary>
               <Field label="Assessment instructions">
@@ -1554,9 +1579,12 @@ function Editor({
                 ))}
               </ul>
               <p>
-                Review:{" "}
+                AI applicant matching: {aiMatchEnabled ? "Enabled after saving" : "Off"}
+              </p>
+              <p>
+                Optional reviewer scorecard:{" "}
                 {choice === "none"
-                  ? "Manual review"
+                  ? "None"
                   : choice === "new"
                     ? rubric.name
                     : reviewCatalog.templates.find(
