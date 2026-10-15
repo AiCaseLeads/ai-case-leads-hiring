@@ -272,6 +272,7 @@ export async function handleJobSetup(
       JSON.stringify(job.fields),
       JSON.stringify(job.rules),
       job.autoReject ? 1 : 0,
+      (job.aiMatchEnabled ?? previous?.aiMatchEnabled ?? false) ? 1 : 0,
       rejectionTemplate,
       job.assessmentPrompt || null,
       job.archiveProject?.trim() || null,
@@ -281,7 +282,7 @@ export async function handleJobSetup(
     if (previous)
       statements.push(
         store.stmt(
-          "UPDATE hub_jobs SET title=?,slug=?,department=?,description_html=?,location=?,status=?,fields_json=?,rules_json=?,auto_reject=?,rejection_template=?,assessment_prompt=?,archive_project=?,archive_country=?,hiring_round=?,form_version=form_version+1,updated_at=? WHERE id=?",
+          "UPDATE hub_jobs SET title=?,slug=?,department=?,description_html=?,location=?,status=?,fields_json=?,rules_json=?,auto_reject=?,ai_match_enabled=?,rejection_template=?,assessment_prompt=?,archive_project=?,archive_country=?,hiring_round=?,form_version=form_version+1,updated_at=? WHERE id=?",
           ...values,
           now,
           jobId,
@@ -290,7 +291,7 @@ export async function handleJobSetup(
     else
       statements.push(
         store.stmt(
-          "INSERT INTO hub_jobs(id,title,slug,department,description_html,location,status,fields_json,rules_json,auto_reject,rejection_template,assessment_prompt,archive_project,archive_country,hiring_round,form_version,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,?,?)",
+          "INSERT INTO hub_jobs(id,title,slug,department,description_html,location,status,fields_json,rules_json,auto_reject,ai_match_enabled,rejection_template,assessment_prompt,archive_project,archive_country,hiring_round,form_version,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,?,?)",
           jobId,
           ...values,
           now,

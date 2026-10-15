@@ -42,11 +42,11 @@ export function validateReview(value:unknown,sources:Sources,criteria:string[]):
   if(invalid||quotes.some(c=>!sources[c.source].includes(c.quote)))throw new HiringError("ai_invalid_response",502,"The AI response contained unsupported evidence. No review was saved.");
   return review;
 }
-export async function generateReview(key:string,sources:Sources,criteria:string[],fetcher:typeof fetch=fetch):Promise<Review>{
+export async function generateReview(key:string,sources:Sources,criteria:string[],fetcher:typeof fetch=fetch,matching=false):Promise<Review>{
   try{
     const response=await fetcher("https://openrouter.ai/api/v1/chat/completions",{
       method:"POST",redirect:"error",signal:AbortSignal.timeout(45000),headers:{Authorization:`Bearer ${key}`,"Content-Type":"application/json"},
-      body:JSON.stringify({model:MODEL,provider:{only:["OpenAI"],allow_fallbacks:false,data_collection:"deny",require_parameters:true},max_tokens:5000,response_format:{type:"json_schema",json_schema:{name:"hiring_evidence",strict:true,schema:jsonSchema}},messages:[{role:"system",content:system},{role:"user",content:JSON.stringify({criteria,sources})}]})
+      body:JSON.stringify({model:MODEL,provider:{only:["OpenAI"],allow_fallbacks:false,data_collection:"deny",require_parameters:true},max_tokens:5000,response_format:{type:"json_schema",json_schema:{name:"hiring_evidence",strict:true,schema:jsonSchema}},messages:[{role:"system",content:matching ? `${system} For this evidence-match review, evidence_found means the supplied evidence clearly satisfies the COMPLETE criterion, including any explicit minimum number, duration or required skill. Mere mention or related but insufficient experience is not sufficient. Use not_found if evidence is absent, below the stated minimum, ambiguous or does not establish the complete requirement. Do not infer proficiency from a title or inflate years. Do not count demographic, personal or contact facts. The application and resume remain unverified claims.` : system},{role:"user",content:JSON.stringify({criteria,sources})}]})
     });
     if(!response.ok){await response.body?.cancel();throw new HiringError("ai_provider_unavailable",502,"AI review is unavailable. Check the OpenRouter key, balance, and model access. No review was saved.");}
     const body=JSON.parse(new TextDecoder().decode(await boundedBytes({headers:response.headers,body:response.body} as Request,128*1024)));

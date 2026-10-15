@@ -63,6 +63,7 @@ export const jobInput = z
     fields: z.array(field).max(100),
     rules: z.array(rule).max(100),
     autoReject: z.boolean(),
+    aiMatchEnabled: z.boolean().optional(),
     rejectionTemplate: z.string().trim().min(1).max(10000).optional(),
     assessmentPrompt: z.string().max(20000).optional(),
   })

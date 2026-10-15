@@ -50,7 +50,7 @@ function applicationFilters(request: Request) {
         );
       if ((qualification && !["pass", "review", "fail"].includes(qualification)) ||
           (grade && !["reviewed", "ungraded"].includes(grade)) ||
-          (sort && sort !== "grade_desc") || (duplicate && duplicate !== "true") ||
+          (sort && !["grade_desc","ai_match_desc"].includes(sort)) || (duplicate && duplicate !== "true") ||
           ((grade || sort) && !jobId))
         throw new HiringError("invalid_filter", 422, "Choose one role before comparing reviewer grades, and check the application filters.");
       return {
@@ -61,7 +61,7 @@ function applicationFilters(request: Request) {
         page: Number(page),
         qualification: qualification as "pass" | "review" | "fail" | undefined,
         grade: grade as "reviewed" | "ungraded" | undefined,
-        sort: sort as "grade_desc" | undefined,
+        sort: sort as "grade_desc" | "ai_match_desc" | undefined,
         duplicate: duplicate === "true" ? true : undefined,
       };
 }

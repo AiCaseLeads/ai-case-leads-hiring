@@ -3,6 +3,8 @@ import {
   check,
   index,
   integer,
+  real,
+  primaryKey,
   sqliteTable,
   text,
   uniqueIndex,
@@ -48,6 +50,7 @@ export const hubJobs = sqliteTable(
     fieldsJson: text("fields_json").notNull().default("[]"),
     rulesJson: text("rules_json").notNull().default("[]"),
     autoReject: integer("auto_reject").notNull().default(0),
+    aiMatchEnabled: integer("ai_match_enabled").notNull().default(0),
     rejectionTemplate: text("rejection_template").notNull(),
     assessmentPrompt: text("assessment_prompt"),
     archiveProject: text("archive_project"),
@@ -288,3 +291,11 @@ export const hubScorecards = sqliteTable(
     ),
   ],
 );
+
+export const hubAiCriteria = sqliteTable("hub_ai_criteria", {
+ jobId:text("job_id").notNull().references(()=>hubJobs.id),formVersion:integer("form_version").notNull(),
+ status:text("status").notNull().default("pending"),criteriaJson:text("criteria_json"),attempts:integer("attempts").notNull().default(0),runAfter:integer("run_after").notNull().default(0),leaseToken:text("lease_token"),leaseUntil:integer("lease_until"),error:text("error"),updatedAt:integer("updated_at").notNull()
+},t=>[primaryKey({columns:[t.jobId,t.formVersion]})]);
+export const hubAiMatches = sqliteTable("hub_ai_matches", {
+ applicationId:text("application_id").notNull().references(()=>hubApplications.id),jobId:text("job_id").notNull().references(()=>hubJobs.id),formVersion:integer("form_version").notNull(),status:text("status").notNull().default("pending"),score:real("score"),reviewJson:text("review_json"),warningsJson:text("warnings_json").notNull().default("[]"),attempts:integer("attempts").notNull().default(0),runAfter:integer("run_after").notNull().default(0),leaseToken:text("lease_token"),leaseUntil:integer("lease_until"),error:text("error"),updatedAt:integer("updated_at").notNull()
+},t=>[primaryKey({columns:[t.applicationId,t.formVersion]}),index("hub_ai_matches_queue").on(t.status,t.runAfter,t.updatedAt),index("hub_ai_matches_job").on(t.jobId,t.formVersion,t.score)]);

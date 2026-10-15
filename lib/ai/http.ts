@@ -48,7 +48,7 @@ async function limit(store:HubStore,key:string,max:number){
   const result=await store.stmt("INSERT INTO hiring_rate_limits(key_hash,window,attempts) VALUES (?,?,1) ON CONFLICT(key_hash,window) DO UPDATE SET attempts=attempts+1 WHERE attempts<? RETURNING attempts",await sha256(key),Math.floor(Date.now()/3600000),max).first();
   if(!result)throw new HiringError("ai_rate_limited",429,"AI review's hourly limit was reached. Continue manual review or try later.");
 }
-function answerSource(application:Awaited<ReturnType<HubStore["getApplication"]>>):string{
+export function answerSource(application:Awaited<ReturnType<HubStore["getApplication"]>>):string{
   // Normalize field identifiers before matching whole words: "age" must not
   // remove job evidence such as "languages" or "project_management".
   const skip=/\b(?:name|email|phone|address|birth|birthday|birthdate|dob|age|gender|sex|religion|race|ethnicity|ethnic|disability|disabilities|disabled|health|marital|nationality|citizen|citizenship)\b/i;

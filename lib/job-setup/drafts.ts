@@ -31,6 +31,7 @@ export const draftStateSchema = z
     assessment: z.string().max(20000),
     rules: z.array(draftRule).max(100),
     autoReject: z.boolean(),
+    aiMatchEnabled: z.boolean().optional(),
     rejection: z.string().max(10000),
     choice: z.string().max(200),
     rubric: z

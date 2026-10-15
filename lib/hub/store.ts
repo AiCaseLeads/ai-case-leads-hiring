@@ -3,6 +3,7 @@ import { jobNotificationStatements } from "../job-team/service";
 import { canonicalJson, privateToken, sha256 } from "../hiring/crypto";
 import { HiringError } from "../hiring/errors";
 import { validateAnswers, MAX_APPLICATION_FILE_BYTES } from "../hiring/validation";
+import { matchDetail } from "../ai/matching";
 import { gradeForScorecards } from "./grading";
 import type {
   ApplicationInput,
@@ -38,7 +39,7 @@ export const DEFAULT_REJECTION =
 type Bind = string | number | null;
 export type ApplicationFilters = {
   q?:string;jobId?:string;stage?:string;assignee?:string;qualification?:"pass"|"review"|"fail";
-  grade?:"reviewed"|"ungraded";sort?:"grade_desc";duplicate?:boolean;page?:number;
+  grade?:"reviewed"|"ungraded";sort?:"grade_desc"|"ai_match_desc";duplicate?:boolean;page?:number;
 };
 const SUMMARY_COLUMNS = "id,revision,name,email,job_id,job_title,stage,qualification,assignee,created_at,updated_at,source,drive_folder_url";
 export type HubOptions = {
@@ -49,6 +50,7 @@ export type HubOptions = {
   googleFingerprint?: string;
 };
 type JobRow = {
+  ai_match_enabled: number;
   id: string;
   slug: string;
   title: string;
@@ -153,6 +155,7 @@ function job(row: JobRow): HubJob {
     title: row.title,
     department: row.department,
     descriptionHtml: row.description_html,
+    aiMatchEnabled: row.ai_match_enabled === 1,
     ...(row.location ? { location: row.location } : {}),
     status: row.status,
     fields: decode(row.fields_json, []),
@@ -327,7 +330,7 @@ export class HubStore {
     try {
       if (previous) {
         const result = await this.stmt(
-          "UPDATE hub_jobs SET title=?,slug=?,department=?,description_html=?,location=?,status=?,fields_json=?,rules_json=?,auto_reject=?,rejection_template=?,assessment_prompt=?,archive_project=?,archive_country=?,hiring_round=?,form_version=form_version+1,updated_at=? WHERE id=? AND form_version=?",
+          "UPDATE hub_jobs SET title=?,slug=?,department=?,description_html=?,location=?,status=?,fields_json=?,rules_json=?,auto_reject=?,ai_match_enabled=?,rejection_template=?,assessment_prompt=?,archive_project=?,archive_country=?,hiring_round=?,form_version=form_version+1,updated_at=? WHERE id=? AND form_version=?",
           input.title,
           input.slug,
           input.department,
@@ -337,6 +340,7 @@ export class HubStore {
           JSON.stringify(input.fields),
           JSON.stringify(input.rules),
           input.autoReject ? 1 : 0,
+          (input.aiMatchEnabled ?? previous?.aiMatchEnabled ?? false) ? 1 : 0,
           rejectionTemplate,
           input.assessmentPrompt || null,
           input.archiveProject?.trim() || null,
@@ -349,7 +353,7 @@ export class HubStore {
         if (result.meta.changes !== 1) throw conflict();
       } else
         await this.stmt(
-          "INSERT INTO hub_jobs (id,title,slug,department,description_html,location,status,fields_json,rules_json,auto_reject,rejection_template,assessment_prompt,archive_project,archive_country,hiring_round,form_version,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,?,?)",
+          "INSERT INTO hub_jobs (id,title,slug,department,description_html,location,status,fields_json,rules_json,auto_reject,ai_match_enabled,rejection_template,assessment_prompt,archive_project,archive_country,hiring_round,form_version,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,?,?)",
           jobId,
           input.title,
           input.slug,
@@ -360,6 +364,7 @@ export class HubStore {
           JSON.stringify(input.fields),
           JSON.stringify(input.rules),
           input.autoReject ? 1 : 0,
+          (input.aiMatchEnabled ?? false) ? 1 : 0,
           rejectionTemplate,
           input.assessmentPrompt || null,
           input.archiveProject?.trim() || null,
@@ -738,7 +743,7 @@ export class HubStore {
     return row;
   }
   private applicationSelection(filters:ApplicationFilters) {
-    if ((filters.grade || filters.sort === "grade_desc") && !filters.jobId)
+    if ((filters.grade || filters.sort) && !filters.jobId)
       throw new HiringError("job_required_for_grading",422,"Choose one role before filtering or sorting reviewer grades.");
     const where:string[] = [], values:Bind[] = [];
     if(filters.q) {where.push("(instr(lower(a.name),lower(?))>0 OR instr(lower(a.email),lower(?))>0)");values.push(filters.q,filters.q);}
@@ -747,10 +752,12 @@ export class HubStore {
     if(filters.duplicate) where.push("EXISTS (SELECT 1 FROM hub_applications duplicate WHERE duplicate.email=a.email AND duplicate.id<>a.id)");
     const graded = !!filters.grade || filters.sort === "grade_desc";
     const cte = graded ? "WITH latest_scores AS (SELECT c.application_id,c.score,row_number() OVER (PARTITION BY c.application_id,lower(trim(c.actor)) ORDER BY c.created_at DESC,c.id DESC) AS n FROM hub_scorecards c JOIN hub_applications j ON j.id=c.application_id WHERE j.job_id=? AND c.score BETWEEN 1 AND 5 AND trim(c.actor)<>''), grades AS (SELECT application_id,AVG(score) AS average_score FROM latest_scores WHERE n=1 GROUP BY application_id) " : "";
-    const join = graded ? " LEFT JOIN grades g ON g.application_id=a.id" : "";
+    let join = graded ? " LEFT JOIN grades g ON g.application_id=a.id" : "";
     if(filters.grade) where.push(filters.grade === "reviewed" ? "g.average_score IS NOT NULL" : "g.average_score IS NULL");
     const clause = where.length ? ` WHERE ${where.join(" AND ")}` : "";
-    const order = filters.sort === "grade_desc" ? "CASE WHEN a.stage NOT IN ('Rejected','Withdrawn','Hired') AND g.average_score IS NOT NULL THEN 0 WHEN a.stage NOT IN ('Rejected','Withdrawn','Hired') THEN 1 ELSE 2 END,g.average_score DESC,a.created_at DESC,a.id" : "a.created_at DESC,a.id";
+    join += " LEFT JOIN hub_jobs match_job ON match_job.id=a.job_id LEFT JOIN hub_ai_matches match_result ON match_result.application_id=a.id AND match_result.form_version=match_job.form_version AND match_job.ai_match_enabled=1";
+    const matchReady = "match_result.status='ready' AND match_result.score IS NOT NULL";
+    const order = filters.sort === "ai_match_desc" ? `CASE WHEN a.stage NOT IN ('Rejected','Withdrawn','Hired') AND ${matchReady} THEN 0 WHEN a.stage NOT IN ('Rejected','Withdrawn','Hired') THEN 1 ELSE 2 END,CASE WHEN ${matchReady} THEN match_result.score ELSE NULL END DESC,a.created_at DESC,a.id` : filters.sort === "grade_desc" ? "CASE WHEN a.stage NOT IN ('Rejected','Withdrawn','Hired') AND g.average_score IS NOT NULL THEN 0 WHEN a.stage NOT IN ('Rejected','Withdrawn','Hired') THEN 1 ELSE 2 END,g.average_score DESC,a.created_at DESC,a.id" : "a.created_at DESC,a.id";
     return {cte,join,clause,order,values:graded?[filters.jobId!,...values]:values};
   }
   private async summaries(rows:ApplicationRow[]):Promise<ApplicationSummary[]> {
@@ -762,7 +769,15 @@ export class HubStore {
       const selected = await this.rows<{id:string;application_id:string;actor:string;score:number;created_at:number}>(`SELECT id,application_id,actor,score,created_at FROM hub_scorecards WHERE application_id IN (${ids.map(()=>"?").join(",")})`,...ids);
       for(const card of selected) {const bucket=cards.get(card.application_id)||[];bucket.push({id:card.id,actor:card.actor,score:card.score,criteria:"",text:"",createdAt:card.created_at});cards.set(card.application_id,bucket);}
     }
-    return rows.map((row)=>({...summary(row),grade:gradeForScorecards(cards.get(row.id)||[])}));
+    const aiConfig=await this.setting<{enabled:boolean;sealedKey?:string}>("ai_openrouter_config_v1",{enabled:false});
+    const aiAvailable=!!aiConfig.enabled&&!!aiConfig.sealedKey;
+    const matches = new Map<string, import("../ai/matchtypes").AiMatchSummary>();
+    for(let offset=0;offset<rows.length;offset+=100){
+      const ids=rows.slice(offset,offset+100).map(row=>row.id);
+      const selected=await this.rows<{id:string;enabled:number;version:number;status:string|null;score:number|null;updated_at:number|null}>(`SELECT a.id,j.ai_match_enabled AS enabled,j.form_version AS version,m.status,m.score,m.updated_at FROM hub_applications a JOIN hub_jobs j ON j.id=a.job_id LEFT JOIN hub_ai_matches m ON m.application_id=a.id AND m.form_version=j.form_version WHERE a.id IN (${ids.map(()=>"?").join(",")})`,...ids);
+      for(const m of selected)matches.set(m.id,{status:!m.enabled?'disabled':m.status==='ready'?'ready':!aiAvailable?'setup_required':m.status==='needs_review'?'needs_review':m.status==='failed'?'failed':'pending',score:m.enabled&&m.status==='ready'?m.score:null,version:m.version,updatedAt:m.updated_at});
+    }
+    return rows.map((row)=>({...summary(row),grade:gradeForScorecards(cards.get(row.id)||[]),aiMatch:matches.get(row.id)}));
   }
   async applications(filters:ApplicationFilters={}) {
     const selected=this.applicationSelection(filters), page=Math.max(1,Math.min(100000,filters.page||1)),pageSize=30;
@@ -798,7 +813,7 @@ export class HubStore {
     const duplicateCount = await this.stmt("SELECT COUNT(*) AS count FROM hub_applications WHERE email=?",app.email).first<{count:number}>();
     const cards = scorecards.map((card) => ({id:card.id,actor:card.actor,score:card.score,criteria:card.criteria,text:card.text,createdAt:card.created_at}));
     return {...summary(app),archiveProject:app.archive_project || undefined,archiveCountry:app.archive_country || undefined,hiringRound:app.hiring_round || undefined,revision:app.revision,formVersion:app.form_version,utmData:decode(app.utm_json,{}),
-      duplicateEmail:(duplicateCount?.count || 1)>1,duplicateApplicationCount:duplicateCount?.count || 1,grade:gradeForScorecards(cards),
+      duplicateEmail:(duplicateCount?.count || 1)>1,duplicateApplicationCount:duplicateCount?.count || 1,grade:gradeForScorecards(cards),aiMatch:await matchDetail(this,id),
       answers:decode(app.answers_json,[]),fields:decode(app.fields_json,[]),qualificationEvidence:decode(app.qualification_json,[]),
       files:files.map((file) => ({id:file.id,filename:file.filename,contentType:file.content_type,size:file.size,url:`/api/files/${encodeURIComponent(file.id)}`})),
       history:events,notes:events.filter((event) => event.type === "note"),
