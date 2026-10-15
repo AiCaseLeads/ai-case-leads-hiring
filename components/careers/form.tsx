@@ -1,4 +1,5 @@
 "use client";
+import { SecurityCheck } from "./security-check";
 import { captureAttribution } from "./attribution";
 import { useEffect, useRef, useState } from "react";
 import {
@@ -66,6 +67,9 @@ export function ApplicationForm({
   const submissionKey = useRef<string>(""),
     pendingPayload = useRef<Payload | null>(null),
     inFlight = useRef(false);
+  const [securityToken, setSecurityToken] = useState("");
+  const [securityRefresh, setSecurityRefresh] = useState(0);
+  const verification = useRef<{grant:string;expiresAt:number}|null>(null);
   const recoveryKey = `aicl:submission:${job.id}`;
   // Restore UI from an external browser recovery journal before enabling writes.
   /* eslint-disable react-hooks/set-state-in-effect */
@@ -184,6 +188,17 @@ export function ApplicationForm({
     let attemptedSubmission = false;
     try {
       if (!submissionKey.current) submissionKey.current = crypto.randomUUID();
+      if (!uncertain && (!verification.current || verification.current.expiresAt < Date.now())) {
+        if (!securityToken) throw new Error("Please complete the security check before continuing.");
+        if (securityToken === "disabled") verification.current = {grant:"",expiresAt:Date.now()+60000};
+        else {
+          const check = await fetch("/api/application-verification",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({token:securityToken,submissionKey:submissionKey.current,jobId:job.id})});
+          const checked = await check.json() as {grant:string;expiresAt:number};
+          setSecurityToken(""); setSecurityRefresh(value=>value+1);
+          if(!check.ok) throw new Error(readMessage(checked,"Security verification failed. Please try again."));
+          verification.current = checked;
+        }
+      }
       let payload = pendingPayload.current;
       if (!payload) {
         const answers: { path: string; value: Value }[] = [];
@@ -194,7 +209,7 @@ export function ApplicationForm({
             setStatus("Uploading your resume and files…");
             const uploadResponse = await fetch("/api/uploads", {
               method: "POST",
-              headers: { "Content-Type": "application/json" },
+              headers: { "Content-Type": "application/json", "x-application-verification": verification.current?.grant || "", "x-submission-key": submissionKey.current },
               body: JSON.stringify({
                 jobPostingId: job.id,
                 fieldPath: field.path,
@@ -261,7 +276,7 @@ export function ApplicationForm({
       attemptedSubmission = true;
       const response = await fetch("/api/applications", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "x-application-verification": verification.current?.grant || "", "x-submission-key": submissionKey.current },
         body: JSON.stringify(payload),
       });
       const body = (await response.json()) as {
@@ -294,6 +309,11 @@ export function ApplicationForm({
         return;
       }
       if (!response.ok) {
+        if (response.status === 403) {
+          verification.current = null;
+          setSecurityToken(""); setSecurityRefresh(value=>value+1);
+          attemptedSubmission = false; setUncertain(false);
+        }
         // Only a confirmed validation rejection is safe to edit and retry with a new key.
         if ([400, 404, 413, 422].includes(response.status)) {
           if (body.error?.fieldErrors) setErrors(body.error.fieldErrors);
@@ -651,6 +671,7 @@ export function ApplicationForm({
           </div>
         ))}
       </fieldset>
+      {(enabled || uncertain) && <SecurityCheck onToken={setSecurityToken} refresh={securityRefresh} />}
       {error && (
         <div className="submit-error" role="alert">
           <AlertCircle size={18} />

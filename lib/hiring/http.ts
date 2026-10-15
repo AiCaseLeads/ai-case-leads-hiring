@@ -1,3 +1,4 @@
+import { requireGrant, verifyChallenge, spamStatus } from "./antispam";
 import { privateToken, sha256 } from "./crypto";
 import { HiringError } from "./errors";
 import type { HiringProvider, HiringStore } from "./types";
@@ -85,6 +86,7 @@ export async function postUpload(request: Request, deps: HiringDependencies): Pr
     if (!session) throw new HiringError("session_required", 409, "Refresh the application page before uploading your file.");
     await rateLimit(request, deps, session, "upload");
     const input = parseUpload(await readJson(request));
+    await requireGrant(request.headers.get("x-application-verification"),session,request.headers.get("x-submission-key") || "",input.jobPostingId);
     return jsonResponse(await service(deps).upload(input, session));
   } catch (error) { return errorResponse(error); }
 }
@@ -95,6 +97,12 @@ export async function postApplication(request: Request, deps: HiringDependencies
     if (!session) throw new HiringError("session_required", 409, "Refresh the application page before submitting.");
     await rateLimit(request, deps, session, "application");
     const input = parseApplication(await readJson(request));
+    const existing = await deps.store?.find(await sha256(input.submissionKey));
+    if (!existing || existing.sessionHash !== await sha256(session)) {
+      await requireGrant(request.headers.get("x-application-verification"),session,input.submissionKey,input.jobPostingId);
+      const email = input.fieldSubmissions.find(field => /email/i.test(field.path))?.value;
+      if (typeof email === "string" && deps.store && !await deps.store.takeRateLimit(await sha256(`application:email:${email.trim().toLowerCase()}`),Math.floor(Date.now()/3600000),10)) throw new HiringError("rate_limited",429,"Too many applications for this email address. Please try again later.");
+    }
     const result = deps.customSubmit ? await deps.customSubmit(input, session) : await service(deps).submit(input, session);
     return jsonResponse(result, result.status === "pending" ? 202 : result.status === "accepted" ? 201 : 200);
   } catch (error) { return errorResponse(error); }
@@ -106,4 +114,17 @@ export async function getReceipt(receipt: string, deps: HiringDependencies): Pro
     if (!record) throw new HiringError("receipt_not_found", 404, "This confirmation link is unavailable.");
     return jsonResponse({ status: record.status, ...(record.status === "accepted" ? { jobTitle: record.jobTitle, submittedAt: new Date(record.createdAt).toISOString() } : {}) });
   } catch (error) { return errorResponse(error); }
+}
+
+export async function getVerification() { return jsonResponse(spamStatus()); }
+export async function postVerification(request: Request, deps: HiringDependencies) {
+  try {
+    assertSameOrigin(request);
+    const session = readSession(request);
+    if (!session) throw new HiringError("session_required",409,"Refresh the application page before continuing.");
+    await rateLimit(request,deps,session,"verification");
+    const body = await readJson(request) as { token?: unknown; submissionKey?: unknown; jobId?: unknown };
+    if (typeof body.submissionKey !== "string" || !/^[a-zA-Z0-9_-]{16,128}$/.test(body.submissionKey) || typeof body.jobId !== "string" || !body.jobId || body.jobId.length > 200) throw new HiringError("invalid_request",400,"Reload the application and try again.");
+    return jsonResponse(await verifyChallenge(body.token,session,body.submissionKey,body.jobId,new URL(request.url).hostname));
+  } catch(error) { return errorResponse(error); }
 }
