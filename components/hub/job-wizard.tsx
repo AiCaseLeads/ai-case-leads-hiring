@@ -1,4 +1,7 @@
 "use client";
+import { useJobRecovery } from "./job-recovery";
+import { requestDraftNavigation } from "./draft-navigation";
+import type { JobRecoveryState } from "@/lib/job-setup/drafts";
 import { hasDescriptionText } from "@/lib/job-description";
 import { DescriptionEditor } from "./description-editor";
 import { SafeDescription } from "../careers/safe-description";
@@ -427,6 +430,7 @@ export function JobWizard({
   catalog,
   scorecards,
   chooseStart,
+  active = true,
   onChoose,
   cancel,
   done,
@@ -438,6 +442,7 @@ export function JobWizard({
   catalog: SetupCatalog;
   scorecards: Catalog;
   chooseStart: boolean;
+  active?: boolean;
   onChoose: (s: JobStart) => void;
   cancel: () => void;
   done: (m: string) => void;
@@ -453,10 +458,11 @@ export function JobWizard({
           back={cancel}
         />
       </div>
-      {(!chooseStart || start || job) && (
+      {!chooseStart && (
         <div hidden={chooseStart}>
           <Editor
             key={job?.id || JSON.stringify(start)}
+            active={active && !chooseStart}
             job={job}
             start={start || { kind: "blank" }}
             jobs={jobs}
@@ -473,6 +479,7 @@ export function JobWizard({
 }
 
 function Editor({
+  active,
   job,
   start,
   jobs,
@@ -482,6 +489,7 @@ function Editor({
   done,
   onManageScorecards,
 }: {
+  active: boolean;
   job?: HubJob;
   start: JobStart;
   jobs: HubJob[];
@@ -557,12 +565,90 @@ function Editor({
     }),
     [error, setError] = useState(""),
     [questionPreset, setQuestionPreset] = useState("");
-  const [creationId] = useState(() => crypto.randomUUID());
+  const [creationId, setCreationId] = useState(() => crypto.randomUUID());
   const mutation = useHubMutation();
-  const [postingLabel] = useState(
+  const [postingLabel, setPostingLabel] = useState(
     () => `${new Date().toISOString().slice(0, 10)} ${creationId.slice(0, 8)}`,
   );
   const hiringTeam = useJobTeam(job?.id);
+  const [draftFormVersion, setDraftFormVersion] = useState(
+    job?.formVersion ?? null,
+  );
+  const [draftTeamRevision, setDraftTeamRevision] = useState<number | null>(
+    null,
+  );
+  const sourceId =
+    start.kind === "duplicate"
+      ? start.source.id
+      : start.kind === "template"
+        ? start.template.id
+        : start.kind === "request"
+          ? start.request.id
+          : "";
+  const recoveryState: JobRecoveryState = {
+    title,
+    description,
+    location,
+    fields,
+    department,
+    customSlug,
+    assessment,
+    rules,
+    autoReject,
+    rejection,
+    choice,
+    rubric,
+    team: hiringTeam.draft,
+    teamRevision:
+      draftTeamRevision ?? hiringTeam.resource.data?.config?.revision ?? 0,
+    expectedBinding,
+    step,
+    creationId,
+    postingLabel,
+    formVersion: draftFormVersion,
+    startKind: start.kind,
+    sourceId,
+  };
+  const recovery = useJobRecovery(
+    job?.id || `new:${start.kind}:${sourceId}`,
+    recoveryState,
+    (draft) => {
+      if (
+        draft.formVersion === null &&
+        jobs.some((saved) => saved.id === draft.creationId)
+      )
+        return false;
+      setTitle(draft.title);
+      setDescription(draft.description);
+      setLocation(draft.location);
+      setFields(draft.fields);
+      setDepartment(draft.department);
+      setCustomSlug(draft.customSlug);
+      setAssessment(draft.assessment);
+      setRules(draft.rules.map((r) => ({ ...r, value: r.value ?? "" })));
+      setAutoReject(draft.autoReject);
+      setRejection(draft.rejection);
+      setChoice(draft.choice);
+      setRubric(draft.rubric);
+      hiringTeam.setDraft(draft.team);
+      setDraftTeamRevision(draft.teamRevision);
+      setExpectedBinding(draft.expectedBinding);
+      setStep(draft.step);
+      highestValidatedStep.current = draft.step;
+      setCreationId(draft.creationId);
+      setPostingLabel(draft.postingLabel);
+      setDraftFormVersion(draft.formVersion);
+      setApproved(false);
+      setRejectApproved(false);
+      const url = new URL(window.location.href);
+      url.searchParams.set("jobStep", String(draft.step));
+      window.history.replaceState(window.history.state, "", url);
+    },
+    !!hiringTeam.draft,
+    active,
+  );
+  const leaveEditor = () => requestDraftNavigation(cancel);
+
   const archiveCountry =
       job?.archiveCountry || location?.country || "International",
     slug =
@@ -744,7 +830,9 @@ function Editor({
     const payload = {
       action: "save",
       creationId,
-      ...(job ? { jobId: job.id, formVersion: job.formVersion } : {}),
+      ...(job
+        ? { jobId: job.id, formVersion: draftFormVersion ?? job.formVersion }
+        : {}),
       job: {
         title,
         slug,
@@ -771,7 +859,9 @@ function Editor({
         ? {
             hiringTeam: hiringTeam.draft,
             expectedTeamRevision:
-              hiringTeam.resource.data.config?.revision ?? 0,
+              draftTeamRevision ??
+              hiringTeam.resource.data.config?.revision ??
+              0,
           }
         : {}),
       scorecard: binding,
@@ -784,21 +874,56 @@ function Editor({
       payload,
       "",
     );
-    if (result)
+    if (result) {
+      recovery.complete();
+      const cleared = await recovery.clear();
       done(
-        status === "open"
+        (status === "open"
           ? "Job published. Its public page is ready for applicants when intake is enabled."
           : status === "closed"
             ? "Job closed. Previous applicants and files remain saved."
-            : "Draft saved. Reopen it whenever you’re ready to continue.",
+            : "Draft saved. Reopen it whenever you’re ready to continue.") +
+          (cleared
+            ? ""
+            : " The job saved successfully, but its private recovery copy could not be removed. An older copy will not replace the latest saved job."),
       );
+    }
   }
   return (
     <section aria-labelledby="wizard-title">
+      {recovery.dialog}
+      <div className="hub-draft-status" role="status">
+        <span>{recovery.message}</span>
+        {recovery.ready && (
+          <button
+            type="button"
+            className="hub-text-button"
+            disabled={recovery.busy || mutation.busy}
+            onClick={() => void recovery.save()}
+          >
+            {recovery.busy ? "Saving draft…" : "Save progress now"}
+          </button>
+        )}
+      </div>
+      {recovery.error && (
+        <p role="alert" className="hub-notice">
+          {recovery.error}
+          {!recovery.ready && (
+            <button
+              type="button"
+              className="hub-text-button"
+              onClick={recovery.retry}
+            >
+              Retry loading draft
+            </button>
+          )}
+        </p>
+      )}
+
       <button
         className="hub-text-button hub-back"
         disabled={mutation.busy}
-        onClick={cancel}
+        onClick={leaveEditor}
       >
         <ArrowLeft size={16} /> Back to jobs
       </button>
@@ -881,7 +1006,7 @@ function Editor({
           Review latest assignment
         </button>
       )}
-      <fieldset disabled={mutation.busy}>
+      <fieldset disabled={mutation.busy || !recovery.ready}>
         {step === 0 && (
           <>
             <section className="hub-card">
@@ -924,7 +1049,7 @@ function Editor({
               >
                 <DescriptionEditor
                   data-field-control
-                  disabled={mutation.busy}
+                  disabled={mutation.busy || !recovery.ready}
                   value={description}
                   onChange={(value) => {
                     setDescription(value);
@@ -1533,13 +1658,30 @@ function Editor({
           <button
             type="button"
             className="hub-button secondary"
-            disabled={!title.trim() || (!location && !job)}
-            onClick={() => void save("draft")}
+            disabled={recovery.busy}
+            onClick={() => void recovery.save()}
           >
-            {job?.status === "open"
-              ? "Save as draft (unpublish)"
-              : "Save draft"}
+            Save progress
           </button>
+          {job?.status !== "open" && (
+            <button
+              type="button"
+              className="hub-button secondary"
+              disabled={!title.trim() || (!location && !job)}
+              onClick={() => void save("draft")}
+            >
+              Save draft job
+            </button>
+          )}
+          {job?.status === "open" && step === 3 && (
+            <button
+              type="button"
+              className="hub-text-button"
+              onClick={() => void save("draft")}
+            >
+              Unpublish job
+            </button>
+          )}
           {step < 3 ? (
             <button type="button" className="hub-button" onClick={next}>
               Continue
@@ -1569,7 +1711,11 @@ function Editor({
               )}
             </>
           )}
-          <button type="button" className="hub-text-button" onClick={cancel}>
+          <button
+            type="button"
+            className="hub-text-button"
+            onClick={leaveEditor}
+          >
             Cancel
           </button>
         </div>

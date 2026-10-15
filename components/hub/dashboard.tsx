@@ -1,4 +1,5 @@
 "use client";
+import { requestDraftNavigation } from "./draft-navigation";
 import { useEffect, useRef, useState } from "react";
 import {
   BarChart3,
@@ -119,12 +120,14 @@ export function HiringDashboard({
     setRefresh((value) => value + 1);
   }
   function navigate(url: URL, replace = false, candidateFrom?: string) {
-    if (url.href !== window.location.href) {
-      const state = { aiclHub: true, ...(candidateFrom ? { candidateFrom } : {}) };
-      window.history[replace ? "replaceState" : "pushState"](state, "", url);
-    }
-    readLocation();
-    window.dispatchEvent(new Event("hub:navigate"));
+    requestDraftNavigation(() => {
+      if (url.href !== window.location.href) {
+        const state = { aiclHub: true, ...(candidateFrom ? { candidateFrom } : {}) };
+        window.history[replace ? "replaceState" : "pushState"](state, "", url);
+      }
+      readLocation();
+      window.dispatchEvent(new Event("hub:navigate"));
+    }, url.href);
   }
   function viewUrl(next: View) {
     const url = new URL(window.location.href);
