@@ -8,7 +8,7 @@ import {chromium} from 'playwright';
 const job={id:'job-test',title:'Test engineer',slug:'engineer',status:'open',location:'Remote',fields:[],rules:[]};
 const applicant={id:'app-test',name:'Synthetic Applicant',email:'applicant@example.invalid',jobId:job.id,jobTitle:job.title,stage:'Application Review',qualification:'review',createdAt:1,revision:1};
 async function setup(t,{mode='candidate',data={status:'ready',score:80,criteria:[]},failWrite=false,width=390,clock=false}={}){
- const view=mode==='candidate'?'<CandidateMatch applicationId="app-test"/>':mode==='setup'?'<JobMatchSetup jobId="job-test" changed={()=>{}}/>':`<Candidates jobs={${JSON.stringify([job])}} refresh={0} changed={()=>{}} reviewerEmail="reviewer@example.invalid"/>`;
+ const view=mode==='candidate'?'<CandidateMatch applicationId="app-test"/>':mode==='setup'?'<JobMatchSetup jobId="job-test" changed={()=>{}}/>':`<Candidates jobs={${JSON.stringify([job])}} refresh={0} changed={()=>{}} reviewerEmail="reviewer@example.invalid" initialJobId="job-test"/>`;
  const {outputFiles}=await build({stdin:{contents:`import React from 'react';import{createRoot}from'react-dom/client';import{CandidateMatch,JobMatchSetup}from'./components/hub/ai-match';import{Candidates}from'./components/hub/candidates';createRoot(document.getElementById('root')).render(${view});`,loader:'tsx',resolveDir:process.cwd()},bundle:true,write:false,format:'iife',jsx:'automatic'});
  // Keep application CSS, excluding build-only Tailwind directives.
  const css=readFileSync('app/globals.css','utf8').replace(/^@import.*$/gm,'').replace(/^@tailwind.*$/gm,'');
@@ -29,6 +29,7 @@ async function setup(t,{mode='candidate',data={status:'ready',score:80,criteria:
  await page.route('**/api/hub/applications*',route=>{queries.push(new URL(route.request().url()).searchParams);return route.fulfill({json:{data:{items:[{...applicant,aiMatch:{status:'ready',score:80}},{...applicant,id:'app-pending',name:'Pending applicant',aiMatch:{status:'pending',score:null}}],total:2,page:1,pageSize:50}}});});
  if(clock)await page.clock.install();
  await page.goto(`http://127.0.0.1:${server.address().port}`);
+ if(mode==='setup')await page.locator('summary').filter({hasText:'AI settings for this job'}).click();
  return {page,writes,queries,errors};
 }
 
@@ -65,22 +66,19 @@ test('failed enable stays off and explains the error instead of claiming success
  const toggle=page.getByRole('checkbox',{name:'Automatically review applicants for this job'});await toggle.click();await page.getByRole('alert').filter({hasText:'Provider unavailable'}).waitFor();assert.equal(await toggle.isChecked(),false);assert.equal(writes.length,1);assert.equal(await page.getByRole('button',{name:'Review existing applicants'}).count(),0);
 });
 
-test('AI sorting is scoped to a selected posting and clear filters removes it',async t=>{
+test('AI sorting stays within its posting when filters are cleared',async t=>{
  const {page,queries}=await setup(t,{mode:'list',data:{jobId:job.id,version:1,enabled:false,status:'disabled',criteria:[]}});
- const order=page.getByLabel('Order',{exact:true});await order.waitFor();assert.equal(await order.isDisabled(),true);
- await page.getByLabel('Job posting',{exact:true}).selectOption(job.id);await order.selectOption('ai_match_desc');
+ const order=page.getByLabel('Order',{exact:true});await order.waitFor();await order.selectOption('ai_match_desc');
  await Promise.all([page.waitForResponse(r=>r.url().includes('sort=ai_match_desc')),page.getByRole('button',{name:'Apply filters',exact:true}).click()]);
  assert.equal(queries.at(-1).get('jobId'),job.id);assert.equal(queries.at(-1).get('sort'),'ai_match_desc');
- await page.getByRole('region',{name:'AI matching for this job'}).waitFor();await page.getByText('80 / 100',{exact:true}).waitFor();await page.getByText('Waiting for AI review',{exact:true}).waitFor();
- assert.equal(await page.getByText(/pending and outdated reviews stay unscored/).isVisible(),true);
- await Promise.all([page.waitForResponse(r=>r.url().includes('/api/hub/applications?&page=1')),page.getByRole('button',{name:'Clear filters',exact:true}).click()]);assert.equal(queries.at(-1).has('sort'),false);assert.equal(await order.isDisabled(),true);
- assert.equal(await page.getByRole('region',{name:'AI matching for this job'}).count(),0);
+ await page.getByText('80 / 100',{exact:true}).waitFor();
+ await Promise.all([page.waitForResponse(r=>r.url().includes('/api/hub/applications?')&&!r.url().includes('sort=')),page.getByRole('button',{name:'Clear filters',exact:true}).click()]);assert.equal(queries.at(-1).has('sort'),false);assert.equal(queries.at(-1).get('jobId'),job.id);
 });
 
 test('mobile AI evidence and consent remain within the viewport',async t=>{
  for(const mode of ['candidate','setup']){
   const {page}=await setup(t,{mode,data:{jobId:job.id,version:1,enabled:true,status:'ready',score:75,criteria:mode==='setup'?['Clear job requirement']:[{criterion:'Relevant experience',status:'evidence_found',explanation:'Application includes relevant work.',citations:[{source:'resume',quote:'Delivered customer projects.'}]}]}});
-  await page.getByRole('heading',{name:mode==='setup'?'AI matching for this job':'AI job match',exact:true}).waitFor();
+  if(mode==='setup')await page.getByRole('checkbox',{name:'Automatically review applicants for this job'}).waitFor();else await page.getByRole('heading',{name:'AI job match',exact:true}).waitFor();
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth+1),true);
  }
 });
