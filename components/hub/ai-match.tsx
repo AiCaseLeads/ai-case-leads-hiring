@@ -87,7 +87,7 @@ export function CandidateMatch({applicationId}:{applicationId:string}) {
       {resource.data.status==="disabled" && <p>Enable AI matching under Applications after selecting this job, or in the job’s AI review step.</p>}
       <p className="hub-muted">The score measures supported job requirements, not a probability of success. Missing evidence is not proof of missing ability. Check the original files and speak with the candidate before deciding.</p>
       {!!resource.data.criteria?.length && <div>{resource.data.criteria.map((c,i)=><article className="hub-history-item" key={i}><strong>{c.criterion}</strong><p>{c.status==="evidence_found"?"Evidence found":c.status==="needs_verification"?"Needs clarification":"Evidence not found"} — {c.explanation}</p>{c.citations.map((q,n)=><blockquote key={n}><p>{q.quote}</p><small>Source: {q.source}</small></blockquote>)}</article>)}</div>}
-      <small>{resource.data.model ? `Model: ${resource.data.model}. ` : ""}{resource.data.updatedAt ? `Reviewed ${new Date(resource.data.updatedAt).toLocaleString()}.` : ""}</small>
+      <small>{resource.data.model ? `Model: ${resource.data.model}. ` : ""}{resource.data.updatedAt ? `${resource.data.status === "ready" ? "Reviewed" : "Updated"} ${new Date(resource.data.updatedAt).toLocaleString()}.` : ""}</small>
     </>}
     <div className="hub-button-row"><button type="button" className="hub-button secondary" disabled={resource.loading} onClick={()=>void reload()}>Refresh AI review</button></div>
   </section>;

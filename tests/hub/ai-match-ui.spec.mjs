@@ -45,8 +45,8 @@ test('completed AI match shows job evidence, citations and uncertainty without r
 
 test('pending, stale, failed and unreadable reviews never display misleading numeric scores',async t=>{
  for(const [status,label] of [['pending','Waiting for AI review'],['stale','Job changed · review needed'],['failed','AI review needs attention'],['needs_review','Needs manual review']]){
-  const {page}=await setup(t,{data:{status,score:99,criteria:[],...(status==='failed'?{error:'Source extraction failed'}:{})}});
-  await page.getByText(label,{exact:true}).waitFor();assert.equal(await page.getByText('99 / 100',{exact:true}).count(),0);
+  const {page}=await setup(t,{data:{status,score:99,updatedAt:1,criteria:[],...(status==='failed'?{error:'Source extraction failed'}:{})}});
+  await page.getByText(label,{exact:true}).waitFor();await page.getByText(/^Updated /).waitFor();assert.equal(await page.getByText('99 / 100',{exact:true}).count(),0);
   if(status==='failed'){assert.match(await page.getByRole('alert').textContent(),/administrator should inspect server logs/);assert.equal(await page.getByText('Source extraction failed',{exact:true}).count(),0);}
  }
 });

@@ -1440,3 +1440,8 @@
 .hub-ai-match-explainer { padding-left: 22px; margin-block: 20px; }
 .hub-ai-match-explainer li { margin-block: 8px; }
 .hub-optional-scorecard { border-top: 1px solid var(--hub-line); padding-top: 12px; margin-top: 24px; }
+
+/* The careers page can animate anchors; changing admin tabs must stop at the
+   current content rather than an obsolete, taller panel's scroll target. */
+html:has(.hiring-hub) { scroll-behavior: auto; }
+.hub-detail-main [role="tabpanel"][hidden] { display: none !important; }
