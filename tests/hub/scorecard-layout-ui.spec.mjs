@@ -244,3 +244,19 @@ test('collapsed scorecard fields do not create blank scroll space at mobile or d
  }
  await outer.click();assert.equal(await page.getByLabel('Scorecard name',{exact:true}).isVisible(),false);
 });
+
+test('all job wizard steps contain long descriptions, question labels and navigation on narrow screens',async t=>{
+ const longJob={...screenedJob,title:'Creative Strategist for International Marketing and Creative Production',descriptionHtml:'<p>'+('Detailed responsibilities and qualifications. '.repeat(100))+'</p>',fields:screeningFields.map(f=>f.path==='years'?{...f,title:'DescribeYourRelevantExperience'.repeat(5)}:f)};
+ const {page}=await setup(t,{jobs:[longJob]});
+ for(const width of [320,390,768,1280,1728]){
+  await page.setViewportSize({width,height:900});await edit(page);
+  for(let step=0;step<4;step++){
+   if(step===3)await page.getByText('Preview description',{exact:true}).click();
+   const m=await page.evaluate(()=>({width:innerWidth,scroll:document.documentElement.scrollWidth,outside:[...document.querySelectorAll('.hub-main button,.hub-main input,.hub-main select,.hub-main textarea,[contenteditable=true]')].filter(e=>e.getClientRects().length).filter(e=>{const r=e.getBoundingClientRect();return r.left< -1||r.right>innerWidth+1;}).map(e=>e.tagName+':'+e.textContent.slice(0,60))}));
+   assert.ok(m.scroll<=width+1,`step ${step} at ${width}: ${JSON.stringify(m)}`);assert.deepEqual(m.outside,[],`step ${step} at ${width}`);
+   if(step<3)await next(page);
+  }
+  await page.getByRole('heading',{name:'Ready to share?',exact:true}).waitFor();
+  await page.getByRole('button',{name:'Back to jobs',exact:true}).click();
+ }
+});
