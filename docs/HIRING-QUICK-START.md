@@ -18,7 +18,7 @@ The setup has four steps:
 1. **Details:** title, work arrangement, location, description and hiring team. Remote jobs can accept applicants worldwide or from a selected country. Hybrid/on-site jobs need a country and workplace city. Select the recruiters who should receive alerts and choose an applicant reply contact.
 2. **Application:** name and email are always required. Each additional question has a Required/Optional dropdown. Add from the question library or add a custom question; answer formats and instructions are under a disclosure.
 3. **AI review:** optionally enable automatic résumé and answer matching against the job description. No manual scorecard is required. Manual scorecards remain an optional tool for your team.
-4. **Review:** check the description, questions and criteria. Save a draft or approve the preview and publish. Qualification rules and automatic rejection are separate advanced controls and remain off for new postings.
+4. **Review:** check the description, questions and criteria. Save a draft or click Publish job. Qualification rules and automatic rejection are separate advanced controls and remain off for new postings.
 
 Use **Save draft** to pause setup. A draft needs a valid title, location and questions; unfinished custom criteria must be completed before saving them. **Save as draft (unpublish)** stops a currently published job accepting applications. **Edit job** updates that same posting and preserves its public address. **Duplicate job** creates a separate posting. **Previous postings** shows closed jobs. No batch number or batch name is required. Closing a job stops new applications and preserves its applicants and files. Legacy archive folder labels remain intact.
 

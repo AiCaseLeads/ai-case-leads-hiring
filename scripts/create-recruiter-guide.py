@@ -113,7 +113,7 @@ text('Open <b>Jobs → Create job</b>. Start blank, duplicate an existing job, u
 step(1,'Job details','Add the title, description, work arrangement and location. Remote jobs can be worldwide or country-specific; hybrid/on-site jobs need a workplace city. Select the hiring team and reply contact for this posting.')
 step(2,'Application form','Name and email are required. Set every additional question to Required or Optional. Use the question library or add a custom question. Ask only for information needed to evaluate the role.')
 step(3,'Review scorecard','Choose a reusable scorecard, create criteria for this role, or choose manual review. Agree on job-related criteria before reviewing applicants. Keep the same version when comparing people for one posting.')
-step(4,'Review and publish','Check the public description, questions, team and scorecard. Save a draft while preparing. When ready, approve the preview and publish; then open View public job to check what applicants see.')
+step(4,'Review and publish','Check the public description, questions, team and scorecard. Save a draft while preparing. When ready, click Publish job; then open View public job to check what applicants see.')
 callout('Hiring again? Duplicate the job','Use Duplicate job to create a new posting. Pick the location and team for that new posting. Earlier applicants remain under the original posting, available through Previous postings. No batch number is required.')
 text('Closing or unpublishing a job stops new applications and keeps its earlier records. Editing a job preserves that posting\'s public address. Automatic rejection is a separate advanced setting; do not enable it without approved rules.','SmallA')
 

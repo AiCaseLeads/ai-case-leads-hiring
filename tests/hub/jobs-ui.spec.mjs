@@ -270,11 +270,7 @@ test("mobile blank job follows real steps, required questions and scorecard; fai
       .count(),
     1,
   );
-  await page
-    .getByLabel(
-      "I have reviewed the job description, questions and review criteria.",
-    )
-    .check();
+  assert.equal(await page.getByRole("checkbox", {name: /I have reviewed|I approve/}).count(), 0);
   await page.getByRole("button", { name: "Publish job", exact: true }).click();
   await page
     .getByText("Temporary save failure. Your draft is still here.", {
@@ -530,4 +526,15 @@ test("contact fields are fixed and remaining application questions can be reorde
   const after=await questions.locator('.hub-question-heading > strong').allTextContents();
   assert.equal(after[4],before[5]); assert.equal(after[5],before[4]);
  }
+});
+
+test("question instructions are collapsed by default and publish needs no approval checklist", async (t) => {
+ const {page,writes}=await setup(t,{jobs:[{...prior,fields:[...prior.fields,{path:'portfolio',title:'Portfolio',type:'Url',required:false,description:'Existing helper text'}]}]});
+ await page.getByRole('button',{name:'Edit job',exact:true}).click();const steps=page.getByRole('list',{name:'Job setup progress'});await steps.getByRole('button',{name:'Application',exact:true}).click();
+ const instructions=page.getByLabel('Question 6 instructions (optional)',{exact:true});assert.equal(await instructions.isVisible(),false);
+ await page.getByText('Edit instructions (optional)',{exact:true}).click();assert.equal(await instructions.inputValue(),'Existing helper text');await instructions.fill('Updated helper text');
+ await steps.getByRole('button',{name:'AI review',exact:true}).click();assert.equal(await page.getByRole('checkbox',{name:/Use AI to score and rank/}).isChecked(),false);
+ await steps.getByRole('button',{name:'Publish',exact:true}).click();assert.equal(await page.getByRole('checkbox',{name:/I have reviewed|I approve/}).count(),0);
+ if(process.env.JOB_WIZARD_SCREENSHOT)await page.screenshot({path:process.env.JOB_WIZARD_SCREENSHOT,fullPage:true});
+ await page.getByRole('button',{name:'Save published job',exact:true}).click();await page.getByText('Job published.',{exact:false}).waitFor();assert.equal(writes.length,1);assert.equal(writes[0].job.fields.find(field=>field.path==='portfolio').description,'Updated helper text');assert.equal(writes[0].job.aiMatchEnabled,false);assert.equal(writes[0].job.autoReject,false);
 });

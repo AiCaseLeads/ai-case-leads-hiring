@@ -555,8 +555,6 @@ function Editor({
     [autoReject, setAutoReject] = useState(job?.autoReject || false),
     [aiMatchEnabled, setAiMatchEnabled] = useState(job?.aiMatchEnabled || false),
     [rejection, setRejection] = useState(source?.rejectionTemplate || ""),
-    [approved, setApproved] = useState(false),
-    [rejectApproved, setRejectApproved] = useState(false),
     [choice, setChoice] = useState(
       canReuse
         ? `${originalBinding!.templateId}:${originalBinding!.version}`
@@ -643,8 +641,7 @@ function Editor({
       setCreationId(draft.creationId);
       setPostingLabel(draft.postingLabel);
       setDraftFormVersion(draft.formVersion);
-      setApproved(false);
-      setRejectApproved(false);
+
       const url = new URL(window.location.href);
       url.searchParams.set("jobStep", String(draft.step));
       window.history.replaceState(window.history.state, "", url);
@@ -681,8 +678,7 @@ function Editor({
             ? Math.min(highestValidatedStep.current, requested)
             : 0;
         setStep(next);
-        setApproved(false);
-        setRejectApproved(false);
+
         setError("");
         if (String(next) !== value) {
           const url = new URL(window.location.href);
@@ -781,8 +777,7 @@ function Editor({
   }
   function updateField(i: number, change: Partial<ApplicationField>) {
     setFields((v) => v.map((f, n) => (i === n ? { ...f, ...change } : f)));
-    setApproved(false);
-    setRejectApproved(false);
+
   }
   async function save(status: HubJob["status"]) {
     setError("");
@@ -813,16 +808,9 @@ function Editor({
       setStep(1);
       return;
     }
-    if (status !== "closed" && autoReject && !rejectApproved) {
-      setError(
-        "Approve the enabled qualification rules and rejection email before saving automatic rejection.",
-      );
-      return;
-    }
-    if (status === "open" && (!approved || !hasDescriptionText(description))) {
-      setError(
-        "Add a job description and approve the final preview before publishing.",
-      );
+    if (status === "open" && !hasDescriptionText(description)) {
+      setError("Add a job description before publishing.");
+      setStep(0);
       return;
     }
     const binding =
@@ -973,8 +961,7 @@ function Editor({
               className="hub-text-button"
               disabled={(!canJumpBetweenSections && i > step) || mutation.busy}
               onClick={() => {
-                setApproved(false);
-                setRejectApproved(false);
+
                 goToStep(i);
               }}
             >
@@ -997,7 +984,7 @@ function Editor({
               setChoice(
                 binding ? `${binding.templateId}:${binding.version}` : "none",
               );
-              setApproved(false);
+
               goToStep(2);
               mutation.clear();
             } catch (e) {
@@ -1024,7 +1011,7 @@ function Editor({
                   value={title}
                   onChange={(e) => {
                     setTitle(e.target.value);
-                    setApproved(false);
+
                   }}
                   placeholder="For example, Creative Strategist"
                 />
@@ -1046,7 +1033,7 @@ function Editor({
                 }
                 change={(v) => {
                   setLocation(v);
-                  setApproved(false);
+
                 }}
               />
               <Field
@@ -1059,7 +1046,7 @@ function Editor({
                   value={description}
                   onChange={(value) => {
                     setDescription(value);
-                    setApproved(false);
+
                   }}
                 />
               </Field>
@@ -1101,7 +1088,7 @@ function Editor({
                   value={hiringTeam.draft}
                   change={(value) => {
                     hiringTeam.setDraft(value);
-                    setApproved(false);
+
                   }}
                 />
               )}
@@ -1130,10 +1117,10 @@ function Editor({
                     {!contactPaths.includes(f.path) && (
                       <>
                         <button type="button" className="hub-button secondary" aria-label={`Move ${f.title || "new question"} up`} disabled={i <= contactPaths.length} onClick={() => {
-                          setFields(current => { const next = [...current]; [next[i - 1], next[i]] = [next[i], next[i - 1]]; return next; }); setApproved(false);
+                          setFields(current => { const next = [...current]; [next[i - 1], next[i]] = [next[i], next[i - 1]]; return next; });
                         }}>Move up</button>
                         <button type="button" className="hub-button secondary" aria-label={`Move ${f.title || "new question"} down`} disabled={i === fields.length - 1} onClick={() => {
-                          setFields(current => { const next = [...current]; [next[i], next[i + 1]] = [next[i + 1], next[i]]; return next; }); setApproved(false);
+                          setFields(current => { const next = [...current]; [next[i], next[i + 1]] = [next[i + 1], next[i]]; return next; });
                         }}>Move down</button>
                         <button
                           type="button"
@@ -1144,8 +1131,7 @@ function Editor({
                             setRules((v) =>
                               v.filter((r) => r.fieldPath !== f.path),
                             );
-                            setApproved(false);
-                            setRejectApproved(false);
+
                           }}
                         >
                           <Trash2 size={16} />
@@ -1227,6 +1213,8 @@ function Editor({
                             rules before changing its answer format.
                           </p>
                         )}
+                        <details className="hub-question-instructions">
+                          <summary>{f.description ? "Edit instructions (optional)" : "Add instructions (optional)"}</summary>
                         <Field
                           label={`Question ${i + 1} instructions (optional)`}
                         >
@@ -1238,6 +1226,7 @@ function Editor({
                             }
                           />
                         </Field>
+                        </details>
                       </div>
                       <QuestionScreening
                         requireAnswer={() => updateField(i, { required: true })}
@@ -1246,8 +1235,7 @@ function Editor({
                         autoReject={autoReject}
                         change={(value) => {
                           setRules(value);
-                          setApproved(false);
-                          setRejectApproved(false);
+
                         }}
                       />
                       {["ValueSelect", "MultiValueSelect"].includes(f.type) && (
@@ -1296,8 +1284,7 @@ function Editor({
                       },
                     ]);
                   setQuestionPreset("");
-                  setRejectApproved(false);
-                  setApproved(false);
+
                 }}
               >
                 Add selected question
@@ -1317,8 +1304,7 @@ function Editor({
                     required: false,
                   },
                 ]);
-                setApproved(false);
-                setRejectApproved(false);
+
               }}
             >
               <Plus size={16} /> Add custom question
@@ -1328,15 +1314,12 @@ function Editor({
               rules={rules}
               change={(value) => {
                 setRules(value);
-                setApproved(false);
-                setRejectApproved(false);
+
               }}
               autoReject={autoReject}
               setAutoReject={setAutoReject}
               rejection={rejection}
               setRejection={setRejection}
-              approved={rejectApproved}
-              setApproved={setRejectApproved}
             />
             <p className="hub-muted">
               Profile links and experience answers are supplied by applicants.
@@ -1570,7 +1553,7 @@ function Editor({
                   ? hiringTeam.draft.members.join(", ")
                   : "No team selected"}
               </p>
-              <p>Applicant emails: verified no-reply address. Hiring-team addresses stay private.</p>
+              <p>Automated applicant emails use the no-reply address. Recruiter conversations use the connected recruiter’s email.</p>
               <p>
                 {fields.filter((f) => f.required).length} required fields ·{" "}
                 {fields.filter((f) => !f.required).length} optional fields
@@ -1601,15 +1584,6 @@ function Editor({
                   html={description || "Add a description before publishing."}
                 />
               </details>
-              <label className="hub-checkbox">
-                <input
-                  type="checkbox"
-                  checked={approved}
-                  onChange={(e) => setApproved(e.target.checked)}
-                />{" "}
-                I have reviewed the job description, questions and review
-                criteria.
-              </label>
               <p className="hub-muted">
                 A new posting keeps a separate set of applicants automatically.
                 Earlier postings and files stay available; no batch names are
@@ -1618,17 +1592,6 @@ function Editor({
             </section>
             <section className="hub-card">
               <h3>Screening decisions</h3>
-              {autoReject && (
-                <label className="hub-checkbox">
-                  <input
-                    type="checkbox"
-                    checked={rejectApproved}
-                    onChange={(e) => setRejectApproved(e.target.checked)}
-                  />
-                  I approve these requirements and the rejection email for
-                  automatic decisions.
-                </label>
-              )}
               <p>
                 {autoReject
                   ? "Automatic rejection is on. Applicants with complete screening answers who fail an enabled requirement are rejected and receive the rejection email. Missing optional screening answers always go to human review."
@@ -1674,8 +1637,7 @@ function Editor({
               className="hub-button secondary"
               disabled={step === 0}
               onClick={() => {
-                setApproved(false);
-                setRejectApproved(false);
+
                 setError("");
                 const previous = new URL(window.location.href);
                 previous.searchParams.set("jobStep", String(step - 1));
@@ -1723,7 +1685,7 @@ function Editor({
               <button
                 type="button"
                 className="hub-button"
-                disabled={!approved || !hasDescriptionText(description)}
+                disabled={!hasDescriptionText(description)}
                 onClick={() => void save("open")}
               >
                 {mutation.busy
@@ -1856,7 +1818,7 @@ function QuestionScreening({
           </Field>
           <p className="hub-muted">
             {autoReject
-              ? "Answers that do not qualify trigger automatic rejection when these settings are approved and saved."
+              ? "Answers that do not qualify trigger automatic rejection when automatic rejection is turned on and saved."
               : "Answers that do not qualify are flagged for recruiter review. Turn on automatic rejection below to reject them automatically."}{" "}
             {!field.required &&
               "This question is optional: a missing answer goes to human review, not automatic rejection. Choose Required above to ensure everyone answers."}
@@ -1882,8 +1844,6 @@ function AdvancedRules({
   setAutoReject,
   rejection,
   setRejection,
-  approved,
-  setApproved,
 }: {
   fields: ApplicationField[];
   rules: Rule[];
@@ -1892,18 +1852,16 @@ function AdvancedRules({
   setAutoReject: (v: boolean) => void;
   rejection: string;
   setRejection: (v: string) => void;
-  approved: boolean;
-  setApproved: (v: boolean) => void;
 }) {
   function update(i: number, patch: Partial<Rule>) {
     change(rules.map((r, n) => (n === i ? { ...r, ...patch } : r)));
-    setApproved(false);
+
   }
   return (
     <section className="hub-card hub-screening-decisions">
       <h3>What happens when an applicant does not qualify?</h3>
       <p>
-        Without approved rules, every applicant goes to human review. AI does
+        Automatic rejection runs only when you turn it on and save enabled requirements. AI does
         not reject applicants.
       </p>
       <details>
@@ -2004,7 +1962,7 @@ function AdvancedRules({
               type="button"
               onClick={() => {
                 change(rules.filter((_, n) => n !== i));
-                setApproved(false);
+
               }}
             >
               Remove requirement
@@ -2040,7 +1998,7 @@ function AdvancedRules({
           value={rejection}
           onChange={(e) => {
             setRejection(e.target.value);
-            setApproved(false);
+
           }}
         />
       </Field>
@@ -2050,22 +2008,11 @@ function AdvancedRules({
           checked={autoReject}
           onChange={(e) => {
             setAutoReject(e.target.checked);
-            setApproved(false);
+
           }}
         />{" "}
         Automatically reject applicants who fail enabled requirements
       </label>
-      {autoReject && (
-        <label className="hub-checkbox">
-          <input
-            type="checkbox"
-            checked={approved}
-            onChange={(e) => setApproved(e.target.checked)}
-          />{" "}
-          I approve these requirements and the rejection email for automatic
-          decisions.
-        </label>
-      )}
     </section>
   );
 }
