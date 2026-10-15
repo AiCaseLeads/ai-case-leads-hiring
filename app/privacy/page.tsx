@@ -52,10 +52,10 @@ export default function PrivacyPage() {
           </p>
           <h2>Questions about your information</h2>
           <p>
-            Email <a href="mailto:sales@aicaseleads.com">sales@aicaseleads.com</a>
+            Use our <a href="https://www.aicaseleads.com/contact">company contact form</a>
             {" "}for questions about your application information, to correct
             information, withdraw an application, or request removal of your
-            information. The recruiting team handles these requests.
+            information. Say that your request concerns recruiting. Include the job title and the email address used to apply, but do not send sensitive documents.
           </p>
           <p className="privacy-note">
             Closing a job or creating another job posting does not delete earlier

@@ -699,6 +699,23 @@ nav a:hover {
   padding: 30px;
   align-self: start;
   box-shadow: 0 6px 28px #18383f05;
+  background: #fff;
+  min-width: 0;
+  scroll-margin-top: 24px;
+}
+.application-jump { display: none; }
+@media (min-width: 901px) {
+  .application-panel {
+    position: sticky;
+    top: 24px;
+    max-height: calc(100dvh - 48px);
+    overflow-y: auto;
+    scrollbar-gutter: stable;
+  }
+}
+@media (max-width: 900px) {
+  .detail-grid { grid-template-columns: minmax(0, 1fr); }
+  .application-jump { display: inline-flex; margin-top: 20px; }
 }
 .form-topline {
   display: flex;
@@ -1325,7 +1342,7 @@ nav a:hover {
 }
 
 .field-description {
-  color: var(--muted);
+  color: var(--muted-foreground);
   font-size: 0.875rem;
   white-space: pre-wrap;
   line-height: 1.6;

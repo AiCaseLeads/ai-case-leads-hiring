@@ -389,6 +389,7 @@ export function CareerDetail({ slug }: { slug: string }) {
                     <span>{data.job.employmentType}</span>
                   )}
                 </div>
+                <a className="button application-jump" href="#job-application">Go to application</a>
               </div>
               <div className="detail-grid">
                 <div className="job-description">
@@ -413,7 +414,7 @@ export function CareerDetail({ slug }: { slug: string }) {
                     </a>
                   </aside>
                 </div>
-                <div className="application-panel">
+                <div className="application-panel" id="job-application" role="region" aria-label="Job application" tabIndex={0}>
                   <ApplicationForm
                     job={data.job}
                     fields={data.fields || []}
@@ -453,7 +454,7 @@ export function ApplicationConfirmation({ receipt }: { receipt: string }) {
           {loading
             ? "Please wait while we verify your submission."
             : accepted
-              ? "Your application has been received. Our team will review your experience and contact you about next steps."
+              ? "Your application has been received. Our team will email you within 3–5 business days with an update on whether we are moving forward. Your confirmation email may take a few minutes to arrive; please also check your spam folder."
               : error ||
                 "Please return to your application and check its status before submitting again."}
         </p>

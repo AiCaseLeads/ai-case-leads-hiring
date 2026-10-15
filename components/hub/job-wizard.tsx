@@ -1,4 +1,5 @@
 "use client";
+import { contactPaths, withRequiredContacts } from "@/lib/hiring/contact-fields";
 import { useJobRecovery } from "./job-recovery";
 import { requestDraftNavigation } from "./draft-navigation";
 import type { JobRecoveryState } from "@/lib/job-setup/drafts";
@@ -536,7 +537,8 @@ function Editor({
     (originalBinding &&
       !scorecards.archived.includes(originalBinding.templateId)) ||
     (job && originalBinding);
-  const highestValidatedStep = useRef(0);
+  const canJumpBetweenSections = !!job && job.status !== "draft";
+  const highestValidatedStep = useRef(canJumpBetweenSections ? 3 : 0);
   const [step, setStep] = useState(0),
     [title, setTitle] = useState(source?.title || request?.title || ""),
     [description, setDescription] = useState(
@@ -544,7 +546,7 @@ function Editor({
     ),
     [location, setLocation] = useState<WorkLocation | null>(sourceLocation),
     [fields, setFields] = useState<ApplicationField[]>(
-      structuredClone(source?.fields.length ? source.fields : starter),
+      withRequiredContacts(structuredClone(source?.fields.length ? source.fields : starter)),
     ),
     [department, setDepartment] = useState(source?.department || ""),
     [customSlug, setCustomSlug] = useState<string | null>(job?.slug || null),
@@ -623,7 +625,7 @@ function Editor({
       setTitle(draft.title);
       setDescription(draft.description);
       setLocation(draft.location);
-      setFields(draft.fields);
+      setFields(withRequiredContacts(draft.fields));
       setDepartment(draft.department);
       setCustomSlug(draft.customSlug);
       setAssessment(draft.assessment);
@@ -637,7 +639,7 @@ function Editor({
       setDraftTeamRevision(draft.teamRevision);
       setExpectedBinding(draft.expectedBinding);
       setStep(draft.step);
-      highestValidatedStep.current = draft.step;
+      highestValidatedStep.current = canJumpBetweenSections ? 3 : draft.step;
       setCreationId(draft.creationId);
       setPostingLabel(draft.postingLabel);
       setDraftFormVersion(draft.formVersion);
@@ -969,7 +971,7 @@ function Editor({
             <button
               type="button"
               className="hub-text-button"
-              disabled={i > step || mutation.busy}
+              disabled={(!canJumpBetweenSections && i > step) || mutation.busy}
               onClick={() => {
                 setApproved(false);
                 setRejectApproved(false);
@@ -1116,17 +1118,23 @@ function Editor({
           <section className="hub-card">
             <h3>What should applicants send?</h3>
             <p>
-              Name and email are always required. Choose Required or Optional
-              for each extra field.
+              Contact details stay at the top: first and last name, email, and phone with country code are required. Use Move up or Move down to arrange every question below them.
             </p>
+            {fields.some(field => field.type === "Phone" && !contactPaths.includes(field.path)) && <p className="hub-muted">This form also has an extra phone question. The required Phone number field already collects it; you can remove the extra question below if it is a duplicate. Existing application answers are kept.</p>}
             <div className="hub-editor-list">
               {fields.map((f, i) => (
                 <article className="hub-question" key={f.path}>
                   <div className="hub-question-heading">
                     <strong>{f.title || "New question"}</strong>
                     <Badge>{f.required ? "Required" : "Optional"}</Badge>
-                    {!f.path.startsWith("_systemfield_name") &&
-                      !f.path.startsWith("_systemfield_email") && (
+                    {!contactPaths.includes(f.path) && (
+                      <>
+                        <button type="button" className="hub-button secondary" aria-label={`Move ${f.title || "new question"} up`} disabled={i <= contactPaths.length} onClick={() => {
+                          setFields(current => { const next = [...current]; [next[i - 1], next[i]] = [next[i], next[i - 1]]; return next; }); setApproved(false);
+                        }}>Move up</button>
+                        <button type="button" className="hub-button secondary" aria-label={`Move ${f.title || "new question"} down`} disabled={i === fields.length - 1} onClick={() => {
+                          setFields(current => { const next = [...current]; [next[i], next[i + 1]] = [next[i + 1], next[i]]; return next; }); setApproved(false);
+                        }}>Move down</button>
                         <button
                           type="button"
                           className="hub-icon-button"
@@ -1142,9 +1150,10 @@ function Editor({
                         >
                           <Trash2 size={16} />
                         </button>
+                      </>
                       )}
                   </div>
-                  {["_systemfield_name", "_systemfield_email"].includes(
+                  {contactPaths.includes(
                     f.path,
                   ) ? (
                     <p className="hub-muted">

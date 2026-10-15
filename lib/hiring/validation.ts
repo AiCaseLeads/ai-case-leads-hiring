@@ -1,4 +1,6 @@
 import { HiringError } from "./errors";
+import { internationalPhoneError } from "./contact-fields";
+import { isWebsiteField, websiteLinkError } from "./website-links";
 import type { ApplicationField, ApplicationInput, UploadInput } from "./types";
 
 const UTM_KEYS = new Set(["utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content"]);
@@ -43,6 +45,7 @@ export function validateAnswers(input: ApplicationInput, fields: ApplicationFiel
     let valid = true;
     switch (field.type) {
       case "Boolean": valid = typeof v === "boolean"; break;
+      case "Phone": valid = internationalPhoneError(v) === null; break;
       case "Number": valid = typeof v === "number" && Number.isFinite(v) && Number.isSafeInteger(v); break;
       case "Score": valid = object(v) && Number.isInteger(v.score) && Number(v.score) >= 1 && Number(v.score) <= 4 && Object.keys(v).every(k => k === "score"); break;
       case "MultiValueSelect": valid = Array.isArray(v) && v.length <= 100 && v.every(item => typeof item === "string" && field.options?.some(o => o.value === item)) && new Set(v).size === v.length; break;
@@ -54,11 +57,10 @@ export function validateAnswers(input: ApplicationInput, fields: ApplicationFiel
           const date = new Date(`${v}T00:00:00Z`);
           valid = /^\d{4}-\d{2}-\d{2}$/.test(v as string) && Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === v;
         }
-        if (valid && (field.type === "SocialLink" || field.type === "Url")) {
-          try { const url = new URL(v as string); valid = ["https:", "http:"].includes(url.protocol) && !url.username && !url.password; } catch { valid = false; }
-        }
+        if (valid && isWebsiteField(field)) valid = websiteLinkError(v, field) === null;
     }
-    if (!valid || blank) fieldErrors[field.path] = `Check ${field.title.toLowerCase()}.`;
+    if (!valid || blank) fieldErrors[field.path] = isWebsiteField(field) ? websiteLinkError(v, field) || `Check ${field.title.toLowerCase()}.` : `Check ${field.title.toLowerCase()}.`;
+    if (!valid && field.type === "Phone") fieldErrors[field.path] = internationalPhoneError(v)!;
   }
   for (const field of fields) if (field.required && !answers.has(field.path)) fieldErrors[field.path] = `${field.title} is required.`;
   if (Object.keys(fieldErrors).length) throw new HiringError("invalid_application", 422, "Please check the highlighted answers.", fieldErrors);

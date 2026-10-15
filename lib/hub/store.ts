@@ -4,6 +4,8 @@ import { canonicalJson, privateToken, sha256 } from "../hiring/crypto";
 import { HiringError } from "../hiring/errors";
 import { validateAnswers, MAX_APPLICATION_FILE_BYTES } from "../hiring/validation";
 import { matchDetail } from "../ai/matching";
+import { applicantDisplayName } from "../hiring/contact-fields";
+import { applicationReceipt } from "../hiring/receipt-email";
 import { gradeForScorecards } from "./grading";
 import type {
   ApplicationInput,
@@ -600,10 +602,7 @@ export class HubStore {
           .map((e) => e.reason)
           .join("; ")
       : null;
-    const name = String(
-      input.fieldSubmissions.find((a) => a.path === "_systemfield_name")
-        ?.value || "",
-    ).trim();
+    const name = applicantDisplayName(input.fieldSubmissions);
     const email = String(
       input.fieldSubmissions.find((a) => a.path === "_systemfield_email")
         ?.value || "",
@@ -684,7 +683,7 @@ export class HubStore {
         `gmail:${id}:confirmation`,
         { id, email },
         `Application received: ${posting.title}`,
-        `Hi ${name},\n\nWe received your application for ${posting.title} at AI Case Leads. Our hiring team will review it and contact you about next steps.\n\nAI Case Leads Hiring Team`,
+        applicationReceipt(name, posting.title, rejected),
         now,
       ),
     ];

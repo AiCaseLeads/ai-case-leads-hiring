@@ -21,6 +21,8 @@ import {
 } from "@/components/ui/select";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import type { CareerJob, CareerField } from "./types";
+import { isWebsiteField, websiteLinkError } from "@/lib/hiring/website-links";
+import { internationalPhoneError } from "@/lib/hiring/contact-fields";
 
 type Value = string | number | boolean | string[] | { score: number };
 export type Payload = {
@@ -163,6 +165,14 @@ export function ApplicationForm({
             (Array.isArray(value) && value.length === 0))
       )
         invalid[field.path] = "Please complete this field.";
+      if (isWebsiteField(field) && value !== undefined && value !== "") {
+        const linkError = websiteLinkError(value, field);
+        if (linkError) invalid[field.path] = linkError;
+      }
+      if (field.type === "Phone" && value !== undefined && value !== "") {
+        const phoneError = internationalPhoneError(value);
+        if (phoneError) invalid[field.path] = phoneError;
+      }
     }
     if (!uncertain && Object.keys(invalid).length) {
       setErrors(invalid);
@@ -582,6 +592,13 @@ export function ApplicationForm({
             ) : (
               <Input
                 id={field.path}
+                placeholder={isWebsiteField(field) ? "https://…" : field.type === "Phone" ? "+1 305 555 0123" : undefined}
+                onBlur={() => {
+                  if (!isWebsiteField(field) && field.type !== "Phone") return;
+                  const value = values[field.path];
+                  const message = value === undefined || value === "" ? "" : (field.type === "Phone" ? internationalPhoneError(value) : websiteLinkError(value, field)) || "";
+                  setErrors(current => ({ ...current, [field.path]: message }));
+                }}
                 type={
                   field.type === "Email"
                     ? "email"

@@ -73,6 +73,6 @@ export function SubmissionRecovery({ slug }: { slug: string }) {
       <button type="button" className="button ink" disabled={busyKey !== null} onClick={() => void recover(journal)}>{busyKey === journal.key ? "Checking submission…" : journal.receipt ? "View saved confirmation" : "Check earlier application status"}</button>
     </div>)}
     {message && <p role="alert">{message}</p>}
-    <p><a href="mailto:mariam@aicaseleads.com">Contact the recruiting team</a></p>
+    <p><a href="https://www.aicaseleads.com/contact">Contact us about an application</a></p>
   </section>;
 }
