@@ -1353,7 +1353,7 @@
 
 /* Keep short requirement badges intact. Wizard actions stay below the form. */
 .hub-question-heading { flex-wrap: wrap; }
-.hub-question-heading > strong { min-width: 0; flex: 1 1 120px; }
+.hub-question-heading > strong { min-width: 0; flex: 1 1 120px; overflow-wrap: anywhere; }
 .hub-question-heading > .hub-badge { flex: 0 0 auto; white-space: nowrap; overflow-wrap: normal; }
 @media (max-width: 640px) {
   .hub-question-heading { gap: 12px; }
