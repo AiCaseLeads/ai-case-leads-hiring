@@ -1445,3 +1445,17 @@
    current content rather than an obsolete, taller panel's scroll target. */
 html:has(.hiring-hub) { scroll-behavior: auto; }
 .hub-detail-main [role="tabpanel"][hidden] { display: none !important; }
+
+/* Toolbar fields share a baseline with actions; ordinary form fields retain
+   their vertical spacing. Wrapping rows keep every control inside its card. */
+.hub-button-row:has(> .hub-field) { align-items: flex-end; row-gap: 16px; }
+.hub-button-row > .hub-field { margin-bottom: 0; max-width: 100%; }
+.hub-button-row > :where(.hub-button, .hub-text-button, .hub-field) { min-width: 0; max-width: 100%; }
+.hub-button, .hub-text-button { max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
+.hub-button > svg, .hub-text-button > svg { flex: 0 0 auto; }
+.hub-download-actions { margin-block: 18px; }
+.hub-download-actions > .hub-field { flex: 1 1 240px; }
+.hub-download-actions > .hub-button { flex: 1 1 220px; }
+@media (max-width: 640px) {
+  .hub-download-actions > .hub-field, .hub-download-actions > .hub-button { flex-basis: 100%; }
+}
