@@ -1,6 +1,6 @@
 # Candidate email identity
 
-Automatic receipts, automated screening rejections and reminders use `no-reply@aicaseleads.com` for From and Reply-To. Job teams control internal recipients only. Queued legacy sender/reply headers are discarded. Templates containing any current or former staff or connected-account email fail closed for correction; the worker never silently sends those addresses to an applicant.
+Automatic receipts, automated screening rejections and reminders use `no-reply@aicaseleads.com` for From and Reply-To. Job teams select internal recipients and an explicit recruiter reply contact for owner-initiated correspondence. Queued legacy sender/reply headers are discarded. Templates containing any current or former staff or connected-account email fail closed for correction; the worker never silently sends those addresses to an applicant.
 
 Connect a dedicated authorized no-reply mailbox, or configure that address as an accepted Gmail send-as identity on the connected account. The alias path requires reconnecting Workspace with `https://www.googleapis.com/auth/gmail.settings.basic`; the worker verifies `GET https://gmail.googleapis.com/gmail/v1/users/me/settings/sendAs` has a matching `sendAsEmail` and `verificationStatus: accepted` before each send. Missing aliases, pending verification, and missing permission block delivery and surface a failed integration task. Internal team alerts and staff invitations use the configured recruiter Gmail account, never the company sales connection.
 
@@ -14,7 +14,7 @@ The no-reply address must reject inbound messages, not forward them to the conne
 
 Every automatic no-reply message includes a do-not-reply notice and the help URL. Recruiter-initiated messages instead explain that replies reach the recruiter. Existing delivered messages cannot be edited.
 
-Ownership and Google authorization do not automatically subscribe the owner to job alerts. To stop owner notifications, remove the owner from each job's team, from overdue-review `fallbackAdmins`, and from legacy applicant assignments where no explicit job-team configuration exists. Current routing is checked again before queued messages are sent. Keep Calendar and Drive credentials intact. Calendar-organizer messages from Google are separate from app notification settings.
+Ownership and Google authorization do not automatically subscribe the owner to job alerts. Hiring alert and overdue-reminder delivery explicitly suppresses sales@aicaseleads.com, including legacy queued settings. Team membership can still be cleaned up for clarity; owner login access is preserved. Current routing is checked again before queued messages are sent. Keep Calendar and Drive credentials intact. Calendar-organizer messages from Google are separate from app notification settings.
 
 ## Updated recruiter reply policy
 

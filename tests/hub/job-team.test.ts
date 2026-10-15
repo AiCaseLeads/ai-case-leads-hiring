@@ -108,10 +108,11 @@ test("actual inbound reply sync creates a single job-team notice and never sends
  const f=await fixture(),job=await f.store.saveJob(jobInput());await configure(f,job.id,[RECRUITER.email]);const app=await f.store.acceptApplication(applicationInput(job.id));
  const outgoing=(await f.store.tasks()).find(t=>t.id.endsWith(":confirmation"))!;
  f.database.prepare("UPDATE hub_communications SET status='sent',thread_id='known-thread',provider_id='outgoing' WHERE task_id=?").run(outgoing.id);
+ f.database.prepare("UPDATE hub_tasks SET payload_json=json_set(payload_json,'$.deliveryAccount',?) WHERE id=?").run(MANAGER.email,outgoing.id);
  const message={id:"candidate-reply",threadId:"known-thread",messageId:"<reply@example.invalid>",from:(await f.store.applicationRow(app.id)).email,subject:"Re: application",body:"Synthetic reply",sent:false,createdAt:Date.now(),inReplyTo:String(outgoing.payload.messageId),references:String(outgoing.payload.messageId),attachments:[]};
  const google={async profile(){return {email:MANAGER.email,historyId:"1"};},async mailHistory(){return {historyId:"1",messages:[]};},async threadMessages(){return [message,{...message,id:"outbound",sent:true}];}} as unknown as import("../../lib/google/workspace").GoogleWorkspace;
  assert.equal(await syncHiringReplies(f.store,f.db,google,10),2);
- await f.store.setSetting("gmail_thread_next_poll:known-thread",0);await syncHiringReplies(f.store,f.db,google,10);
+ await f.store.setSetting(`gmail_thread_next_poll:${MANAGER.email}:known-thread`,0);await syncHiringReplies(f.store,f.db,google,10);
  assert.equal((await f.store.tasks()).filter(t=>t.payload.event==="reply").length,1);f.database.close();
 });
 
@@ -144,5 +145,19 @@ test("recruiter initiated mail replies only to its authenticated active recruite
  assert.deepEqual(mail.replyTo,[RECRUITER.email]);assert.equal(mail.sender,RECRUITER.email);assert.equal(mail.candidateAccount,RECRUITER.email);assert.equal(mail.candidateMail,true);assert.ok(!mail.body.includes("Replies are rejected"));
  assert.match(mail.body,/reply to this email to contact your recruiter/);
  await assert.rejects(()=>candidateMail(f.store,input,["sales@aicaseleads.com"],{mailMode:"recruiter",actor:"sales@aicaseleads.com",applicationId:app.id}),/Assign an active recruiter/);
+ f.database.close();
+});
+
+test("owner sales hiring alerts are suppressed at delivery even if a legacy team includes sales",async(t)=>{
+ const {processHubTasks}=await import("../../lib/task-runner");
+ const prior=process.env.CANDIDATE_MAIL_ACCOUNT;process.env.CANDIDATE_MAIL_ACCOUNT="mariam@aicaseleads.com";
+ t.after(()=>{if(prior===undefined)delete process.env.CANDIDATE_MAIL_ACCOUNT;else process.env.CANDIDATE_MAIL_ACCOUNT=prior;});
+ const f=await fixture(),job=await f.store.saveJob(jobInput()),app=await f.store.acceptApplication(applicationInput(job.id));
+ f.database.exec("DELETE FROM hub_communications; DELETE FROM hub_tasks");
+ await f.store.setSetting(`job_team:${job.id}`,{...emptyJobTeam,members:["sales@aicaseleads.com"],revision:1,createdAt:0,updatedAt:Date.now()});
+ await f.store.taskStatement("legacy-sales-notice",app.id,"gmail",{jobNotification:true,jobId:job.id,event:"newApplication",recipient:"sales@aicaseleads.com",messageId:"notice@example.invalid"},Date.now()).run();
+ const google={async sendMail(){assert.fail("must never email sales");},async archiveApplication(){return{folderId:"folder",archivedRevision:999};}} as unknown as import("../../lib/google/workspace").GoogleWorkspace;
+ await processHubTasks(f.store,f.db,undefined,google,5,["sales@aicaseleads.com"],async()=>google);
+ assert.equal((await f.store.tasks()).find(task=>task.id==="legacy-sales-notice")?.status,"done");
  f.database.close();
 });

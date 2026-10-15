@@ -14,6 +14,7 @@ async function fixture(){
  const app=await f.store.acceptApplication({jobPostingId:role.id,submissionKey:crypto.randomUUID(),fieldSubmissions:[{path:"_systemfield_name",value:"Synthetic"},{path:"_systemfield_email",value:"synthetic@example.invalid"}]},"a".repeat(64));
  const outgoing=f.database.prepare("SELECT c.task_id,t.payload_json FROM hub_communications c JOIN hub_tasks t ON t.id=c.task_id LIMIT 1").get()!;
  f.database.prepare("UPDATE hub_communications SET status='sent',provider_id='original',thread_id='linked' WHERE task_id=?").run(String(outgoing.task_id));
+ f.database.prepare("UPDATE hub_tasks SET payload_json=json_set(payload_json,'$.deliveryAccount',?) WHERE id=?").run(sender,String(outgoing.task_id));
  const reference=JSON.parse(String(outgoing.payload_json)).messageId;
  await f.store.setSetting("gmail_delta_state_v1",{mailbox:sender,historyId:"100",catchupEpoch:"test"});
  await f.store.setSetting(`gmail_thread_caught_up:${sender}:test:linked`,true);
@@ -58,14 +59,14 @@ for(const scenario of ["html","html-empty-plain","external-body","attachment","q
 test("previous blank imports and temporary R2 failures repair without losing or duplicating replies",async()=>{
  const f=await fixture(),b=bucketFixture();const pdf=new TextEncoder().encode(samplePdf());let history=0;
  try{
-  const now=Date.now(),task="gmail-import:reply";
-  await f.db.batch([f.store.taskStatement(task,f.app.id,"gmail",{messageId:"<reply@example.invalid>"},now),f.db.prepare("INSERT INTO hub_communications(id,application_id,task_id,subject,body,status,provider_id,thread_id,created_at,updated_at) VALUES(?,?,?,'Synthetic','','received','reply','linked',?,?)").bind("old-import",f.app.id,task,now,now)]);
+  const now=Date.now(),task=`gmail-import:${sender}:reply`;
+  await f.db.batch([f.store.taskStatement(task,f.app.id,"gmail",{messageId:"<reply@example.invalid>",deliveryAccount:sender},now),f.db.prepare("INSERT INTO hub_communications(id,application_id,task_id,subject,body,status,provider_id,thread_id,created_at,updated_at) VALUES(?,?,?,'Synthetic','','received','reply','linked',?,?)").bind("old-import",f.app.id,task,now,now)]);
   const google=workspace(async(input)=>{const url=new URL(String(input));if(url.hostname==="oauth2.googleapis.com")return response({access_token:"synthetic",token_type:"Bearer",expires_in:3600});if(url.pathname.endsWith("/profile"))return response({emailAddress:sender,historyId:"100"});if(url.pathname.endsWith("/history"))return response({historyId:"101",history:history++?[]:[{messagesAdded:[{message:{id:"reply",threadId:"linked"}}]}]});if(url.pathname.endsWith("/messages/reply"))return response({id:"reply",threadId:"linked",payload:{mimeType:"multipart/mixed",headers:f.headers,parts:[{mimeType:"text/html",body:{data:Buffer.from("<p>My repaired answer.</p>").toString("base64url")}},{partId:"2",filename:"portfolio.pdf",mimeType:"application/pdf",body:{attachmentId:"file",size:pdf.length}}]}});if(url.pathname.endsWith("/attachments/file"))return response({data:Buffer.from(pdf).toString("base64url")});assert.fail(url.pathname);});
   b.setFail(true);assert.equal(await syncHiringReplies(f.store,f.db,google,50,Date.now()+20000,b.bucket),1);
   assert.match(String(f.database.prepare("SELECT body FROM hub_communications WHERE id='old-import'").get()!.body),/My repaired answer.*\n.*incomplete/);
   assert.match(await f.store.setting("mail_sync_last_error",""),/need repair/);
   assert.equal(f.database.prepare("SELECT COUNT(*) AS n FROM hub_files").get()!.n,0);
-  b.setFail(false);await f.store.setSetting("gmail_message_next_repair:reply",0);
+  b.setFail(false);await f.store.setSetting(`gmail_message_next_repair:${sender}:reply`,0);
   assert.equal(await syncHiringReplies(f.store,f.db,google,50,Date.now()+20000,b.bucket),1);
   assert.equal(f.database.prepare("SELECT body FROM hub_communications WHERE id='old-import'").get()!.body,"My repaired answer.");
   assert.equal(f.database.prepare("SELECT COUNT(*) AS n FROM hub_files").get()!.n,1);assert.equal(b.puts(),1);assert.equal(await f.store.setting("mail_sync_last_error",""),"");
@@ -85,7 +86,7 @@ test("3000 already caught-up threads need one delta page, not a 300-wakeup sweep
  const f=await fixture();let historyCalls=0,threadCalls=0;
  try{
   const now=Date.now(),task=f.database.prepare("INSERT INTO hub_tasks(id,application_id,kind,payload_json,status,attempts,run_after,created_at,updated_at) VALUES(?,?,'gmail',?,'done',0,?,?,?)"),comm=f.database.prepare("INSERT INTO hub_communications(id,application_id,task_id,subject,body,status,provider_id,thread_id,created_at,updated_at) VALUES(?,?,?,'Synthetic','Synthetic','sent',?,?,?,?)"),marker=f.database.prepare("INSERT INTO hub_settings(key,value,updated_at) VALUES(?,'true',?)");
-  f.database.exec("BEGIN");for(let n=0;n<3000;n++){const id=`task${n}`,thread=`thread${n}`;task.run(id,f.app.id,JSON.stringify({messageId:`<${n}@example.invalid>`}),now,now,now);comm.run(`comm${n}`,f.app.id,id,`out${n}`,thread,now,now);marker.run(`gmail_thread_caught_up:${sender}:test:${thread}`,now);}f.database.exec("COMMIT");
+  f.database.exec("BEGIN");for(let n=0;n<3000;n++){const id=`task${n}`,thread=`thread${n}`;task.run(id,f.app.id,JSON.stringify({messageId:`<${n}@example.invalid>`,deliveryAccount:sender}),now,now,now);comm.run(`comm${n}`,f.app.id,id,`out${n}`,thread,now,now);marker.run(`gmail_thread_caught_up:${sender}:test:${thread}`,now);}f.database.exec("COMMIT");
   const google={async profile(){return{email:sender,historyId:"101"};},async mailHistory(){historyCalls++;return{historyId:"101",messages:[{id:"new-reply",threadId:"thread2999"}]};},async mailMessage(id:string){return{id,threadId:"thread2999",messageId:"<new@example.invalid>",inReplyTo:"<2999@example.invalid>",references:"",from:"synthetic@example.invalid",subject:"Reply",body:"Current reply",sent:false,createdAt:now,attachments:[]};},async threadMessages(){threadCalls++;return[];}} as unknown as GoogleWorkspace;
   assert.equal(await syncHiringReplies(f.store,f.db,google),1);assert.equal(historyCalls,1);assert.equal(threadCalls,0);assert.equal((await f.store.setting<DeltaState>("gmail_delta_state_v1",{historyId:""})).historyId,"101");
  }finally{f.database.close();}
@@ -131,13 +132,13 @@ for (const status of [404, 403, 503]) {
    const state=await f.store.setting<DeltaState&{pending?:Array<{id:string}>}>("gmail_delta_state_v1",{historyId:""});
    if(status===404){
     assert.equal(imported,1);assert.equal(state.historyId,"102");assert.equal(state.pending,undefined);
-    const observation=await f.store.setting<{applicationIds:string[]}|null>("gmail_message_missing:missing",null);assert.deepEqual(observation?.applicationIds,[f.app.id]);
+    const observation=await f.store.setting<{applicationIds:string[]}|null>(`gmail_message_missing:${sender}:missing`,null);assert.deepEqual(observation?.applicationIds,[f.app.id]);
     assert.equal(f.database.prepare("SELECT COUNT(*) AS n FROM hub_communications WHERE status='received'").get()!.n,1);
     assert.equal(f.database.prepare("SELECT body FROM hub_communications WHERE status='received'").get()!.body,"Later reply survives");
     assert.equal(await f.store.setting("mail_sync_last_error",""),"");
    }else{
     assert.equal(imported,0);assert.equal(state.historyId,"100");assert.deepEqual(state.pending?.map(message=>message.id),["missing","later"]);
-    assert.equal(await f.store.setting("gmail_message_missing:missing",null),null);assert.match(await f.store.setting("mail_sync_last_error",""),/needs attention/);
+    assert.equal(await f.store.setting(`gmail_message_missing:${sender}:missing`,null),null);assert.match(await f.store.setting("mail_sync_last_error",""),/needs attention/);
    }
    await syncHiringReplies(f.store,f.db,google);
    assert.equal(messageCalls,status===404?2:2,"deleted observations skip repeat reads; temporary or permission failures retry the same head");
@@ -174,4 +175,26 @@ test("shared reconciliation deadline stops before processing all slow reads",asy
 test("expired budgets prevent new Google requests and over-budget retry sleeps",async()=>{
  let requests=0,waits=0;const google=workspace(async()=>{requests++;assert.fail("must not start expired operation");});google.setDeadline(Date.now()-1);await assert.rejects(()=>google.sendMail({to:"candidate@example.invalid",subject:"Synthetic",body:"Synthetic",messageId:"synthetic@example.invalid"}),{code:"processor_deadline_exceeded"});assert.equal(requests,0);
  await assert.rejects(()=>providerRequest("https://www.googleapis.com/synthetic",{},"google_drive",async()=>{requests++;return new Response(null,{status:429,headers:{"Retry-After":"10"}});},async()=>{waits++;},()=>Date.now()+5000),{code:"deadline_exceeded"});assert.equal(requests,1);assert.equal(waits,0);
+});
+
+test("mail sync excludes legacy sales and other recruiter links, catchup and repair",async()=>{
+ const f=await fixture();try{
+  const now=Date.now();
+  for(const [label,account] of [["sales","sales@aicaseleads.com"],["other","other@example.invalid"],["legacy",null]]){
+   for(const status of ["sent","received"]){
+    const id=`foreign-${label}-${status}`,payload={messageId:`<${id}@example.invalid>`,...(account?{deliveryAccount:account}:{})};
+    await f.db.batch([f.store.taskStatement(id,f.app.id,"gmail",payload,now),f.db.prepare("INSERT INTO hub_communications(id,application_id,task_id,subject,body,status,provider_id,thread_id,created_at,updated_at) VALUES(?,?,?,'Foreign','',?,?,?,?,?)").bind(id,f.app.id,id,status,id,`thread-${label}`,now,now)]);
+   }
+  }
+  await f.store.setSetting("gmail_message_complete:sales@aicaseleads.com:reply",1);
+  await f.store.setSetting("gmail_message_error:sales@aicaseleads.com:old","old sales error");
+  const reads:string[]=[];
+  const google={async profile(){return{email:sender,historyId:"100"};},async mailHistory(){return{historyId:"101",messages:[{id:"foreign-sales-sent",threadId:"thread-sales"},{id:"foreign-other-sent",threadId:"thread-other"},{id:"foreign-legacy-sent",threadId:"thread-legacy"},{id:"reply",threadId:"linked"}]};},async mailMessage(id:string){reads.push(id);return{id,threadId:"linked",messageId:"<reply@example.invalid>",from:"synthetic@example.invalid",subject:"Current",body:"Current recruiter reply",sent:false,createdAt:now,inReplyTo:f.reference,references:f.reference,attachments:[]};},async threadMessages(id:string){assert.fail(`Must not fetch foreign catchup thread ${id}`);}} as unknown as GoogleWorkspace;
+  assert.equal(await syncHiringReplies(f.store,f.db,google),1);
+  assert.deepEqual(reads,["reply"]);
+  assert.equal(await f.store.setting(`gmail_message_complete:${sender}:reply`,0),1);
+  assert.equal(await f.store.setting("mail_sync_last_error",""),"");
+  const row=f.database.prepare("SELECT t.payload_json FROM hub_tasks t WHERE t.id=?").get(`gmail-import:${sender}:reply`)!;
+  assert.equal(JSON.parse(String(row.payload_json)).deliveryAccount,sender);
+ }finally{f.database.close();}
 });

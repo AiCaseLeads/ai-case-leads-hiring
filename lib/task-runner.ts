@@ -58,7 +58,7 @@ async function taskEffect(task:Task,store:HubStore,db:D1Database,bucket:R2Bucket
   if(task.kind==="gmail"){
     if(task.payload.jobNotification===true){
       const mail=await jobNotificationMail(task,store,owners);
-      if(!mail)return {stale:true};
+      if(!mail||mail.to.trim().toLowerCase()==="sales@aicaseleads.com")return {stale:true};
       const account=process.env.CANDIDATE_MAIL_ACCOUNT?.trim().toLowerCase();
       const transport=await candidateTransport(store,account,resolver);transport.setDeadline?.(deadline);
       const pinned=await db.prepare("UPDATE hub_tasks SET payload_json=? WHERE id=? AND lease_token=? AND status='running' RETURNING id").bind(JSON.stringify({...task.payload,deliveryAccount:account}),task.id,task.leaseToken).first();
@@ -67,7 +67,7 @@ async function taskEffect(task:Task,store:HubStore,db:D1Database,bucket:R2Bucket
     }
     if(task.payload.reviewReminder===true){
       const mail=await reviewReminderMail(task,store,owners);
-      if(!mail)return {stale:true};
+      if(!mail||mail.to.trim().toLowerCase()==="sales@aicaseleads.com")return {stale:true};
       const account=process.env.CANDIDATE_MAIL_ACCOUNT?.trim().toLowerCase();
       const transport=await candidateTransport(store,account,resolver);transport.setDeadline?.(deadline);
       const pinned=await db.prepare("UPDATE hub_tasks SET payload_json=? WHERE id=? AND lease_token=? AND status='running' RETURNING id").bind(JSON.stringify({...task.payload,deliveryAccount:account}),task.id,task.leaseToken).first();
