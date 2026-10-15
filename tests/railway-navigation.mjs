@@ -35,7 +35,7 @@ try {
  await page.goto(origin+'/team');const nav=page.getByRole('navigation',{name:'Hiring workspace'});await nav.waitFor();
  for(const width of [390,1440]){
   await page.setViewportSize({width,height:900});
-  const navigate=async name=>{const menu=page.getByRole('button',{name:'Open workspace menu',exact:true});if(await menu.isVisible())await menu.click();await nav.getByRole('button',{name,exact:true}).click();await page.getByRole('heading',{name,exact:true}).waitFor();};
+  const navigate=async name=>{const menu=page.getByRole('button',{name:'Open workspace menu',exact:true});if(await menu.isVisible())await menu.click();await nav.getByRole('button',{name,exact:true}).click();await page.waitForFunction(name=>document.querySelector('[role=dialog]')||[...document.querySelectorAll('h1,h2')].some(h=>h.textContent===name),name);if(await page.getByRole('dialog').isVisible()){await page.getByRole('button',{name:'Leave without saving',exact:true}).click();}await page.getByRole('heading',{name,exact:true}).waitFor();};
   for(let round=0;round<10;round++){
    await navigate('Applications');await navigate('Jobs');
    await page.goBack();await page.getByRole('heading',{name:'Applications',exact:true}).waitFor();
