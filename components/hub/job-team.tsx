@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { useHubMutation, useHubResource } from "./api";
-import { Feedback, ResourceState } from "./shared";
+import { Feedback, Field, ResourceState } from "./shared";
 
 export type JobTeamDraft = {
   members: string[];
@@ -62,6 +62,12 @@ export function JobTeamFields({ data, value, change, readOnly = false }: {
     <p className="hub-muted">Add or remove staff login access in Settings → Team access, then return here to assign them.</p>
     {!value.members.length && <p className="hub-notice">No recruiters selected. This job will not send team alerts. Applications still appear in the dashboard.</p>}
     <p className="hub-muted">Automatic receipts and screening rejections use no-reply. Messages and invitations sent by a recruiter direct replies to that recruiter; their email is intentionally visible in Reply-To. Team assignments control internal notifications. Calendar invitations can show the interview organizer’s address.</p>
+    <Field label="Recruiter who handles candidate replies" hint="Used when the owner sends an invitation or message. Recruiters sending their own messages receive replies themselves. This person must connect their recruiting Gmail under My setup.">
+      <select disabled={readOnly} value={value.replyTo || ""} onChange={event => change({...value,replyTo:event.target.value || null})}>
+        <option value="">Choose a recruiter (or use the application assignee)</option>
+        {value.members.filter(email=>active.has(email)&&email.toLowerCase()!=="sales@aicaseleads.com").map(email=><option key={email} value={email}>{email}</option>)}
+      </select>
+    </Field>
     <fieldset disabled={readOnly} className="hub-team-alert-picker">
       <legend>Email this team about</legend>
       {([
@@ -74,7 +80,7 @@ export function JobTeamFields({ data, value, change, readOnly = false }: {
         <span>{label}</span>
       </label>)}
     </fieldset>
-    <p className="hub-muted">Sent through {data.sender || "the Google account connected in Settings"}. Staff sign-in gives dashboard access; it does not connect a personal Gmail mailbox. Saving a team does not email earlier applicants.</p>
+    <p className="hub-muted">Notifications use the configured recruiting Gmail account. Staff sign-in gives dashboard access; each recruiter connects their Gmail under My setup. Saving a team does not email earlier applicants.</p>
   </div>;
 }
 

@@ -23,6 +23,7 @@ export async function jobTeam(store:HubStore,jobId:string):Promise<JobTeamConfig
 export async function validateTeam(store:HubStore,input:JobTeamInput,owners:string[]=[]){
  const staff=await activeJobStaff(store,owners),members=[...new Set(input.members)];
  if(members.some(member=>!staff.some(person=>person.email===member)))throw new HiringError("invalid_job_team",422,"Choose active managers or recruiters from Team access before assigning this job.");
+ if(input.replyTo==="sales@aicaseleads.com")throw new HiringError("invalid_job_reply_to",422,"Choose a recruiter other than the owner for candidate replies.");
  if(input.replyTo&&!members.includes(input.replyTo))throw new HiringError("invalid_job_reply_to",422,"Choose a reply contact from this job's hiring team.");
  return {...input,members};
 }
