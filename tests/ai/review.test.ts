@@ -207,3 +207,19 @@ test('source references preserve exact PDF whitespace and boundaries without acc
  assert.throws(()=>validateReview(resolveReviewReferences(duplicate,spans),input,['React experience']),{code:'ai_response_citation_policy'});
  assert.throws(()=>resolveReviewReferences(wire,[]),{code:'ai_response_quote_unverified'});
 });
+
+
+test('manual review lease lasts beyond provider timeout and stale workers cannot overwrite a newer claim',async()=>{
+ let release!:()=>void,started!:()=>void;
+ const ready=new Promise<void>(r=>{started=r;}),waiting=new Promise<void>(r=>{release=r;});let calls=0;
+ const f=await fixture(async()=>{calls++;started();await waiting;return response();});
+ const first=handleAiReview(request('review',f.input),MANAGER,f.deps);await ready;
+ const row=await f.store.stmt("SELECT key FROM hub_settings WHERE key LIKE 'ai_review_v1_%'").first<{key:string}>();
+ await f.store.stmt('UPDATE hub_settings SET updated_at=? WHERE key=?',Date.now()-100000,row!.key).run();
+ assert.equal((await handleAiReview(request('review',f.input),MANAGER,f.deps)).status,409);assert.equal(calls,1);
+ await f.store.setSetting(row!.key,{status:'pending',claimToken:'new-owner'});
+ release();assert.equal((await first).status,409);
+ assert.deepEqual(await f.store.setting(row!.key,null),{status:'pending',claimToken:'new-owner'});
+ assert.equal((await f.store.getApplication(f.app.id)).notes.length,0);
+ f.database.close();
+});

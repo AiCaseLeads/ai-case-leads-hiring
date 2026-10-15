@@ -82,16 +82,18 @@ export async function handleAiReview(request:Request,member:HubMember|null,deps:
     if(!review){
       await limit(deps.store,`ai:staff:${member.userId}`,30);
       await limit(deps.store,`ai:application:${input.applicationId}`,10);
-      const claimed=await deps.store.stmt("INSERT INTO hub_settings(key,value,updated_at) VALUES (?,?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_at=excluded.updated_at WHERE hub_settings.updated_at<? AND json_extract(hub_settings.value,'$.status')!='complete' RETURNING key",cacheKey,JSON.stringify({status:"pending"}),Date.now(),Date.now()-90000).first();
+      const claimToken=crypto.randomUUID();
+      const claimed=await deps.store.stmt("INSERT INTO hub_settings(key,value,updated_at) VALUES (?,?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_at=excluded.updated_at WHERE hub_settings.updated_at<? AND json_extract(hub_settings.value,'$.status')!='complete' RETURNING key",cacheKey,JSON.stringify({status:"pending",claimToken}),Date.now(),Date.now()-180000).first();
       if(!claimed){
         cache=await deps.store.setting<Cache|null>(cacheKey,null);
         if(cache?.status==="complete"&&cache.review)review=validateReview(cache.review,sources,criteria);
-        else throw new HiringError("ai_review_pending",409,"This review is already running or recently failed. Wait 90 seconds before retrying.");
+        else throw new HiringError("ai_review_pending",409,"This review is already running or recently failed. Wait three minutes before retrying.");
       }else{
         try{
           review=await generateReview(await openToken(config.sealedKey,deps.encryptionKey),sources,criteria,deps.fetcher);
-          await deps.store.setSetting(cacheKey,{status:"complete",review});
-        }catch(error){await deps.store.setSetting(cacheKey,{status:"failed"});throw error;}
+          const saved=await deps.store.stmt("UPDATE hub_settings SET value=?,updated_at=? WHERE key=? AND json_extract(value,'$.claimToken')=? RETURNING key",JSON.stringify({status:"complete",review}),Date.now(),cacheKey,claimToken).first();
+          if(!saved)throw new HiringError("ai_review_pending",409,"Another request took over this review. Refresh before retrying.");
+        }catch(error){await deps.store.stmt("UPDATE hub_settings SET value=?,updated_at=? WHERE key=? AND json_extract(value,'$.claimToken')=?",JSON.stringify({status:"failed"}),Date.now(),cacheKey,claimToken).run();throw error;}
       }
     }
     const updated=await deps.store.action(input.applicationId,{action:"note",text:reviewNote(review!,hash,provenance),expectedRevision:input.expectedRevision},member);
