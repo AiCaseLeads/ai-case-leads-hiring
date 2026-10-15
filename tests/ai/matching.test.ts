@@ -110,3 +110,11 @@ test('résumé field identity selects the resume when a portfolio PDF is also at
  await processAiMatches(f.deps);await processAiMatches(f.deps);assert.equal((await matchDetail(f.store,f.id)).score,100);
  f.database.close();
 });
+
+test('failed job criteria show an actionable failed candidate status rather than an endless pending result',async()=>{
+ const f=await fixture();f.deps.fetcher=async()=>Response.json({error:'unavailable'},{status:503});
+ await processAiMatches(f.deps);
+ const detail=await matchDetail(f.store,f.id);assert.equal(detail.status,'failed');assert.equal(detail.score,null);assert.equal(detail.error,'ai_provider_unavailable');
+ const list=await f.store.applications({jobId:f.job.id});assert.equal(list.items[0].aiMatch?.status,'failed');
+ f.database.close();
+});

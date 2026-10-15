@@ -774,8 +774,8 @@ export class HubStore {
     const matches = new Map<string, import("../ai/matchtypes").AiMatchSummary>();
     for(let offset=0;offset<rows.length;offset+=100){
       const ids=rows.slice(offset,offset+100).map(row=>row.id);
-      const selected=await this.rows<{id:string;enabled:number;version:number;status:string|null;score:number|null;updated_at:number|null}>(`SELECT a.id,j.ai_match_enabled AS enabled,j.form_version AS version,m.status,m.score,m.updated_at FROM hub_applications a JOIN hub_jobs j ON j.id=a.job_id LEFT JOIN hub_ai_matches m ON m.application_id=a.id AND m.form_version=j.form_version WHERE a.id IN (${ids.map(()=>"?").join(",")})`,...ids);
-      for(const m of selected)matches.set(m.id,{status:!m.enabled?'disabled':m.status==='ready'?'ready':!aiAvailable?'setup_required':m.status==='needs_review'?'needs_review':m.status==='failed'?'failed':'pending',score:m.enabled&&m.status==='ready'?m.score:null,version:m.version,updatedAt:m.updated_at});
+      const selected=await this.rows<{id:string;enabled:number;version:number;status:string|null;criteria_status:string|null;score:number|null;updated_at:number|null}>(`SELECT a.id,j.ai_match_enabled AS enabled,j.form_version AS version,m.status,c.status AS criteria_status,m.score,m.updated_at FROM hub_applications a JOIN hub_jobs j ON j.id=a.job_id LEFT JOIN hub_ai_matches m ON m.application_id=a.id AND m.form_version=j.form_version LEFT JOIN hub_ai_criteria c ON c.job_id=j.id AND c.form_version=j.form_version WHERE a.id IN (${ids.map(()=>"?").join(",")})`,...ids);
+      for(const m of selected)matches.set(m.id,{status:!m.enabled?'disabled':m.status==='ready'?'ready':!aiAvailable?'setup_required':m.criteria_status==='failed'?'failed':m.status==='needs_review'?'needs_review':m.status==='failed'?'failed':'pending',score:m.enabled&&m.status==='ready'?m.score:null,version:m.version,updatedAt:m.updated_at});
     }
     return rows.map((row)=>({...summary(row),grade:gradeForScorecards(cards.get(row.id)||[]),aiMatch:matches.get(row.id)}));
   }

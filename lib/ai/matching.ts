@@ -52,8 +52,10 @@ export async function matchDetail(store:HubStore,applicationId:string):Promise<A
  const row=await store.stmt('SELECT * FROM hub_ai_matches WHERE application_id=? AND form_version=?',applicationId,job.formVersion).first<{status:string;score:number|null;review_json:string|null;warnings_json:string;updated_at:number;error:string|null}>();
  const config=await store.setting<AiConfig>('ai_openrouter_config_v1',{enabled:false});
  const available=!!config.enabled&&!!config.sealedKey;
+ const criteriaState=await store.stmt('SELECT status,error FROM hub_ai_criteria WHERE job_id=? AND form_version=?',job.id,job.formVersion).first<{status:string;error:string|null}>();
+ const criteriaFailed=criteriaState?.status==='failed';
  const review:Review=row?.review_json?JSON.parse(row.review_json):{criteria:[],checks:[]};
- return {status:!job.aiMatchEnabled?'disabled':row?.status==='ready'?'ready':!available?'setup_required':row?.status==='needs_review'?'needs_review':row?.status==='failed'?'failed':'pending',score:job.aiMatchEnabled&&row?.status==='ready'?row.score:null,version:job.formVersion,updatedAt:row?.updated_at??null,criteria:review.criteria,checks:review.checks,model:MODEL,sourceWarnings:row?JSON.parse(row.warnings_json):[],...(row?.error?{error:row.error}:{})};
+ return {status:!job.aiMatchEnabled?'disabled':row?.status==='ready'?'ready':!available?'setup_required':criteriaFailed?'failed':row?.status==='needs_review'?'needs_review':row?.status==='failed'?'failed':'pending',score:job.aiMatchEnabled&&row?.status==='ready'?row.score:null,version:job.formVersion,updatedAt:row?.updated_at??null,criteria:review.criteria,checks:review.checks,model:MODEL,sourceWarnings:row?JSON.parse(row.warnings_json):[],...(criteriaFailed?{error:criteriaState?.error||'ai_criteria_failed'}:row?.error?{error:row.error}:{})};
 }
 // Reconciliation is durable, bounded, and does not run inside application submission.
 export async function reconcileMatches(store:HubStore){
