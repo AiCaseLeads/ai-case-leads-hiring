@@ -47,7 +47,7 @@ test('pending, stale, failed and unreadable reviews never display misleading num
  for(const [status,label] of [['pending','Waiting for AI review'],['stale','Job changed · review needed'],['failed','AI review needs attention'],['needs_review','Needs manual review']]){
   const {page}=await setup(t,{data:{status,score:99,criteria:[],...(status==='failed'?{error:'Source extraction failed'}:{})}});
   await page.getByText(label,{exact:true}).waitFor();assert.equal(await page.getByText('99 / 100',{exact:true}).count(),0);
-  if(status==='failed')assert.equal(await page.getByRole('alert').textContent(),'Source extraction failed');
+  if(status==='failed'){assert.match(await page.getByRole('alert').textContent(),/administrator should inspect server logs/);assert.equal(await page.getByText('Source extraction failed',{exact:true}).count(),0);}
  }
 });
 
@@ -97,4 +97,10 @@ test('mobile AI evidence and consent remain within the viewport',async t=>{
 test('AI diagnostics explain waiting and capacity without starting paid review',async t=>{
  const {page,writes}=await setup(t,{mode:'setup',data:{enabled:true,jobId:'job-test',version:1,available:true,criteria:[],status:'pending',diagnostics:{counts:{pending:62,running:0,complete:0,failed:0,needsReview:0,notQueued:0,total:62},criteria:{status:'failed',attempts:1,error:'ai_provider_unavailable'},errors:[{code:'ai_invalid_response',count:1}],budget:{limit:100,used:100,remaining:0,resetsAt:1800000000000},worker:{enabled:true,encryptionKeyConfigured:true},reasons:['hourly_budget_exhausted']}}});
  await page.getByRole('heading',{name:'AI review progress'}).waitFor();await page.getByText(/62 waiting/).waitFor();await page.getByText(/Check the API key, credit balance and model access/).waitFor();await page.getByText(/AI response contained invalid or unsupported evidence/).waitFor();await page.getByText(/Hourly AI capacity is exhausted/).waitFor();assert.equal(writes.length,0);await page.getByRole('button',{name:'Refresh AI settings',exact:true}).click();assert.equal(writes.length,0);
+});
+
+test('candidate AI validation errors explain the evidence problem without a numeric score',async t=>{
+ for (const [error,copy] of Object.entries({ai_response_schema_invalid:'required review format',ai_response_criteria_mismatch:'this job’s requirements',ai_response_citation_policy:'evidence citation requirements',ai_response_quote_unverified:'submitted source text'})) {
+  const {page}=await setup(t,{data:{status:'failed',score:null,error}});await page.getByRole('alert').filter({hasText:copy}).waitFor();assert.equal(await page.getByText('80 / 100',{exact:true}).count(),0);
+ }
 });
