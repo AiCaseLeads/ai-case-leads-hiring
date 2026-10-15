@@ -22,6 +22,11 @@ const diagnosticReasons: Record<string,string> = {
 };
 const diagnosticErrors: Record<string,string> = {
   ai_provider_unavailable:"OpenRouter could not fulfill the request. Check the API key, credit balance and model access.",
+  ai_response_truncated:"The provider stopped at its output limit before completing the review. No score was saved.",
+  ai_response_refused:"The provider declined to complete this review. No score was saved; a recruiter can review the application manually.",
+  ai_response_incomplete:"The provider returned an incomplete review. No score was saved.",
+  ai_response_json_invalid:"The provider response could not be read as a valid review. No score was saved.",
+  ai_request_timeout:"The provider did not respond before the request timed out. No score was saved.",
   ai_response_schema_invalid:"The AI response did not match the required review format. No score was saved.",
   ai_response_criteria_mismatch:"The AI response did not match this job’s requirements. No score was saved.",
   ai_response_citation_policy:"The AI response did not meet the evidence citation requirements. No score was saved.",

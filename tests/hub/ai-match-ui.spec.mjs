@@ -100,7 +100,7 @@ test('AI diagnostics explain waiting and capacity without starting paid review',
 });
 
 test('candidate AI validation errors explain the evidence problem without a numeric score',async t=>{
- for (const [error,copy] of Object.entries({ai_response_schema_invalid:'required review format',ai_response_criteria_mismatch:'this job’s requirements',ai_response_citation_policy:'evidence citation requirements',ai_response_quote_unverified:'submitted source text'})) {
+ for (const [error,copy] of Object.entries({ai_response_truncated:'output limit',ai_response_refused:'declined to complete',ai_response_incomplete:'incomplete review',ai_response_json_invalid:'could not be read',ai_request_timeout:'timed out',ai_response_schema_invalid:'required review format',ai_response_criteria_mismatch:'this job’s requirements',ai_response_citation_policy:'evidence citation requirements',ai_response_quote_unverified:'submitted source text'})) {
   const {page}=await setup(t,{data:{status:'failed',score:null,error}});await page.getByRole('alert').filter({hasText:copy}).waitFor();assert.equal(await page.getByText('80 / 100',{exact:true}).count(),0);
  }
 });
