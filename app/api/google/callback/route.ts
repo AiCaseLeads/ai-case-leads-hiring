@@ -33,7 +33,7 @@ export async function GET(request:Request){
     return Response.redirect(`${origin}/team?workspace=connected${calendar?"":"&calendar=setup"}`,303);
   }catch(error){
     const code=error&&typeof error==="object"&&"code"in error?error.code:error instanceof Error?error.message:"";
-    const reason=["wrong_sender","missing_permissions","offline_grant_missing","configuration_changed","wrong_calendar_account"].includes(String(code))?`&reason=${String(code)}`:"";
+    const reason=["wrong_sender","google_required_permissions_missing","missing_permissions","offline_grant_missing","configuration_changed","wrong_calendar_account"].includes(String(code))?`&reason=${String(code)}`:"";
     return Response.redirect(`${origin}/team?${personal?"view=settings&personalCalendar":"workspace"}=connection_failed${reason}`,303);
   }
 }

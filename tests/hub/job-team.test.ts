@@ -123,3 +123,13 @@ test("candidate mail rejects private template addresses and discards legacy staf
  await assert.rejects(()=>candidateMail(f.store,{...input,body:`Contact ${MANAGER.email}`},[MANAGER.email]));
  f.database.close();
 });
+
+test("candidate template guard includes inactive staff and owners outside active job teams",async()=>{
+ const {candidateMail}=await import("../../lib/job-team/service");
+ const f=await fixture();
+ f.database.prepare("UPDATE hub_members SET active=0 WHERE email=?").run(RECRUITER.email);
+ const input={to:"candidate@example.invalid",subject:"Application received",body:`Contact ${RECRUITER.email}`,messageId:"notice@example.invalid"};
+ await assert.rejects(()=>candidateMail(f.store,input),/Remove staff email addresses/);
+ await assert.rejects(()=>candidateMail(f.store,{...input,body:"Contact private-owner@example.invalid"},["private-owner@example.invalid"]),/Remove staff email addresses/);
+ f.database.close();
+});

@@ -73,7 +73,7 @@ export async function accountProfile(accessToken: string, fetcher: typeof fetch 
 }
 export function scopeStatus(scope: string) {
   const granted = new Set(scope.split(" "));
-  return { mail: granted.has(GOOGLE_SCOPES[0]) && granted.has(GOOGLE_SCOPES[1]), calendar: granted.has(GOOGLE_SCOPES[2]) && granted.has(GOOGLE_SCOPES[3]), drive: granted.has(GOOGLE_SCOPES[4]) };
+  return { mail: granted.has(GOOGLE_SCOPES[0]) && granted.has(GOOGLE_SCOPES[1]) && granted.has(GOOGLE_SCOPES[5]), calendar: granted.has(GOOGLE_SCOPES[2]) && granted.has(GOOGLE_SCOPES[3]), drive: granted.has(GOOGLE_SCOPES[4]) };
 }
 
 async function sealingKey(value: string): Promise<CryptoKey> {

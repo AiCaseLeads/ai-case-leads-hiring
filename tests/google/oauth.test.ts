@@ -59,3 +59,13 @@ test("sealed tokens use randomized authenticated encryption and detect tampering
   await assert.rejects(() => openToken(parts.join("."), key), /google_sealed_token_invalid/);
   await assert.rejects(() => sealToken("refresh", "password"), /32_random_bytes_hex/);
 });
+
+test("legacy mail scopes do not satisfy verified no-reply alias authorization",async()=>{
+ const legacy=GOOGLE_SCOPES.filter(scope=>!scope.endsWith("gmail.settings.basic")).join(" ");
+ assert.deepEqual(scopeStatus(legacy),{mail:false,calendar:true,drive:true});
+ let calls=0;
+ await assert.rejects(exchangeCode({clientId:"client",clientSecret:"secret",redirectUri:"https://jobs.example.com/api/google/callback",code:"code"},async()=>{
+  calls++;return response({access_token:"access",refresh_token:"refresh",token_type:"Bearer",expires_in:3600,scope:legacy});
+ }),/google_required_permissions_missing/);
+ assert.equal(calls,1,"must reject partial permission before profile and saving a new grant");
+});

@@ -182,6 +182,7 @@ function SettingsForm({
             {initial.google.connected ? "Connected" : "Not connected"}
           </Badge>
         </div>
+        <p className="hub-notice">A connected account does not confirm applicant email delivery. Applicant messages require a verified no-reply address. Reconnect Google and approve all requested permissions if the connection predates no-reply setup; then send a test and check Delivery activity. Calendar and Drive can remain connected while email setup needs attention.</p>
         <dl className="hub-connection-details">
           <div>
             <dt>Connected account</dt>
