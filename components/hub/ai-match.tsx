@@ -5,8 +5,21 @@ import { Feedback, ResourceState } from "./shared";
 
 export type MatchSummary = {status: string; score: number | null; updatedAt?: number | null};
 type MatchDetail = MatchSummary & {model?: string; error?: string; sourceWarnings?: string[]; criteria?: {criterion: string; status: string; explanation: string; citations: {source: string; quote: string}[]}[]};
-type MatchJob = {enabled: boolean; jobId: string; version: number; available?: boolean; criteria: string[]; status: string; error?: string};
+type MatchDiagnostics = {counts:{pending:number;running:number;complete:number;failed:number;needsReview:number;notQueued:number;total:number};criteria:{status:string;error?:string|null;attempts:number;nextRetryAt?:number|null};budget:{limit:number;used:number;remaining:number;resetsAt:number};worker:{enabled:boolean|null;encryptionKeyConfigured:boolean;leaseUntil?:number|null};nextRetryAt?:number|null;reasons:string[]};
+type MatchJob = {diagnostics?:MatchDiagnostics;enabled: boolean; jobId: string; version: number; available?: boolean; criteria: string[]; status: string; error?: string};
 const labels: Record<string,string> = {disabled:"AI review off",setup_required:"Connect AI in Company setup",pending:"Waiting for AI review",preparing:"Preparing job requirements",running:"AI review in progress",needs_review:"Needs manual review",failed:"AI review needs attention",stale:"Job changed · review needed"};
+const diagnosticReasons: Record<string,string> = {
+  job_disabled:"AI matching is off for this job.",
+  provider_not_configured:"Connect and enable OpenRouter in Company setup before reviews can run.",
+  encryption_key_missing:"The server encryption key is missing. Ask the administrator to check deployment settings.",
+  background_worker_disabled:"Background processing is disabled. Ask the administrator to enable the worker.",
+  hourly_budget_exhausted:"Hourly AI capacity is exhausted. Reviews will resume after reset.",
+  criteria_retry_limit:"Preparing job requirements reached the retry limit. An administrator needs to investigate before retrying.",
+  criteria_retry_scheduled:"Preparing job requirements failed temporarily; a retry is scheduled.",
+  criteria_not_queued:"Job requirements have not been queued yet.",
+  applicant_retry_limit:"Some applicant reviews reached the retry limit and need administrator attention.",
+  resume_needs_review:"Some resumes could not be assessed automatically and need a recruiter’s review.",
+};
 export function MatchScore({match}:{match?:MatchSummary}) {
   return match?.status === "ready" && typeof match.score === "number"
     ? <span><strong>{Math.round(match.score)} / 100</strong><span className="hub-secondary-line">Job-match evidence</span></span>
@@ -32,6 +45,7 @@ export function JobMatchSetup({jobId, changed}:{jobId:string;changed:()=>void}) 
       <p className="hub-muted">Enabling this reviews existing and new applicants, sending relevant résumé text and answers to OpenRouter / OpenAI. Results help your team compare evidence; they do not make hiring decisions or send rejections. API usage is billed to your OpenRouter account.</p>
       {resource.data.error && <p role="alert" className="hub-notice hub-error">{resource.data.error}</p>}
       {resource.data.enabled && <><p>{labels[resource.data.status] || (resource.data.status === "ready" ? "Job requirements are ready." : resource.data.status)}</p><button type="button" className="hub-button secondary" disabled={mutation.busy || resource.data.available === false} onClick={()=>void queue()}>Review existing applicants</button><p className="hub-muted">Then choose “Highest AI match first” above and apply filters. Refresh the list to see completed reviews.</p></>}
+      {resource.data.diagnostics && <section className="hub-notice" aria-label="AI review progress"><h4>AI review progress</h4><p>{resource.data.diagnostics.counts.complete} completed · {resource.data.diagnostics.counts.running} processing · {resource.data.diagnostics.counts.pending} waiting · {resource.data.diagnostics.counts.failed} failed · {resource.data.diagnostics.counts.needsReview} need manual review · {resource.data.diagnostics.counts.notQueued} not queued</p>{resource.data.diagnostics.reasons.map(reason => <p key={reason}>{diagnosticReasons[reason] || "AI processing needs administrator attention. Refresh to check its status."}</p>)}<p>Hourly AI capacity: {resource.data.diagnostics.budget.remaining} of {resource.data.diagnostics.budget.limit} requests remaining.{resource.data.diagnostics.budget.resetsAt ? ` Resets ${new Date(resource.data.diagnostics.budget.resetsAt).toLocaleString()}.` : ""}</p>{resource.data.diagnostics.nextRetryAt && <p>Next eligible retry: {new Date(resource.data.diagnostics.nextRetryAt).toLocaleString()}.</p>}<p className="hub-muted">Refresh AI settings to check progress. Viewing this status does not start reviews or spend AI credits.</p></section>}
       {!!resource.data.criteria?.length && <details><summary>Requirements used for every applicant</summary><ul>{resource.data.criteria.map(c=><li key={c}>{c}</li>)}</ul><p className="hub-muted">These come from the job description. Edit the job if its requirements need correction; older results must then be reviewed again.</p></details>}
     </>}
     <div className="hub-button-row"><button type="button" className="hub-button secondary" disabled={resource.loading || mutation.busy} onClick={()=>void resource.reload()}>Refresh AI settings</button></div>

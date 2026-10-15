@@ -93,3 +93,8 @@ test('mobile AI evidence and consent remain within the viewport',async t=>{
   await Promise.all([page.waitForResponse(r=>r.url().includes('/api/hub/applications?')),page.getByRole('button',{name:'Refresh applications',exact:true}).click()]);
   assert.ok(queries.length>before+1);
  });
+
+test('AI diagnostics explain waiting and capacity without starting paid review',async t=>{
+ const {page,writes}=await setup(t,{mode:'setup',data:{enabled:true,jobId:'job-test',version:1,available:true,criteria:[],status:'pending',diagnostics:{counts:{pending:62,running:0,complete:0,failed:0,needsReview:0,notQueued:0,total:62},criteria:{status:'pending',attempts:0},budget:{limit:100,used:100,remaining:0,resetsAt:1800000000000},worker:{enabled:true,encryptionKeyConfigured:true},reasons:['hourly_budget_exhausted']}}});
+ await page.getByRole('heading',{name:'AI review progress'}).waitFor();await page.getByText(/62 waiting/).waitFor();await page.getByText(/Hourly AI capacity is exhausted/).waitFor();assert.equal(writes.length,0);await page.getByRole('button',{name:'Refresh AI settings',exact:true}).click();assert.equal(writes.length,0);
+});

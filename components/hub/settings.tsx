@@ -451,7 +451,7 @@ export function Tasks({
       refresh,
     ),
     mutation = useHubMutation();
-  const mail = useHubResource<{candidateConnected:boolean;candidateAccount:string|null}>("/api/personal-mail", refresh);
+  const mail = useHubResource<{connected:boolean;candidateConnected:boolean;candidateAccount:string|null}>("/api/personal-mail", refresh);
   const mailSetupError = (task: Task) => task.kind === "gmail" && isMailSetupError(task.lastError || "");
   const setupExplanation = (error: string) => ({
     candidate_mail_account_not_configured: "An administrator must assign the automatic recruiting email account.",
@@ -529,7 +529,7 @@ export function Tasks({
           )}
         </div>
       </div>
-      {mail.data?.candidateConnected === false && <p className="hub-notice">Recruiting email is not connected. {mail.data.candidateAccount || "The assigned recruiter"} must sign in and connect their own Gmail under Settings → My setup. Company Drive and Calendar connections do not enable recruiting email. <a className="hub-button secondary" href="/team?view=settings">Connect recruiting email</a></p>}
+      {mail.data?.candidateConnected === false && <p className="hub-notice">Automatic recruiting email is not connected. {mail.data.candidateAccount || "The assigned recruiter"} must sign in and connect their own Gmail under Settings → My setup. Other recruiters can use their own connected mailboxes. Company Drive and Calendar connections do not enable recruiting email. <a className="hub-button secondary" href="/team?view=settings">Connect recruiting email</a></p>}
       <Feedback error={mutation.error} success={mutation.success} />
       {processResult && (
         <p
@@ -601,7 +601,7 @@ export function Tasks({
                     <td className="hub-task-error">{mailSetupError(task) ? setupExplanation(task.lastError || "") + " This message is held; connecting Gmail alone will not send it." : task.lastError || "—"}</td>
                     <td>
                       {mailSetupError(task) ? (
-                        <div><a className="hub-button secondary" href="/team?view=settings">Connect recruiting email</a>{admin && mail.data?.candidateConnected === true && task.status === "failed" && <button type="button" className="hub-button secondary" disabled={mutation.busy} onClick={() => {if (window.confirm("Have you reviewed this held message and corrected its sender, permissions and template? Retrying can send it to the applicant.")) void retry(task.id);}}>Review and retry held message</button>}</div>
+                        <div><a className="hub-button secondary" href="/team?view=settings">Connect recruiting email</a>{admin && (mail.data?.candidateConnected === true || mail.data?.connected === true) && task.status === "failed" && <button type="button" className="hub-button secondary" disabled={mutation.busy} onClick={() => {if (window.confirm("Have you reviewed this held message and corrected its sender, permissions and template? Retrying can send it to the applicant.")) void retry(task.id);}}>Review and retry held message</button>}</div>
                       ) : task.status === "uncertain" && task.kind === "calendar" ? (
                         <button
                           className="hub-button secondary"
