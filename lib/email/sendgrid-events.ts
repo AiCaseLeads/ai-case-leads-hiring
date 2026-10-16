@@ -71,10 +71,14 @@ export async function receiveSendgridEvents(source: StoreSource, raw: Uint8Array
   let body: unknown;
   try { body = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(raw)); }
   catch { throw new HiringError("invalid_sendgrid_events", 400, "The email event payload could not be read."); }
-  const parsed = z.array(eventSchema).max(MAX_EVENTS).safeParse(body);
+  if (!Array.isArray(body) || body.length > MAX_EVENTS) throw new HiringError("invalid_sendgrid_events", 400, "The email event payload is invalid.");
+  // A shared account can include status changes and other applications' event
+  // shapes. Validate our own tagged evidence without rejecting unrelated events.
+  const applicationEvents = body.filter(event => event !== null && typeof event === "object" && !Array.isArray(event) && Object.prototype.hasOwnProperty.call(event, "aicl_message"));
+  const parsed = z.array(eventSchema).safeParse(applicationEvents);
   if (!parsed.success) throw new HiringError("invalid_sendgrid_events", 400, "The email event payload is invalid.");
   const tagged = parsed.data.filter(event => event.aicl_message && event.sg_message_id);
-  if (!tagged.length) return { accepted: 0, duplicates: 0, ignored: parsed.data.length };
+  if (!tagged.length) return { accepted: 0, duplicates: 0, ignored: body.length };
   const store = typeof source === "function" ? await source() : source;
   const statements: D1PreparedStatement[] = [];
   for (const event of tagged) {
@@ -87,7 +91,7 @@ export async function receiveSendgridEvents(source: StoreSource, raw: Uint8Array
   }
   const results = await store.db.batch(statements);
   const accepted = results.reduce((total, result, index) => total + (index % 2 === 0 ? result.meta.changes || 0 : 0), 0);
-  return { accepted, duplicates: tagged.length - accepted, ignored: parsed.data.length - tagged.length };
+  return { accepted, duplicates: tagged.length - accepted, ignored: body.length - tagged.length };
 }
 
 /** Actual events can append a server suffix to the API's provider ID. Preserve

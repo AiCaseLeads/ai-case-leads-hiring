@@ -149,6 +149,24 @@ test("unrelated account events without application correlation are ignored", asy
   assert.deepEqual(result, { accepted: 0, duplicates: 0, ignored: 1 }); assert.equal(opened, false);
 });
 
+test("unrelated account status and future event types cannot block a valid application delivery batch", async () => {
+  const f = createStore();
+  try {
+    const raw = body([{ event: "account_status_change", sg_event_id: "account-1", timestamp: 1709142428, type: "compliance_suspend" }, { event: "future-provider-event", another_shape: true }, await event()]);
+    const result = await receiveSendgridEvents(f.store, raw, timestamp, signed(raw), encodedKey, now);
+    assert.deepEqual(result, { accepted: 1, duplicates: 0, ignored: 2 });
+    assert.equal(await count(f.store), 1); assert.equal(await count(f.store, "sendgrid_mail:"), 1);
+    assert.equal((await readSendgridEvidence(f.store, messageId, recipient))?.accepted, true);
+  } finally { f.database.close(); }
+});
+
+test("batches containing only untagged account status events never open private application storage", async () => {
+  let opened = false;
+  const raw = body([{ event: "account_status_change", sg_event_id: "account-1", timestamp: 1709142428, type: "compliance_suspend" }, { event: "future-provider-event" }]);
+  const result = await receiveSendgridEvents(async () => { opened = true; throw new Error("No application evidence"); }, raw, timestamp, signed(raw), encodedKey, now);
+  assert.deepEqual(result, { accepted: 0, duplicates: 0, ignored: 2 }); assert.equal(opened, false);
+});
+
 test("invalid JSON, malformed event fields and too many events reject the whole batch without writes", async () => {
   const f = createStore();
   try {
