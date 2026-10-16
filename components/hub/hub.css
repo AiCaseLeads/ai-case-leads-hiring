@@ -1617,3 +1617,4 @@ html:has(.hiring-hub) { scroll-behavior: auto; }
  .hub-detail-grid:has(.hub-candidate-actions[open]) .hub-action-panel { grid-column:1; grid-row:1; order:-1; }
  .hub-detail-grid:has(.hub-candidate-actions[open]) .hub-detail-main { grid-row:2; }
 }
+.hub-applications-table td[data-label="Stage"] .hub-badge { white-space:nowrap; overflow-wrap:normal; min-width:max-content; }
