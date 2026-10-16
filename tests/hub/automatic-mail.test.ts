@@ -117,7 +117,7 @@ test('recovery verifies SendGrid independently and key changes invalidate an app
 test('status distinguishes the authenticated automatic sender from the Null MX reply address', async () => {
   const status = await automaticMailStatus(async () => transport());
   assert.equal(status.ready, true);
-  assert.equal(status.sender, 'no-reply@aicaseleads.com');
+  assert.equal(status.sender, 'no-reply-recruiting@aicaseleads.com');
   assert.equal(status.replyTo, 'no-reply@notify.aicaseleads.com');
   assert.notEqual(status.sender, status.replyTo);
 });

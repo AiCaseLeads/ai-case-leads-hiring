@@ -7,7 +7,7 @@ import type { MailInput } from "../../lib/google/gmail";
 const apiKey = "fixture-sendgrid-key-do-not-log", now = Date.parse("2026-10-16T12:00:00Z");
 const mail: MailInput = { to: "Candidate@example.com", subject: "Application received — Zoë", body: "Hello Zoë,\nWe received <your> application & résumé.", messageId: "application-123-confirmation@jobs.aicaseleads.com", sender: TRANSACTIONAL_MAIL_SENDER, replyTo: [AUTOMATIC_REPLY_TO], candidateMail: true, candidateAccount: "mariam@aicaseleads.com" };
 test("automatic From uses the deliverable authenticated root, distinct from the Null MX Reply-To", () => {
-  assert.equal(TRANSACTIONAL_MAIL_SENDER, "no-reply@aicaseleads.com");
+  assert.equal(TRANSACTIONAL_MAIL_SENDER, "no-reply-recruiting@aicaseleads.com");
   assert.notEqual(AUTOMATIC_MAIL_DOMAIN, AUTOMATIC_REPLY_DOMAIN);
   assert.equal(AUTOMATIC_REPLY_TO, "no-reply@notify.aicaseleads.com");
 });
@@ -37,7 +37,7 @@ test("SendGrid uses one fixed branded no-reply envelope and no private account, 
   const request = calls.find(call => call.init.method === "POST")!;
   assert.equal(request.url.pathname, "/v3/mail/send");
   const payload = JSON.parse(String(request.init.body));
-  assert.deepEqual(payload.from, { email: "no-reply@aicaseleads.com", name: TRANSACTIONAL_MAIL_NAME });
+  assert.deepEqual(payload.from, { email: "no-reply-recruiting@aicaseleads.com", name: TRANSACTIONAL_MAIL_NAME });
   assert.deepEqual(payload.reply_to, { email: AUTOMATIC_REPLY_TO, name: TRANSACTIONAL_MAIL_NAME });
   assert.deepEqual(payload.personalizations, [{ to: [{ email: "candidate@example.com" }], custom_args: { aicl_message: identity.tag } }]);
   assert.deepEqual(payload.content[0], { type: "text/plain", value: mail.body });
@@ -132,6 +132,7 @@ test("private addresses and malformed envelopes fail before any external request
   const { client, calls } = fixture();
   for (const [changed, code] of [
     [{ sender: "sales@aicaseleads.com" }, "transactional_mail_sender_not_allowed"],
+    [{ sender: "no-reply@aicaseleads.com" }, "transactional_mail_sender_not_allowed"],
     [{ sender: "mariam@aicaseleads.com" }, "transactional_mail_sender_not_allowed"],
     [{ sender: AUTOMATIC_REPLY_TO }, "transactional_mail_sender_not_allowed"],
     [{ replyTo: [TRANSACTIONAL_MAIL_SENDER] }, "transactional_mail_reply_to_not_allowed"],

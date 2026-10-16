@@ -123,7 +123,7 @@ test("candidate mail rejects private template addresses and discards legacy staf
  const input={to:"candidate@example.invalid",subject:"Application received",body:"Thank you",messageId:"notice@example.invalid",replyTo:[RECRUITER.email],sender:MANAGER.email};
  const safe=await candidateMail(f.store,input,[MANAGER.email]);
  assert.match(safe.body,/do not reply/i);assert.match(safe.body,/https:\/\/jobs.aicaseleads.com\/help/);
- assert.equal(safe.sender,"no-reply@aicaseleads.com");assert.deepEqual(safe.replyTo,["no-reply@notify.aicaseleads.com"]);
+ assert.equal(safe.sender,"no-reply-recruiting@aicaseleads.com");assert.deepEqual(safe.replyTo,["no-reply@notify.aicaseleads.com"]);
  await assert.rejects(()=>candidateMail(f.store,{...input,body:`Contact ${MANAGER.email}`},[MANAGER.email]));
  f.database.close();
 });

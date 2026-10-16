@@ -5,9 +5,7 @@ import { createStore, applicationInput, jobInput, MANAGER, RECRUITER, currentAct
 import { previewMailRecovery, executeMailRecovery, type RecoveryDependencies } from "../../lib/hub/mail-recovery";
 import { changeApplicationTrash } from "../../lib/hub/application-lifecycle";
 import { handleHubRequest } from "../../lib/hub/http";
-import { Gmail } from "../../lib/google/gmail";
-import type { GoogleClient } from "../../lib/google/client";
-import { fromBase64url } from "../../lib/google/http";
+import { SendGridMail } from "../../lib/email/sendgrid";
 import { candidateMail } from "../../lib/job-team/service";
 import { processHubTasks } from "../../lib/task-runner";
 import type { GoogleWorkspace } from "../../lib/google/workspace";
@@ -38,7 +36,7 @@ test("bulk recovery previews eligible receipts, preserves no-reply privacy and M
     const preview = await previewMailRecovery(f.store, MANAGER, f.window, ready());
     assert.equal(preview.eligible, 2); assert.equal(preview.counts["Application receipt"], 2);
     assert.ok(preview.skipped.some(item => item.reason.includes("uncertain")));
-    assert.ok(preview.messages.every(item => item.sender === "no-reply@aicaseleads.com" && item.replyTo.join() === "no-reply@notify.aicaseleads.com"));
+    assert.ok(preview.messages.every(item => item.sender === "no-reply-recruiting@aicaseleads.com" && item.replyTo.join() === "no-reply@notify.aicaseleads.com"));
     assert.equal(f.database.prepare("SELECT status FROM hub_tasks WHERE application_id=? AND kind='gmail'").get(f.ids[0])!.status, "failed");
     const plan = { planId: preview.planId, digest: preview.digest };
     assert.deepEqual(await executeMailRecovery(f.store, MANAGER, plan, ready()), { queued: 2, alreadyQueued: false });
@@ -127,18 +125,21 @@ test("automatic envelope excludes staff routing and stale queued replyTo/sender 
   const f = await fixture();
   try {
     let emitted = "", writes = 0;
-    const client = { request: async (url: string, init?: RequestInit) => {
-      if (url.endsWith("/profile")) return Response.json({ emailAddress: candidateAccount });
-      if (url.endsWith("/settings/sendAs")) return Response.json({ sendAs: [{ sendAsEmail: "no-reply@aicaseleads.com", verificationStatus: "accepted" }] });
-      if (url.includes("/messages?")) return Response.json({ messages: [] });
-      if (url.endsWith("/messages/send")) { writes++; emitted = new TextDecoder().decode(fromBase64url(JSON.parse(String(init!.body)).raw)); return Response.json({ id: "sent", threadId: "thread" }); }
+    const client = new SendGridMail({ apiKey: "synthetic-test-key", cacheReadiness: false, fetcher: async (url, init) => {
+      if (String(url).includes("/whitelabel/domains")) return Response.json([{ domain: "aicaseleads.com", valid: true }]);
+      if (String(url).endsWith("/mail/send")) { writes++; emitted = String(init!.body); return new Response(null, { status: 202, headers: { "x-message-id": "synthetic-sent-id" } }); }
       throw new Error("Unexpected provider path");
-    } } as unknown as GoogleClient;
+    } });
     const mail = await candidateMail(f.store, { to: "synthetic@example.invalid", subject: "Application received", body: "Your application was received.", messageId: "receipt@jobs.example.invalid", sender: candidateAccount, replyTo: [candidateAccount] }, [MANAGER.email], { applicationId: f.ids[0] });
-    await new Gmail(client, candidateAccount).verifySender("no-reply@aicaseleads.com", candidateAccount); assert.equal(writes, 0);
-    await new Gmail(client, candidateAccount).send({...mail,candidateAccount});
-    assert.equal(writes, 1); assert.match(emitted, /^From: no-reply@aicaseleads.com\r\nTo:/); assert.match(emitted, /\r\nReply-To: no-reply@notify.aicaseleads.com\r\n/);
-    assert.doesNotMatch(emitted, /(?:^|\r\n)(?:Sender|Cc|Bcc):|recruiter@example.invalid|sales@/i);
+    await client.verifySender(); assert.equal(writes, 0);
+    await client.send(mail);
+    const payload = JSON.parse(emitted);
+    assert.equal(writes, 1);
+    assert.equal(payload.from.email, "no-reply-recruiting@aicaseleads.com");
+    assert.equal(payload.from.name, "AI Case Leads Recruiting");
+    assert.equal(payload.reply_to.email, "no-reply@notify.aicaseleads.com");
+    assert.doesNotMatch(emitted, /recruiter@example.invalid|sales@|mariam@/i);
+    assert.equal(payload.cc, undefined); assert.equal(payload.bcc, undefined);
   } finally { f.database.close(); }
 });
 test("reviewed recruiter messages keep their recruiter routing and are not silently converted to no-reply", async () => {
@@ -178,7 +179,7 @@ test("legacy automatic receipt routing fields cannot turn it into a private recr
   try {
     f.database.prepare("UPDATE hub_tasks SET payload_json=json_set(payload_json,'$.mailMode','recruiter','$.actor',?,'$.sender',?,'$.replyTo',json(?)) WHERE kind='gmail'").run(RECRUITER.email, RECRUITER.email, JSON.stringify([RECRUITER.email]));
     const preview = await previewMailRecovery(f.store, MANAGER, f.window, ready());
-    assert.equal(preview.eligible, 1); assert.equal(preview.messages[0].sender, "no-reply@aicaseleads.com");
+    assert.equal(preview.eligible, 1); assert.equal(preview.messages[0].sender, "no-reply-recruiting@aicaseleads.com");
     assert.deepEqual(preview.messages[0].replyTo, ["no-reply@notify.aicaseleads.com"]);
   } finally { f.database.close(); }
 });

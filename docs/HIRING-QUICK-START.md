@@ -75,7 +75,7 @@ For personal availability, set time zone, interview length, start/finish hours a
 
 ## Gmail, AI and delivery status
 
-Human recruiting correspondence uses the acting recruiter's connected mailbox. Automatic applicant messages use SendGrid from no-reply@aicaseleads.com, with Reply-To no-reply@notify.aicaseleads.com, independently of recruiter Gmail. Staff login alone does not authorize Gmail. Sales is never an applicant-mail fallback. Job teams can include multiple recruiters; an empty saved team receives no job alerts. Saving a team does not send old application alerts. Copies/templates start with an empty team.
+Human recruiting correspondence uses the acting recruiter's connected mailbox. Automatic applicant messages use SendGrid from no-reply-recruiting@aicaseleads.com, with Reply-To no-reply@notify.aicaseleads.com, independently of recruiter Gmail. Staff login alone does not authorize Gmail. Sales is never an applicant-mail fallback. Job teams can include multiple recruiters; an empty saved team receives no job alerts. Saving a team does not send old application alerts. Copies/templates start with an empty team.
 
 PDF text and English/Spanish OCR are read locally. AI matching requires the owner-managed OpenRouter connection and the job's matching setting. Job-relevant text and answers are shared with OpenRouter/OpenAI; keys remain encrypted on the server. AI does not scrape LinkedIn, verify employment, detect AI authorship, reject applicants or change hiring stages. Use original files, work samples and appropriate references to check uncertain claims.
 
