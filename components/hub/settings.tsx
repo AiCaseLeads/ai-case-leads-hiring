@@ -19,6 +19,7 @@ import { AiReviewSettings } from "./ai-review";
 import { ScorecardTemplates } from "./scorecards";
 import { ReviewReminderSettings } from "./review-reminders";
 import { PersonalMailSetup } from "./personal-mail";
+import { AutomaticMailSetup, AutomaticMailNotice, automaticMailExplanation } from "./automatic-mail";
 import { PersonalCalendarSetup } from "./personal-calendar";
 import { TeamAccess } from "./team-access";
 import { RecruitingRequests } from "./recruiting-help";
@@ -32,11 +33,14 @@ export function HubSettings({
   const owner = member.isOwner === true;
   const managesTeam = member.role === "admin";
   const [section, setSection] = useState<"personal" | "team" | "company" | "scorecards" | "help">(startSection === "scorecards" ? "scorecards" : "personal");
-  useEffect(() => { if (startSection === "scorecards") queueMicrotask(() => setSection("scorecards")); }, [startSection]);
+  useEffect(() => {
+    if (startSection === "scorecards") queueMicrotask(() => setSection("scorecards"));
+    else if ((owner || managesTeam) && new URLSearchParams(window.location.search).get("section") === "company") queueMicrotask(() => setSection("company"));
+  }, [startSection, owner, managesTeam]);
   const sections = [
     { id: "personal" as const, label: "My connections" },
     ...(managesTeam ? [{ id: "team" as const, label: "Team" }] : []),
-    ...(owner ? [{ id: "company" as const, label: "Company" }] : []),
+    ...(owner || managesTeam ? [{ id: "company" as const, label: "Company" }] : []),
     { id: "help" as const, label: "Help requests" },
     { id: "scorecards" as const, label: "Templates" },
   ];
@@ -56,7 +60,7 @@ export function HubSettings({
       {section === "team" && managesTeam && <><TeamAccess member={member} changed={changed} refresh={refresh} /><details className="hub-card hub-setup-details"><summary>Review reminders</summary><ReviewReminderSettings /></details></>}
       {section === "scorecards" && <><p className="hub-muted">Optional reusable review criteria for teams that want manual scorecards. AI matching uses each job’s description and applicant evidence.</p><section className="hub-card" id="scorecard-settings"><ScorecardTemplates jobs={jobs} /></section></>}
       {section === "help" && <RecruitingRequests />}
-      {section === "company" && owner && <CompanySettings member={member} refresh={refresh} changed={changed} jobs={jobs} onDeliveryActivity={onDeliveryActivity} />}
+      {section === "company" && (owner || managesTeam) && <><AutomaticMailSetup refresh={refresh} />{owner && <CompanySettings member={member} refresh={refresh} changed={changed} jobs={jobs} onDeliveryActivity={onDeliveryActivity} />}</>}
     </div>
   </section>;
 }
@@ -221,12 +225,13 @@ export function Tasks({
       refresh,
     ),
     mutation = useHubMutation();
-  const mail = useHubResource<{connected:boolean;candidateConnected:boolean;candidateAccount:string|null}>("/api/personal-mail", refresh);
-  const mailSetupError = (task: Task) => task.kind === "gmail" && isMailSetupError(task.lastError || "");
-  const setupExplanation = (error: string) => ({
-    candidate_mail_account_not_configured: "An administrator must assign the automatic recruiting email account.",
-    candidate_mail_account_connection_required: "The assigned recruiter must connect their own recruiting Gmail.",
-    gmail_sender_alias_not_verified: "Verify the no-reply sender in the recruiter’s Gmail Send mail as settings.",
+  const mailSetupError = (task: Task) => task.kind === "gmail" && (isMailSetupError(task.lastError || "") || task.lastError?.startsWith("transactional_mail_"));
+  const automaticApplicantMail = (task: Task) => Boolean(task.applicationId && (task.id === `gmail:${task.applicationId}:confirmation` || task.id === `gmail:${task.applicationId}:rejection`));
+  const legacyAutomaticSetup = (task: Task) => automaticApplicantMail(task) && ["candidate_mail_account_not_configured", "candidate_mail_account_connection_required", "gmail_sender_alias_not_verified", "google_oauth_reconnect_required", "google_required_permissions_missing"].includes(task.lastError || "");
+  const setupExplanation = (error: string) => error.startsWith("transactional_mail_") ? automaticMailExplanation(error) : ({
+    candidate_mail_account_not_configured: "Check automatic applicant email in Settings → Company. Recruiter messages require a connected reply contact.",
+    candidate_mail_account_connection_required: "Connect the assigned recruiter’s Gmail for recruiter conversations. Automatic applicant emails use Brevo.",
+    gmail_sender_alias_not_verified: "This older automatic message needs migration to the verified Brevo sender. Preview failed emails to check its recovery eligibility.",
     google_oauth_reconnect_required: "Reconnect the recruiting Gmail account; its authorization has expired or changed.",
     google_required_permissions_missing: "Reconnect recruiting Gmail and grant the required permissions.",
     recruiter_reply_contact_required: "Assign a connected recruiter as the job’s reply contact.",
@@ -299,7 +304,7 @@ export function Tasks({
           )}
         </div>
       </div>
-      {mail.data?.candidateConnected === false && <p className="hub-notice">Automatic recruiting email is not connected. {mail.data.candidateAccount || "The assigned recruiter"} must sign in and connect their own Gmail under Settings → My connections. Other recruiters can use their own connected mailboxes. Company Drive and Calendar connections do not enable recruiting email. <a className="hub-button secondary" href="/team?view=settings">Connect recruiting email</a></p>}
+      {admin && <AutomaticMailNotice refresh={refresh} />}
       {admin && <MailRecovery changed={() => { changed(); void resource.reload(); }} />}
       <Feedback error={mutation.error} success={mutation.success} />
       {processResult && (
@@ -348,7 +353,7 @@ export function Tasks({
                 {resource.data.map((task) => (
                   <tr key={task.id}>
                     <td>
-                      <strong>{task.kind}</strong>
+                      <strong>{task.kind === "gmail" ? "Email" : task.kind === "calendar" ? "Calendar" : task.kind === "drive" ? "Drive" : task.kind}</strong>
                       <span className="hub-secondary-line">
                         {task.applicationId || ""}
                       </span>
@@ -372,13 +377,13 @@ export function Tasks({
                     <td className={isDriveArchiveContinuation(task) ? "hub-muted" : "hub-task-error"}>
                       {isDriveArchiveContinuation(task)
                         ? "Progress saved; the background worker will continue automatically."
-                        : mailSetupError(task) ? setupExplanation(task.lastError || "") + " This message is held; connecting Gmail alone will not send it." : task.lastError || "—"}
+                        : mailSetupError(task) ? (legacyAutomaticSetup(task) ? "This earlier automatic applicant email now uses Brevo. Check Settings → Company, then preview failed emails to review its recovery eligibility." : setupExplanation(task.lastError || "")) + " This message is held; completing setup does not send historical messages automatically." : task.lastError || "—"}
                       {task.phase && <span className="hub-secondary-line">{driveArchivePhases[task.phase]}</span>}
-                      {task.providerStatus && <span className="hub-secondary-line">Google response: {task.providerStatus}</span>}
+                      {task.providerStatus && <span className="hub-secondary-line">Provider response: {task.providerStatus}</span>}
                     </td>
                     <td>
                       {mailSetupError(task) ? (
-                        <div><a className="hub-button secondary" href="/team?view=settings">Connect recruiting email</a>{admin && (mail.data?.candidateConnected === true || mail.data?.connected === true) && task.status === "failed" && <button type="button" className="hub-button secondary" disabled={mutation.busy} onClick={() => {if (window.confirm("Have you reviewed this held message and corrected its sender, permissions and template? Retrying can send it to the applicant.")) void retry(task.id);}}>Review and retry held message</button>}</div>
+                        <div className="hub-button-row"><a className="hub-button secondary" href={automaticApplicantMail(task) || task.lastError?.startsWith("transactional_mail_") || task.lastError === "gmail_sender_alias_not_verified" ? "/team?view=settings&section=company" : "/team?view=settings"}>Open email settings</a>{admin && task.status === "failed" && <button type="button" className="hub-button secondary" disabled={mutation.busy} onClick={() => {if (window.confirm("Have you reviewed this held message and corrected its sender, permissions and template? Retrying can send it to the applicant.")) void retry(task.id);}}>Review and retry held message</button>}</div>
                       ) : task.status === "uncertain" && task.kind === "calendar" ? (
                         <button
                           className="hub-button secondary"
@@ -389,7 +394,7 @@ export function Tasks({
                         </button>
                       ) : task.status === "uncertain" ? (
                         <span className="hub-muted">
-                          Gmail delivery is being checked against sent messages.
+                          Delivery is being checked with the original email provider.
                           Resending is blocked while the result is uncertain.
                         </span>
                       ) : task.status === "failed" ? (

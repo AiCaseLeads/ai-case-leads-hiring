@@ -19,7 +19,7 @@ async function setup(t,{mode='settings',member=owner}={}){
  const server=createServer((req,res)=>{res.setHeader('Content-Type',req.url==='/bundle.js'?'text/javascript':'text/html');res.end(req.url==='/bundle.js'?outputFiles[0].text:`<meta name="viewport" content="width=device-width,initial-scale=1"><style>${css}</style><div class="hub-main"><div id="root"></div></div><script src="/bundle.js"></script>`);});await new Promise(r=>server.listen(0,'127.0.0.1',r));
  const browser=await chromium.launch({headless:true,executablePath:'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'});t.after(async()=>{await browser.close();await new Promise(r=>server.close(r));});const page=await browser.newPage({viewport:{width:390,height:844}});page.setDefaultTimeout(5000);const writes=[],reads=[],errors=[];page.on('pageerror',e=>errors.push(e.message));
  await page.route('**/api/**',route=>{const path=new URL(route.request().url()).pathname;reads.push(path);if(route.request().method()!=='GET'){writes.push({path,input:route.request().postDataJSON()});return route.fulfill({status:409,json:{error:{message:'Settings changed. Refresh and try again.'}}});}
- const data=path==='/api/hub/settings'?settings:path==='/api/hub/reports'?report:path==='/api/personal-calendar'?{email:member.email,connected:true,ready:true,calendarId:member.email,configured:true,availability,interviewers:[]}:path==='/api/personal-mail'?{email:member.email,configured:true,connected:false,candidateAccount:'recruiter@example.invalid',candidateConnected:false}:path==='/api/google/status'?{configured:true,hostingPlatform:'railway',backgroundEnabled:true,credentialsManaged:true}:path==='/api/ai/config'?{configured:true,enabled:true,model:'openai/gpt-5-mini',provider:'openrouter'}:path==='/api/hub/recruiting-help'?{items:[],hasMore:false}:{};return route.fulfill({json:{data}});
+ const data=path==='/api/hub/settings'?settings:path==='/api/hub/reports'?report:path==='/api/personal-calendar'?{email:member.email,connected:true,ready:true,calendarId:member.email,configured:true,availability,interviewers:[]}:path==='/api/personal-mail'?{email:member.email,configured:true,connected:false,candidateAccount:'recruiter@example.invalid',candidateConnected:false}:path==='/api/transactional-mail'?{provider:'brevo',sender:'no-reply@notify.aicaseleads.com',configured:false,ready:false,error:'transactional_mail_api_key_missing',checkedAt:null,dailyLimit:300,setupUrl:'https://app.brevo.com'}:path==='/api/google/status'?{configured:true,hostingPlatform:'railway',backgroundEnabled:true,credentialsManaged:true}:path==='/api/ai/config'?{configured:true,enabled:true,model:'openai/gpt-5-mini',provider:'openrouter'}:path==='/api/hub/recruiting-help'?{items:[],hasMore:false}:{};return route.fulfill({json:{data}});
  });await page.goto(`http://127.0.0.1:${server.address().port}`);return{page,writes,reads,errors};
 }
 
@@ -58,4 +58,25 @@ test('report sections distinguish screening from recruiter decisions and fit nar
  await page.getByRole('button',{name:'Team',exact:true}).click();await page.getByRole('heading',{name:'Assigned applicants',exact:true}).waitFor();assert.equal(await page.getByRole('cell',{name:'Unassigned',exact:true}).count(),1);
  for(const width of[320,390,768,1280]){await page.setViewportSize({width,height:844});for(const section of['Overview','Sources','Team']){await page.getByRole('button',{name:section,exact:true}).click();const dimensions=await page.evaluate(()=>({width:innerWidth,scroll:document.documentElement.scrollWidth}));assert.ok(dimensions.scroll<=dimensions.width+1,`${section} ${width}: ${JSON.stringify(dimensions)}`);}}
  assert.deepEqual(writes,[]);assert.deepEqual(errors,[]);
+});
+
+
+test('head recruiter can check automatic mail in Company without loading owner configuration',async t=>{
+ const{page,reads,writes,errors}=await setup(t,{member:{email:'mariam@example.invalid',role:'admin',isOwner:false}});
+ await page.getByRole('button',{name:'Company',exact:true}).click();await page.getByRole('heading',{name:'Automatic applicant emails',exact:true}).waitFor();
+ await page.getByText('Add the Brevo API key to the hiring service’s Railway variables.',{exact:true}).waitFor();
+ assert.equal(reads.includes('/api/hub/settings'),false);assert.equal(reads.includes('/api/google/status'),false);assert.equal(reads.includes('/api/transactional-mail'),true);
+ assert.equal(await page.getByRole('heading',{name:'Company Google connection',exact:true}).count(),0);assert.equal(await page.locator('input[type="password"]').count(),0);
+ assert.deepEqual(writes,[]);assert.deepEqual(errors,[]);
+});
+
+
+test('automatic email deep link opens Company directly and cannot expose Company to ordinary recruiters',async t=>{
+ const{page,reads,errors}=await setup(t,{member:{email:'mariam@example.invalid',role:'admin',isOwner:false}});
+ await page.goto(page.url()+'?section=company');await page.getByRole('heading',{name:'Automatic applicant emails',exact:true}).waitFor();
+ assert.equal(await page.getByRole('button',{name:'Company',exact:true}).getAttribute('aria-current'),'page');
+ assert.equal(reads.includes('/api/hub/settings'),false);assert.deepEqual(errors,[]);
+ const ordinary=await setup(t,{member:{email:'recruiter@example.invalid',role:'recruiter'}});
+ await ordinary.page.goto(ordinary.page.url()+'?section=company');await ordinary.page.getByRole('heading',{name:'My interview calendar'}).waitFor();
+ assert.equal(await ordinary.page.getByRole('heading',{name:'Automatic applicant emails',exact:true}).count(),0);assert.equal(ordinary.reads.includes('/api/transactional-mail'),false);assert.deepEqual(ordinary.errors,[]);
 });

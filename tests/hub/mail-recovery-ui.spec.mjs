@@ -16,7 +16,7 @@ async function setup(t, { blocked = false } = {}) {
   page.on("pageerror", error => errors.push(error.message));
   await page.route("**/api/hub/mail-recovery/**", async route => {
     writes.push({ path: new URL(route.request().url()).pathname, input: route.request().postDataJSON() });
-    if (route.request().url().endsWith("/preview")) return route.fulfill({ json: { data: blocked ? { ...plan, eligible: 0, planId: null, digest: null, messages: [], counts: {}, skipped: [{ reason: "The no-reply sender is not verified in Gmail", count: 17 }] } : plan } });
+    if (route.request().url().endsWith("/preview")) return route.fulfill({ json: { data: blocked ? { ...plan, eligible: 0, planId: null, digest: null, messages: [], counts: {}, skipped: [{ reason: "The no-reply sender is not verified in Brevo", count: 17 }] } : plan } });
     await new Promise(resolve => setTimeout(resolve, 200));
     return route.fulfill({ json: { data: { queued: 2, alreadyQueued: false } } });
   });
@@ -38,7 +38,7 @@ test("admin recovery previews the chosen Bogotá day and queues only the exact p
   assert.equal(writes.length, 2); assert.equal(await page.locator("body").getAttribute("data-changed"), "true");
   assert.deepEqual(errors, []);
 });
-test("changing the day cancels its old recovery plan; a failed alias exposes no retry button", async t => {
+test("changing the day cancels its old recovery plan; an unverified automatic sender exposes no retry button", async t => {
   const { page, writes, errors } = await setup(t, { blocked: true });
   await page.getByRole("button", { name: "Preview failed emails" }).click();
   await page.getByText("0 emails ready to retry.", { exact: true }).waitFor();
