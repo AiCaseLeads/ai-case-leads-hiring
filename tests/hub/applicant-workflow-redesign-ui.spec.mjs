@@ -11,7 +11,7 @@ const job={id:'job-one',title:'Synthetic Engineer',slug:'synthetic-engineer',sta
 const applicant={id:'app-one',name:'Synthetic Applicant',email:'synthetic@example.invalid',jobId:job.id,jobTitle:job.title,stage:'Application Review',qualification:'review',createdAt:1,revision:4,assignee:null,aiMatch:{status:'ready',score:88}};
 const details={...applicant,answers:[{path:'years',value:7}],fields:[{path:'years',title:'Years of experience',type:'Number'}],files:[],history:[],notes:[],communications:[],scorecards:[],qualificationEvidence:[]};
 const review={status:'ready',score:88,criteria:[{criterion:'React delivery',status:'evidence_found',explanation:'Built production React apps for seven years.',citations:[{source:'resume:cv.pdf',quote:'Seven years shipping React applications.'}]},{criterion:'Team leadership',status:'needs_verification',explanation:'Ask how many people they led and what they owned.',citations:[]}]};
-const readiness={sender:'recruiter@example.invalid',mailReady:true,mailIssue:null,sharedCalendarReady:true,hasActiveInterview:false,renewCalendarReady:false,interviewers:[{email:'recruiter@example.invalid',ready:true}]};
+const readiness={sender:'recruiter@example.invalid',mailReady:true,mailIssue:null,companyGoogleReady:true,sharedCalendarReady:true,hasActiveInterview:false,renewCalendarReady:false,interviewers:[{email:'recruiter@example.invalid',ready:true}]};
 let assets;
 async function getAssets(){
  if(!assets)assets=(async()=>{
@@ -21,7 +21,7 @@ async function getAssets(){
  })();
  return assets;
 }
-async function setup(t,{mode='list',screening=false,mailReady=true,failShortlist=false,hasActiveInterview=false,renewCalendarReady=false,width=1280}={}){
+async function setup(t,{mode='list',screening=false,mailReady=true,failShortlist=false,companyGoogleReady=true,hasActiveInterview=false,renewCalendarReady=false,width=1280}={}){
  const{js,css}=await getAssets();
  const jobs=[{...job,rules:screening?[{fieldPath:'years',enabled:true,operator:'gte',value:8,reason:'Eight years required'}]:[]}];
  const server=createServer((req,res)=>{res.setHeader('Content-Type',req.url==='/bundle.js'?'text/javascript':'text/html');res.end(req.url==='/bundle.js'?js:`<meta name="viewport" content="width=device-width,initial-scale=1"><style>${css}</style><div class="hiring-hub"><aside class="hub-sidebar">Synthetic workspace</aside><div class="hub-workspace"><main class="hub-main"><div id="root"></div></main></div></div><script>window.__fixture=${JSON.stringify({mode,jobs})}</script><script src="/bundle.js"></script>`);});await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
@@ -40,7 +40,7 @@ async function setup(t,{mode='list',screening=false,mailReady=true,failShortlist
   if(url.pathname==='/api/hub/applications')data={items:[current],total:75,page:1,pageSize:25};
   if(url.pathname==='/api/hub/applications/app-one')data=current;
   if(url.pathname==='/api/ai/match')data=url.searchParams.has('applicationId')?review:{enabled:true,jobId:job.id,version:1,available:true,status:'ready',criteria:['React delivery','Team leadership']};
-  if(url.pathname==='/api/interview-readiness')data={...readiness,hasActiveInterview,renewCalendarReady,mailReady,mailIssue:mailReady?null:'recruiter_email_not_connected'};
+  if(url.pathname==='/api/interview-readiness')data={...readiness,companyGoogleReady,hasActiveInterview,renewCalendarReady,mailReady,mailIssue:mailReady?null:'recruiter_email_not_connected'};
   if(url.pathname==='/api/hub/applications-export')data={count:75};
   return route.fulfill({json:{data}});
  });
@@ -118,6 +118,16 @@ test('replacement interview cannot bypass missing or disconnected original calen
  for(const hasActiveInterview of [false,true]){
   const{page,writes}=await setup(t,{hasActiveInterview,renewCalendarReady:false});await page.getByRole('button',{name:'Request interview with Synthetic Applicant',exact:true}).click();await page.getByLabel('Who will conduct this interview?',{exact:true}).waitFor();
   await page.getByRole('checkbox',{name:/Send a replacement secure link/}).check();await page.getByText(hasActiveInterview?'The original interviewer needs to reconnect their calendar and save availability before sending a replacement link.':'No active interview to replace. Turn off replacement mode and choose an interviewer.',{exact:true}).waitFor();
+  assert.equal(await page.getByRole('button',{name:'Send booking link',exact:true}).isDisabled(),true);assert.equal(writes.length,0);
+ }
+});
+
+
+test('disconnected company Google prevents new and replacement interview invitations',async t=>{
+ for(const renew of [false,true]){
+  const{page,writes}=await setup(t,{companyGoogleReady:false,hasActiveInterview:true,renewCalendarReady:true});await page.getByRole('button',{name:'Request interview with Synthetic Applicant',exact:true}).click();
+  await page.getByText('Company Google connection needs attention. Ask the owner to reconnect it in Settings → Company → Files & calendar.',{exact:true}).waitFor();
+  if(renew)await page.getByRole('checkbox',{name:/Send a replacement secure link/}).check();else await page.getByLabel('Who will conduct this interview?',{exact:true}).selectOption('recruiter@example.invalid');
   assert.equal(await page.getByRole('button',{name:'Send booking link',exact:true}).isDisabled(),true);assert.equal(writes.length,0);
  }
 });

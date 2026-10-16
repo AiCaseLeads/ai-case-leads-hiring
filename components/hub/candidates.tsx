@@ -42,14 +42,15 @@ function qualificationTone(value: string) {
 function qualificationLabel(value: string, screeningConfigured?: boolean) {
   return value === "pass" ? "Requirements met" : value === "fail" ? "Requirement not met" : screeningConfigured === false ? "No screening rules" : screeningConfigured === true ? "Check answers" : "No screening decision";
 }
-type InterviewReadiness = {sender:string|null;mailReady:boolean;mailIssue:string|null;sharedCalendarReady:boolean;renewCalendarReady:boolean;hasActiveInterview:boolean;interviewers:{email:string;ready:boolean}[]};
+type InterviewReadiness = {sender:string|null;mailReady:boolean;mailIssue:string|null;companyGoogleReady:boolean;sharedCalendarReady:boolean;renewCalendarReady:boolean;hasActiveInterview:boolean;interviewers:{email:string;ready:boolean}[]};
 function InterviewBookingChoice({applicationId,value,change,renew,ready}:{applicationId:string;value:string;change:(value:string)=>void;renew:boolean;ready:(value:boolean)=>void}) {
   const resource=useHubResource<InterviewReadiness>("/api/interview-readiness?applicationId="+encodeURIComponent(applicationId));
-  const canSend=!!resource.data?.mailReady && (renew ? resource.data.hasActiveInterview && resource.data.renewCalendarReady : (value==="__shared__" ? resource.data.sharedCalendarReady : !!resource.data.interviewers.find(person=>person.email===value&&person.ready)));
+  const canSend=!!resource.data?.mailReady && !!resource.data.companyGoogleReady && (renew ? resource.data.hasActiveInterview && resource.data.renewCalendarReady : (value==="__shared__" ? resource.data.sharedCalendarReady : !!resource.data.interviewers.find(person=>person.email===value&&person.ready)));
   useEffect(()=>{ready(canSend);return()=>ready(false);},[canSend,ready]);
   return <div className="hub-interviewer-choice">
     <ResourceState loading={resource.loading} error={resource.error} retry={()=>void resource.reload()}/>
     {resource.data && <>
+      {!resource.data.companyGoogleReady && <p className="hub-notice">Company Google connection needs attention. Ask the owner to reconnect it in Settings → Company → Files &amp; calendar.</p>}
       <Field label="Who will conduct this interview?" hint={renew?"A replacement link keeps the original organizer.":"Choose a connected calendar. The applicant picks an available time."}>
         <select required={!renew} value={value} onChange={event=>change(event.target.value)} disabled={renew||resource.loading}>
           <option value="">{renew?"Keep original interviewer":"Choose an interviewer"}</option>
@@ -59,8 +60,8 @@ function InterviewBookingChoice({applicationId,value,change,renew,ready}:{applic
       </Field>
       {resource.data.mailReady ? <p className="hub-muted">Invitation from {resource.data.sender}. Replies go to that recruiter.</p> : <p className="hub-notice">{resource.data.mailIssue==="recruiter_reply_contact_required" ? "Choose a recruiter to handle candidate replies in this job’s hiring team before sending invitations." : `${resource.data.sender || "The recruiter"} needs to connect their recruiting email in Settings → My connections before invitations can be sent.`}</p>}
       {renew && !resource.data.hasActiveInterview && <p className="hub-notice">No active interview to replace. Turn off replacement mode and choose an interviewer.</p>}
-      {renew && resource.data.hasActiveInterview && !resource.data.renewCalendarReady && <p className="hub-notice">The original interviewer needs to reconnect their calendar and save availability before sending a replacement link.</p>}
-      {!renew && !resource.data.sharedCalendarReady && !resource.data.interviewers.some(person=>person.ready) && <p className="hub-notice">Connect an interview calendar and save availability in Settings → My connections.</p>}
+      {renew && resource.data.companyGoogleReady && resource.data.hasActiveInterview && !resource.data.renewCalendarReady && <p className="hub-notice">The original interviewer needs to reconnect their calendar and save availability before sending a replacement link.</p>}
+      {!renew && resource.data.companyGoogleReady && !resource.data.sharedCalendarReady && !resource.data.interviewers.some(person=>person.ready) && <p className="hub-notice">Connect an interview calendar and save availability in Settings → My connections.</p>}
     </>}
   </div>;
 }
