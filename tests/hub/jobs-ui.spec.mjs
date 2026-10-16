@@ -93,6 +93,7 @@ async function setup(
     scoreCatalog = scores,
     failFirst = false,
     holdTemplateSave = null,
+    failLifecycle = false,
   } = {},
 ) {
   const { outputFiles } = await build({
@@ -133,10 +134,20 @@ async function setup(
         : { width: 1280, height: 900 },
     }),
     writes = [],
-    catalogWrites = [];
+    catalogWrites = [], lifecycleWrites = [];
   await page.route("**/api/hub/jobs", (route) =>
     route.fulfill({ json: { data: jobs } }),
   );
+  await page.route("**/api/hub/jobs/*/lifecycle", async route => {
+    const input = route.request().postDataJSON();
+    lifecycleWrites.push(input);
+    if (failLifecycle && lifecycleWrites.length === 1) return route.fulfill({ status: 409, json: { error: { message: "This job changed. Refresh the job list before trying again." } } });
+    const id = new URL(route.request().url()).pathname.split("/").at(-2), index = jobs.findIndex(job => job.id === id), current = jobs[index];
+    jobs = [...jobs];
+    const state = input.action === "archive" ? "archived" : input.action === "delete" ? "deleted" : "active";
+    jobs[index] = { ...current, status: input.action === "resume" ? "open" : "closed", lifecycle: { state, revision: (current.lifecycle?.revision || 0) + 1, changedAt: Date.now(), changedBy: "recruiter@example.invalid" } };
+    return route.fulfill({ json: { data: jobs[index] } });
+  });
   await page.route("**/api/scorecards", (route) =>
     route.fulfill({ json: { data: scoreCatalog } }),
   );
@@ -196,7 +207,7 @@ async function setup(
       exact: true,
     })
     .waitFor();
-  return { page, writes, catalogWrites };
+  return { page, writes, catalogWrites, lifecycleWrites };
 }
 async function next(page) {
   await page.getByRole("button", { name: "Continue", exact: true }).click();
@@ -583,18 +594,63 @@ test("new job setup presents four clear steps and publishes without manual score
  assert.equal(writes[0].job.autoReject,false);
 });
 
-test("Actions closes with Escape and Posting status opens the existing job without changing it", async t => {
- const {page,writes}=await setup(t);
+test("Actions closes with Escape and jobs can be paused and resumed directly without opening setup", async t => {
+ const {page,writes,lifecycleWrites}=await setup(t);
  const menu=page.getByLabel(`Actions for ${prior.title}`,{exact:true});
  await menu.click();
- await page.getByRole('button',{name:'Posting status',exact:true}).focus();
+ await page.getByRole('button',{name:'Archive job',exact:true}).focus();
  await page.keyboard.press('Escape');
  assert.equal(await page.locator('.hub-job-menu').getAttribute('open'),null);
  assert.equal(await menu.evaluate(element=>element===document.activeElement),true);
- await menu.click();
- await page.getByRole('button',{name:'Posting status',exact:true}).click();
- await page.getByRole('heading',{name:'Ready to share?',exact:true}).waitFor();
- assert.equal(await page.getByRole('button',{name:'Save published job',exact:true}).isVisible(),true);
- assert.equal(await page.getByRole('button',{name:'Close job',exact:true}).isVisible(),true);
+ await page.getByRole('button',{name:'Pause job',exact:true}).click();
+ await page.getByRole('button',{name:'Resume job',exact:true}).waitFor();
+ assert.equal(await page.getByText('Paused',{exact:true}).isVisible(),true);
+ assert.deepEqual(lifecycleWrites[0],{action:'pause',formVersion:3,lifecycleRevision:0});
+ await page.getByRole('button',{name:'Resume job',exact:true}).click();
+ await page.getByRole('button',{name:'Pause job',exact:true}).waitFor();
+ assert.deepEqual(lifecycleWrites[1],{action:'resume',formVersion:3,lifecycleRevision:1});
+ assert.equal(await page.getByRole('heading',{name:'Ready to share?',exact:true}).count(),0);
  assert.equal(writes.length,0);
+});
+
+test("Archived and Trash are visible lists; archive, safe deletion and restore preserve applicant access on mobile", async t => {
+ const {page,writes,lifecycleWrites}=await setup(t,{mobile:true});
+ const menu=()=>page.getByLabel(`Actions for ${prior.title}`,{exact:true});
+ await menu().click();await page.getByRole('button',{name:'Archive job',exact:true}).click();
+ await page.getByRole('heading',{name:'No matching jobs',exact:true}).waitFor();
+ await page.getByRole('button',{name:/^Archived \(1\)$/}).click();
+ await page.getByRole('link',{name:`View applicants for ${prior.title}`,exact:true}).waitFor();
+ assert.equal(await page.getByRole('button',{name:'Edit job',exact:true}).count(),0);
+ await menu().click();await page.getByRole('button',{name:'Delete job',exact:true}).click();
+ assert.equal(lifecycleWrites.length,1);
+ assert.equal(await page.getByRole('dialog',{name:`Move “${prior.title}” to Trash?`,exact:true}).isVisible(),true);
+ assert.equal(await page.getByRole('button',{name:'Cancel deletion',exact:true}).evaluate(element=>element===document.activeElement),true);
+ await page.keyboard.press('Tab');
+ assert.equal(await page.getByRole('button',{name:'Move job to Trash',exact:true}).evaluate(element=>element===document.activeElement),true);
+ await page.keyboard.press('Shift+Tab');
+ assert.equal(await page.getByRole('button',{name:'Cancel deletion',exact:true}).evaluate(element=>element===document.activeElement),true);
+ await page.getByRole('button',{name:'Cancel deletion',exact:true}).click();
+ assert.equal(await menu().evaluate(element=>element===document.activeElement),true);
+ assert.equal(lifecycleWrites.length,1);
+ await menu().click();await page.getByRole('button',{name:'Delete job',exact:true}).click();
+ await page.getByText(/Existing applicants, PDFs and Drive files stay saved/).waitFor();
+ await page.getByRole('button',{name:'Move job to Trash',exact:true}).click();
+ await page.getByRole('heading',{name:'No archived jobs',exact:true}).waitFor();
+ await page.getByRole('button',{name:/^Trash \(1\)$/}).click();
+ await page.getByRole('link',{name:`View applicants for ${prior.title}`,exact:true}).waitFor();
+ await page.getByRole('button',{name:'Restore job',exact:true}).click();
+ await page.getByRole('heading',{name:'Trash is empty',exact:true}).waitFor();
+ await page.getByRole('button',{name:/^Active jobs \(1\)$/}).click();
+ await page.getByRole('button',{name:'Resume job',exact:true}).waitFor();
+ assert.deepEqual(lifecycleWrites.map(input=>input.action),['archive','delete','restore']);
+ assert.equal(writes.length,0);
+});
+
+test("a failed lifecycle action preserves the row and explains that it must be refreshed", async t => {
+ const {page,lifecycleWrites}=await setup(t,{failLifecycle:true});
+ await page.getByRole('button',{name:'Pause job',exact:true}).click();
+ await page.getByText('This job changed. Refresh the job list before trying again.',{exact:true}).waitFor();
+ assert.equal(await page.getByRole('button',{name:'Pause job',exact:true}).isVisible(),true);
+ assert.equal(await page.getByRole('button',{name:'Resume job',exact:true}).count(),0);
+ assert.equal(lifecycleWrites.length,1);
 });

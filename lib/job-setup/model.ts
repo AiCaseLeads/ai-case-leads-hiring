@@ -75,6 +75,7 @@ export const saveCommand = z
     creationId: z.string().uuid(),
     jobId: z.string().min(1).max(128).optional(),
     formVersion: z.number().int().positive().optional(),
+    expectedLifecycleRevision: z.number().int().nonnegative().safe().optional(),
     job: jobInput,
     hiringTeam:teamInputSchema.optional(),
     expectedTeamRevision:z.number().int().min(0).optional(),

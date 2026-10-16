@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-import { Plus, Copy, ChevronDown, ExternalLink, Users, Files, Settings2 } from "lucide-react";
+import { Plus, Copy, ChevronDown, ExternalLink, Users, Files, Pause, Play, Archive, ArchiveRestore, Trash2 } from "lucide-react";
 import { useHubMutation, useHubResource } from "./api";
 import { Badge, EmptyState, Feedback, Field, ResourceState } from "./shared";
 import type { HubJob } from "./types";
@@ -8,6 +8,7 @@ import type { SetupCatalog } from "@/lib/job-setup/model";
 import type { Catalog } from "@/lib/scorecards/model";
 import { JobWizard, JobStart } from "./job-wizard";
 import { JobTeamPanel } from "./job-team";
+import type { JobLifecycleAction } from "@/lib/hub/job-lifecycle";
 const completedJobSessions = new Set<string>();
 export function Jobs({
   admin,
@@ -43,12 +44,22 @@ export function Jobs({
     [editorVisible, setEditorVisible] = useState(startCreating),
     [choosingStart, setChoosingStart] = useState(startCreating),
     [start, setStart] = useState<JobStart | null>(null),
-    [status, setStatus] = useState("active"),
+    [collection, setCollection] = useState("active"),
+    [status, setStatus] = useState("all"),
     [search, setSearch] = useState(""),
     [success, setSuccess] = useState(""),
     [templateJob, setTemplateJob] = useState<HubJob | null>(null),
     [templateName, setTemplateName] = useState("");
   const [teamJob, setTeamJob] = useState<HubJob | null>(null);
+  const [deleteJob, setDeleteJob] = useState<HubJob | null>(null);
+  const deleteDialog = useRef<HTMLElement>(null);
+  const deleteTrigger = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    if (!deleteJob) return;
+    // Start on Cancel; deleting is reversible but should still be deliberate.
+    deleteDialog.current?.querySelector<HTMLButtonElement>("button:last-child")?.focus();
+    return () => deleteTrigger.current?.focus();
+  }, [deleteJob]);
   const reloadDrafts = drafts.reload;
   const previousEditorVisible = useRef(editorVisible);
   useEffect(() => {
@@ -92,6 +103,7 @@ export function Jobs({
     return url;
   }
   function openEditor(job?: HubJob, chosen?: JobStart, targetStep = 0) {
+    if (job?.lifecycle && job.lifecycle.state !== "active") return;
     currentSession.current = crypto.randomUUID();
     setEditorSession(currentSession.current);
     setEditing(job || null);
@@ -152,6 +164,11 @@ export function Jobs({
       if (editor !== "new") {
         const job = jobs.data?.find((item) => item.id === editor);
         if (!job) return;
+        if (job.lifecycle && job.lifecycle.state !== "active") {
+          setEditorVisible(false);
+          window.history.replaceState({ aiclHub: true }, "", editorUrl(null));
+          return;
+        }
         setEditing(job);
         setCreating(false);
         setChoosingStart(false);
@@ -211,6 +228,25 @@ export function Jobs({
     void scores.reload();
   }
   const data = jobs.data || [];
+  async function lifecycleAction(job: HubJob, action: JobLifecycleAction) {
+    setSuccess("");
+    const messages = {
+      pause: "Job paused. New applications are closed; existing applicants stay available.",
+      resume: "Job resumed. Applicants can apply again.",
+      archive: "Job archived. Find it in Archived; all applications and files are kept.",
+      delete: "Job moved to Trash. Applications and files are kept, and you can restore the job.",
+      restore: "Job restored as Paused. Resume it when you want to accept applications again.",
+    };
+    const result = await mutation.run<HubJob>(`/api/hub/jobs/${encodeURIComponent(job.id)}/lifecycle`, "POST", {
+      action, formVersion: job.formVersion, lifecycleRevision: job.lifecycle?.revision || 0,
+    }, messages[action]);
+    if (result) {
+      setDeleteJob(null);
+      if (teamJob?.id === job.id) setTeamJob(null);
+      changed();
+      void jobs.reload();
+    }
+  }
   const editor =
     (editing || creating) && jobs.data && setup.data && scores.data ? (
       <JobWizard
@@ -230,9 +266,8 @@ export function Jobs({
     ) : null;
   const filtered = data.filter(
     (j) =>
-      (status === "all" ||
-        (status === "active" && j.status !== "closed") ||
-        j.status === status) &&
+      (j.lifecycle?.state || "active") === collection &&
+      (status === "all" || j.status === status) &&
       [j.title, j.location, j.department]
         .join(" ")
         .toLowerCase()
@@ -255,7 +290,11 @@ export function Jobs({
                   onClick={() => {
                     if (!draft.key.startsWith("new:")) {
                       const found = data.find((j) => j.id === draft.key);
-                      if (found) openEditor(found);
+                      if (found?.lifecycle && found.lifecycle.state !== "active") {
+                        setCollection(found.lifecycle.state);
+                        setStatus("all");
+                        setSuccess("Restore this job to continue its saved progress. The saved draft is kept.");
+                      } else if (found) openEditor(found);
                       return;
                     }
                     if (draft.startKind === "blank")
@@ -305,9 +344,26 @@ export function Jobs({
           )}
         </div>
         <Feedback
-          error={mutation.error}
+          error={deleteJob ? "" : mutation.error}
           success={success || mutation.success}
         />
+        {deleteJob && <div className="hub-draft-overlay"><section ref={deleteDialog} className="hub-card hub-draft-dialog" role="dialog" aria-modal="true" aria-labelledby="delete-job-title" aria-describedby="delete-job-description" onKeyDown={event => {
+          if (event.key === "Escape" && !mutation.busy) { event.preventDefault(); setDeleteJob(null); }
+          if (event.key !== "Tab") return;
+          const buttons = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>("button:not(:disabled)"));
+          if (!buttons.length) { event.preventDefault(); return; }
+          const first = buttons[0], last = buttons.at(-1)!;
+          if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+          else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+        }}>
+          <h3 id="delete-job-title">Move “{deleteJob.title}” to Trash?</h3>
+          <p id="delete-job-description">This removes the job from your active list and closes new applications. Existing applicants, PDFs and Drive files stay saved. You can restore the job from Trash.</p>
+          {mutation.error && <p role="alert">{mutation.error}</p>}
+          <div className="hub-inline">
+            <button className="hub-button" type="button" disabled={mutation.busy} onClick={() => void lifecycleAction(deleteJob, "delete")}><Trash2 size={16} /> Move job to Trash</button>
+            <button className="hub-text-button" type="button" disabled={mutation.busy} onClick={() => setDeleteJob(null)}>Cancel deletion</button>
+          </div>
+        </section></div>}
         {teamJob && (
           <JobTeamPanel
             key={teamJob.id}
@@ -326,6 +382,15 @@ export function Jobs({
             void scores.reload();
           }}
         />
+        <nav className="hub-page-tabs" aria-label="Job lists">
+          {([['active', 'Active jobs'], ['archived', 'Archived'], ['deleted', 'Trash']] as const).map(([value, label]) => <button
+            key={value} type="button" className={"hub-text-button " + (collection === value ? "active" : "")}
+            aria-current={collection === value ? "page" : undefined}
+            onClick={() => { setCollection(value); setStatus("all"); setDeleteJob(null); }}
+          >{label} <span className="hub-muted">({data.filter(job => (job.lifecycle?.state || "active") === value).length})</span></button>)}
+        </nav>
+        {collection === "archived" && <p className="hub-muted">Archived jobs are closed to new applications. Review their applicants or restore a job when you need it again.</p>}
+        {collection === "deleted" && <p className="hub-muted">Deleted jobs are kept here for recovery. Applications and files are retained. Restore a job to manage it again.</p>}
         <div className="hub-job-filters hub-form-grid">
           <Field label="Search jobs">
             <input
@@ -334,15 +399,14 @@ export function Jobs({
               placeholder="Job title or location"
             />
           </Field>
-          <Field label="Job status">
+          {collection === "active" && <Field label="Job status">
             <select value={status} onChange={(e) => setStatus(e.target.value)}>
-              <option value="active">Open jobs and drafts</option>
+              <option value="all">All active jobs</option>
               <option value="open">Open jobs</option>
+              <option value="closed">Paused jobs</option>
               <option value="draft">Drafts</option>
-              <option value="closed">Closed jobs</option>
-              <option value="all">All jobs</option>
             </select>
-          </Field>
+          </Field>}
         </div>
         {!jobs.loading &&
           !jobs.error &&
@@ -354,7 +418,7 @@ export function Jobs({
                     <div className="hub-job-title-row">
                       <h3>{j.title}</h3>
                       <Badge tone={j.status === "open" ? "success" : "neutral"}>
-                        {j.status === "open" ? "Open" : j.status === "closed" ? "Closed" : "Draft"}
+                        {collection === "archived" ? "Archived" : collection === "deleted" ? "In Trash" : j.status === "open" ? "Open" : j.status === "closed" ? "Paused" : "Draft"}
                       </Badge>
                     </div>
                     <p className="hub-muted">
@@ -369,11 +433,13 @@ export function Jobs({
                       href={"/team?view=applications&jobId=" + encodeURIComponent(j.id)}
                       aria-label={`View applicants for ${j.title}`}
                     >View applicants</a>
-                    {admin && (
+                    {admin && collection === "active" && (
                       <button className="hub-text-button" disabled={mutation.busy} onClick={() => openEditor(j)}>
                         Edit job
                       </button>
                     )}
+                    {admin && collection === "active" && j.status !== "draft" && <button className="hub-text-button" disabled={mutation.busy} onClick={() => void lifecycleAction(j, j.status === "open" ? "pause" : "resume")}>{j.status === "open" ? <><Pause size={15} /> Pause job</> : <><Play size={15} /> Resume job</>}</button>}
+                    {admin && collection !== "active" && <button className="hub-text-button" disabled={mutation.busy} onClick={() => void lifecycleAction(j, "restore")}><ArchiveRestore size={15} /> Restore job</button>}
                     <details className="hub-job-menu" onKeyDown={(event) => {
                       if (event.key !== "Escape") return;
                       event.preventDefault();
@@ -382,7 +448,7 @@ export function Jobs({
                     }}>
                       <summary aria-label={`Actions for ${j.title}`}>Actions <ChevronDown size={14} /></summary>
                       <div className="hub-job-menu-items">
-                        <button
+                        {collection === "active" && <button
                           className="hub-text-button"
                           disabled={mutation.busy}
                           aria-expanded={teamJob?.id === j.id}
@@ -390,21 +456,20 @@ export function Jobs({
                             event.currentTarget.closest("details")?.removeAttribute("open");
                             setTeamJob(teamJob?.id === j.id ? null : j);
                           }}
-                        ><Users size={15} /> Hiring team & emails</button>
+                        ><Users size={15} /> Hiring team & emails</button>}
                         {admin && <>
-                          {j.status !== "draft" && <button className="hub-text-button" disabled={mutation.busy} onClick={() => openEditor(j, undefined, 3)}>
-                            <Settings2 size={15} /> Posting status
-                          </button>}
-                          <button className="hub-text-button" disabled={mutation.busy} onClick={() => openEditor(undefined, { kind: "duplicate", source: j })}>
+                          {collection !== "deleted" && <button className="hub-text-button" disabled={mutation.busy} onClick={() => openEditor(undefined, { kind: "duplicate", source: j })}>
                             <Copy size={15} /> Duplicate job
-                          </button>
-                          <button className="hub-text-button" disabled={mutation.busy} onClick={(event) => {
+                          </button>}
+                          {collection !== "deleted" && <button className="hub-text-button" disabled={mutation.busy} onClick={(event) => {
                             event.currentTarget.closest("details")?.removeAttribute("open");
                             setSuccess("");
                             mutation.clear();
                             setTemplateJob(j);
                             setTemplateName(j.title);
-                          }}><Files size={15} /> Save as template</button>
+                          }}><Files size={15} /> Save as template</button>}
+                          {collection === "active" && <button className="hub-text-button" disabled={mutation.busy} onClick={(event) => { event.currentTarget.closest("details")?.removeAttribute("open"); void lifecycleAction(j, "archive"); }}><Archive size={15} /> Archive job</button>}
+                          {collection !== "deleted" && <button className="hub-text-button" disabled={mutation.busy} onClick={(event) => { const details = event.currentTarget.closest("details"); deleteTrigger.current = details?.querySelector("summary") || null; details?.removeAttribute("open"); setDeleteJob(j); setSuccess(""); mutation.clear(); }}><Trash2 size={15} /> Delete job</button>}
                         </>}
                         {j.status === "open" && (
                           <a className="hub-text-button" href={"/jobs/" + encodeURIComponent(j.slug)} target="_blank" rel="noopener noreferrer">
@@ -419,10 +484,10 @@ export function Jobs({
             </div>
           ) : (
             <EmptyState
-              title={data.length ? "No matching jobs" : "Create your first job"}
+              title={collection === "archived" ? "No archived jobs" : collection === "deleted" ? "Trash is empty" : data.length ? "No matching jobs" : "Create your first job"}
             >
               <p>
-                {data.length
+                {collection !== "active" ? "Your active jobs are in the Active jobs tab." : data.length
                   ? "Try another filter or search."
                   : "Start blank, duplicate an existing posting, use a saved template, or fill out a hiring request."}
               </p>

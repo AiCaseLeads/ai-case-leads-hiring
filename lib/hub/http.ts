@@ -5,6 +5,7 @@ import { assertSameOrigin, errorResponse, jsonResponse } from "../hiring/http";
 import { boundedBytes } from "../hiring/files";
 import { HubStore } from "./store";
 import { changeApplicationTrash } from './application-lifecycle';
+import { changeJobLifecycle, jobLifecycleInput } from "./job-lifecycle";
 import {
   actionInput,
   bulkInput,
@@ -87,9 +88,11 @@ export async function handleHubRequest(
       data = await store.listJobs();
     else if (section === "jobs" && request.method === "POST" && !id) {
       data = await store.saveJob(parse(jobInput, await json(request)));
-    } else if (section === "jobs" && id && request.method === "PATCH") {
+    } else if (section === "jobs" && id && operation === "lifecycle" && request.method === "POST") {
+      data = await changeJobLifecycle(store, id, parse(jobLifecycleInput, await json(request)), member);
+    } else if (section === "jobs" && id && !operation && request.method === "PATCH") {
       const existing = await store.getJob(id),
-        { formVersion, ...patch } = parse(jobPatchInput, await json(request));
+        { formVersion, lifecycleRevision, ...patch } = parse(jobPatchInput, await json(request));
       data = await store.saveJob(
         parse(jobInput, {
           title: existing.title,
@@ -110,6 +113,7 @@ export async function handleHubRequest(
         }),
         id,
         formVersion ?? existing.formVersion,
+        lifecycleRevision ?? 0,
       );
     } else if(section === "application-counts" && request.method === "GET") {
       data=await store.applicationCounts();

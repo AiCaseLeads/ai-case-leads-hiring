@@ -1,6 +1,7 @@
 import { jobTeam,teamKey,validateTeam } from "../job-team/service";
 import type { HubMember } from "../hub/auth-core";
 import { HubStore, DEFAULT_REJECTION } from "../hub/store";
+import { assertJobEditable, jobLifecycleKey } from "../hub/job-lifecycle";
 import { parse, sanitizeDescription, validateJob } from "../hub/validation";
 import { HiringError } from "../hiring/errors";
 import { assertSameOrigin, errorResponse, jsonResponse } from "../hiring/http";
@@ -69,9 +70,10 @@ export async function handleJobSetup(
             SCORE,
             structuredClone(emptyCatalog),
           );
-        const { id: _, formVersion: __, ...definition } = job; // Snapshot: later edits to the source never alter a saved template.
+        const { id: _, formVersion: __, lifecycle: ___, ...definition } = job; // Snapshot: later edits to the source never alter a saved template.
         void _;
         void __;
+        void ___;
         setup.templates.push({
           id: crypto.randomUUID(),
           name: input.name,
@@ -141,6 +143,12 @@ export async function handleJobSetup(
       return jsonResponse({ data: await store.getJob(completed.jobId) });
     }
     const previous = input.jobId ? await store.getJob(input.jobId) : null;
+    if (previous) {
+      assertJobEditable(previous);
+      if ((previous.lifecycle?.revision || 0) !== (input.expectedLifecycleRevision || 0)) {
+        throw new HiringError("record_changed", 409, "This job was paused, restored or otherwise changed. Reopen it before saving; your entries remain here.");
+      }
+    }
     if (previous && previous.formVersion !== input.formVersion)
       throw new HiringError(
         "record_changed",
@@ -244,7 +252,7 @@ export async function handleJobSetup(
       "COALESCE((SELECT json_extract(value,'$.revision') FROM hub_settings WHERE key='job_setup_v1'),0)=? AND COALESCE((SELECT json_extract(value,'$.revision') FROM hub_settings WHERE key='scorecard_templates_v1'),0)=?";
     const teamGuard=team?" AND COALESCE((SELECT json_extract(value,'$.revision') FROM hub_settings WHERE key=?),0)=?":"";
     const revisionGuard = previous
-      ? " AND (SELECT form_version FROM hub_jobs WHERE id=?)=?"
+      ? " AND (SELECT form_version FROM hub_jobs WHERE id=?)=? AND COALESCE((SELECT json_extract(value,'$.revision') FROM hub_settings WHERE key=?),0)=?"
       : "";
     const statements = [
       store.stmt(
@@ -252,7 +260,7 @@ export async function handleJobSetup(
         operationKey,
         setupRevision,
         scoreRevision,
-        ...(previous ? [jobId, previous.formVersion] : []),
+        ...(previous ? [jobId, previous.formVersion, jobLifecycleKey(jobId), previous.lifecycle?.revision || 0] : []),
         ...(team?[teamKey(jobId),input.expectedTeamRevision!]:[]),
         JSON.stringify({ jobId, payloadHash }),
         now,

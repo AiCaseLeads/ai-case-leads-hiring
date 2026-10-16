@@ -18,6 +18,7 @@ export type Rule = {
   enabled: boolean;
 };
 export type HubJob = Job & {
+  lifecycle?: import("./job-lifecycle").JobLifecycle;
   aiMatchEnabled?: boolean;
   archiveProject?: string;
   archiveCountry?: string;

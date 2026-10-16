@@ -71,7 +71,7 @@ export const jobInput = z
 export type JobInput = z.infer<typeof jobInput>;
 export const jobPatchInput = jobInput
   .partial()
-  .extend({ formVersion: z.number().int().min(1).optional() })
+  .extend({ formVersion: z.number().int().min(1).optional(), lifecycleRevision: z.number().int().nonnegative().safe().optional() })
   .strict();
 export const actionInput = z
   .object({

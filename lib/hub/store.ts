@@ -37,6 +37,7 @@ import {
   type JobInput,
   type SettingsInput,
 } from "./validation";
+import { assertJobEditable, jobLifecycleKey, type JobLifecycle } from "./job-lifecycle";
 
 export const DEFAULT_REJECTION =
   "Hi {{name}},\n\nThank you for applying for {{jobTitle}} at AI Case Leads. We appreciate your interest. We will not be moving forward with your application for this role.\n\nAI Case Leads Hiring Team";
@@ -54,6 +55,7 @@ export type HubOptions = {
   googleFingerprint?: string;
 };
 type JobRow = {
+  lifecycle_json?: string | null;
   ai_match_enabled: number;
   id: string;
   slug: string;
@@ -153,7 +155,9 @@ function decode<T>(json: string, fallback: T): T {
   }
 }
 function job(row: JobRow): HubJob {
+  const lifecycle = decode<JobLifecycle | undefined>(row.lifecycle_json || "", undefined);
   return {
+    ...(lifecycle ? { lifecycle } : {}),
     id: row.id,
     slug: row.slug,
     title: row.title,
@@ -261,7 +265,7 @@ export class HubStore {
   }
   async listJobs(): Promise<HubJob[]> {
     return (
-      await this.rows<JobRow>("SELECT * FROM hub_jobs ORDER BY created_at,id")
+      await this.rows<JobRow>("SELECT j.*,l.value AS lifecycle_json FROM hub_jobs j LEFT JOIN hub_settings l ON l.key='job_lifecycle_'||j.id ORDER BY j.created_at,j.id")
     ).map(job);
   }
   async listPublishedJobs(): Promise<Job[]> {
@@ -283,7 +287,7 @@ export class HubStore {
   }
   async getJob(id: string): Promise<HubJob> {
     const row = await this.stmt(
-      "SELECT * FROM hub_jobs WHERE id=?",
+      "SELECT j.*,l.value AS lifecycle_json FROM hub_jobs j LEFT JOIN hub_settings l ON l.key='job_lifecycle_'||j.id WHERE j.id=?",
       id,
     ).first<JobRow>();
     if (!row)
@@ -315,9 +319,14 @@ export class HubStore {
     input: JobInput,
     id?: string,
     expectedFormVersion?: number,
+    expectedLifecycleRevision?: number,
   ): Promise<HubJob> {
     const now = Date.now();
     const previous = id ? await this.getJob(id) : null;
+    if (previous) {
+      assertJobEditable(previous);
+      if (expectedLifecycleRevision !== undefined && (previous.lifecycle?.revision || 0) !== expectedLifecycleRevision) throw conflict();
+    }
     const rejectionTemplate = input.rejectionTemplate ?? previous?.rejectionTemplate ?? await this.setting("rejection_template", DEFAULT_REJECTION);
     validateJob({ ...input, rejectionTemplate });
     const jobId = id || crypto.randomUUID();
@@ -334,7 +343,7 @@ export class HubStore {
     try {
       if (previous) {
         const result = await this.stmt(
-          "UPDATE hub_jobs SET title=?,slug=?,department=?,description_html=?,location=?,status=?,fields_json=?,rules_json=?,auto_reject=?,ai_match_enabled=?,rejection_template=?,assessment_prompt=?,archive_project=?,archive_country=?,hiring_round=?,form_version=form_version+1,updated_at=? WHERE id=? AND form_version=?",
+          "UPDATE hub_jobs SET title=?,slug=?,department=?,description_html=?,location=?,status=?,fields_json=?,rules_json=?,auto_reject=?,ai_match_enabled=?,rejection_template=?,assessment_prompt=?,archive_project=?,archive_country=?,hiring_round=?,form_version=form_version+1,updated_at=? WHERE id=? AND form_version=? AND COALESCE((SELECT json_extract(value,'$.revision') FROM hub_settings WHERE key=?),0)=?",
           input.title,
           input.slug,
           input.department,
@@ -353,6 +362,8 @@ export class HubStore {
           now,
           jobId,
           previous.formVersion,
+          jobLifecycleKey(jobId),
+          previous.lifecycle?.revision || 0,
         ).run();
         if (result.meta.changes !== 1) throw conflict();
       } else
