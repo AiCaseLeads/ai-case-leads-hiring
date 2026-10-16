@@ -38,6 +38,24 @@ function criteriaText(value: unknown) {
   }
   return text(value);
 }
+function activityText(item:Entry, currentAi:Entry):string {
+  const value=item.text;
+  if(typeof value!=='string'||! /^[\[{]/.test(value.trim()))return text(value);
+  let parsed:unknown;
+  try {parsed=JSON.parse(value);}catch{return value;}
+  const saved=record(parsed);
+  if(item.type!=='ai_match')return text(parsed);
+  const summary=["AI review recorded.",typeof saved.score==='number'?`Evidence match: ${saved.score} / 100.`:'',saved.model?`Model: ${text(saved.model)}.`:'',saved.version?`Job version: ${text(saved.version)}.`:''].filter(Boolean).join(' ');
+  if(item.createdAt===currentAi.updatedAt&&saved.score===currentAi.score&&saved.model===currentAi.model) return summary+' See AI job match above for the supporting evidence.';
+  const review=record(saved.review), evidence=rows(review.criteria).map((criterion,index)=>[
+    `${index+1}. ${text(criterion.criterion)} - ${words(String(criterion.status||'Recorded'))}`,
+    text(criterion.explanation),
+    ...rows(criterion.citations).map(citation=>`Source: ${words(String(citation.source||'Document'))}\n"${text(citation.quote)}"`),
+  ].join('\n'));
+  const checks=rows(review.checks).map((check,index)=>[`${index+1}. ${text(check.question)}`,...rows(check.citations).map(citation=>`Source: ${words(String(citation.source||'Document'))}\n"${text(citation.quote)}"`)].join('\n'));
+  const warnings=Array.isArray(review.sourceWarnings)?review.sourceWarnings.map(text):[];
+  return [summary,...evidence,...(checks.length?['Questions to verify:',...checks]:[]),...warnings].join('\n\n');
+}
 function text(value: unknown): string {
   if (value === null || value === undefined || value === "") return "Not provided";
   if (typeof value === "boolean") return value ? "Yes" : "No";
@@ -273,7 +291,7 @@ export async function applicationPdf(application: ReadableApplication): Promise<
   const history = rows(application.history);
   if (history.length) {
     pdf.section("Hiring activity and notes");
-    for (const item of history) pdf.field(`${date(item.createdAt)} / ${words(String(item.type || "Activity"))}`, `${item.actor ? text(item.actor) + "\n" : ""}${text(item.text)}`);
+    for (const item of history) pdf.field(`${date(item.createdAt)} / ${words(String(item.type || "Activity"))}`, `${item.actor ? text(item.actor) + "\n" : ""}${activityText(item,ai)}`);
   }
   if (application.jobDescription) {
     pdf.section("Current job description", 160);

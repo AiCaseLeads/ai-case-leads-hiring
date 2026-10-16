@@ -44,3 +44,14 @@ test("bulk download report identifies missing originals in a readable PDF", asyn
   const parsed = await readablePdf(await exportReportPdf({ jobId: "job", applicationCount: 2, includedFiles: 3, exportedAt: 1760553600000, missingFiles: [{ applicationId: "app", fileId: "file", filename: "Missing résumé.pdf", reason: "File missing from storage" }] }));
   for (const expected of ["Application download report", "Missing résumé.pdf", "File missing from storage", "Application ID: app"]) assert.ok(parsed.text.includes(expected));
 });
+test('AI audit events are readable and preserve older evidence without dumping JSON',async()=>{
+ const saved={model:'openai/gpt-5-mini',version:3,score:88,review:{criteria:[{criterion:'Earlier creative requirement',status:'evidence_found',explanation:'Produced twelve earlier campaign briefs.',citations:[{source:'resume',quote:'Twelve earlier briefs.'}]}],checks:[{question:'Verify earlier campaign results.'}]}};
+ const timestamp=1760553600000;
+ const parsed=await readablePdf(await applicationPdf({...fixture,aiMatch:{...fixture.aiMatch as object,updatedAt:timestamp},history:[
+  {type:'ai_match',text:JSON.stringify(saved),createdAt:timestamp-1000},
+  {type:'ai_match',text:JSON.stringify(saved),createdAt:timestamp},
+  {type:'note',text:'A plain recruiter note',createdAt:timestamp},
+ ]}));
+ for(const expected of ['AI review recorded.','Earlier creative requirement','Twelve earlier briefs.','Verify earlier campaign results.','See AI job match above','A plain recruiter note'])assert.ok(parsed.text.includes(expected),expected);
+ assert.ok(!parsed.text.includes('{"model"'));assert.ok(!parsed.text.includes('"sourceWarnings":'));
+});
