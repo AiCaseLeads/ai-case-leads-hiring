@@ -473,6 +473,10 @@ test("task API paging validates its cursor and never exposes invitation payloads
   await store.acceptApplication(applicationInput(posting.id));
   const get = (page: string) =>
     new Request(`https://jobs.example.invalid/api/hub/tasks?page=${page}`);
+  database.prepare("UPDATE hub_tasks SET last_error='drive_archive_continuation',result_json=? WHERE kind='drive'").run(JSON.stringify({
+    continuation: true, phase: "legacy_pdf", folderId: "private-folder-id", candidate: { email: "private-email" },
+    diagnostics: { providerStatus: 429, secret: "private-token", providerCode: "private-provider-code" },
+  }));
   for (const invalid of ["0", "10001", "bad", "-1"])
     assert.equal(
       (await handleHubRequest(get(invalid), ["tasks"], MANAGER, store)).status,
@@ -483,9 +487,14 @@ test("task API paging validates its cursor and never exposes invitation payloads
   assert.equal(body.data.length, 2);
   assert.ok(
     body.data.every(
-      (t) => t.payload === undefined && t.leaseToken === undefined,
+      (t) => t.payload === undefined && t.leaseToken === undefined && t.result === undefined,
     ),
   );
+  const drive = body.data.find(task => task.kind === "drive")!;
+  assert.equal(drive.continuation, true);
+  assert.equal(drive.phase, "legacy_pdf");
+  assert.equal(drive.providerStatus, 429);
+  assert.ok(!JSON.stringify(body).includes("private-"));
   assert.deepEqual(
     await (await handleHubRequest(get("2"), ["tasks"], MANAGER, store)).json(),
     { data: [] },

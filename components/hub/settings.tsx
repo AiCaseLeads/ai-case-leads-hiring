@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { isMailSetupError } from "../../lib/google/mail-setup";
+import { driveArchivePhases, isDriveArchiveContinuation } from "../../lib/hub/task-progress";
 import { ExternalLink } from "lucide-react";
 import {
   displayDate,
@@ -337,7 +338,7 @@ export function Tasks({
                   <th scope="col">Status</th>
                   <th scope="col">Attempts</th>
                   <th scope="col">Updated</th>
-                  <th scope="col">Last error</th>
+                  <th scope="col">Details</th>
                   <th scope="col">Recovery</th>
                 </tr>
               </thead>
@@ -361,12 +362,18 @@ export function Tasks({
                               : "neutral"
                         }
                       >
-                        {mailSetupError(task) ? "Setup required" : task.status}
+                        {isDriveArchiveContinuation(task) ? "Archiving files" : mailSetupError(task) ? "Setup required" : task.status}
                       </Badge>
                     </td>
                     <td>{task.attempts}</td>
                     <td>{displayDate(task.updatedAt)}</td>
-                    <td className="hub-task-error">{mailSetupError(task) ? setupExplanation(task.lastError || "") + " This message is held; connecting Gmail alone will not send it." : task.lastError || "—"}</td>
+                    <td className={isDriveArchiveContinuation(task) ? "hub-muted" : "hub-task-error"}>
+                      {isDriveArchiveContinuation(task)
+                        ? "Progress saved; the background worker will continue automatically."
+                        : mailSetupError(task) ? setupExplanation(task.lastError || "") + " This message is held; connecting Gmail alone will not send it." : task.lastError || "—"}
+                      {task.phase && <span className="hub-secondary-line">{driveArchivePhases[task.phase]}</span>}
+                      {task.providerStatus && <span className="hub-secondary-line">Google response: {task.providerStatus}</span>}
+                    </td>
                     <td>
                       {mailSetupError(task) ? (
                         <div><a className="hub-button secondary" href="/team?view=settings">Connect recruiting email</a>{admin && (mail.data?.candidateConnected === true || mail.data?.connected === true) && task.status === "failed" && <button type="button" className="hub-button secondary" disabled={mutation.busy} onClick={() => {if (window.confirm("Have you reviewed this held message and corrected its sender, permissions and template? Retrying can send it to the applicant.")) void retry(task.id);}}>Review and retry held message</button>}</div>

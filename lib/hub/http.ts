@@ -4,6 +4,7 @@ import { HiringError } from "../hiring/errors";
 import { assertSameOrigin, errorResponse, jsonResponse } from "../hiring/http";
 import { boundedBytes } from "../hiring/files";
 import { HubStore } from "./store";
+import { publicTaskProgress } from "./task-progress";
 import { changeApplicationTrash } from './application-lifecycle';
 import { changeJobLifecycle, jobLifecycleInput } from "./job-lifecycle";
 import {
@@ -188,6 +189,7 @@ export async function handleHubRequest(
         lastError: task.lastError,
         createdAt: task.createdAt,
         updatedAt: task.updatedAt,
+        ...publicTaskProgress(task),
       }));
     } else if (
       section === "tasks" &&

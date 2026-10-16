@@ -217,6 +217,9 @@ export type Task = {
   createdAt: number;
   updatedAt: number;
   runAfter?: number;
+  continuation?: boolean;
+  phase?: import("../../lib/hub/task-progress").DriveArchivePhase;
+  providerStatus?: number;
 };
 export type CandidateView = {
   kind: "assessment" | "interview";
