@@ -4,6 +4,7 @@ import { HiringError } from "../hiring/errors";
 import { assertSameOrigin, errorResponse, jsonResponse } from "../hiring/http";
 import { boundedBytes } from "../hiring/files";
 import { HubStore } from "./store";
+import { changeApplicationTrash } from './application-lifecycle';
 import {
   actionInput,
   bulkInput,
@@ -44,7 +45,7 @@ function applicationFilters(request: Request) {
         sort = params.get("sort") || undefined,
         duplicate = params.get("duplicate") || undefined,
         jobId = params.get("jobId") || undefined;
-      if ((q?.length || 0) > 200 || !/^\d{1,6}$/.test(page))
+      if ((params.has('trash')&&params.get('trash')!=='true') || (q?.length || 0) > 200 || !/^\d{1,6}$/.test(page))
         throw new HiringError(
           "invalid_filter",
           422,
@@ -66,6 +67,7 @@ function applicationFilters(request: Request) {
         grade: grade as "reviewed" | "ungraded" | undefined,
         sort: sort as "grade_desc" | "ai_match_desc" | undefined,
         duplicate: duplicate === "true" ? true : undefined,
+        trash: params.get('trash')==='true',
       };
 }
 /** Route authentication must run before this dispatcher; tests supply an explicit authorized member. */
@@ -128,6 +130,11 @@ export async function handleHubRequest(
       !operation
     )
       data = await store.getApplication(id);
+    else if(section==='applications' && id && operation==='lifecycle' && request.method==='POST') {
+      const input=await json(request) as {action?:unknown;expectedRevision?:unknown};
+      if(!input || !['trash','restore'].includes(String(input.action)) || !Number.isSafeInteger(input.expectedRevision)) throw new HiringError('invalid_application_action',422,'Choose Delete or Restore and refresh the application.');
+      data=await changeApplicationTrash(store,id,input.action as 'trash'|'restore',input.expectedRevision as number,member);
+    }
     else if (
       section === "applications" &&
       id &&

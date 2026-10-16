@@ -1,4 +1,5 @@
 import { MAIL_SETUP_ERRORS } from "../google/mail-setup";
+import { activeApplicationsSql, applicationTrash } from './application-lifecycle';
 import { personalCalendarSnapshot,interviewCalendar,interviewCalendarKey } from "../personal-calendar/service";
 import { jobNotificationStatements } from "../job-team/service";
 import { canonicalJson, privateToken, sha256 } from "../hiring/crypto";
@@ -42,7 +43,7 @@ export const DEFAULT_REJECTION =
 type Bind = string | number | null;
 export type ApplicationFilters = {
   q?:string;jobId?:string;stage?:string;assignee?:string;qualification?:"pass"|"review"|"fail";
-  top?:10;grade?:"reviewed"|"ungraded";sort?:"grade_desc"|"ai_match_desc";duplicate?:boolean;page?:number;
+  top?:10;grade?:"reviewed"|"ungraded";sort?:"grade_desc"|"ai_match_desc";duplicate?:boolean;page?:number;trash?:boolean;
 };
 const SUMMARY_COLUMNS = "id,revision,name,email,job_id,job_title,stage,qualification,assignee,created_at,updated_at,source,drive_folder_url";
 export type HubOptions = {
@@ -747,7 +748,7 @@ export class HubStore {
   private applicationSelection(filters:ApplicationFilters) {
     if ((filters.grade || filters.sort) && !filters.jobId)
       throw new HiringError("job_required_for_grading",422,"Choose one role before filtering or sorting reviewer grades.");
-    const where:string[] = [], values:Bind[] = [];
+    const where:string[] = [filters.trash?`NOT (${activeApplicationsSql('a')})`:activeApplicationsSql('a')], values:Bind[] = [];
     if(filters.q) {where.push("(instr(lower(a.name),lower(?))>0 OR instr(lower(a.email),lower(?))>0)");values.push(filters.q,filters.q);}
     for(const [key,column] of [["jobId","job_id"],["stage","stage"],["assignee","assignee"],["qualification","qualification"]] as const)
       if(filters[key]) {where.push(`a.${column}=?`);values.push(filters[key]!);}
@@ -789,7 +790,7 @@ export class HubStore {
     const selected=this.applicationSelection(filters), page=Math.max(1,Math.min(100000,filters.page||1)),pageSize=30;
     const count=await this.stmt(`${selected.cte}SELECT COUNT(*) AS total FROM hub_applications a${selected.join}${selected.clause}`,...selected.values).first<{total:number}>();
     const rows=await this.rows<ApplicationRow>(`${selected.cte}SELECT ${SUMMARY_COLUMNS.split(",").map((column)=>`a.${column}`).join(",")},(SELECT COUNT(*) FROM hub_applications d WHERE d.email=a.email) AS duplicate_application_count FROM hub_applications a${selected.join}${selected.clause} ORDER BY ${selected.order} LIMIT ? OFFSET ?`,...selected.values,pageSize,(page-1)*pageSize);
-    return {items:await this.summaries(filters.top ? rows.slice(0,Math.max(0,10-(page-1)*pageSize)) : rows),total:filters.top?Math.min(10,count?.total||0):count?.total||0,page,pageSize};
+    return {items:(await this.summaries(filters.top ? rows.slice(0,Math.max(0,10-(page-1)*pageSize)) : rows)).map(item=>({...item,trashed:!!filters.trash})),total:filters.top?Math.min(10,count?.total||0):count?.total||0,page,pageSize};
   }
   async exportApplications(filters:ApplicationFilters={}) {
     const selected=this.applicationSelection(filters),limit=filters.top?10:1000;
@@ -798,7 +799,7 @@ export class HubStore {
     return {items:await this.summaries(rows),total:filters.top?Math.min(10,count?.total||0):count?.total||0,truncated:!filters.top&&(count?.total||0)>limit,limit};
   }
   async applicationCounts() {
-    return {items:await this.rows<{jobId:string;total:number;needsReview:number;aiReady:number}>(`SELECT j.id AS jobId,COUNT(a.id) AS total,COALESCE(SUM(a.stage='Application Review'),0) AS needsReview,COALESCE(SUM(m.status='ready' AND m.score IS NOT NULL),0) AS aiReady FROM hub_jobs j LEFT JOIN hub_applications a ON a.job_id=j.id LEFT JOIN hub_ai_matches m ON m.application_id=a.id AND m.form_version=j.form_version AND j.ai_match_enabled=1 GROUP BY j.id`)};
+    return {items:await this.rows<{jobId:string;total:number;needsReview:number;aiReady:number}>(`SELECT j.id AS jobId,COUNT(a.id) AS total,COALESCE(SUM(a.stage='Application Review'),0) AS needsReview,COALESCE(SUM(m.status='ready' AND m.score IS NOT NULL),0) AS aiReady FROM hub_jobs j LEFT JOIN hub_applications a ON a.job_id=j.id AND ${activeApplicationsSql('a')} LEFT JOIN hub_ai_matches m ON m.application_id=a.id AND m.form_version=j.form_version AND j.ai_match_enabled=1 GROUP BY j.id`)};
   }
   async exportIds(filters:ApplicationFilters,ids?:string[]) {
     if(!filters.jobId) throw new HiringError("export_job_required",422,"Choose a job before downloading applications.");
@@ -841,7 +842,7 @@ export class HubStore {
     const allInterviews:Interview[] = interviews.map((item) => ({id:item.id,revision:item.revision,status:item.status as Interview["status"],...(item.start?{start:item.start}:{}),...(item.end?{end:item.end}:{}),...(item.time_zone?{timeZone:item.time_zone}:{}),...(item.calendar_id?{calendarId:item.calendar_id}:{}),...(item.meet_url?{meetUrl:item.meet_url}:{}),...(item.attended !== null?{attended:!!item.attended}:{}),...linkInfo("interview",item.id)}));
     const duplicateCount = await this.stmt("SELECT COUNT(*) AS count FROM hub_applications WHERE email=?",app.email).first<{count:number}>();
     const cards = scorecards.map((card) => ({id:card.id,actor:card.actor,score:card.score,criteria:card.criteria,text:card.text,createdAt:card.created_at}));
-    return {...summary(app),archiveProject:app.archive_project || undefined,archiveCountry:app.archive_country || undefined,hiringRound:app.hiring_round || undefined,revision:app.revision,formVersion:app.form_version,utmData:decode(app.utm_json,{}),
+    return {...summary(app),trashed:!!await applicationTrash(this,id),archiveProject:app.archive_project || undefined,archiveCountry:app.archive_country || undefined,hiringRound:app.hiring_round || undefined,revision:app.revision,formVersion:app.form_version,utmData:decode(app.utm_json,{}),
       duplicateEmail:(duplicateCount?.count || 1)>1,duplicateApplicationCount:duplicateCount?.count || 1,grade:gradeForScorecards(cards),aiMatch:await matchDetail(this,id),
       answers:decode(app.answers_json,[]),fields:decode(app.fields_json,[]),qualificationEvidence:decode(app.qualification_json,[]),
       files:files.map((file) => ({id:file.id,filename:file.filename,contentType:file.content_type,size:file.size,url:`/api/files/${encodeURIComponent(file.id)}`})),
@@ -851,9 +852,9 @@ export class HubStore {
       ...(allAssessments[0]?{assessment:allAssessments[0]}:{}),...(allInterviews[0]?{interview:allInterviews[0]}:{}),scorecards:cards};
   }
   async overview() {
-    const counts = await this.stmt("SELECT COUNT(*) AS applications,COALESCE(SUM(stage NOT IN ('Rejected','Withdrawn','Hired')),0) AS active,COALESCE(SUM(stage='Rejected'),0) AS rejected,COALESCE(SUM(stage='Hired'),0) AS hired FROM hub_applications").first<{applications:number;active:number;rejected:number;hired:number}>();
-    const stageCounts=await this.rows<{stage:string;count:number}>("SELECT stage,COUNT(*) AS count FROM hub_applications GROUP BY stage");
-    const recent=await this.rows<ApplicationRow>(`SELECT ${SUMMARY_COLUMNS.split(",").map((column)=>`a.${column}`).join(",")},(SELECT COUNT(*) FROM hub_applications d WHERE d.email=a.email) AS duplicate_application_count FROM hub_applications a ORDER BY a.created_at DESC,a.id LIMIT 12`);
+    const counts = await this.stmt(`SELECT COUNT(*) AS applications,COALESCE(SUM(stage NOT IN ('Rejected','Withdrawn','Hired')),0) AS active,COALESCE(SUM(stage='Rejected'),0) AS rejected,COALESCE(SUM(stage='Hired'),0) AS hired FROM hub_applications a WHERE ${activeApplicationsSql('a')}` ).first<{applications:number;active:number;rejected:number;hired:number}>();
+    const stageCounts=await this.rows<{stage:string;count:number}>(`SELECT stage,COUNT(*) AS count FROM hub_applications a WHERE ${activeApplicationsSql('a')} GROUP BY stage`);
+    const recent=await this.rows<ApplicationRow>(`SELECT ${SUMMARY_COLUMNS.split(",").map((column)=>`a.${column}`).join(",")},(SELECT COUNT(*) FROM hub_applications d WHERE d.email=a.email) AS duplicate_application_count FROM hub_applications a WHERE ${activeApplicationsSql('a')} ORDER BY a.created_at DESC,a.id LIMIT 12`);
     return {counts:counts||{applications:0,active:0,rejected:0,hired:0},stageCounts,recentApplications:await this.summaries(recent),integrations:this.options.integrations||{google:false,drive:false,applicationsEnabled:false},jobs:await this.listJobs()};
   }
   async members(): Promise<Member[]> {
@@ -1076,7 +1077,7 @@ export class HubStore {
   }
   async reports() {
     const apps = await this.rows<ApplicationRow>(
-      "SELECT id,created_at,stage,qualification FROM hub_applications",
+      `SELECT id,created_at,stage,qualification FROM hub_applications a WHERE ${activeApplicationsSql('a')}`,
     );
     const stages = await this.rows<{
       application_id: string;
@@ -1087,7 +1088,7 @@ export class HubStore {
       "SELECT application_id,from_stage,to_stage,created_at FROM hub_history WHERE type='stage' ORDER BY created_at,id",
     );
     const stageCounts = await this.rows<{ stage: string; count: number }>(
-      "SELECT stage,COUNT(*) AS count FROM hub_applications GROUP BY stage",
+      `SELECT stage,COUNT(*) AS count FROM hub_applications a WHERE ${activeApplicationsSql('a')} GROUP BY stage`,
     );
     const sources = await this.rows<{
       source: string;
@@ -1100,7 +1101,7 @@ export class HubStore {
         SUM(CASE WHEN a.qualification='pass' THEN 1 ELSE 0 END) AS qualified,
         SUM(CASE WHEN a.stage='Interview' OR EXISTS (SELECT 1 FROM hub_history h WHERE h.application_id=a.id AND h.type='stage' AND h.to_stage='Interview') THEN 1 ELSE 0 END) AS interviewed,
         SUM(CASE WHEN a.stage='Hired' THEN 1 ELSE 0 END) AS hired
-        FROM hub_applications a GROUP BY a.source ORDER BY count DESC,a.source`,
+        FROM hub_applications a WHERE ${activeApplicationsSql('a')} GROUP BY a.source ORDER BY count DESC,a.source`,
     );
     const workload = await this.rows<{
       assignee: string | null;
@@ -1182,7 +1183,7 @@ export class HubStore {
     reason = app.rejection_reason,
   ) {
     return this.stmt(
-      "UPDATE hub_applications SET id=CASE WHEN revision=? THEN id ELSE NULL END,stage=?,assignee=?,rejection_reason=?,stage_entered_at=CASE WHEN stage<>? THEN ? ELSE stage_entered_at END,revision=revision+1,updated_at=? WHERE id=?",
+      "UPDATE hub_applications SET id=CASE WHEN revision=? AND NOT EXISTS(SELECT 1 FROM hub_settings deleted WHERE deleted.key='application_trash:'||hub_applications.id) THEN id ELSE NULL END,stage=?,assignee=?,rejection_reason=?,stage_entered_at=CASE WHEN stage<>? THEN ? ELSE stage_entered_at END,revision=revision+1,updated_at=? WHERE id=?",
       app.revision,
       stage,
       assignee,
@@ -1205,6 +1206,7 @@ export class HubStore {
     input: ActionInput,
     member: HubMember,
   ): Promise<D1PreparedStatement[]> {
+    if(await applicationTrash(this,app.id)) throw new HiringError('application_in_trash',409,'Restore this application from Trash before taking recruiting actions.');
     if (!Number.isSafeInteger(input.expectedRevision) || input.expectedRevision < 1)
       throw conflict();
     if (input.action === "email") {

@@ -47,6 +47,7 @@ export type HubJob = Job & {
   assessmentPrompt?: string;
 };
 export type ApplicationSummary = {
+  trashed?: boolean;
   id: string;
   revision: number;
   name: string;

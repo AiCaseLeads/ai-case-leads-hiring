@@ -37,6 +37,7 @@ export type QualificationEvidence = {
   value: unknown;
 };
 export type ApplicationSummary = {
+  trashed?: boolean;
   id: string;
   revision: number;
   name: string;

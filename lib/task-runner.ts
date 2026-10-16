@@ -34,6 +34,13 @@ async function reconcileArchives(db:D1Database,store:HubStore){
   const now=Date.now();
   if(result.results.length)await db.batch(result.results.map(app=>store.taskStatement(`drive:${app.id}:reconcile:${app.revision}`,app.id,"drive",{applicationId:app.id},now)));
 }
+export async function reconcileLegacyPdfArchives(db:D1Database,store:HubStore){
+  // Backfill only known completed archives. Candidate decisions and emails are never replayed.
+  const result=await db.prepare("SELECT a.id,a.revision FROM hub_applications a WHERE EXISTS(SELECT 1 FROM hub_tasks old WHERE old.application_id=a.id AND old.kind='drive' AND old.status='done' AND CAST(json_extract(old.result_json,'$.archivedRevision') AS INTEGER)>=a.revision AND COALESCE(json_extract(old.result_json,'$.archiveFormat'),'')<>'pdf-v1') AND NOT EXISTS(SELECT 1 FROM hub_tasks t WHERE t.application_id=a.id AND t.kind='drive' AND (t.status IN ('pending','running') OR (t.status='done' AND json_extract(t.result_json,'$.archiveFormat')='pdf-v1' AND CAST(json_extract(t.result_json,'$.archivedRevision') AS INTEGER)>=a.revision))) AND NOT EXISTS(SELECT 1 FROM hub_tasks backfill WHERE backfill.id='drive:'||a.id||':pdf-v1:'||a.revision) ORDER BY a.updated_at,a.id LIMIT 100").all<{id:string;revision:number}>();
+  const now=Date.now();
+  if(result.results.length)await db.batch(result.results.map(app=>store.taskStatement(`drive:${app.id}:pdf-v1:${app.revision}`,app.id,'drive',{applicationId:app.id,pdfBackfill:true},now)));
+  return result.results.length;
+}
 async function reconcileUncertain(db:D1Database,store:HubStore,google:GoogleWorkspace,max:number,deadline:number,resolver?:CandidateMailResolver){
   const now=Date.now();
   const result=await db.prepare("SELECT id,application_id,payload_json FROM hub_tasks WHERE kind='gmail' AND status='uncertain' AND run_after<=? ORDER BY updated_at LIMIT ?").bind(now,max).all<{id:string;application_id:string;payload_json:string}>();
@@ -56,6 +63,10 @@ async function reconcileUncertain(db:D1Database,store:HubStore,google:GoogleWork
   return reconciled;
 }
 async function taskEffect(task:Task,store:HubStore,db:D1Database,bucket:R2Bucket|undefined,google:GoogleWorkspace,deadline:number,owners:string[],resolver?:CandidateMailResolver):Promise<Record<string,unknown>>{
+  if(task.kind==='gmail'||task.kind==='calendar') {
+    const {applicationTrash}=await import('./hub/application-lifecycle');
+    if(await applicationTrash(store,task.applicationId)) return {stale:true,applicationTrashed:true};
+  }
   if(task.kind==="gmail"){
     if(task.payload.jobNotification===true){
       const mail=await jobNotificationMail(task,store,owners);
@@ -146,6 +157,7 @@ export async function processHubTasks(store:HubStore,db:D1Database,bucket:R2Buck
     if(recruitingMail)await processStaffInvites(store,recruitingMail,owners,3);
     await enqueueReviewReminders(store,owners);
     await reconcileArchives(db,store);
+  await reconcileLegacyPdfArchives(db,store);
     reconciled=await reconcileUncertain(db,store,google,Math.min(max,5),deadline,candidateResolver);
     for(let index=0;index<Math.max(1,Math.min(max,10));index++){
       if(Date.now()>=deadline-1000)break;

@@ -17,6 +17,16 @@ export function downloadFile(contents: string, filename: string, type: string) {
   document.body.appendChild(link); link.click(); link.remove();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
-export function downloadApplication(detail: ApplicationDetail) {
-  downloadFile(JSON.stringify(detail, null, 2), `application-${detail.id}.json`, "application/json");
+export async function downloadApplication(detail: ApplicationDetail) {
+  const params=new URLSearchParams({format:'pdf',jobId:detail.jobId,ids:detail.id,...(detail.trashed?{trash:'true'}:{})});
+  const response=await fetch('/api/hub/applications-export?'+params.toString(),{credentials:'same-origin',cache:'no-store'});
+  if(!response.ok) {
+    const result=await response.json().catch(()=>null) as {error?:{message?:string}}|null;
+    throw new Error(result?.error?.message||'The application PDF could not be downloaded. Please try again.');
+  }
+  if(!response.headers.get('Content-Type')?.includes('application/pdf')) throw new Error('The PDF could not be prepared. Please try again.');
+  const url=URL.createObjectURL(await response.blob()),link=document.createElement('a');
+  link.href=url;link.download=`application-${detail.id}.pdf`;
+  document.body.appendChild(link);link.click();link.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),1000);
 }

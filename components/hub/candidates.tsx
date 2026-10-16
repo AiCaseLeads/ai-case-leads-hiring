@@ -133,7 +133,7 @@ export function CandidateTable({
               </td>
               {showRole && <td role="cell" data-label="Role">{item.jobTitle}</td>}
               <td role="cell" data-label="Stage">
-                <Badge>{stageLabel(item.stage)}</Badge>
+                <Badge>{item.trashed?"In Trash":stageLabel(item.stage)}</Badge>
               </td>
               <td role="cell" data-label="Screening">
                 <span title={item.qualification === "review" ? screeningConfigured === false ? "This job has no enabled screening rules. The AI match is shown separately." : "An answer needed by the screening rules is missing or could not be evaluated. Check the application answers. The AI match is shown separately." : undefined}><Badge tone={qualificationTone(item.qualification)}>{qualificationLabel(item.qualification, screeningConfigured)}</Badge></span>
@@ -142,8 +142,8 @@ export function CandidateTable({
               <td role="cell" data-label="Owner" className="hub-optional-owner">{item.assignee || "Unassigned"}</td>
               <td role="cell" data-label="Applied" className="hub-nowrap hub-optional-applied">{displayDate(item.createdAt)}</td>
               {(shortlist || interview) && <td role="cell" data-label="Next step"><div className="hub-candidate-row-actions">
-                {shortlist && item.stage === "Application Review" && <button type="button" className="hub-button secondary" disabled={busy} onClick={() => shortlist(item)}>Shortlist<span className="sr-only"> {item.name}</span></button>}
-                {interview && !["Rejected", "Withdrawn", "Hired"].includes(item.stage) && <button type="button" className="hub-text-button" disabled={busy} onClick={() => interview(item)}>Request interview<span className="sr-only"> with {item.name}</span></button>}
+                {shortlist && !item.trashed && item.stage === "Application Review" && <button type="button" className="hub-button secondary" disabled={busy} onClick={() => shortlist(item)}>Shortlist<span className="sr-only"> {item.name}</span></button>}
+                {interview && !item.trashed && !["Rejected", "Withdrawn", "Hired"].includes(item.stage) && <button type="button" className="hub-text-button" disabled={busy} onClick={() => interview(item)}>Request interview<span className="sr-only"> with {item.name}</span></button>}
               </div></td>}
             </tr>
           ))}
@@ -242,6 +242,7 @@ function JobCandidates({
   const [exportScope, setExportScope] = useState("filtered");
   const selectedJob = jobs.find(job => job.id === jobId);
   const isTopTen = new URLSearchParams(filter).get("top") === "10";
+  const inTrash = new URLSearchParams(filter).get("trash") === "true";
   const [bulkAction, setBulkAction] = useState("stage"),
     [bulkStage, setBulkStage] = useState("Screening"),
     [bulkAssignee, setBulkAssignee] = useState(""),
@@ -268,6 +269,7 @@ function JobCandidates({
   function filterSubmit(e: React.FormEvent) {
     e.preventDefault();
     const search = new URLSearchParams();
+    if(inTrash) search.set("trash","true");
     if (q) search.set("q", q);
     if (jobId) search.set("jobId", jobId);
     if (stage) search.set("stage", stage);
@@ -374,6 +376,8 @@ function JobCandidates({
           {resource.data ? resource.data.total + " applications" : ""}
         </span><button type="button" className="hub-button secondary" disabled={resource.loading} onClick={() => void resource.reload()}>Refresh applications</button></div>
       </div>
+      <div className="hub-button-row hub-application-view-tabs"><button className="hub-pipeline-tab" type="button" aria-pressed={!inTrash} onClick={()=>applyView(new URLSearchParams({jobId}).toString())}>Applications</button><button className="hub-pipeline-tab" type="button" aria-pressed={inTrash} onClick={()=>applyView(new URLSearchParams({jobId,trash:"true"}).toString())}>Trash</button></div>
+      {inTrash && <p className="hub-muted">Deleted applications stay here with their original files and history. Open an application to restore it. Cancelled emails and booking links are not sent again.</p>}
       <div className="hub-pipeline-tabs" role="group" aria-label="Hiring stages">{["", "Application Review", "Screening", "Interview", "Offer", "Hired", "Rejected"].map(value=><button key={value||"all"} className={"hub-pipeline-tab"+(stage===value?" active":"")} type="button" aria-pressed={stage===value} onClick={()=>{const params=new URLSearchParams(filter);if(value)params.set("stage",value);else params.delete("stage");applyView(params.toString());}}>{value?stageLabel(value):"All"}</button>)}</div>
       <div className="hub-applicant-toolbar">
       <form className="hub-applicant-filter-form" onSubmit={filterSubmit}>
@@ -393,14 +397,14 @@ function JobCandidates({
         </details>
       </form>
       <div className="hub-applicant-toolbar-actions">
-        <button className="hub-button secondary" type="button" onClick={() => applyView((() => {const params=new URLSearchParams(filter);params.set("sort","ai_match_desc");params.set("top","10");return params.toString();})())}>Top 10 AI matches</button>
+        {!inTrash && <button className="hub-button secondary" type="button" onClick={() => applyView((() => {const params=new URLSearchParams(filter);params.set("sort","ai_match_desc");params.set("top","10");return params.toString();})())}>Top 10 AI matches</button>}
         {isTopTen && <button className="hub-text-button" type="button" onClick={() => applyView((() => {const params=new URLSearchParams(filter);params.delete("top");return params.toString();})())}>Show all applicants</button>}
         <button className="hub-text-button" type="button" onClick={()=>applyView(new URLSearchParams({jobId}).toString())}>Clear filters</button>
         <details className="hub-download-menu hub-application-downloads"><summary><Download size={16} /> Download applications</summary>
           <div className="hub-download-menu-body">
             <div className="hub-button-row"><button className="hub-text-button" type="button" disabled={resource.loading || !resource.data?.items.length} onClick={() => {setSelected(resource.data?.items.map(item=>item.id)||[]);setExportScope("selected");}}>Select this page ({resource.data?.items.length||0})</button><button className="hub-text-button" type="button" disabled={resource.loading || !resource.data?.total} onClick={() => {setSelected([]);setExportScope("filtered");}}>Select all matching for download ({resource.data?.total||0})</button>{selected.length>0 && <button className="hub-text-button" type="button" onClick={() => {setSelected([]);setExportScope("filtered");}}>Clear selection ({selected.length})</button>}</div>
             <div className="hub-button-row hub-download-actions"><Field label="Download scope"><select value={exportScope} onChange={event=>setExportScope(event.target.value)}><option value="filtered">Current view{isTopTen?" · Top 10":" · all pages"}</option><option value="all">All applicants for this job</option><option value="selected">Selected applicants ({selected.length})</option></select></Field><button className="hub-button secondary" type="button" disabled={exporting || resource.loading || (exportScope==="filtered"&&!resource.data?.total) || (exportScope==="selected"&&!selected.length)} onClick={()=>void exportApplications("csv")}><Download size={16}/> Download spreadsheet (CSV)</button><button className="hub-button" type="button" disabled={exporting || resource.loading || (exportScope==="filtered"&&!resource.data?.total) || (exportScope==="selected"&&!selected.length)} onClick={()=>void exportApplications("zip")}><Download size={16}/> Download application files (ZIP)</button></div>
-            <p className="hub-muted">{exportScope==="selected"?`${selected.length} selected applicants`:exportScope==="all"?"Every applicant for this job, across all pages and stages":`${resource.data?.total||0} matching applicants across all pages`} will be downloaded. CSV includes answers; ZIP includes answers and original files.</p>
+            <p className="hub-muted">{exportScope==="selected"?`${selected.length} selected applicants`:exportScope==="all"?"Every applicant for this job, across all pages and stages":`${resource.data?.total||0} matching applicants across all pages`} will be downloaded. CSV is an optional spreadsheet. ZIP includes readable application PDFs and original files.</p>
             <details><summary>Download limits</summary><p>Up to 10,000 applications and 3 GB of attachments per download. Narrow the filters for larger archives. Bulk record changes apply to selected applicants on this page.</p></details>
             {exporting && <p role="status">Preparing your download…</p>}
             <Feedback error={exportError} success={exportMessage}/>
@@ -478,7 +482,7 @@ function JobCandidates({
         </>
       )}
       {selectedJob && <JobMatchSetup key={jobId} jobId={jobId} changed={()=>void resource.reload()}/> }
-      {selected.length > 0 && (
+      {selected.length > 0 && !inTrash && (
         <form className="hub-bulk" onSubmit={applyBulk}>
           <strong>{selected.length} selected</strong>
           <button type="button" className="hub-button" disabled={mutation.busy || !(resource.data?.items || []).filter(item=>selected.includes(item.id)).every(item=>["Application Review","Screening"].includes(item.stage))} onClick={()=>void shortlistSelected()}>Shortlist selected</button>
@@ -592,6 +596,9 @@ export function CandidateDetail({
     [approve, setApprove] = useState(false);
   const [actionOpen, setActionOpen] = useState(initialAction === "interview");
   const [interviewReady, setInterviewReady] = useState(false);
+  const [deleteOpen,setDeleteOpen] = useState(false);
+  const [pdfBusy,setPdfBusy] = useState(false);
+  const [pdfError,setPdfError] = useState("");
   const recordTabs = useRef<HTMLDivElement>(null);
   const previousSection = useRef(section);
   useLayoutEffect(() => {
@@ -603,6 +610,16 @@ export function CandidateDetail({
   const evidenceDraft = useEvidenceDraft();
   const scorecardDraft = useScorecardDraft();
   const emailRequest = useRef<{ action: string; subject: string; body: string; actionId: string; expectedRevision: number } | null>(null);
+  async function exportPdf() {
+    if(!resource.data||pdfBusy)return;
+    setPdfBusy(true);setPdfError("");
+    try {await downloadApplication(resource.data);}catch(error){setPdfError(error instanceof Error?error.message:"PDF download failed. Please try again.");}finally{setPdfBusy(false);}
+  }
+  async function lifecycle(action:"trash"|"restore") {
+    if(!resource.data)return;
+    const result=await mutation.run("/api/hub/applications/"+encodeURIComponent(id)+"/lifecycle","POST",{action,expectedRevision:resource.data.revision},action==="trash"?"Application moved to Trash. Files and history retained.":"Application restored. Cancelled emails and links remain cancelled.");
+    if(result!==undefined){setDeleteOpen(false);setActionOpen(false);await resource.reload();changed();}
+  }
   async function shortlist() {
     if (!resource.data || resource.data.stage !== "Application Review") return;
     const result = await mutation.run("/api/hub/applications/" + encodeURIComponent(id) + "/action", "POST", {action:"stage", stage:"Screening", expectedRevision:resource.data.revision}, "Added to the shortlist.");
@@ -682,8 +699,8 @@ export function CandidateDetail({
             </div>
             <div className="hub-status-line">
               <button type="button" className="hub-button secondary" onClick={() => void resource.reload()}>Refresh application</button>
-              <button type="button" className="hub-button secondary" onClick={() => downloadApplication(detail)}><Download size={16} /> Export this application</button>
-              <Badge>{stageLabel(detail.stage)}</Badge>
+              <button type="button" className="hub-button secondary" disabled={pdfBusy} onClick={() => void exportPdf()}><Download size={16} /> {pdfBusy?"Preparing PDF…":"Download application PDF"}</button>
+              <Badge>{detail.trashed?"In Trash":stageLabel(detail.stage)}</Badge>
               <Badge tone={qualificationTone(detail.qualification)}>
                 {qualificationLabel(detail.qualification, detail.qualificationEvidence.length > 0)}
               </Badge>
@@ -691,19 +708,22 @@ export function CandidateDetail({
             </div>
           </div>
           <div className="hub-candidate-quick-actions">
-            {detail.stage === "Application Review" && <button type="button" className="hub-button" disabled={mutation.busy} onClick={()=>void shortlist()}>Shortlist</button>}
-            {!["Rejected", "Withdrawn", "Hired"].includes(detail.stage) && <button type="button" className="hub-button secondary" disabled={mutation.busy} onClick={()=>{setAction("interview");setActionOpen(true);mutation.clear();}}>Request interview</button>}
-            <button type="button" className="hub-text-button" onClick={()=>{setAction("note");setActionOpen(true);mutation.clear();}}>Add note</button>
+            {!detail.trashed && detail.stage === "Application Review" && <button type="button" className="hub-button" disabled={mutation.busy} onClick={()=>void shortlist()}>Shortlist</button>}
+            {!detail.trashed && !["Rejected", "Withdrawn", "Hired"].includes(detail.stage) && <button type="button" className="hub-button secondary" disabled={mutation.busy} onClick={()=>{setAction("interview");setActionOpen(true);mutation.clear();}}>Request interview</button>}
+            {!detail.trashed && <button type="button" className="hub-text-button" onClick={()=>{setAction("note");setActionOpen(true);mutation.clear();}}>Add note</button>}
+            {detail.trashed?<button type="button" className="hub-button secondary" disabled={mutation.busy} onClick={()=>void lifecycle("restore")}>Restore application</button>:<button type="button" className="hub-text-button" disabled={mutation.busy} onClick={()=>setDeleteOpen(true)}>Delete application</button>}
             <span className="hub-muted">Assigned to {detail.assignee || "no recruiter"}</span>
           </div>
-          <Feedback error={mutation.error} success={mutation.success}/>
+          <Feedback error={mutation.error||pdfError} success={mutation.success}/>
+          {detail.trashed && <p className="hub-muted">This application is in Trash. Its files and history are retained. Restore it before taking recruiting actions.</p>}
+          {deleteOpen && <div className="hub-card" role="alertdialog" aria-labelledby="delete-application-title"><h3 id="delete-application-title">Move this application to Trash?</h3><p>It will leave your recruiting queues. Files and history stay saved, and you can restore it from this job’s Trash tab. Unsent emails and active booking links will be cancelled.</p><div className="hub-button-row"><button className="hub-button secondary" type="button" disabled={mutation.busy} onClick={()=>setDeleteOpen(false)}>Keep application</button><button className="hub-button" type="button" disabled={mutation.busy} onClick={()=>void lifecycle("trash")}>Move to Trash</button></div></div>}
           <div className="hub-detail-grid">
-            <aside className="hub-action-panel">
+            {!detail.trashed && <aside className="hub-action-panel">
               <details className="hub-card hub-candidate-actions" open={actionOpen} onToggle={event=>setActionOpen(event.currentTarget.open)}>
               <summary>{actionOpen ? action === "interview" ? "Request an interview" : "Applicant actions" : "More actions"}</summary>
               <p className="hub-muted">Choose an action below. Interview invitations are sent only when you click Send booking link.</p>
               <form onSubmit={submit}>
-                <fieldset disabled={mutation.busy}>
+                <fieldset disabled={mutation.busy||detail.trashed}>
                   <Field label="Action">
                     <select
                       value={action}
@@ -890,7 +910,7 @@ export function CandidateDetail({
                 </fieldset>
               </form>
               </details>
-            </aside>
+            </aside>}
             <div className="hub-detail-main">
               <div ref={recordTabs} className="hub-button-row" role="tablist" aria-label="Applicant record">{([{id:"application",label:"Application & files"},{id:"review",label:"AI review & notes"},{id:"activity",label:"Activity & messages"}] as const).map(tab=><button key={tab.id} type="button" role="tab" id={`candidate-tab-${tab.id}`} aria-selected={section===tab.id} tabIndex={section===tab.id?0:-1} onKeyDown={event=>{const ids=["application","review","activity"] as const;const index=ids.indexOf(section);const next=event.key==="ArrowRight"?ids[(index+1)%3]:event.key==="ArrowLeft"?ids[(index+2)%3]:event.key==="Home"?ids[0]:event.key==="End"?ids[2]:null;if(next){event.preventDefault();setSection(next);document.getElementById(`candidate-tab-${next}`)?.focus({preventScroll:true});}}} aria-controls={`candidate-panel-${tab.id}`} className={"hub-button " + (section===tab.id ? "" : "secondary")} onClick={()=>setSection(tab.id)}>{tab.label}</button>)}</div>
               <div role="tabpanel" id="candidate-panel-review" aria-labelledby="candidate-tab-review" hidden={section!=="review"}>
