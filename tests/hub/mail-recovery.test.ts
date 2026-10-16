@@ -1,3 +1,4 @@
+import { automaticFixture } from './automatic-fixture';
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createStore, applicationInput, jobInput, MANAGER, RECRUITER, currentAction } from "./fixtures";
@@ -15,7 +16,7 @@ const candidateAccount = "recruiter@example.invalid";
 const priorAccount = process.env.CANDIDATE_MAIL_ACCOUNT;
 test.before(() => { process.env.CANDIDATE_MAIL_ACCOUNT = candidateAccount; });
 test.after(() => { if (priorAccount === undefined) delete process.env.CANDIDATE_MAIL_ACCOUNT; else process.env.CANDIDATE_MAIL_ACCOUNT = priorAccount; });
-function ready(now?: number): RecoveryDependencies { return { env: { ADMIN_EMAILS: MANAGER.email }, now: now === undefined ? undefined : () => now, resolve: async account => ({ verifyMailSender: async (sender, required) => { assert.equal(account, candidateAccount); assert.equal(required, candidateAccount); assert.ok([candidateAccount, "no-reply@aicaseleads.com"].includes(sender)); } }) }; }
+function ready(now?: number): RecoveryDependencies { return { env: { ADMIN_EMAILS: MANAGER.email }, automatic: async () => automaticFixture(), now: now === undefined ? undefined : () => now, resolve: async account => ({ verifyMailSender: async (sender, required) => { assert.equal(account, candidateAccount); assert.equal(required, candidateAccount); assert.ok([candidateAccount, "no-reply@notify.aicaseleads.com"].includes(sender)); } }) }; }
 async function fixture(count = 1) {
   const f = createStore();
   f.database.prepare("INSERT INTO hub_members(id,email,role,active,created_at,updated_at) VALUES (?,?,'recruiter',1,0,0)").run(RECRUITER.userId, RECRUITER.email);
@@ -37,7 +38,7 @@ test("bulk recovery previews eligible receipts, preserves no-reply privacy and M
     const preview = await previewMailRecovery(f.store, MANAGER, f.window, ready());
     assert.equal(preview.eligible, 2); assert.equal(preview.counts["Application receipt"], 2);
     assert.ok(preview.skipped.some(item => item.reason.includes("uncertain")));
-    assert.ok(preview.messages.every(item => item.sender === "no-reply@aicaseleads.com" && item.replyTo.join() === item.sender));
+    assert.ok(preview.messages.every(item => item.sender === "no-reply@notify.aicaseleads.com" && item.replyTo.join() === item.sender));
     assert.equal(f.database.prepare("SELECT status FROM hub_tasks WHERE application_id=? AND kind='gmail'").get(f.ids[0])!.status, "failed");
     const plan = { planId: preview.planId, digest: preview.digest };
     assert.deepEqual(await executeMailRecovery(f.store, MANAGER, plan, ready()), { queued: 2, alreadyQueued: false });
@@ -49,12 +50,12 @@ test("bulk recovery previews eligible receipts, preserves no-reply privacy and M
     assert.equal(f.database.prepare("SELECT COUNT(*) n FROM hub_history WHERE type='email_recovery'").get()!.n, 2);
   } finally { f.database.close(); }
 });
-test("connected grants cannot recover messages when Google refuses alias readiness; revocation between preview and execution is blocked", async () => {
+test("recovery requires verified provider domain; revocation between preview and execution is blocked", async () => {
   const f = await fixture();
   try {
-    const invalid = { ...ready(), resolve: async () => ({ verifyMailSender: async () => { throw { code: "gmail_sender_alias_not_verified" }; } }) };
+    const invalid = { ...ready(), automatic: async () => ({ ...automaticFixture(), verify: async () => { throw { code: "transactional_mail_domain_not_verified" }; } }) };
     const blocked = await previewMailRecovery(f.store, MANAGER, f.window, invalid);
-    assert.equal(blocked.eligible, 0); assert.equal(blocked.planId, null); assert.match(blocked.skipped[0].reason, /not verified/);
+    assert.equal(blocked.eligible, 0); assert.equal(blocked.planId, null); assert.match(blocked.skipped[0].reason, /Authenticate/);
     const preview = await previewMailRecovery(f.store, MANAGER, f.window, ready());
     await assert.rejects(executeMailRecovery(f.store, MANAGER, { planId: preview.planId, digest: preview.digest }, invalid), { code: "mail_not_ready" });
     assert.equal(f.database.prepare("SELECT status FROM hub_tasks WHERE kind='gmail'").get()!.status, "failed");
@@ -122,21 +123,21 @@ test("a 201-message backlog stays bounded and the next preview advances rather t
     assert.equal((await executeMailRecovery(f.store, MANAGER, { planId: second.planId, digest: second.digest }, ready())).queued, 1);
   } finally { f.database.close(); }
 });
-test("actual MIME receipt envelope excludes staff routing and stale queued replyTo/sender fields", async () => {
+test("automatic envelope excludes staff routing and stale queued replyTo/sender fields", async () => {
   const f = await fixture();
   try {
     let emitted = "", writes = 0;
     const client = { request: async (url: string, init?: RequestInit) => {
       if (url.endsWith("/profile")) return Response.json({ emailAddress: candidateAccount });
-      if (url.endsWith("/settings/sendAs")) return Response.json({ sendAs: [{ sendAsEmail: "no-reply@aicaseleads.com", verificationStatus: "accepted" }] });
+      if (url.endsWith("/settings/sendAs")) return Response.json({ sendAs: [{ sendAsEmail: "no-reply@notify.aicaseleads.com", verificationStatus: "accepted" }] });
       if (url.includes("/messages?")) return Response.json({ messages: [] });
       if (url.endsWith("/messages/send")) { writes++; emitted = new TextDecoder().decode(fromBase64url(JSON.parse(String(init!.body)).raw)); return Response.json({ id: "sent", threadId: "thread" }); }
       throw new Error("Unexpected provider path");
     } } as unknown as GoogleClient;
     const mail = await candidateMail(f.store, { to: "synthetic@example.invalid", subject: "Application received", body: "Your application was received.", messageId: "receipt@jobs.example.invalid", sender: candidateAccount, replyTo: [candidateAccount] }, [MANAGER.email], { applicationId: f.ids[0] });
-    await new Gmail(client, candidateAccount).verifySender("no-reply@aicaseleads.com", candidateAccount); assert.equal(writes, 0);
-    await new Gmail(client, candidateAccount).send(mail);
-    assert.equal(writes, 1); assert.match(emitted, /^From: no-reply@aicaseleads.com\r\nTo:/); assert.match(emitted, /\r\nReply-To: no-reply@aicaseleads.com\r\n/);
+    await new Gmail(client, candidateAccount).verifySender("no-reply@notify.aicaseleads.com", candidateAccount); assert.equal(writes, 0);
+    await new Gmail(client, candidateAccount).send({...mail,candidateAccount});
+    assert.equal(writes, 1); assert.match(emitted, /^From: no-reply@notify.aicaseleads.com\r\nTo:/); assert.match(emitted, /\r\nReply-To: no-reply@notify.aicaseleads.com\r\n/);
     assert.doesNotMatch(emitted, /(?:^|\r\n)(?:Sender|Cc|Bcc):|recruiter@example.invalid|sales@/i);
   } finally { f.database.close(); }
 });
@@ -167,7 +168,7 @@ test("expired or replaced private invitations are excluded at preview and suppre
     await f.store.retryTask(invitation.id);
     let sends = 0;
     const google = { archiveApplication: async (detail: { revision: number }) => ({ folderId: "folder", folderUrl: "https://drive.google.com/drive/folders/folder", archivedRevision: detail.revision, archiveFormat: "pdf-v2", legacyJsonFileIds: [] }), profile: async () => ({ email: candidateAccount, historyId: "1" }), mailHistory: async () => ({ historyId: "1", messages: [] }), threadMessages: async () => [], reconcileMail: async () => null, sendMail: async () => { sends++; return { id: "sent", threadId: "thread" }; } } as unknown as GoogleWorkspace;
-    await processHubTasks(f.store, f.db, {} as R2Bucket, google, 10, [MANAGER.email], async () => google);
+    await processHubTasks(f.store, f.db, {} as R2Bucket, google, 10, [MANAGER.email], async () => google, async () => automaticFixture(async mail => ({...await google.sendMail(mail)})));
     assert.equal(sends, 0);
     assert.equal(f.database.prepare("SELECT status FROM hub_communications WHERE task_id=?").get(invitation.id)!.status, "cancelled");
   } finally { f.database.close(); }
@@ -177,8 +178,8 @@ test("legacy automatic receipt routing fields cannot turn it into a private recr
   try {
     f.database.prepare("UPDATE hub_tasks SET payload_json=json_set(payload_json,'$.mailMode','recruiter','$.actor',?,'$.sender',?,'$.replyTo',json(?)) WHERE kind='gmail'").run(RECRUITER.email, RECRUITER.email, JSON.stringify([RECRUITER.email]));
     const preview = await previewMailRecovery(f.store, MANAGER, f.window, ready());
-    assert.equal(preview.eligible, 1); assert.equal(preview.messages[0].sender, "no-reply@aicaseleads.com");
-    assert.deepEqual(preview.messages[0].replyTo, ["no-reply@aicaseleads.com"]);
+    assert.equal(preview.eligible, 1); assert.equal(preview.messages[0].sender, "no-reply@notify.aicaseleads.com");
+    assert.deepEqual(preview.messages[0].replyTo, ["no-reply@notify.aicaseleads.com"]);
   } finally { f.database.close(); }
 });
 test("individual recovery cannot revive cancelled or provider-confirmed delivery even if the task says failed", async () => {
@@ -207,7 +208,7 @@ test("reactivating a reviewed rejection cancels its recovered email; the worker 
     f.database.prepare("UPDATE hub_communications SET status='pending' WHERE task_id=?").run(rejectedMail.id);
     const emitted: string[] = [];
     const google = { archiveApplication: async (detail: { revision: number }) => ({ folderId: "folder", folderUrl: "https://drive.google.com/drive/folders/folder", archivedRevision: detail.revision, archiveFormat: "pdf-v2", legacyJsonFileIds: [] }), profile: async () => ({ email: candidateAccount, historyId: "1" }), mailHistory: async () => ({ historyId: "1", messages: [] }), threadMessages: async () => [], reconcileMail: async () => null, sendMail: async (mail: { subject: string }) => { emitted.push(mail.subject); return { id: "sent", threadId: "thread" }; } } as unknown as GoogleWorkspace;
-    await processHubTasks(f.store, f.db, {} as R2Bucket, google, 10, [MANAGER.email], async () => google);
+    await processHubTasks(f.store, f.db, {} as R2Bucket, google, 10, [MANAGER.email], async () => google, async () => automaticFixture(async mail => ({...await google.sendMail(mail)})));
     assert.deepEqual(emitted, [`Application received: ${f.job.title}`]);
     assert.equal(f.database.prepare("SELECT status FROM hub_communications WHERE task_id=?").get(rejectedMail.id)!.status, "cancelled");
     await currentAction(f.store, f.ids[0], { action: "reject", reason: "New synthetic decision" }, RECRUITER);

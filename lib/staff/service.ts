@@ -1,3 +1,4 @@
+import { AUTOMATIC_SENDER } from '../email/contracts';
 import { z } from "zod";
 import type { HubStore } from "../hub/store";
 import type { HubMember } from "../hub/auth-core";
@@ -7,7 +8,7 @@ import { isMailSetupError } from "../google/mail-setup";
 import type { AutomaticMailResolver } from "../email/service";
 
 export const staffInput = z.object({ email: z.string().trim().email().max(254).transform(s=>s.toLowerCase()), role:z.enum(["admin","recruiter"]), active:z.boolean().default(true), sendInvite:z.boolean().default(false), resendInvite:z.boolean().default(false), expectedUpdatedAt:z.number().int().nonnegative().optional() }).strict();
-type Invite = { id:string; email:string; status:"pending"|"running"|"sent"|"failed"|"uncertain"|"cancelled"; createdAt:number; sentAt:number|null; lastError:string|null; attempts:number; runAfter:number; leaseUntil:number; messageId:string; origin:string; actor:string; deliveryProvider?:"gmail"|"brevo"; deliveryFingerprint?:string; deliveryStartedAt?:number; providerId?:string };
+type Invite = { id:string; email:string; status:"pending"|"running"|"sent"|"failed"|"uncertain"|"cancelled"; createdAt:number; sentAt:number|null; lastError:string|null; attempts:number; runAfter:number; leaseUntil:number; messageId:string; origin:string; actor:string; deliveryProvider?:"gmail"|"sendgrid"; deliveryFingerprint?:string; deliveryStartedAt?:number; providerId?:string };
 type Row = {id:string;email:string;role:"admin"|"recruiter";active:number;updated_at:number};
 const ownerList=(owners:string[])=>owners.map(s=>s.trim().toLowerCase()).filter(Boolean);
 const inviteKey=(email:string)=>`staff_invite:${email}`;
@@ -59,8 +60,8 @@ export async function processStaffInvites(store:HubStore,google:Pick<GoogleWorks
     // A crashed/ambiguous send stays with its original provider. Missing provider
     // metadata identifies legacy Gmail; a negative search never permits a resend.
     const uncertain=["running","uncertain"].includes(old.status);
-    const useAutomatic=old.deliveryProvider==="brevo"||(!uncertain&&!!automaticResolver);
-    const mail={to:old.email,messageId:old.messageId,subject:"You're invited to AI Case Leads Hiring",body:`You have been invited to AI Case Leads Hiring as ${active.role==="admin"?"Head recruiter":"Recruiter"}.\n\nSign in with ${old.email}:\n${old.origin}/team?view=settings\n\nConnect your own recruiting Gmail and Google Calendar under Settings → My connections, then save your interview hours. Your password is never shared with your manager. Open Jobs to create or manage a posting.\n\nRecruiter guide:\n${old.origin}/recruiter-guide.pdf\n\nAutomatic application emails are sent by the hiring system from no-reply@aicaseleads.com. Recruiter conversations use your connected recruiting mailbox. Company Drive storage remains separate; your email and calendar connections are personal. Contact your hiring manager if you need help.`};
+    const useAutomatic=old.deliveryProvider==="sendgrid"||(!uncertain&&!!automaticResolver);
+    const mail={to:old.email,messageId:old.messageId,subject:"You're invited to AI Case Leads Hiring",body:`You have been invited to AI Case Leads Hiring as ${active.role==="admin"?"Head recruiter":"Recruiter"}.\n\nSign in with ${old.email}:\n${old.origin}/team?view=settings\n\nConnect your own recruiting Gmail and Google Calendar under Settings → My connections, then save your interview hours. Your password is never shared with your manager. Open Jobs to create or manage a posting.\n\nRecruiter guide:\n${old.origin}/recruiter-guide.pdf\n\nAutomatic application emails are sent by the hiring system from ${AUTOMATIC_SENDER}. Recruiter conversations use your connected recruiting mailbox. Company Drive storage remains separate; your email and calendar connections are personal. Contact your hiring manager if you need help.`};
     let delivered:Record<string,unknown>|null;
     if(useAutomatic){
      automaticHelpers=await import("../email/service");
@@ -72,12 +73,12 @@ export async function processStaffInvites(store:HubStore,google:Pick<GoogleWorks
      }else{
       await transport.verify();
       await automaticHelpers.reserveAutomaticMail(store);
-      const pinned:Invite={...claim,deliveryProvider:"brevo",deliveryFingerprint:transport.fingerprint,deliveryStartedAt:Date.now()};
+      const pinned:Invite={...claim,deliveryProvider:"sendgrid",deliveryFingerprint:transport.fingerprint,deliveryStartedAt:Date.now()};
       const pin=await store.stmt("UPDATE hub_settings SET value=?,updated_at=? WHERE key=? AND value=? RETURNING key",JSON.stringify(pinned),Date.now(),row.key,JSON.stringify(claim)).first();
       if(!pin)throw {code:"invite_lease_lost",uncertain:false};
       claim=pinned;
       providerStarted=true;
-      delivered=await transport.sendMail({...mail,sender:"no-reply@aicaseleads.com",replyTo:["no-reply@aicaseleads.com"]});
+      delivered=await transport.sendMail({...mail,sender:AUTOMATIC_SENDER,replyTo:[AUTOMATIC_SENDER]});
      }
     }else{
      if(!google)throw {code:"candidate_mail_account_connection_required",uncertain:false};

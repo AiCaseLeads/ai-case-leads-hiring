@@ -1724,6 +1724,7 @@ export class HubStore {
       runAfter?: number;
       setupHold?: boolean;
       continuation?: boolean;
+      mailDeferred?: boolean;
     },
   ): Promise<void> {
     const now = Date.now();
@@ -1746,6 +1747,7 @@ export class HubStore {
         "Choose a finished or retryable task state.",
       );
     if (result.continuation && (current.kind !== "drive" || result.status !== "pending")) throw new HiringError("invalid_task_continuation",422,"Only Drive archival can continue as pending work.");
+    if(result.mailDeferred&&(current.kind!=='gmail'||result.status!=='pending'||!['transactional_mail_daily_limit','transactional_mail_rate_limited','transactional_mail_quota_exhausted','transactional_mail_dns_check_failed'].includes(result.error||'')))throw new HiringError('invalid_mail_deferral',422,'Only rate-limited automatic mail can be deferred.');
     const statements = [
       this.stmt(
         "UPDATE hub_tasks SET run_after=CASE WHEN lease_token=? AND status='running' AND lease_until>? THEN ? ELSE NULL END,status=?,result_json=?,last_error=?,attempts=MAX(0,attempts-?),lease_until=NULL,updated_at=? WHERE id=?",
@@ -1755,7 +1757,7 @@ export class HubStore {
         result.status,
         result.result ? JSON.stringify(result.result) : null,
         result.error?.slice(0, 1000) || null,
-        result.setupHold || result.continuation ? 1 : 0,
+        result.setupHold || result.continuation || result.mailDeferred ? 1 : 0,
         now,
         id,
       ),

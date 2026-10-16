@@ -1,3 +1,4 @@
+import { automaticFixture } from './automatic-fixture';
 import assert from "node:assert/strict";
 import test from "node:test";
 import {createStore,jobInput,applicationInput,MANAGER,RECRUITER} from "./fixtures";
@@ -39,9 +40,9 @@ test("two jobs deliver only to their multiple selected staff; submission retries
 test("delivery rechecks active membership, removed team members and preferences without fallback",async()=>{
  const f=await fixture(),job=await f.store.saveJob(jobInput());await configure(f,job.id,[RECRUITER.email],{replyTo:RECRUITER.email});await f.store.setSetting("google_sender",MANAGER.email);
  await f.store.acceptApplication(applicationInput(job.id));const task=(await f.store.tasks()).find(t=>t.payload.jobNotification)!;
- assert.deepEqual(await candidateReplyTo(f.store,task.applicationId),["no-reply@aicaseleads.com"]);
+ assert.deepEqual(await candidateReplyTo(f.store,task.applicationId),["no-reply@notify.aicaseleads.com"]);
  f.database.prepare("UPDATE hub_members SET active=0 WHERE email=?").run(RECRUITER.email);
- assert.equal(await jobNotificationMail(task,f.store),null);assert.deepEqual(await candidateReplyTo(f.store,task.applicationId),["no-reply@aicaseleads.com"]);
+ assert.equal(await jobNotificationMail(task,f.store),null);assert.deepEqual(await candidateReplyTo(f.store,task.applicationId),["no-reply@notify.aicaseleads.com"]);
  f.database.prepare("UPDATE hub_members SET active=1").run();
  await configure(f,job.id,[],{expectedRevision:1});assert.equal(await jobNotificationMail(task,f.store),null);
  f.database.close();
@@ -97,11 +98,11 @@ test("worker routes recipient envelopes, keeps private staff addresses out of ca
  f.database.prepare("UPDATE hub_tasks SET status='done',result_json=? WHERE kind='drive'").run(JSON.stringify({archivedRevision:999}));
  const sent:import("../../lib/google/gmail").MailInput[]=[];
  const google={async sendMail(mail:import("../../lib/google/gmail").MailInput){sent.push(mail);if(mail.to===RECRUITER.email)throw {code:"gmail_outcome_unknown",uncertain:true};return {id:"candidate-delivered",threadId:"candidate-thread"};},async reconcileMail(){return {id:"notice-delivered",threadId:"team-thread"};}} as unknown as import("../../lib/google/workspace").GoogleWorkspace;
- await processHubTasks(f.store,f.db,undefined,google,5,[MANAGER.email],async()=>google);assert.equal(sent.length,2,JSON.stringify(await f.store.tasks()));
- assert.deepEqual(sent.find(mail=>mail.to!==RECRUITER.email)!.replyTo,["no-reply@aicaseleads.com"]);assert.equal(sent.find(mail=>mail.to===RECRUITER.email)!.replyTo,undefined);
+ await processHubTasks(f.store,f.db,undefined,google,5,[MANAGER.email],async()=>google,async()=>automaticFixture(async mail=>({...await google.sendMail(mail)}),async messageId=>({...await google.reconcileMail(messageId)})));assert.equal(sent.length,2,JSON.stringify(await f.store.tasks()));
+ assert.deepEqual(sent.find(mail=>mail.to!==RECRUITER.email)!.replyTo,["no-reply@notify.aicaseleads.com"]);assert.deepEqual(sent.find(mail=>mail.to===RECRUITER.email)!.replyTo,["no-reply@notify.aicaseleads.com"]);
  const notice=(await f.store.tasks()).find(t=>t.payload.jobNotification)!;assert.equal(notice.status,"uncertain");
  f.database.prepare("UPDATE hub_tasks SET run_after=0 WHERE id=?").run(notice.id);
- await processHubTasks(f.store,f.db,undefined,google,1,[MANAGER.email],async()=>google);assert.equal(sent.length,2);assert.equal((await f.store.tasks()).find(t=>t.id===notice.id)!.status,"done");f.database.close();
+ await processHubTasks(f.store,f.db,undefined,google,1,[MANAGER.email],async()=>google,async()=>automaticFixture(async mail=>({...await google.sendMail(mail)}),async messageId=>({...await google.reconcileMail(messageId)})));assert.equal(sent.length,2);assert.equal((await f.store.tasks()).find(t=>t.id===notice.id)!.status,"done");f.database.close();
 });
 test("actual inbound reply sync creates a single job-team notice and never sends for external outbound mail",async()=>{
  const {syncHiringReplies}=await import("../../lib/mail-sync");
@@ -121,8 +122,8 @@ test("candidate mail rejects private template addresses and discards legacy staf
  const f=await fixture();await f.store.setSetting("google_sender",MANAGER.email);
  const input={to:"candidate@example.invalid",subject:"Application received",body:"Thank you",messageId:"notice@example.invalid",replyTo:[RECRUITER.email],sender:MANAGER.email};
  const safe=await candidateMail(f.store,input,[MANAGER.email]);
- assert.match(safe.body,/Do not reply/);assert.match(safe.body,/https:\/\/jobs.aicaseleads.com\/help/);
- assert.equal(safe.sender,"no-reply@aicaseleads.com");assert.deepEqual(safe.replyTo,["no-reply@aicaseleads.com"]);
+ assert.match(safe.body,/do not reply/i);assert.match(safe.body,/https:\/\/jobs.aicaseleads.com\/help/);
+ assert.equal(safe.sender,"no-reply@notify.aicaseleads.com");assert.deepEqual(safe.replyTo,["no-reply@notify.aicaseleads.com"]);
  await assert.rejects(()=>candidateMail(f.store,{...input,body:`Contact ${MANAGER.email}`},[MANAGER.email]));
  f.database.close();
 });
@@ -157,7 +158,7 @@ test("owner sales hiring alerts are suppressed at delivery even if a legacy team
  await f.store.setSetting(`job_team:${job.id}`,{...emptyJobTeam,members:["sales@aicaseleads.com"],revision:1,createdAt:0,updatedAt:Date.now()});
  await f.store.taskStatement("legacy-sales-notice",app.id,"gmail",{jobNotification:true,jobId:job.id,event:"newApplication",recipient:"sales@aicaseleads.com",messageId:"notice@example.invalid"},Date.now()).run();
  const google={async sendMail(){assert.fail("must never email sales");},async archiveApplication(){return{folderId:"folder",archivedRevision:999};}} as unknown as import("../../lib/google/workspace").GoogleWorkspace;
- await processHubTasks(f.store,f.db,undefined,google,5,["sales@aicaseleads.com"],async()=>google);
+ await processHubTasks(f.store,f.db,undefined,google,5,["sales@aicaseleads.com"],async()=>google,async()=>automaticFixture(async mail=>({...await google.sendMail(mail)}),async messageId=>({...await google.reconcileMail(messageId)})));
  assert.equal((await f.store.tasks()).find(task=>task.id==="legacy-sales-notice")?.status,"done");
  f.database.close();
 });

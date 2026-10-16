@@ -1,6 +1,6 @@
 # AI Case Leads careers and hiring hub — Railway edition
 
-A custom careers website at **https://jobs.aicaseleads.com** and private hiring dashboard at **[/team](https://jobs.aicaseleads.com/team)**. This edition runs on **Node 24** with an authoritative SQLite database and private original uploads on one Railway `/data` volume. Google Workspace provides staff login, recruiting Gmail, Calendar/Meet and a secondary shared Drive archive. A built-in processor handles queued integration tasks. No ATS subscription is required.
+A custom careers website at **https://jobs.aicaseleads.com** and private hiring dashboard at **[/team](https://jobs.aicaseleads.com/team)**. This edition runs on **Node 24** with an authoritative SQLite database and private original uploads on one Railway `/data` volume. Google Workspace provides staff login, recruiter conversations, Calendar/Meet and a secondary shared Drive archive. SendGrid sends automatic emails independently of recruiter Gmail. A built-in processor handles queued integration tasks. No ATS subscription is required.
 
 **Using the live app? Start with [Hiring quick start](docs/HIRING-QUICK-START.md).** Owner login and the currently connected recruiting sender are both `sales@aicaseleads.com`. The sales calendar is temporary; changing to Mariam's mailbox requires her authorization. Staff sign-in and recruiting authorization are separate Google flows.
 

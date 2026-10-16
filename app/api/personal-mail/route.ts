@@ -5,6 +5,6 @@ import {jsonResponse,errorResponse} from '@/lib/hiring/http';
 import {personalMailStatus} from '@/lib/personal-mail/service';
 export const dynamic='force-dynamic';
 export async function GET(request:Request){try{
- const member=await requireHubMember(request),store=await getHubStore(request),env=await resolvedWorkspaceEnv(),candidateAccount=process.env.CANDIDATE_MAIL_ACCOUNT||null;
- return jsonResponse({data:{...await personalMailStatus(store,member.email,env),candidateAccount,candidateConnected:candidateAccount?(await personalMailStatus(store,candidateAccount,env)).connected:false}});
+ const member=await requireHubMember(request),store=await getHubStore(request),env=await resolvedWorkspaceEnv();
+ return jsonResponse({data:{...await personalMailStatus(store,member.email,env),automaticProvider:"sendgrid"}});
 }catch(error){return errorResponse(error);}}

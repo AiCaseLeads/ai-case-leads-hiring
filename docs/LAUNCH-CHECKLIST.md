@@ -57,7 +57,7 @@ If submission integrity is uncertain, set `APPLICATIONS_ENABLED=false` and close
 
 ## Recruiter-owned Gmail cutover
 
-- [ ] Maria signs in herself, connects My recruiting email, and verifies the no-reply Send mail as identity.
-- [ ] Verify automatic mail uses Maria’s account with no-reply From, no sales identity in received headers, and replies to no-reply are rejected.
+- [ ] Verify SendGrid authenticated notify domain, server key and signed delivery callback; receive a controlled no-reply message and confirm Null MX rejects inbound replies. Maria’s Gmail is separate for her conversations.
+- [ ] Verify automatic mail uses SendGrid with no recruiter identity in received headers or body; no inbox or Google alias is required.
 - [ ] Verify a recruiter conversation sends from the acting recruiter and receives replies in that recruiter’s Gmail; separately verify any supported dashboard reply synchronization.
 - [ ] Confirm existing Drive archival and Calendar behavior still work after the mail cutover.

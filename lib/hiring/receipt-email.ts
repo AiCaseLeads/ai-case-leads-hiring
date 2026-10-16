@@ -1,4 +1,4 @@
-export const AUTOMATED_MAIL_NOTICE = "Do not reply to this automated email. Replies are rejected and are not delivered to our team. For application help or privacy requests, use https://jobs.aicaseleads.com/help.";
+export const AUTOMATED_MAIL_NOTICE = "This is an automated email. Please do not reply. For application help or privacy requests, use https://jobs.aicaseleads.com/help.";
 
 export function applicationReceipt(name: string, jobTitle: string, alreadyDecided = false): string {
   return [

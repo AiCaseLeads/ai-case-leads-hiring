@@ -12,9 +12,8 @@ export async function POST(request:Request){
     let limit=5;
     if(request.body){const bytes=await boundedBytes(request,16384);if(bytes.length){const body=JSON.parse(new TextDecoder().decode(bytes));if(Number.isInteger(body.limit))limit=Math.max(1,Math.min(body.limit,10));}}
     const status=await workspaceStatus(env);
-    if(!status.connected)return jsonResponse({data:{configured:false,processed:0,message:"Connect Google Workspace before processing email, calendar, and Drive tasks."}});
     const store=await getHubStore(request);
-    const result=await processHubTasks(store,env.DB!,env.BUCKET,await workspaceClient(env),limit);
+    const result=await processHubTasks(store,env.DB!,env.BUCKET,status.connected?await workspaceClient(env):undefined,limit);
     return jsonResponse({data:{configured:true,...result}});
   }catch(error){return errorResponse(error);}
 }

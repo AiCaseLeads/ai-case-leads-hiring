@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { AUTOMATIC_SENDER as CANDIDATE_SENDER } from '../email/contracts';
 import { AUTOMATED_MAIL_NOTICE } from "../hiring/receipt-email";
 import type { HubStore } from "../hub/store";
 import type { Task } from "../hub/types";
@@ -51,7 +52,7 @@ export async function jobNotificationMail(task:Task,store:HubStore,owners:string
  return {to:recipient,messageId,subject:`${label}: ${app.job_title}`,body:`${label} for ${app.job_title}.\n\nReview the application in the hiring dashboard: ${link}\n\nYou received this because you are on this job's hiring team. Managers can change its team and notification settings under Jobs.`};
 }
 /** Candidate envelopes never inherit private staff routing. */
-export const CANDIDATE_SENDER = "no-reply@aicaseleads.com";
+export { AUTOMATIC_SENDER as CANDIDATE_SENDER } from '../email/contracts';
 export async function candidateReplyTo(_store:HubStore,_applicationId:string,_owners:string[]=[]):Promise<string[]>{
  void _store; void _applicationId; void _owners;
  return [CANDIDATE_SENDER];
@@ -76,5 +77,5 @@ export async function candidateMail(store:HubStore,input:MailInput,owners:string
  if(addresses.some(address=>address.toLowerCase()!==CANDIDATE_SENDER&&address.toLowerCase()!==replyTo&&privateAddresses.has(address.toLowerCase())))throw new HiringError("candidate_mail_exposes_staff_address",422,"Remove staff email addresses from the applicant email template before retrying.");
  // Copy only the supported envelope fields: queued legacy replyTo/sender cannot leak through.
  const notice=replyTo===CANDIDATE_SENDER?AUTOMATED_MAIL_NOTICE:"You can reply to this email to contact your recruiter. For application help or privacy requests, visit https://jobs.aicaseleads.com/help.";
- return {to:input.to,subject:input.subject,body:input.body.includes(notice)?input.body:`${input.body}\n\n${notice}`,messageId:input.messageId,sender:replyTo===CANDIDATE_SENDER?CANDIDATE_SENDER:replyTo,replyTo:[replyTo],candidateMail:true,candidateAccount:replyTo===CANDIDATE_SENDER?process.env.CANDIDATE_MAIL_ACCOUNT?.trim().toLowerCase():replyTo};
+ return {to:input.to,subject:input.subject,body:input.body.includes(notice)?input.body:`${input.body}\n\n${notice}`,messageId:input.messageId,sender:replyTo===CANDIDATE_SENDER?CANDIDATE_SENDER:replyTo,replyTo:[replyTo],candidateMail:true,candidateAccount:replyTo===CANDIDATE_SENDER?undefined:replyTo};
 }

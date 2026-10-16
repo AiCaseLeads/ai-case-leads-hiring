@@ -1,6 +1,6 @@
 # Railway deployment and owner setup
 
-The production installation is https://jobs.aicaseleads.com, with the private dashboard at `/team`. This guide also covers a fresh standalone Railway installation; do not reset or recreate the existing production service while following those steps. Railway stores authoritative hiring records in SQLite and original uploads in private files on one persistent volume. Gmail, Calendar/Meet, and Drive use Google Workspace. Staff sign-in uses Google; applicants need no account.
+The production installation is https://jobs.aicaseleads.com, with the private dashboard at `/team`. This guide also covers a fresh standalone Railway installation; do not reset or recreate the existing production service while following those steps. Railway stores authoritative hiring records in SQLite and original uploads in private files on one persistent volume. Gmail, Calendar/Meet, and Drive use Google Workspace. Automatic emails use SendGrid. Staff sign-in uses Google; applicants need no account.
 
 The current deployment has dated evidence for Google authorization, volume persistence, guided private job setup, and custom-domain HTTPS. See [Railway verification](RAILWAY-VERIFICATION.md) and [Launch checklist](LAUNCH-CHECKLIST.md) for completed checks and remaining gates. A new environment needs its own tests before enabling intake.
 
@@ -8,7 +8,7 @@ The current deployment has dated evidence for Google authorization, volume persi
 
 `sales@aicaseleads.com` remains the owner login and existing company Drive/fallback Calendar connection. It is not an applicant-mail transport. Recruiters authorize their own Gmail separately through **Settings → My setup → My recruiting email**, while signed in as themselves.
 
-`CANDIDATE_MAIL_ACCOUNT=mariam@aicaseleads.com` assigns automatic mail to Maria. Maria must authorize her own personal-mail connection and configure the verified no-reply alias in her Gmail. No-reply replies are rejected; recruiter conversations use the acting recruiter’s own address. **Live Maria Gmail consent and controlled delivery are still pending** until verified. Do not replace the company Drive grant or change `EXPECTED_RECRUITING_EMAIL` to connect Maria’s mail.
+Automatic emails use the company's existing SendGrid account and `no-reply@notify.aicaseleads.com`, with no Gmail alias or mailbox. Configure the restricted server key and DNS using [Automatic email setup](AUTOMATIC-EMAIL-SETUP.md). `CANDIDATE_MAIL_ACCOUNT` now selects only Gmail reply synchronization and legacy uncertain-message reconciliation. Do not replace the company Drive grant or change `EXPECTED_RECRUITING_EMAIL` to connect personal mail.
 
 Each interviewer connects a personal calendar separately. Existing invitations retain their original organizer; the shared fallback calendar remains available. Workspace ownership does not authorize another employee’s mailbox. The app uses user OAuth, not domain-wide delegation.
 
@@ -21,7 +21,7 @@ Each interviewer connects a personal calendar separately. Existing invitations r
 3. Name the volume **`hiring-data`** and attach it to this service at **`/data`**. Set `DATA_DIR=/data`. Railway supplies its mount-path variable automatically; do not fake it. Choose capacity for resumes and attachments and set a storage-usage alert. The database and private uploads must survive a restart and a redeploy. Do not deploy without this volume or use an ephemeral directory.
 4. Use **one replica** and keep the service running continuously. Disable sleeping/serverless behavior because the queue processor runs inside the service. This edition is not designed for multiple app instances sharing SQLite.
 5. Generate a Railway HTTPS domain in **Settings → Networking**. Use it for setup and controlled tests before moving the public domain.
-6. Set the variables below, then deploy. Migrations run at startup after the volume is mounted. No database credential, Cloudflare D1/R2 binding, Ashby account, Trigger.dev account, or separate email vendor is required.
+6. Set the variables below, then deploy. Migrations run at startup after the volume is mounted. No database credential, Cloudflare D1/R2 binding, Ashby account, Trigger.dev account, is required. SendGrid is the separate automatic email provider.
 
 Railway volumes are mounted at runtime, do not support replicas, and cause a short redeploy interruption while the volume changes deployments. [Railway volume reference](https://docs.railway.com/volumes/reference). Railway builds the project’s Dockerfile. [Docker builds](https://docs.railway.com/builds/dockerfiles).
 
@@ -40,6 +40,9 @@ Copy names and ordinary values from `.env.railway.example`. Enter secrets direct
 | `GOOGLE_TOKEN_KEY` | 32 cryptographically random bytes encoded as 64 hexadecimal characters; securely back it up |
 | `APPLICATIONS_ENABLED` | New environment: `false` during setup; enable exact `true` only for controlled tests/approved intake. Do not reset the existing production flag while following this guide |
 | `BACKGROUND_ENABLED` | `true`; built-in task processing |
+| `SENDGRID_API_KEY` | Restricted server key: Mail Send and Domain Authentication read |
+| `SENDGRID_WEBHOOK_PUBLIC_KEY` | Public verification key for signed SendGrid delivery events |
+| `AUTOMATIC_MAIL_DAILY_LIMIT` | App sending budget; defaults to `300`. Set within the existing account allowance |
 
 The start command sets Railway mode. Railway supplies `PORT`; the server listens on `0.0.0.0`. Keep the encryption key stable after connection. Losing or replacing it makes saved Google credentials unreadable and requires reconnecting. A fresh installation needs its own database and authorization; do not copy credentials or overwrite the existing production installation while following this guide.
 
@@ -83,7 +86,7 @@ Use a clearly labeled test posting and an inbox you control. Never send test inv
 1. Open **Jobs → Create job**. Choose blank, duplicate, saved template or hiring request; follow **Details → Application → Scorecard → Review**. Set Remote/Hybrid/On-site and country/city, choose Required/Optional questions and an approved reusable scorecard. Save a draft, reopen and confirm persistence. Duplicate creates a new posting; the original retains its applicants.
 2. Approve the description/questions and publish the test posting only for the controlled rehearsal. In a fresh environment, enable `APPLICATIONS_ENABLED=true` and redeploy first. Confirm public visibility in a signed-out browser.
 3. Submit on desktop/mobile with a sample resume. Verify the accepted receipt, one application despite retries, correct answers/source/private original, and anonymous access denial.
-4. Confirm actual Gmail delivery and the shared Drive copy. Add a human review and reopen it; verify the reviewer, criterion evidence, grade and pinned rubric version. Check qualification evidence separately.
+4. Confirm actual SendGrid automatic email delivery, recruiter Gmail conversations and the shared Drive copy. Add a human review and reopen it; verify the reviewer, criterion evidence, grade and pinned rubric version. Check qualification evidence separately.
 5. Explicitly start an assessment and submit through its emailed link. Explicitly invite to an interview; verify timezone/availability/conflicts, Calendar event/Meet, rescheduling, cancellation and matching history. Test manual rejection against the controlled inbox and verify one email per decision.
 6. Rehearse Offer with approved test content and verify its hiring history and archived record. Completing earlier booking checks does not certify this full apply → review → assessment → schedule → offer path.
 7. Close the synthetic posting afterward; retain evidence deliberately. Verify persistence after restart/redeploy with the same volume, queue recovery and an isolated restore as described below. If submission integrity fails, pause intake without deleting accepted records.

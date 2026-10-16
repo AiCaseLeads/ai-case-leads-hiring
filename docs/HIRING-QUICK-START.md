@@ -75,11 +75,11 @@ For personal availability, set time zone, interview length, start/finish hours a
 
 ## Gmail, AI and delivery status
 
-Human recruiting correspondence uses the acting recruiter's connected mailbox. Automatic applicant messages use the approved no-reply alias on the configured recruiting account. Staff login alone does not authorize Gmail. Sales is never an applicant-mail fallback. Job teams can include multiple recruiters; an empty saved team receives no job alerts. Saving a team does not send old application alerts. Copies/templates start with an empty team.
+Human recruiting correspondence uses the acting recruiter's connected mailbox. Automatic applicant messages use SendGrid from no-reply@notify.aicaseleads.com, independently of recruiter Gmail. Staff login alone does not authorize Gmail. Sales is never an applicant-mail fallback. Job teams can include multiple recruiters; an empty saved team receives no job alerts. Saving a team does not send old application alerts. Copies/templates start with an empty team.
 
 PDF text and English/Spanish OCR are read locally. AI matching requires the owner-managed OpenRouter connection and the job's matching setting. Job-relevant text and answers are shared with OpenRouter/OpenAI; keys remain encrypted on the server. AI does not scrape LinkedIn, verify employment, detect AI authorship, reject applicants or change hiring stages. Use original files, work samples and appropriate references to check uncertain claims.
 
-**Delivery activity → Setup required** means recruiting email needs attention. The assigned recruiter must approve their own account under **My connections**; shared company Google does not authorize it. Follow the shown issue for the sender alias, permissions, reply contact or template. Previously held messages stay held after connection until an administrator reviews and explicitly retries them. Avoid repeated sends when delivery is uncertain.
+**Delivery activity → Setup required** identifies the missing connection or template change. Automatic emails use SendGrid under **Company**; deliberate recruiter messages use that recruiter’s Gmail under **My connections**. Follow the displayed issue for the provider key/domain, permissions, reply contact or template. Previously held messages stay held after connection until an administrator reviews and explicitly retries them. Avoid repeated sends when delivery is uncertain.
 
 Optional daily review reminders follow each job's selected hiring team. Older postings without saved team routing use assigned reviewers and selected fallback managers. The waiting period is measured from entry into New; notes and AI alone do not clear this initial-review queue. Moving to the next stage or recording a human scorecard clears it. Review reminders go to staff, never candidates.
 
@@ -96,3 +96,6 @@ Record the posting, applicant, time and visible error if a step fails. Check Del
 In **Jobs**, use **Pause/Resume** on a job row. **Actions → Archive** stops new applications and keeps the posting in **Archived**. **Actions → Delete job** moves it into recoverable **Trash**. **Restore** leaves the posting paused. Applicant files and history remain intact.
 
 To remove an application, open it and choose **Delete application → Move to Trash**. Find it under that job’s **Trash** tab and choose **Restore application**. Unsent emails and booking links are cancelled, and are not sent again when restored. Cancel a booked interview first.
+
+
+Automatic emails are configured once under **Company → Automatic applicant emails**, using the existing SendGrid account. See [Automatic email setup](AUTOMATIC-EMAIL-SETUP.md). Recruiter Gmail is only for deliberate recruiter conversations.

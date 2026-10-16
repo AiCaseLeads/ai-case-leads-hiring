@@ -1,8 +1,9 @@
+import { automaticMailTransport, reserveAutomaticMail, isAutomaticMailDeferred, type AutomaticMailResolver } from './email/service';
 import { candidateTaskMailMode, isMailSetupError } from "./google/mail-setup";
 import { processStaffInvites } from "./staff/service";
 import { interviewCalendar } from "./personal-calendar/service";
 import { personalCalendarEffect } from "./personal-calendar/client";
-import { jobNotificationMail,candidateMail } from "./job-team/service";
+import { jobNotificationMail,candidateMail,CANDIDATE_SENDER } from "./job-team/service";
 import { HubStore } from "./hub/store";
 import type { Task } from "./hub/types";
 import type { GoogleWorkspace, OriginalFileSource, InterviewInput, MailInput } from "./google/workspace";
@@ -42,7 +43,7 @@ export async function reconcileLegacyPdfArchives(db:D1Database,store:HubStore){
   if(result.results.length)await db.batch(result.results.map(app=>store.taskStatement(`drive:${app.id}:pdf-v2:${app.revision}`,app.id,'drive',{applicationId:app.id,pdfBackfill:true},now)));
   return result.results.length;
 }
-async function reconcileUncertain(db:D1Database,store:HubStore,google:GoogleWorkspace,max:number,deadline:number,resolver?:CandidateMailResolver){
+async function reconcileUncertain(db:D1Database,store:HubStore,max:number,deadline:number,resolver?:CandidateMailResolver,automaticResolver:AutomaticMailResolver=automaticMailTransport){
   const now=Date.now();
   const result=await db.prepare("SELECT id,application_id,payload_json FROM hub_tasks WHERE kind='gmail' AND status='uncertain' AND run_after<=? ORDER BY updated_at LIMIT ?").bind(now,max).all<{id:string;application_id:string;payload_json:string}>();
   let reconciled=0;
@@ -52,18 +53,36 @@ async function reconcileUncertain(db:D1Database,store:HubStore,google:GoogleWork
     const claimed=await db.prepare("UPDATE hub_tasks SET status='running',lease_token=?,lease_until=?,updated_at=? WHERE id=? AND status='uncertain' AND run_after<=? RETURNING id").bind(lease,Date.now()+5*60*1000,Date.now(),item.id,Date.now()).first();
     if(!claimed)continue;
     try{
-      const payload=JSON.parse(item.payload_json) as MailInput & {jobNotification?:boolean;reviewReminder?:boolean;deliveryAccount?:string};
-      const internal=payload.jobNotification===true||payload.reviewReminder===true;
-      const transport=await candidateTransport(store,payload.deliveryAccount || (internal?process.env.CANDIDATE_MAIL_ACCOUNT:undefined),resolver);
-      transport.setDeadline?.(deadline);
-      const found=await transport.reconcileMail(payload.messageId);
-      await store.finishTask(item.id,lease,found?{status:"done",result:{...found}}:{status:"uncertain",error:"gmail_delivery_not_yet_confirmed",runAfter:Date.now()+15*60*1000});
+      const payload=JSON.parse(item.payload_json) as MailInput & {jobNotification?:boolean;reviewReminder?:boolean;deliveryAccount?:string;deliveryProvider?:string;deliveryFingerprint?:string;deliveryTo?:string;deliveryStartedAt?:number};
+      let found:Record<string,unknown>|null;
+      if(payload.deliveryProvider==='sendgrid'){
+        const transport=await automaticResolver();transport.setDeadline?.(deadline);
+        if(!payload.deliveryFingerprint||payload.deliveryFingerprint!==transport.fingerprint||!payload.deliveryTo)throw {code:'transactional_mail_reconciliation_identity_changed'};
+        found=await transport.reconcileMail(payload.messageId,payload.deliveryTo,payload.deliveryStartedAt);
+      }else{
+        // Missing provider is a legacy Gmail send, never a reason to migrate uncertainty.
+        if(payload.deliveryProvider&&payload.deliveryProvider!=='gmail')throw {code:'mail_delivery_provider_unknown'};
+        const internal=payload.jobNotification===true||payload.reviewReminder===true;
+        const transport=await candidateTransport(store,payload.deliveryAccount || (internal?process.env.CANDIDATE_MAIL_ACCOUNT:undefined),resolver);
+        transport.setDeadline?.(deadline);
+        const gmailResult=await transport.reconcileMail(payload.messageId);found=gmailResult?{...gmailResult}:null;
+      }
+      await store.finishTask(item.id,lease,found?{status:"done",result:{...found}}:{status:"uncertain",error:"mail_delivery_not_yet_confirmed",runAfter:Date.now()+15*60*1000});
       if(found)reconciled++;
     }catch(error){await store.finishTask(item.id,lease,{status:"uncertain",error:safeCode(error),runAfter:Date.now()+15*60*1000});}
   }
   return reconciled;
 }
-async function taskEffect(task:Task,store:HubStore,db:D1Database,bucket:R2Bucket|undefined,google:GoogleWorkspace,deadline:number,owners:string[],resolver?:CandidateMailResolver):Promise<Record<string,unknown>>{
+async function sendAutomaticTask(task:Task,mail:MailInput,store:HubStore,db:D1Database,deadline:number,resolve:AutomaticMailResolver){
+  const transport=await resolve();transport.setDeadline?.(deadline);
+  await transport.verify();
+  await reserveAutomaticMail(store);
+  const {deliveryAccount:_oldAccount,...payload}=task.payload;void _oldAccount;
+  const pinned=await db.prepare("UPDATE hub_tasks SET payload_json=? WHERE id=? AND lease_token=? AND status='running' AND lease_until>? RETURNING id").bind(JSON.stringify({...payload,deliveryProvider:'sendgrid',deliveryFingerprint:transport.fingerprint,deliveryTo:mail.to,deliveryStartedAt:Date.now()}),task.id,task.leaseToken,Date.now()).first();
+  if(!pinned)throw {code:'task_lease_expired'};
+  return {...await transport.sendMail({...mail,sender:CANDIDATE_SENDER,replyTo:[CANDIDATE_SENDER],candidateAccount:undefined})};
+}
+async function taskEffect(task:Task,store:HubStore,db:D1Database,bucket:R2Bucket|undefined,google:GoogleWorkspace|undefined,deadline:number,owners:string[],resolver?:CandidateMailResolver,automaticResolver:AutomaticMailResolver=automaticMailTransport):Promise<Record<string,unknown>>{
   if(task.kind==='gmail'||task.kind==='calendar') {
     const {applicationTrash}=await import('./hub/application-lifecycle');
     if(await applicationTrash(store,task.applicationId)) return {stale:true,applicationTrashed:true};
@@ -72,20 +91,12 @@ async function taskEffect(task:Task,store:HubStore,db:D1Database,bucket:R2Bucket
     if(task.payload.jobNotification===true){
       const mail=await jobNotificationMail(task,store,owners);
       if(!mail||mail.to.trim().toLowerCase()==="sales@aicaseleads.com")return {stale:true};
-      const account=process.env.CANDIDATE_MAIL_ACCOUNT?.trim().toLowerCase();
-      const transport=await candidateTransport(store,account,resolver);transport.setDeadline?.(deadline);
-      const pinned=await db.prepare("UPDATE hub_tasks SET payload_json=? WHERE id=? AND lease_token=? AND status='running' RETURNING id").bind(JSON.stringify({...task.payload,deliveryAccount:account}),task.id,task.leaseToken).first();
-      if(!pinned)throw {code:"task_lease_expired"};
-      return {...await transport.sendMail(mail)};
+      return sendAutomaticTask(task,mail,store,db,deadline,automaticResolver);
     }
     if(task.payload.reviewReminder===true){
       const mail=await reviewReminderMail(task,store,owners);
       if(!mail||mail.to.trim().toLowerCase()==="sales@aicaseleads.com")return {stale:true};
-      const account=process.env.CANDIDATE_MAIL_ACCOUNT?.trim().toLowerCase();
-      const transport=await candidateTransport(store,account,resolver);transport.setDeadline?.(deadline);
-      const pinned=await db.prepare("UPDATE hub_tasks SET payload_json=? WHERE id=? AND lease_token=? AND status='running' RETURNING id").bind(JSON.stringify({...task.payload,deliveryAccount:account}),task.id,task.leaseToken).first();
-      if(!pinned)throw {code:"task_lease_expired"};
-      return {...await transport.sendMail(mail)};
+      return sendAutomaticTask(task,mail,store,db,deadline,automaticResolver);
     }
     if(task.payload.reminder===true){
       const current=await db.prepare("SELECT revision,status,start FROM hub_interviews WHERE id=? AND application_id=?").bind(String(task.payload.interviewId||""),task.applicationId).first<{revision:number;status:string;start:string|null}>();
@@ -103,14 +114,16 @@ async function taskEffect(task:Task,store:HubStore,db:D1Database,bucket:R2Bucket
       if(!link||link.used_at!==null||link.expires_at<=Date.now())return {stale:true,expiredInvitation:true};
     }
     const mail=await candidateMail(store,task.payload as unknown as MailInput,owners,{mailMode:candidateTaskMailMode(task.id,task.applicationId,task.payload),actor:task.payload.actor,applicationId:task.applicationId});
+    if(mail.sender===CANDIDATE_SENDER)return sendAutomaticTask(task,mail,store,db,deadline,automaticResolver);
     const transport=await candidateTransport(store,mail.candidateAccount,resolver);
     transport.setDeadline?.(deadline);
     // Pin transport before the irreversible send so an uncertain response is reconciled in the same mailbox.
-    const pinned=await db.prepare("UPDATE hub_tasks SET payload_json=? WHERE id=? AND lease_token=? AND status='running' RETURNING id").bind(JSON.stringify({...task.payload,deliveryAccount:mail.candidateAccount}),task.id,task.leaseToken).first();
+    const pinned=await db.prepare("UPDATE hub_tasks SET payload_json=? WHERE id=? AND lease_token=? AND status='running' RETURNING id").bind(JSON.stringify({...task.payload,deliveryProvider:"gmail",deliveryAccount:mail.candidateAccount}),task.id,task.leaseToken).first();
     if(!pinned)throw {code:"task_lease_expired"};
     return {...await transport.sendMail(mail)};
   }
   if(task.kind==="calendar"){
+    if(!google)throw {code:'google_not_connected'};
     const payload=task.payload as unknown as InterviewInput&{operation:string;interviewId:string};
     const current=await db.prepare("SELECT revision,status,calendar_id FROM hub_interviews WHERE id=?").bind(payload.interviewId).first<{revision:number;status:string;calendar_id:string|null}>();
     if(!current||current.revision!==Number(task.payload.revision)||!["pending","cancel_pending"].includes(current.status))return {stale:true};
@@ -129,6 +142,7 @@ async function taskEffect(task:Task,store:HubStore,db:D1Database,bucket:R2Bucket
     const result=payload.operation==="update"?await google.updateInterview(pinned):await google.createInterview(pinned);
     return {...result};
   }
+  if(!google)throw {code:'google_not_connected'};
   if(!bucket)throw {code:"original_file_storage_unavailable"};
   const detail=await store.getApplication(task.applicationId),files:OriginalFileSource[]=[];
   for(const file of detail.files){
@@ -156,9 +170,10 @@ async function taskEffect(task:Task,store:HubStore,db:D1Database,bucket:R2Bucket
   };
   return {...await google.archiveApplication(detail,files,existing?.drive_folder_id||undefined,continuation),archivedRevision:detail.revision};
 }
-export async function processHubTasks(store:HubStore,db:D1Database,bucket:R2Bucket|undefined,google:GoogleWorkspace,max=5,owners:string[]=(process.env.ADMIN_EMAILS||"").split(","),candidateResolver?:CandidateMailResolver){
+export async function processHubTasks(store:HubStore,db:D1Database,bucket:R2Bucket|undefined,google:GoogleWorkspace|undefined,max=5,owners:string[]=(process.env.ADMIN_EMAILS||"").split(","),candidateResolver?:CandidateMailResolver,automaticResolver?:AutomaticMailResolver){
   const began=Date.now(),deadline=began+40_000;
-  google.setDeadline?.(deadline);
+  const resolveAutomatic=automaticResolver||(()=>automaticMailTransport(store));
+  google?.setDeadline?.(deadline);
   const previous=await store.setting<Record<string,unknown>>("worker_health",{});
   await store.setSetting("worker_health",{...previous,lastStartedAt:began});
   let processed=0,failed=0,uncertain=0,reconciled=0,replies=0;
@@ -167,18 +182,18 @@ export async function processHubTasks(store:HubStore,db:D1Database,bucket:R2Buck
     // A missing recruiter grant must not stop accepted applications being archived.
     let recruitingMail:GoogleWorkspace|null=null;
     try{recruitingMail=await candidateTransport(store,process.env.CANDIDATE_MAIL_ACCOUNT,candidateResolver);recruitingMail.setDeadline?.(deadline);}catch{/* Individual queued mail exposes setup errors below. */}
-    if(recruitingMail)await processStaffInvites(store,recruitingMail,owners,3);
+    await processStaffInvites(store,recruitingMail||undefined,owners,3,resolveAutomatic);
     await enqueueReviewReminders(store,owners);
     await reconcileArchives(db,store);
   await reconcileLegacyPdfArchives(db,store);
-    reconciled=await reconcileUncertain(db,store,google,Math.min(max,5),deadline,candidateResolver);
+    reconciled=await reconcileUncertain(db,store,Math.min(max,5),deadline,candidateResolver,resolveAutomatic);
     for(let index=0;index<Math.max(1,Math.min(max,10));index++){
       if(Date.now()>=deadline-1000)break;
       const task=await store.claimTask(Date.now(),deadline-Date.now()<30_000);if(!task)break;
       if(!task.leaseToken)throw new Error("task_lease_missing");
       let providerCompleted=false;
       try{
-        const result=await taskEffect(task,store,db,bucket,google,deadline,owners,candidateResolver);
+        const result=await taskEffect(task,store,db,bucket,google,deadline,owners,candidateResolver,automaticResolver);
         providerCompleted=true;
         await store.finishTask(task.id,task.leaseToken,{status:"done",result});processed++;
       }catch(error){
@@ -187,10 +202,17 @@ export async function processHubTasks(store:HubStore,db:D1Database,bucket:R2Buck
           continue;
         }
         const ambiguous=["gmail","calendar"].includes(task.kind)&&(providerCompleted||!!(error&&typeof error==="object"&&"uncertain"in error&&error.uncertain));
+        const code=safeCode(error);
+        if(task.kind==='gmail'&&!ambiguous&&isAutomaticMailDeferred(code)){
+          const requested=error&&typeof error==='object'&&'retryAt'in error?Number(error.retryAt):0;
+          const retryAt=Number.isFinite(requested)&&requested>Date.now()?Math.min(requested,Date.now()+25*3600_000):Date.now()+3600_000;
+          await store.finishTask(task.id,task.leaseToken,{status:'pending',error:code,runAfter:retryAt,mailDeferred:true});
+          continue;
+        }
         const status=ambiguous?"uncertain":"failed";
-        const code=safeCode(error),setupHold=task.kind==="gmail"&&!ambiguous&&isMailSetupError(code);
+        const setupHold=task.kind==="gmail"&&!ambiguous&&isMailSetupError(code);
         const delay=Math.min(6*60*60*1000,5000*2**Math.min(task.attempts,12));
-        await store.finishTask(task.id,task.leaseToken,{status,error:code,runAfter:setupHold?Number.MAX_SAFE_INTEGER:Date.now()+delay,setupHold,...(error instanceof DriveArchiveFailure?{result:{phase:error.phase,diagnostics:error.diagnostics}}:{}),...(setupHold?{result:{setupRequired:true,retryRequiresReview:true,instructions:"Connect the correct recruiting Gmail and verify its sender. Review this queued message before explicitly retrying; connecting Gmail alone will not send it."}}:{})});
+        await store.finishTask(task.id,task.leaseToken,{status,error:code,runAfter:setupHold?Number.MAX_SAFE_INTEGER:Date.now()+delay,setupHold,...(error instanceof DriveArchiveFailure?{result:{phase:error.phase,diagnostics:error.diagnostics}}:{}),...(setupHold?{result:{setupRequired:true,retryRequiresReview:true,instructions:"Connect and verify the appropriate email service. Review this queued message before explicitly retrying; connecting an account alone will not send it."}}:{})});
         if(ambiguous)uncertain++;else failed++;
       }
     }
@@ -205,7 +227,7 @@ export async function processHubTasks(store:HubStore,db:D1Database,bucket:R2Buck
   }catch(error){
     await store.setSetting("worker_health",{...previous,lastStartedAt:began,lastCompletedAt:Date.now(),processed,failed,uncertain,error:safeCode(error)});
     throw error;
-  }finally{google.setDeadline?.(undefined);}
+  }finally{google?.setDeadline?.(undefined);}
 }
 export async function schedulerAuthorized(request:Request,secret?:string):Promise<boolean>{
   const bearer=request.headers.get("authorization");

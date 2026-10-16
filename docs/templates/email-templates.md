@@ -1,6 +1,6 @@
 # Hiring email text
 
-The custom hub sends through the connected recruiting Gmail account. These are reviewable drafts, not proof of delivery. Automatic rejection starts off. Test one email per decision and verify the actual sender before enabling live communications.
+Automatic emails use SendGrid; deliberate recruiter conversations use the recruiter’s own Gmail. These are reviewable drafts, not proof of delivery. Automatic rejection starts off. Test one email per decision and verify the actual sender before enabling live communications.
 
 ## Rejection body
 
@@ -50,4 +50,4 @@ Your interview for [job title] is scheduled for [date, time, and time zone]. Ple
 AI Case Leads Hiring Team
 ```
 
-This is a manual follow-up draft. Optional automatic Gmail reminders are controlled by **Team & settings** → **Send interview reminders through Gmail** and default off. They are scheduled 24 hours and 1 hour before confirmed future bookings. Verify actual delivery and suppression after rescheduling/cancellation during the controlled live test before enabling them for applicants. Calendar invitation/update notifications require their own live check.
+This is a manual follow-up draft. Optional automatic email reminders are controlled by **Team & settings** → **Send interview reminders** and default off. They are scheduled 24 hours and 1 hour before confirmed future bookings. Verify actual delivery and suppression after rescheduling/cancellation during the controlled live test before enabling them for applicants. Calendar invitation/update notifications require their own live check.

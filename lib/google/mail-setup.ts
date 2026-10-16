@@ -7,6 +7,13 @@ export const MAIL_SETUP_ERRORS = [
   'google_required_permissions_missing',
   'recruiter_reply_contact_required',
   'candidate_mail_exposes_staff_address',
+  'transactional_mail_key_required',
+  'transactional_mail_domain_not_verified',
+  'transactional_mail_reply_domain_not_verified',
+  'transactional_mail_sender_not_verified',
+  'transactional_mail_account_not_enabled',
+  'transactional_mail_auth_required',
+  'transactional_mail_invalid_key',
 ] as const;
 export function isMailSetupError(code:string){return (MAIL_SETUP_ERRORS as readonly string[]).includes(code);}
 

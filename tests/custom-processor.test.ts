@@ -1,3 +1,4 @@
+import { automaticFixture } from './hub/automatic-fixture';
 import test from "node:test";
 import assert from "node:assert/strict";
 import {customDatabase,openSyntheticRole} from "./custom-fixture";
@@ -92,7 +93,7 @@ test("100 permanent archive reconciliation failures cannot starve a new applicat
     assert.deepEqual(archived,[ids[100]]);
   }finally{database.close();}
 });
-test("a Gmail send followed by local result-persistence failure remains uncertain and never resends",async(t)=>{
+test("an automatic send followed by local result-persistence failure remains uncertain and never resends",async(t)=>{
  const prior=process.env.CANDIDATE_MAIL_ACCOUNT;process.env.CANDIDATE_MAIL_ACCOUNT="mariam@aicaseleads.com";t.after(()=>{if(prior===undefined)delete process.env.CANDIDATE_MAIL_ACCOUNT;else process.env.CANDIDATE_MAIL_ACCOUNT=prior;});
   const {database,db,store}=customDatabase();try{
     const role=await openSyntheticRole(store),app=await application(store,role.id);
@@ -100,18 +101,18 @@ test("a Gmail send followed by local result-persistence failure remains uncertai
     let sends=0;
     const google=googleArchive(async()=>({folderId:"synthetic-folder",folderUrl:"https://drive.google.com/drive/folders/synthetic-folder"}));
     google.sendMail=async()=>{sends++;return{id:"synthetic-sent-id",threadId:"synthetic-thread"};};
-    await processHubTasks(store,db,bucket,google,5,[],async()=>google);
+    await processHubTasks(store,db,bucket,google,5,[],async()=>google,async()=>automaticFixture(async mail=>({...await google.sendMail(mail)})));
     assert.equal(sends,1);
     assert.equal(database.prepare("SELECT status FROM hub_tasks WHERE kind='gmail'").get()?.status,"uncertain");
     assert.equal((await store.getApplication(app.id)).communications[0].status,"uncertain");
     database.exec("UPDATE hub_tasks SET run_after=0 WHERE kind='gmail'");
-    await processHubTasks(store,db,bucket,google,5,[],async()=>google);
+    await processHubTasks(store,db,bucket,google,5,[],async()=>google,async()=>automaticFixture(async mail=>({...await google.sendMail(mail)})));
     assert.equal(sends,1);
     assert.equal(database.prepare("SELECT status FROM hub_tasks WHERE kind='gmail'").get()?.status,"uncertain");
   }finally{database.close();}
 });
 for(const scenario of ["current","disabled","cancelled","rescheduled","past","inactive"]){
-  test(`interview reminder processor: ${scenario} booking is checked before Gmail`,async(t)=>{
+  test(`interview reminder processor: ${scenario} booking is checked before automatic mail`,async(t)=>{
  const prior=process.env.CANDIDATE_MAIL_ACCOUNT;process.env.CANDIDATE_MAIL_ACCOUNT="mariam@aicaseleads.com";t.after(()=>{if(prior===undefined)delete process.env.CANDIDATE_MAIL_ACCOUNT;else process.env.CANDIDATE_MAIL_ACCOUNT=prior;});
     const {database,db,store}=customDatabase();try{
       const role=await openSyntheticRole(store),app=await application(store,role.id);
@@ -126,14 +127,14 @@ for(const scenario of ["current","disabled","cancelled","rescheduled","past","in
       let sends=0;
       const google=googleArchive(async()=>({folderId:"synthetic-folder",folderUrl:"https://drive.google.com/drive/folders/synthetic-folder"}));
       google.sendMail=async()=>{sends++;return{id:"synthetic-message",threadId:"synthetic-thread"};};
-      await processHubTasks(store,db,bucket,google,5,[],async()=>google);
+      await processHubTasks(store,db,bucket,google,5,[],async()=>google,async()=>automaticFixture(async mail=>({...await google.sendMail(mail)})));
       assert.equal(sends,scenario==="current"?1:0);
       assert.equal(database.prepare("SELECT status FROM hub_communications WHERE task_id=?").get(id)?.status,scenario==="current"?"sent":"cancelled");
     }finally{database.close();}
   });
 }
 
-test("missing recruiter Gmail never falls back to company sales and does not block Drive",async(t)=>{
+test("missing automatic email never falls back to company sales and does not block Drive",async(t)=>{
  const prior=process.env.CANDIDATE_MAIL_ACCOUNT;process.env.CANDIDATE_MAIL_ACCOUNT="mariam@aicaseleads.com";
  t.after(()=>{if(prior===undefined)delete process.env.CANDIDATE_MAIL_ACCOUNT;else process.env.CANDIDATE_MAIL_ACCOUNT=prior;});
  const {database,db,store}=customDatabase();try{
@@ -142,7 +143,7 @@ test("missing recruiter Gmail never falls back to company sales and does not blo
   google.sendMail=async()=>assert.fail("company account must never send mail");
   await processHubTasks(store,db,bucket,google,5,[],async()=>null);
   assert.ok(archives>=1);assert.equal(database.prepare("SELECT status FROM hub_tasks WHERE kind='gmail'").get()?.status,"failed");
-  assert.equal(database.prepare("SELECT last_error FROM hub_tasks WHERE kind='gmail'").get()?.last_error,"candidate_mail_account_connection_required");
+  assert.equal(database.prepare("SELECT last_error FROM hub_tasks WHERE kind='gmail'").get()?.last_error,"transactional_mail_key_required");
  }finally{database.close();}
 });
 
@@ -160,10 +161,10 @@ test("missing mail setup is held without consuming retries; connecting never sen
   let sends=0;const mail=googleArchive(async()=>({}));mail.sendMail=async()=>{sends++;return{id:"sent",threadId:"thread"};};
   // Even forcing the old retry time due cannot bypass the setup-error exclusion.
   database.prepare("UPDATE hub_tasks SET run_after=0,attempts=7 WHERE id=?").run(held.id);
-  await processHubTasks(store,db,bucket,company,5,[],async()=>mail);
+  await processHubTasks(store,db,bucket,company,5,[],async()=>mail,async()=>automaticFixture(async input=>({...await mail.sendMail(input)})));
   assert.equal(sends,0);assert.equal((await store.tasks()).find(task=>task.id===held.id)!.attempts,7);
   await store.retryTask(held.id);
-  await processHubTasks(store,db,bucket,company,5,[],async()=>mail);
+  await processHubTasks(store,db,bucket,company,5,[],async()=>mail,async()=>automaticFixture(async input=>({...await mail.sendMail(input)})));
   assert.equal(sends,1);assert.equal((await store.tasks()).find(task=>task.id===held.id)!.status,"done");
  }finally{database.close();}
 });
