@@ -43,23 +43,24 @@ async function setup(t, configured = true, mode = "settings", aiEnabled = false)
   await page.route("**/api/hub/applications/application-test/action", async route => { actions.push(route.request().postDataJSON()); await route.fulfill({ json: { data: { revision: 10 } } }); });
   await page.route("**/api/ai/review", async route => { reviews.push(route.request().postDataJSON()); await route.fulfill({ json: { data: { revision: 10 } } }); });
   await page.goto(`http://127.0.0.1:${server.address().port}`);
-  if(mode === "settings") await page.getByRole("button",{name:"Company setup",exact:true}).click();
-  await page.getByRole("heading", { name: mode === "settings" ? "1. Company Drive & fallback calendar" : "Evidence & verification" }).waitFor();
+  if(mode === "settings") await page.getByRole("button",{name:"Company",exact:true}).click();
+  await page.getByRole("heading", { name: mode === "settings" ? "Company Google connection" : "Evidence & verification" }).waitFor();
   return { page, writes, aiWrites, actions, reviews };
 }
 
 test("guided connections save a pasted Drive folder and selected calendar without changing approved hours or revision", async t => {
   const { page, writes } = await setup(t);
-  assert.deepEqual((await page.getByRole("heading", { level: 3 }).allTextContents()).filter(value => /^[123]\./.test(value)), ["1. Company Drive & fallback calendar", "2. Shared fallback interview calendar", "3. Choose the shared applicant folder"]);
-  assert.equal(await page.getByText("Advanced admin setup", { exact: true }).evaluate(element => element.parentElement.open), false);
+  assert.equal(await page.getByRole("heading", { name: "Applicant file storage", exact:true }).count(),1);
+  assert.equal(await page.getByText("Shared interview calendar (optional)", { exact:true }).evaluate(element => element.parentElement.open),false);
+  await page.getByText("Shared interview calendar (optional)", { exact:true }).click();
   assert.equal(await page.getByRole("link", { name: "Open saved folder" }).getAttribute("href"), "https://drive.google.com/drive/folders/0AFEhbfGTJcYhUk9PVA");
-  await page.getByRole("button", { name: "Use sales@aicaseleads.com calendar" }).click();
+  await page.getByRole("button", { name: "Use connected account’s calendar" }).click();
   await page.getByLabel("Shared Google Drive folder", { exact: true }).fill("https://evil.example/drive/folders/0AFEhbfGTJcYhUk9PVA");
-  await page.getByRole("button", { name: "Save settings", exact: true }).click();
+  await page.getByRole("button", { name: "Save company settings", exact: true }).click();
   await page.getByText("Paste a Google Drive folder link", { exact: false }).waitFor();
   assert.equal(writes.length, 0);
   await page.getByLabel("Shared Google Drive folder", { exact: true }).fill("https://drive.google.com/drive/u/0/folders/0AFEhbfGTJcYhUk9PVA?usp=sharing");
-  await page.getByRole("button", { name: "Save settings", exact: true }).click();
+  await page.getByRole("button", { name: "Save company settings", exact: true }).click();
   await page.getByText("Settings changed. Refresh and try again.", { exact: true }).waitFor();
   assert.equal(writes.length, 1);
   assert.equal(writes[0].settingsVersion, 7);
@@ -75,14 +76,15 @@ test("missing client and scheduler configuration remain visible outside collapse
   const { page } = await setup(t, false);
   await page.getByText("Google client setup is missing.", { exact: false }).waitFor();
   await page.getByText("Automatic email, calendar, and file processing is disabled.", { exact: false }).waitFor();
-  assert.equal(await page.getByRole("button", { name: "Reconnect Google Workspace", exact: false }).isDisabled(), true);
-  assert.equal(await page.getByText("Advanced admin setup", { exact: true }).evaluate(element => element.parentElement.open), false);
+  assert.equal(await page.getByRole("button", { name: "Reconnect company Google", exact: true }).isDisabled(), true);
+  await page.getByRole("button",{name:"Advanced",exact:true}).click();
+  assert.equal(await page.getByText("Google app configuration", { exact: true }).evaluate(element => element.parentElement.open), false);
 });
 
 
 test("saved AI connection keeps its secret when key is left blank and uses a password input", async t => {
   const { page, aiWrites } = await setup(t);
-  await page.locator("summary").filter({hasText:/^AI connection$/}).click();
+  await page.getByRole("button",{name:"AI",exact:true}).click();
   const key = page.getByLabel("Replace OpenRouter API key (optional)");
   await key.waitFor();
   assert.equal(await key.getAttribute("type"), "password");

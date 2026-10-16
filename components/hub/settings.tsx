@@ -19,54 +19,46 @@ import { ReviewReminderSettings } from "./review-reminders";
 import { PersonalMailSetup } from "./personal-mail";
 import { PersonalCalendarSetup } from "./personal-calendar";
 import { TeamAccess } from "./team-access";
+import { RecruitingRequests } from "./recruiting-help";
 
 export function HubSettings({
-  member,
-  refresh,
-  changed,
-  jobs = [],
-  startSection,
-  onDeliveryActivity,
+  member, refresh, changed, jobs = [], startSection, onDeliveryActivity,
 }: {
-  member: Member;
-  refresh: number;
-  changed: () => void;
-  jobs?: HubJob[];
-  startSection?: "scorecards";
-  onDeliveryActivity?: () => void;
+  member: Member; refresh: number; changed: () => void; jobs?: HubJob[];
+  startSection?: "scorecards"; onDeliveryActivity?: () => void;
 }) {
   const owner = member.isOwner === true;
   const managesTeam = member.role === "admin";
-  const [section, setSection] = useState<"personal" | "team" | "company" | "scorecards">(startSection === "scorecards" ? "scorecards" : "personal");
+  const [section, setSection] = useState<"personal" | "team" | "company" | "scorecards" | "help">(startSection === "scorecards" ? "scorecards" : "personal");
   useEffect(() => { if (startSection === "scorecards") queueMicrotask(() => setSection("scorecards")); }, [startSection]);
-  return (
-    <section className="hub-settings" aria-labelledby="settings-title">
-      <div className="hub-section-heading">
-        <div><p className="hub-kicker">YOUR WORKSPACE</p><h2 id="settings-title">Settings</h2>
-          <p>Your own calendar, your hiring team, and company connections each have their own place.</p>
-        </div>
-      </div>
-      <nav className="hub-button-row hub-settings-navigation" aria-label="Settings sections">
-        <button type="button" aria-current={section === "personal" ? "page" : undefined} className={"hub-button " + (section === "personal" ? "" : "secondary")} onClick={() => setSection("personal")}>My setup</button>
-        {managesTeam && <button type="button" aria-current={section === "team" ? "page" : undefined} className={"hub-button " + (section === "team" ? "" : "secondary")} onClick={() => setSection("team")}>Team access &amp; invitations</button>}
-        <button type="button" aria-current={section === "scorecards" ? "page" : undefined} className={"hub-button " + (section === "scorecards" ? "" : "secondary")} onClick={() => setSection("scorecards")}>Scorecard templates</button>
-        {owner && <button type="button" aria-current={section === "company" ? "page" : undefined} className={"hub-button " + (section === "company" ? "" : "secondary")} onClick={() => setSection("company")}>Company setup</button>}
-      </nav>
+  const sections = [
+    { id: "personal" as const, label: "My connections" },
+    ...(managesTeam ? [{ id: "team" as const, label: "Team" }] : []),
+    ...(owner ? [{ id: "company" as const, label: "Company" }] : []),
+    { id: "help" as const, label: "Help requests" },
+    { id: "scorecards" as const, label: "Templates" },
+  ];
+  return <section className="hub-settings" aria-labelledby="settings-title">
+    <div className="hub-section-heading"><div><p className="hub-kicker">WORKSPACE</p><h2 id="settings-title">Settings</h2><p>Manage your connections and your team’s workspace.</p></div>
+      <a className="hub-text-button hub-inline-guide" href="/recruiter-guide.pdf" target="_blank" rel="noopener noreferrer">Recruiter guide (PDF) <ExternalLink size={15} /></a>
+    </div>
+    <nav className="hub-page-tabs" aria-label="Settings sections">
+      {sections.map(item => <button key={item.id} type="button" aria-current={section === item.id ? "page" : undefined} className={"hub-text-button " + (section === item.id ? "active" : "")} onClick={() => setSection(item.id)}>{item.label}</button>)}
+    </nav>
+    <div className="hub-setting-panel">
       {section === "personal" && <>
-        <section className="hub-card"><h3>Welcome, {member.email}</h3><p>You sign in with your own Google Workspace account. Never share your password with another teammate.</p>
-          <ol className="hub-onboarding-steps"><li><strong>Connect your calendar below.</strong> Google will ask you to approve access to your own interview calendar.</li><li><strong>Set your interview hours.</strong> Choose your time zone, days, and hours, then save.</li><li><strong>Create or join a job.</strong> Open Jobs to create a posting. Under Hiring team &amp; emails, select the people who should receive its alerts.</li><li><strong>Review, then invite.</strong> Open an applicant, choose an interviewer, and send a booking link after your review.</li></ol>
-          <p><a className="hub-button secondary" href="/recruiter-guide.pdf" target="_blank" rel="noopener noreferrer">Open recruiter guide (PDF) <ExternalLink size={15} /></a></p>
-          <p className="hub-muted">{member.email.toLowerCase() === "sales@aicaseleads.com" ? "Maria manages recruiting email from her own account. You can check her connection below and manage your own interview calendar separately." : "Connect your recruiting email and calendar separately below."} Applicant files use the company Drive connection. You do not need another teammate’s password.</p>
-        </section>
+        <p className="hub-muted">Sign in with your own account, connect email and Calendar, then set your interview hours. Job notifications go to the people selected on each job.</p>
         <PersonalMailSetup member={member} refresh={refresh} />
         <PersonalCalendarSetup key={member.email} member={member} refresh={refresh} />
       </>}
       {section === "team" && managesTeam && <><TeamAccess member={member} changed={changed} refresh={refresh} /><details className="hub-card hub-setup-details"><summary>Review reminders</summary><ReviewReminderSettings /></details></>}
-      {section === "scorecards" && <section className="hub-card" id="scorecard-settings"><ScorecardTemplates jobs={jobs} /></section>}
+      {section === "scorecards" && <><p className="hub-muted">Optional reusable review criteria for teams that want manual scorecards. AI matching uses each job’s description and applicant evidence.</p><section className="hub-card" id="scorecard-settings"><ScorecardTemplates jobs={jobs} /></section></>}
+      {section === "help" && <RecruitingRequests />}
       {section === "company" && owner && <CompanySettings member={member} refresh={refresh} changed={changed} jobs={jobs} onDeliveryActivity={onDeliveryActivity} />}
-    </section>
-  );
+    </div>
+  </section>;
 }
+
 function CompanySettings({ member, refresh, changed, jobs, onDeliveryActivity }: { member:Member; refresh:number; changed:()=>void; jobs:HubJob[]; onDeliveryActivity?:()=>void }) {
   const resource = useHubResource<Settings>("/api/hub/settings", refresh);
   return <>
@@ -156,286 +148,62 @@ function SettingsForm({
     if (result?.url && safeNavigation(result.url))
       window.location.assign(result.url);
   }
-  return (
-    <div className="hub-settings-stack hub-company-settings">
-      <p className="hub-notice">
-        Company setup is managed by the owner. This shared connection stores applicant files and supports the fallback calendar. Recruiters connect their own recruiting email and calendar under My setup.
-        Changes in steps 2 and 3 take effect when you click Save settings.
-      </p>
+  const [area, setArea] = useState<"storage" | "ai" | "notifications" | "advanced">("storage");
+  const areas = [{id:"storage" as const,label:"Files & calendar"},{id:"ai" as const,label:"AI"},{id:"notifications" as const,label:"Messages & reminders"},{id:"advanced" as const,label:"Advanced"}];
+  return <div className="hub-settings-stack hub-company-settings">
+    {initial.queue.failed > 0 && <div className="hub-notice hub-error hub-inline-alert" role="alert"><span>{initial.queue.failed} delivery tasks need attention.</span>{onDeliveryActivity && <button className="hub-text-button" type="button" onClick={onDeliveryActivity}>View delivery activity</button>}</div>}
+    {runtime.data?.hostingPlatform === "railway" && !runtime.data.backgroundEnabled && <div className="hub-notice hub-error hub-inline-alert" role="alert"><span>Automatic email, calendar, and file processing is disabled.</span><button type="button" className="hub-text-button" onClick={() => setArea("advanced")}>Open background setup</button></div>}
+    <nav className="hub-company-tabs hub-page-tabs" aria-label="Company settings sections">{areas.map(item => <button className={"hub-text-button " + (area === item.id ? "active" : "")} type="button" aria-current={area === item.id ? "page" : undefined} onClick={() => setArea(item.id)} key={item.id}>{item.label}</button>)}</nav>
+    {area === "storage" && <section className="hub-card">
+      <div className="hub-section-heading compact"><div><h3>Company Google connection</h3><p>Stores applicant files in Drive and provides an optional shared interview calendar.</p></div><Badge tone={initial.google.connected ? "success" : "warning"}>{initial.google.connected ? "Connected" : "Not connected"}</Badge></div>
       <ResourceState loading={runtime.loading} error={runtime.error} retry={() => void runtime.reload()} />
-      {runtime.data?.configured === false && <p className="hub-notice hub-error" role="alert">
-        Google client setup is missing. An administrator must complete Advanced admin setup below, then click Refresh setup checks before connecting an account.
-      </p>}
-      {runtime.data?.hostingPlatform === "railway" && !runtime.data.backgroundEnabled && <p className="hub-notice hub-error" role="alert">
-        Automatic email, calendar, and file processing is disabled. An administrator must enable it in Advanced admin setup before launch.
-      </p>}
-      {initial.queue.failed > 0 && <p className="hub-notice hub-error" role="alert">
-        {initial.queue.failed} integration task(s) need attention. Open Delivery activity to review the error and retry safely.
-      </p>}
-      {onDeliveryActivity && <button className="hub-button secondary" type="button" onClick={onDeliveryActivity}>Open delivery activity</button>}
-      <section className="hub-card">
-        <div className="hub-section-heading compact">
-          <div>
-            <h3>1. Company Drive & fallback calendar</h3>
-            <p>
-              The shared company account saves applicant files to Drive and supports the fallback calendar. Applicant messages use each recruiter’s separate email connection.
-            </p>
+      {runtime.data?.configured === false && <p className="hub-notice hub-error" role="alert">Google client setup is missing. Open Advanced to finish setup before connecting.</p>}
+      <p className="hub-muted">{connectedAccount ? "Connected as " + connectedAccount : "No account connected"}. Each recruiter’s email and calendar are managed under My connections.</p>
+      <div className="hub-button-row"><button className="hub-button secondary" type="button" onClick={() => void connect()} disabled={connection.busy || runtime.loading || runtime.data?.configured === false}>{connection.busy ? "Connecting…" : initial.google.connected ? "Reconnect company Google" : "Connect company Google"} <ExternalLink size={15} /></button><button className="hub-text-button" type="button" onClick={() => void runtime.reload()} disabled={runtime.loading}>Check connection</button></div>
+      <Feedback error={connection.error} success={connection.success} />
+      {!initial.google.connected && <p className="hub-muted">Choose {initial.google.expectedSender || "the configured company account"} when Google opens.</p>}
+    </section>}
+    {(area === "storage" || area === "notifications") && <form onSubmit={save} className="hub-company-settings-form"><fieldset className="hub-settings-stack" disabled={mutation.busy}>
+      {area === "storage" && <>
+        <section className="hub-card"><div className="hub-section-heading compact"><div><h3>Applicant file storage</h3><p>All postings stay archived, including earlier rounds of hiring.</p></div><Badge tone={initial.google.driveRootId ? "success" : "warning"}>{initial.google.driveRootId ? "Folder saved" : "Choose a folder"}</Badge></div>
+          <Field label="Shared Google Drive folder" hint="Paste a shared folder link or folder ID. The connected company account needs permission to add files."><input value={driveRootId} onChange={e => setDriveRootId(e.target.value)} placeholder="https://drive.google.com/drive/folders/…" /></Field>
+          {savedDriveId && <a className="hub-text-button" href={"https://drive.google.com/drive/folders/" + encodeURIComponent(savedDriveId)} target="_blank" rel="noopener noreferrer">Open saved folder <ExternalLink size={15} /></a>}
+          <details className="hub-setup-details"><summary>How files are organized</summary><p className="hub-muted">Recruiting → Job → Location → Posting → Applicant. Each application has its own folder. Give hiring managers access to the shared folder. Check a test application’s Drive link to confirm uploads; accepted applications are kept even during a temporary Drive outage.</p></details>
+        </section>
+        <details className="hub-card hub-setup-details"><summary>Shared interview calendar (optional)</summary><p className="hub-muted">Recruiters normally use their own calendars. These settings apply when you explicitly choose the shared company calendar for an invitation.</p>
+          <button type="button" className="hub-text-button" disabled={!connectedAccount} onClick={() => setCalendarId(connectedAccount)}>Use connected account’s calendar</button>
+          <div className="hub-form-grid">
+            <Field label="Interview calendar" hint="Calendar owner's email, or Calendar ID from Google Calendar settings."><input value={calendarId} onChange={e => setCalendarId(e.target.value)} placeholder="Calendar email or ID" /></Field>
+            <Field label="Interview time zone" hint="For example America/Bogota or Europe/Madrid."><input value={timeZone} onChange={e => setTimeZone(e.target.value)} required /></Field>
+            <Field label="First available hour"><select value={startHour} onChange={e => setStartHour(e.target.value)}>{Array.from({length:24},(_,hour)=><option value={hour} key={hour}>{String(hour).padStart(2,"0")}:00</option>)}</select></Field>
+            <Field label="Finish by"><select value={endHour} onChange={e => setEndHour(e.target.value)}>{Array.from({length:24},(_,i)=>i+1).map(hour=><option value={hour} key={hour}>{hour===24 ? "Midnight" : String(hour).padStart(2,"0")+":00"}</option>)}</select></Field>
+            <Field label="Interview length"><input type="number" min="15" max="120" step="5" value={duration} onChange={e => setDuration(e.target.value)} required /></Field>
           </div>
-          <Badge tone={initial.google.connected ? "success" : "warning"}>
-            {initial.google.connected ? "Connected" : "Not connected"}
-          </Badge>
-        </div>
-        <p className="hub-notice">This connection is for company files and the fallback calendar. For applicant email, open My setup → My recruiting email. The recruiter assigned to automatic email must authorize their own account and configure the no-reply alias in their Gmail. Do not configure applicant sending in the owner’s sales mailbox.</p>
-        <dl className="hub-connection-details">
-          <div>
-            <dt>Company storage/calendar account</dt>
-            <dd>{connectedAccount || "No active connection"}</dd>
-          </div>
-          <div><dt>Storage/calendar account allowed to connect</dt><dd>{initial.google.expectedSender || "Check Google connection setup"}</dd></div>
-          <div>
-            <dt>Applications</dt>
-            <dd>
-              <Badge tone={initial.applicationsEnabled ? "success" : "warning"}>
-                {initial.applicationsEnabled
-                  ? "Enabled"
-                  : "Closed until launch checks pass"}
-              </Badge>
-            </dd>
-          </div>
-          <div>
-            <dt>Scheduled work</dt>
-            <dd>
-              {initial.queue.pending} pending · {initial.queue.failed} failed
-            </dd>
-          </div>
-        </dl>
-        {initial.mailSync && (
-          <p className="hub-muted">
-            Email replies last checked:{" "}
-            {initial.mailSync.lastCheckedAt
-              ? displayDate(initial.mailSync.lastCheckedAt)
-              : "Not checked yet"}
-            .
-          </p>
-        )}
-        {initial.mailSync?.lastError && (
-          <p className="hub-notice hub-error" role="alert">
-            Email reply sync: {initial.mailSync.lastError}
-          </p>
-        )}
-        <div className="hub-button-row">
-          <button
-            className="hub-button secondary"
-            onClick={() => void connect()}
-            disabled={connection.busy || runtime.loading || runtime.data?.configured === false}
-          >
-            {connection.busy
-              ? "Connecting…"
-              : initial.google.connected
-                ? "Reconnect Google Workspace"
-                : "Connect Google Workspace"}{" "}
-            <ExternalLink size={15} />
-          </button>
-          <button className="hub-text-button" type="button" onClick={() => void runtime.reload()} disabled={runtime.loading}>
-            Refresh setup checks
-          </button>
-        </div>
-        <Feedback error={connection.error} success={connection.success} />
-        <p className="hub-muted">
-          Choose {initial.google.expectedSender || "the configured recruiting account"} on the Google screen.
-          This company connection is separate from each recruiter’s calendar. Leave it connected when adding recruiters; they use My setup with their own accounts.
-        </p>
-      </section>
-      <form onSubmit={save} className="hub-company-settings-form">
-        <fieldset className="hub-settings-stack" disabled={mutation.busy}>
-          <section className="hub-card">
-            <h3>2. Shared fallback interview calendar</h3>
-            <p className="hub-muted">
-              Use the connected account’s calendar now, or a calendar shared with that account.
-              Confirm the hours below, save, then send a test interview from an applicant’s profile.
-            </p>
-            <button
-              type="button"
-              className="hub-button secondary"
-              disabled={!connectedAccount}
-              onClick={() => setCalendarId(connectedAccount)}
-            >
-              Use {connectedAccount || "connected account"} calendar
-            </button>
-            <p className="hub-muted">
-              Recruiters normally connect their own calendar in My setup. This fallback is only used when the shared company calendar is selected for an interview. A calendar selection alone does not grant access.
-              Active or unresolved interviews must be cancelled or reconciled before switching calendars.
-            </p>
-            <div className="hub-form-grid">
-              <Field label="Interview calendar" hint="Usually the calendar owner’s email. For a shared calendar, copy its Calendar ID from Google Calendar → Settings → Integrate calendar.">
-                <input
-                  value={calendarId}
-                  onChange={(e) => setCalendarId(e.target.value)}
-                  placeholder="For example sales@aicaseleads.com"
-                />
-              </Field>
-              <Field
-                label="Interview time zone"
-                hint="Use an IANA time zone, for example America/Bogota."
-              >
-                <input
-                  value={timeZone}
-                  onChange={(e) => setTimeZone(e.target.value)}
-                  required
-                />
-              </Field>
-              <Field label="Day starts (hour, 0–23)">
-                <input
-                  type="number"
-                  min="0"
-                  max="23"
-                  value={startHour}
-                  onChange={(e) => setStartHour(e.target.value)}
-                  required
-                />
-              </Field>
-              <Field label="Day ends (hour, 1–24)">
-                <input
-                  type="number"
-                  min="1"
-                  max="24"
-                  value={endHour}
-                  onChange={(e) => setEndHour(e.target.value)}
-                  required
-                />
-              </Field>
-              <Field label="Interview length in minutes">
-                <input
-                  type="number"
-                  min="15"
-                  max="120"
-                  step="5"
-                  value={duration}
-                  onChange={(e) => setDuration(e.target.value)}
-                  required
-                />
-              </Field>
-            </div>
-            <div
-              className="hub-weekdays"
-              role="group"
-              aria-label="Interview days"
-            >
-              {[
-                "Sunday",
-                "Monday",
-                "Tuesday",
-                "Wednesday",
-                "Thursday",
-                "Friday",
-                "Saturday",
-              ].map((day, index) => (
-                <label className="hub-checkbox" key={day}>
-                  <input
-                    type="checkbox"
-                    checked={weekdays.includes(index)}
-                    onChange={(e) =>
-                      setWeekdays((current) =>
-                        e.target.checked
-                          ? [...current, index].sort()
-                          : current.filter((value) => value !== index),
-                      )
-                    }
-                  />
-                  {day}
-                </label>
-              ))}
-            </div>
-            <label className="hub-checkbox">
-              <input
-                type="checkbox"
-                checked={remindersEnabled}
-                aria-describedby="interview-reminder-help"
-                onChange={(e) => setRemindersEnabled(e.target.checked)}
-              />
-              Send interview reminders through Gmail
-            </label>
-            <p className="hub-muted" id="interview-reminder-help">
-              Off by default. When enabled, reminders are scheduled 24 hours
-              and 1 hour before a confirmed future booking. Reminders are
-              skipped for pending, cancelled, or replaced bookings.
-            </p>
-            <Badge
-              tone={initial.scheduling?.configured ? "success" : "warning"}
-            >
-              {initial.scheduling?.configured
-                ? "Calendar and availability saved"
-                : "Save calendar and availability to enable invitations"}
-            </Badge>
-            <p className="hub-muted">Saved settings do not verify access. A completed test booking confirms calendar access and Meet creation; check Delivery activity for delivery errors.</p>
-          </section>
-          <section className="hub-card">
-            <h3>3. Choose the shared applicant folder</h3>
-            <p className="hub-muted">Open Google Drive, choose a shared company folder or Shared Drive, and paste its link below. Give the connected recruiting account permission to add files, and give hiring managers access.</p>
-            <Field
-              label="Shared Google Drive folder"
-              hint="Paste the folder link from your browser, or enter its folder ID. The folder stays private to people you share it with."
-            >
-              <input
-                value={driveRootId}
-                onChange={(e) => setDriveRootId(e.target.value)}
-                placeholder="https://drive.google.com/drive/folders/…"
-              />
-            </Field>
-            <div className="hub-button-row">
-              <Badge tone={initial.google.driveRootId ? "success" : "warning"}>
-                {initial.google.driveRootId ? "Folder saved" : "Choose a folder"}
-              </Badge>
-              {savedDriveId && <a className="hub-button secondary" href={"https://drive.google.com/drive/folders/" + encodeURIComponent(savedDriveId)} target="_blank" rel="noopener noreferrer">
-                Open saved folder <ExternalLink size={15} />
-              </a>}
-            </div>
-            <p className="hub-muted">
-              Files are organized automatically: Recruiting → Job → Location → Posting → Applicant.
-              Earlier postings remain stored when you hire again. Each application has a separate folder.
-              A saved folder is not proof of access: check a test application’s Drive link and Delivery activity to confirm files arrived.
-              Temporary Drive failures do not lose accepted applications.
-            </p>
-          </section>
-          <details className="hub-card hub-setup-details"><summary>Default rejection email</summary>
-            <h3>Default rejection email for new jobs</h3>
-            <Field label="Approved template">
-              <textarea
-                rows={7}
-                value={rejectionTemplate}
-                onChange={(e) => setRejectionTemplate(e.target.value)}
-              />
-            </Field>
-            <p className="hub-muted">
-              New roles use this default. Existing roles keep their approved
-              message, which you can edit in Jobs. Individual and
-              automatic rejection rules must be explicitly approved.
-            </p>
-          </details>
-          <div className="hub-card hub-settings-save" role="group" aria-label="Save company settings">
-            <button
-              className="hub-button"
-              type="submit"
-              disabled={mutation.busy}
-            >
-              {mutation.busy ? "Saving settings…" : "Save settings"}
-            </button>
-            <p className="hub-muted">Saves the shared calendar, applicant folder, and default rejection email above.</p>
-            <Feedback error={validationError || mutation.error} success={validationError ? "" : mutation.success} />
-          </div>
-        </fieldset>
-      </form>
-      <details className="hub-card hub-setup-details"><summary>AI connection</summary><AiReviewSettings /></details>
-      <details className="hub-card hub-setup-details">
-        <summary>Advanced admin setup</summary>
-        <p className="hub-muted">Only needed when installing the app or changing its Google client or background processing. Day-to-day hiring uses the three steps above.</p>
-        <GoogleConfiguration />
-        <SchedulerSetup />
-      </details>
-      {initial.accessAudit && <details className="hub-card hub-setup-details"><summary>Recent access changes</summary><h3>Access history</h3><p className="hub-muted">Configuration changes record who made them and the previous and updated values. Most recent 50 events.</p>{initial.accessAudit.length ? initial.accessAudit.map((event) => <article key={event.id} className="hub-history-item"><strong>{event.type} · {event.actor}</strong><small>{displayDate(event.createdAt)}</small><details><summary>Review recorded change</summary><pre className="hub-preserve">{JSON.stringify({before:event.before,after:event.after},null,2)}</pre></details></article>) : <p className="hub-muted">No access changes recorded yet.</p>}</details>}
-    </div>
-  );
+          <div className="hub-weekdays" role="group" aria-label="Interview days">{["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"].map((day,index)=><label className="hub-checkbox" key={day}><input type="checkbox" checked={weekdays.includes(index)} onChange={e => setWeekdays(current => e.target.checked ? [...current,index].sort() : current.filter(value => value !== index))} />{day}</label>)}</div>
+          <p className="hub-muted">Saved hours do not move existing interviews. Complete a test booking to confirm Calendar access and Meet creation. Resolve active interviews before switching calendars.</p>
+        </details>
+      </>}
+      {area === "notifications" && <>
+        <section className="hub-card"><h3>Default rejection message</h3><p className="hub-muted">Used when creating new jobs. Existing jobs keep their saved message and screening rules.</p><Field label="Approved template"><textarea rows={6} value={rejectionTemplate} onChange={e => setRejectionTemplate(e.target.value)} /></Field></section>
+        <section className="hub-card"><h3>Interview reminders</h3><label className="hub-checkbox"><input type="checkbox" checked={remindersEnabled} onChange={e => setRemindersEnabled(e.target.checked)} />Send reminders for confirmed interviews</label><p className="hub-muted">24 hours and 1 hour before a future booking. Requires the connected recruiting Gmail account. Cancelled and replaced bookings are skipped.</p></section>
+      </>}
+      <div className="hub-settings-save" role="group" aria-label="Save company settings"><button className="hub-button" type="submit" disabled={mutation.busy}>{mutation.busy ? "Saving…" : "Save company settings"}</button><Feedback error={validationError || mutation.error} success={validationError ? "" : mutation.success} /></div>
+    </fieldset></form>}
+    {area === "ai" && <AiReviewSettings />}
+    {area === "notifications" && <>
+      <details className="hub-card hub-setup-details"><summary>Recruiter notifications & overdue reviews</summary><p className="hub-muted">Choose notification recipients on each job. Your login does not automatically subscribe you to every job.</p><ReviewReminderSettings /></details>
+      {initial.mailSync?.lastError && <p className="hub-notice hub-error" role="alert">Email reply sync: {initial.mailSync.lastError}</p>}
+      {initial.mailSync?.lastCheckedAt && <p className="hub-muted">Email replies last checked {displayDate(initial.mailSync.lastCheckedAt)}.</p>}
+    </>}
+    {area === "advanced" && <>
+      <details className="hub-card hub-setup-details"><summary>Google app configuration</summary><p className="hub-muted">Installation settings. Recruiters connect their own accounts under My connections.</p><GoogleConfiguration /></details>
+      <details className="hub-card hub-setup-details"><summary>Background processing</summary><SchedulerSetup /></details>
+      <details className="hub-card hub-setup-details"><summary>Privacy & applicant requests</summary><p>Applicants can request help or exercise privacy rights using the website. Review submitted requests under Settings → Help requests.</p><a className="hub-text-button" href="/privacy" target="_blank" rel="noopener noreferrer">Open privacy notice <ExternalLink size={15} /></a></details>
+      {initial.accessAudit && <details className="hub-card hub-setup-details"><summary>Access history</summary><p className="hub-muted">The 50 most recent recorded access changes.</p>{initial.accessAudit.length ? initial.accessAudit.map(event => <article key={event.id} className="hub-history-item"><strong>{event.type} · {event.actor}</strong><small>{displayDate(event.createdAt)}</small><details><summary>Recorded change</summary><pre className="hub-preserve">{JSON.stringify({before:event.before,after:event.after},null,2)}</pre></details></article>) : <p className="hub-muted">No access changes recorded.</p>}</details>}
+    </>}
+  </div>;
 }
+
 export function Tasks({
   admin,
   refresh,
@@ -529,7 +297,7 @@ export function Tasks({
           )}
         </div>
       </div>
-      {mail.data?.candidateConnected === false && <p className="hub-notice">Automatic recruiting email is not connected. {mail.data.candidateAccount || "The assigned recruiter"} must sign in and connect their own Gmail under Settings → My setup. Other recruiters can use their own connected mailboxes. Company Drive and Calendar connections do not enable recruiting email. <a className="hub-button secondary" href="/team?view=settings">Connect recruiting email</a></p>}
+      {mail.data?.candidateConnected === false && <p className="hub-notice">Automatic recruiting email is not connected. {mail.data.candidateAccount || "The assigned recruiter"} must sign in and connect their own Gmail under Settings → My connections. Other recruiters can use their own connected mailboxes. Company Drive and Calendar connections do not enable recruiting email. <a className="hub-button secondary" href="/team?view=settings">Connect recruiting email</a></p>}
       <Feedback error={mutation.error} success={mutation.success} />
       {processResult && (
         <p
