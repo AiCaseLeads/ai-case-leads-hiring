@@ -178,18 +178,18 @@ export function Candidates(props: CandidatesProps) {
   }
   const counts = useHubResource<{items: {jobId:string;total:number;needsReview:number;aiReady:number}[]}>("/api/hub/application-counts", props.refresh);
   if (props.initialJobId && props.jobs.some(job => job.id === props.initialJobId)) return <JobCandidates {...props} />;
-  const jobs = props.jobs.filter(job => (status === "all" || job.status === status) && `${job.title} ${job.location || ""} ${jobGroup(job)} ${job.hiringRound || ""}`.toLowerCase().includes(search.toLowerCase()));
+  const jobs = props.jobs.filter(job => (status === "archived" ? job.lifecycle?.state === "archived" : status === "deleted" ? job.lifecycle?.state === "deleted" : (!job.lifecycle || job.lifecycle.state === "active") && (status === "all" || job.status === status)) && `${job.title} ${job.location || ""} ${jobGroup(job)} ${job.hiringRound || ""}`.toLowerCase().includes(search.toLowerCase()));
   return <section aria-labelledby="application-jobs-title">
     <div className="hub-section-heading compact"><div><p className="hub-kicker">APPLICANTS</p><h2 id="application-jobs-title">Choose a job</h2><p>Keep each hiring process together. Open a job to compare, shortlist, and interview its applicants.</p></div></div>
-    <div className="hub-applicant-filters"><Field label="Find a job"><input type="search" value={search} onChange={event => setSearch(event.target.value)} placeholder="Job title or location" /></Field><Field label="Job status"><select value={status} onChange={event => setStatus(event.target.value)}><option value="all">All jobs</option><option value="open">Open jobs</option><option value="closed">Closed jobs</option><option value="draft">Draft jobs</option></select></Field></div>
+    <div className="hub-applicant-filters"><Field label="Find a job"><input type="search" value={search} onChange={event => setSearch(event.target.value)} placeholder="Job title or location" /></Field><Field label="Job status"><select value={status} onChange={event => setStatus(event.target.value)}><option value="all">Active jobs</option><option value="open">Open jobs</option><option value="closed">Paused jobs</option><option value="draft">Draft jobs</option><option value="archived">Archived jobs</option><option value="deleted">Jobs in Trash</option></select></Field></div>
     <Feedback error={downloadError} success={downloadNotice}/>
     <div className="hub-application-job-list">{jobs.map(job => {
       const count = counts.data?.items.find(item => item.jobId === job.id);
       return <article className="hub-application-job-row" key={job.id}>
-        <div><h3>{job.title}</h3><p className="hub-muted">{job.location || jobLocation(job)} · {job.status === "open" ? "Open" : job.status === "closed" ? "Closed" : "Draft"}</p></div>
+        <div><h3>{job.title}</h3><p className="hub-muted">{job.location || jobLocation(job)} · {job.lifecycle?.state === "archived" ? "Archived" : job.lifecycle?.state === "deleted" ? "In Trash" : job.status === "open" ? "Open" : job.status === "closed" ? "Paused" : "Draft"}</p></div>
         <div className="hub-job-applicant-count"><strong>{counts.data ? count?.total || 0 : counts.loading ? "…" : "—"}</strong><span>applicants</span></div>
         <button className="hub-button secondary" type="button" onClick={() => {const params = new URLSearchParams(); params.set("jobId", job.id); if (props.initialStage) params.set("stage", props.initialStage); props.onFilterChange?.(params.toString(), 1);}}>View applications<span className="sr-only"> for {job.title}</span></button>
-        <details className="hub-job-download-menu"><summary>Download<span className="sr-only"> applications for {job.title}</span></summary><div className="hub-button-row"><button className="hub-text-button" type="button" disabled={!!downloadBusy} onClick={() => void downloadJob(job,"csv")}>Download all CSV<span className="sr-only"> for {job.title}</span></button><button className="hub-text-button" type="button" disabled={!!downloadBusy} onClick={() => void downloadJob(job,"zip")}>Download all files ZIP<span className="sr-only"> for {job.title}</span></button></div></details>
+        <details className="hub-job-download-menu"><summary>Download<span className="sr-only"> applications for {job.title}</span></summary><div className="hub-button-row"><button className="hub-text-button" type="button" disabled={!!downloadBusy} onClick={() => void downloadJob(job,"zip")}>Download all applications ZIP<span className="sr-only"> for {job.title}</span></button></div></details>
       </article>;
     })}</div>
     {!jobs.length && <EmptyState title="No jobs found"><p>Try another search or create a posting from Jobs.</p></EmptyState>}
@@ -294,6 +294,7 @@ function JobCandidates({
     try {
       const params = new URLSearchParams(exportScope === "all" ? { jobId } : filter);
       params.set("jobId", jobId);
+      if(inTrash)params.set("trash","true");
       params.delete("page");
       params.set("format", format);
       if (exportScope === "selected") params.set("ids", selected.join(","));
@@ -306,7 +307,7 @@ function JobCandidates({
       const link = document.createElement("a");
       link.href = downloadUrl; link.download = `applications-${selectedJob?.slug || jobId}.${format}`;
       document.body.appendChild(link); link.click(); link.remove();
-      setExportMessage(format === "csv" ? "Spreadsheet download started. Check your browser’s downloads for completion." : "Application files download started. Check your browser’s downloads for completion and the included manifest for unavailable files.");
+      setExportMessage(format === "csv" ? "Spreadsheet download started. Check your browser’s downloads for completion." : "Application files download started. Check your browser’s downloads for completion and the included PDF export report for unavailable files.");
     } catch (error) {setExportError(error instanceof Error ? error.message : "Download failed.");}
     finally {setExporting(false);}
   }
@@ -378,13 +379,13 @@ function JobCandidates({
       </div>
       <div className="hub-button-row hub-application-view-tabs"><button className="hub-pipeline-tab" type="button" aria-pressed={!inTrash} onClick={()=>applyView(new URLSearchParams({jobId}).toString())}>Applications</button><button className="hub-pipeline-tab" type="button" aria-pressed={inTrash} onClick={()=>applyView(new URLSearchParams({jobId,trash:"true"}).toString())}>Trash</button></div>
       {inTrash && <p className="hub-muted">Deleted applications stay here with their original files and history. Open an application to restore it. Cancelled emails and booking links are not sent again.</p>}
-      <div className="hub-pipeline-tabs" role="group" aria-label="Hiring stages">{["", "Application Review", "Screening", "Interview", "Offer", "Hired", "Rejected"].map(value=><button key={value||"all"} className={"hub-pipeline-tab"+(stage===value?" active":"")} type="button" aria-pressed={stage===value} onClick={()=>{const params=new URLSearchParams(filter);if(value)params.set("stage",value);else params.delete("stage");applyView(params.toString());}}>{value?stageLabel(value):"All"}</button>)}</div>
+      {!inTrash && <div className="hub-pipeline-tabs" role="group" aria-label="Hiring stages">{["", "Application Review", "Screening", "Interview", "Offer", "Hired", "Rejected"].map(value=><button key={value||"all"} className={"hub-pipeline-tab"+(stage===value?" active":"")} type="button" aria-pressed={stage===value} onClick={()=>{const params=new URLSearchParams(filter);if(value)params.set("stage",value);else params.delete("stage");applyView(params.toString());}}>{value?stageLabel(value):"All"}</button>)}</div>}
       <div className="hub-applicant-toolbar">
       <form className="hub-applicant-filter-form" onSubmit={filterSubmit}>
         <div className="hub-applicant-filters">
           <Field label="Search"><input value={q} onChange={e=>setQ(e.target.value)} placeholder="Name or email" type="search" /></Field>
-          <Field label="Stage"><select value={stage} onChange={e=>setStage(e.target.value)}><option value="">All stages</option>{stages.map(value=><option key={value} value={value}>{stageLabel(value)}</option>)}</select></Field>
-          <Field label="Order"><select value={sort} onChange={e=>setSort(e.target.value)}><option value="">Newest applications</option><option value="ai_match_desc">Highest AI match first</option><option value="grade_desc">Highest reviewer grade first</option></select></Field>
+          {!inTrash && <Field label="Stage"><select value={stage} onChange={e=>setStage(e.target.value)}><option value="">All stages</option>{stages.map(value=><option key={value} value={value}>{stageLabel(value)}</option>)}</select></Field>}
+          {!inTrash && <Field label="Order"><select value={sort} onChange={e=>setSort(e.target.value)}><option value="">Newest applications</option><option value="ai_match_desc">Highest AI match first</option><option value="grade_desc">Highest reviewer grade first</option></select></Field>}
           <button className="hub-button secondary" type="submit"><Search size={16} /> Apply filters</button>
         </div>
         <details className="hub-advanced-filters"><summary>More filters{[qualification,grade,assignee,duplicate].filter(Boolean).length ? ` · ${[qualification,grade,assignee,duplicate].filter(Boolean).length} selected` : ""}</summary>
@@ -399,12 +400,12 @@ function JobCandidates({
       <div className="hub-applicant-toolbar-actions">
         {!inTrash && <button className="hub-button secondary" type="button" onClick={() => applyView((() => {const params=new URLSearchParams(filter);params.set("sort","ai_match_desc");params.set("top","10");return params.toString();})())}>Top 10 AI matches</button>}
         {isTopTen && <button className="hub-text-button" type="button" onClick={() => applyView((() => {const params=new URLSearchParams(filter);params.delete("top");return params.toString();})())}>Show all applicants</button>}
-        <button className="hub-text-button" type="button" onClick={()=>applyView(new URLSearchParams({jobId}).toString())}>Clear filters</button>
+        <button className="hub-text-button" type="button" onClick={()=>applyView(new URLSearchParams({jobId,...(inTrash?{trash:"true"}:{})}).toString())}>Clear filters</button>
         <details className="hub-download-menu hub-application-downloads"><summary><Download size={16} /> Download applications</summary>
           <div className="hub-download-menu-body">
             <div className="hub-button-row"><button className="hub-text-button" type="button" disabled={resource.loading || !resource.data?.items.length} onClick={() => {setSelected(resource.data?.items.map(item=>item.id)||[]);setExportScope("selected");}}>Select this page ({resource.data?.items.length||0})</button><button className="hub-text-button" type="button" disabled={resource.loading || !resource.data?.total} onClick={() => {setSelected([]);setExportScope("filtered");}}>Select all matching for download ({resource.data?.total||0})</button>{selected.length>0 && <button className="hub-text-button" type="button" onClick={() => {setSelected([]);setExportScope("filtered");}}>Clear selection ({selected.length})</button>}</div>
-            <div className="hub-button-row hub-download-actions"><Field label="Download scope"><select value={exportScope} onChange={event=>setExportScope(event.target.value)}><option value="filtered">Current view{isTopTen?" · Top 10":" · all pages"}</option><option value="all">All applicants for this job</option><option value="selected">Selected applicants ({selected.length})</option></select></Field><button className="hub-button secondary" type="button" disabled={exporting || resource.loading || (exportScope==="filtered"&&!resource.data?.total) || (exportScope==="selected"&&!selected.length)} onClick={()=>void exportApplications("csv")}><Download size={16}/> Download spreadsheet (CSV)</button><button className="hub-button" type="button" disabled={exporting || resource.loading || (exportScope==="filtered"&&!resource.data?.total) || (exportScope==="selected"&&!selected.length)} onClick={()=>void exportApplications("zip")}><Download size={16}/> Download application files (ZIP)</button></div>
-            <p className="hub-muted">{exportScope==="selected"?`${selected.length} selected applicants`:exportScope==="all"?"Every applicant for this job, across all pages and stages":`${resource.data?.total||0} matching applicants across all pages`} will be downloaded. CSV is an optional spreadsheet. ZIP includes readable application PDFs and original files.</p>
+            <div className="hub-button-row hub-download-actions"><Field label="Download scope"><select value={exportScope} onChange={event=>setExportScope(event.target.value)}><option value="filtered">Current view{isTopTen?" · Top 10":" · all pages"}</option><option value="all">{inTrash?"All applications in Trash":"All applicants for this job"}</option><option value="selected">Selected applicants ({selected.length})</option></select></Field><button className="hub-button" type="button" disabled={exporting || resource.loading || (exportScope==="filtered"&&!resource.data?.total) || (exportScope==="selected"&&!selected.length)} onClick={()=>void exportApplications("zip")}><Download size={16}/> Download applications (ZIP)</button></div>
+            <p className="hub-muted">{exportScope==="selected"?`${selected.length} selected applicants`:exportScope==="all"?(inTrash?"Every application in Trash for this job":"Every applicant for this job, across all pages and stages"):`${resource.data?.total||0} matching applicants across all pages`} will be downloaded. The ZIP includes a readable PDF for each application and the original uploaded files.</p>
             <details><summary>Download limits</summary><p>Up to 10,000 applications and 3 GB of attachments per download. Narrow the filters for larger archives. Bulk record changes apply to selected applicants on this page.</p></details>
             {exporting && <p role="status">Preparing your download…</p>}
             <Feedback error={exportError} success={exportMessage}/>

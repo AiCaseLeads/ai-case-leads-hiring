@@ -128,12 +128,13 @@ try{
  // Real browser exports retain answers and original files, with job scope made explicit.
  await team.getByText('Download applications',{exact:true}).click();
  await team.getByLabel('Download scope',{exact:true}).selectOption('all');
- const [csvDownload]=await Promise.all([team.waitForEvent('download'),team.getByRole('button',{name:'Download spreadsheet (CSV)',exact:true}).click()]);
- assert.match(csvDownload.suggestedFilename(),/\.csv$/);const csv=readFileSync(await csvDownload.path(),'utf8');assert.ok(csv.includes(detail.email));assert.ok(csv.includes(detail.name));
- const [zipDownload]=await Promise.all([team.waitForEvent('download'),team.getByRole('button',{name:'Download application files (ZIP)',exact:true}).click()]);
+ const csvResponse=await fetch(origin+'/api/hub/applications-export?format=csv&jobId='+chosenJob.id,{headers:{Cookie:ownerCookie}});assert.equal(csvResponse.status,200);const csv=await csvResponse.text();assert.ok(csv.includes(detail.email));assert.ok(csv.includes(detail.name));
+ const [zipDownload]=await Promise.all([team.waitForEvent('download'),team.getByRole('button',{name:'Download applications (ZIP)',exact:true}).click()]);
  assert.match(zipDownload.suggestedFilename(),/\.zip$/);const zip=readFileSync(await zipDownload.path());assert.equal(zip.subarray(0,2).toString(),'PK');assert.ok(zip.includes(Buffer.from('isolated-resume.pdf')));
  await team.getByRole('button',{name:detail.name,exact:true}).click();await team.getByRole('heading',{name:detail.name,exact:true}).waitFor();
  assert.equal(new URL(team.url()).searchParams.get('application'),firstId);
+ const [applicationPdf]=await Promise.all([team.waitForEvent('download'),team.getByRole('button',{name:'Download application PDF',exact:true}).click()]);
+ assert.match(applicationPdf.suggestedFilename(),/\.pdf$/);assert.equal(readFileSync(await applicationPdf.path()).subarray(0,5).toString(),'%PDF-');
  await team.getByRole('button',{name:'Shortlist',exact:true}).click();await team.getByText('Added to the shortlist.',{exact:true}).waitFor();
  assert.equal((await api('/api/hub/applications/'+firstId)).stage,'Screening');
  await team.getByRole('button',{name:'Request interview',exact:true}).click();await team.getByRole('button',{name:'Send booking link',exact:true}).waitFor();

@@ -1628,3 +1628,9 @@ html:has(.hiring-hub) { scroll-behavior: auto; }
  .hub-applications-table { min-width:640px; }
  .hub-applications-table :is(.hub-optional-owner,.hub-optional-applied) { display:none; }
 }
+
+.hiring-hub .hub-question-drag-handle{flex:0 0 auto;min-width:44px;min-height:44px;margin-left:0!important}
+.hiring-hub .hub-question-drag-preview{pointer-events:none;overflow-wrap:anywhere}
+.hiring-hub .hub-question-drag-preview strong{min-width:0}
+.hiring-hub .hub-question-drag-handle:active{cursor:grabbing}
+.hiring-hub .hub-question-dragging{outline:2px dashed #9dbab0}

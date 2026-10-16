@@ -63,7 +63,7 @@ export function HiringDashboard({
     setInitialStage(next === "applications" && stages.includes(params.get("stage") || "") ? params.get("stage")! : "");
     setInitialJobId(next === "applications" ? params.get("jobId") || "" : "");
     const filters = new URLSearchParams();
-    for (const key of ["q", "jobId", "stage", "assignee", "qualification", "grade", "sort", "top", "duplicate"]) if (next === "applications" && params.has(key)) filters.set(key, params.get(key)!);
+    for (const key of ["q", "jobId", "stage", "assignee", "qualification", "grade", "sort", "top", "duplicate", "trash"]) if (next === "applications" && params.has(key)) filters.set(key, params.get(key)!);
     setInitialFilter(filters.toString());
     const page = Number(params.get("page"));
     setInitialPage(Number.isFinite(page) ? Math.max(1, Math.min(10000, Math.floor(page))) : 1);
@@ -134,7 +134,7 @@ export function HiringDashboard({
   }
   function viewUrl(next: View) {
     const url = new URL(window.location.href);
-    for (const key of ["application", "candidateAction", "workspace", "reason", "jobId", "stage", "q", "assignee", "qualification", "grade", "sort", "top", "duplicate", "page", "section", "jobEditor", "jobStep", "jobStart", "jobSource", "jobSession"]) url.searchParams.delete(key);
+    for (const key of ["application", "candidateAction", "workspace", "reason", "jobId", "stage", "q", "assignee", "qualification", "grade", "sort", "top", "duplicate", "trash", "page", "section", "jobEditor", "jobStep", "jobStart", "jobSource", "jobSession"]) url.searchParams.delete(key);
     url.searchParams.set("view", next === "overview" ? "home" : next);
     return url;
   }
