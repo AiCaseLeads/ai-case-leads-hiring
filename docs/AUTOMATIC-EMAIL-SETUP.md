@@ -28,7 +28,13 @@ the shared Google Drive archive remain unchanged.
    directly in the hiring app’s **Railway →
    Variables → SENDGRID_API_KEY** field. Redeploy so the running service receives
    it. Keep the key private; do not put it in Git, screenshots, or chat.
-5. In the hiring hub, open **Settings → Company → Automatic applicant emails**
+5. Enable SendGrid’s **signed Event Webhook**, sending delivery events to
+   **https://jobs.aicaseleads.com/api/webhooks/sendgrid**. Save its public
+   verification key in Railway as **SENDGRID_WEBHOOK_PUBLIC_KEY** and redeploy.
+   Signed events provide delivery confirmation without buying Email Activity
+   access. Keep optional **SENDGRID_EMAIL_ACTIVITY_ENABLED=false** unless that
+   access is already included in your approved account plan.
+6. In the hiring hub, open **Settings → Company → Automatic applicant emails**
    and click **Check automatic email**. The owner and head recruiter can see
    this status. Only the server uses the API key.
 

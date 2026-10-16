@@ -191,7 +191,7 @@ function SettingsForm({
       </>}
       {area === "notifications" && <>
         <section className="hub-card"><h3>Default rejection message</h3><p className="hub-muted">Used when creating new jobs. Existing jobs keep their saved message and screening rules.</p><Field label="Approved template"><textarea rows={6} value={rejectionTemplate} onChange={e => setRejectionTemplate(e.target.value)} /></Field></section>
-        <section className="hub-card"><h3>Interview reminders</h3><label className="hub-checkbox"><input type="checkbox" checked={remindersEnabled} onChange={e => setRemindersEnabled(e.target.checked)} />Send reminders for confirmed interviews</label><p className="hub-muted">24 hours and 1 hour before a future booking. Requires the connected recruiting Gmail account. Cancelled and replaced bookings are skipped.</p></section>
+        <section className="hub-card"><h3>Interview reminders</h3><label className="hub-checkbox"><input type="checkbox" checked={remindersEnabled} onChange={e => setRemindersEnabled(e.target.checked)} />Send reminders for confirmed interviews</label><p className="hub-muted">24 hours and 1 hour before a future booking. Requires the verified automatic email connection. Cancelled and replaced bookings are skipped.</p></section>
       </>}
       <div className="hub-settings-save" role="group" aria-label="Save company settings"><button className="hub-button" type="submit" disabled={mutation.busy}>{mutation.busy ? "Saving…" : "Save company settings"}</button><Feedback error={validationError || mutation.error} success={validationError ? "" : mutation.success} /></div>
     </fieldset></form>}
@@ -225,7 +225,9 @@ export function Tasks({
       refresh,
     ),
     mutation = useHubMutation();
-  const mailSetupError = (task: Task) => task.kind === "gmail" && (isMailSetupError(task.lastError || "") || task.lastError?.startsWith("transactional_mail_"));
+  const deferredMailErrors = ["transactional_mail_daily_limit", "transactional_mail_rate_limited", "transactional_mail_quota_exhausted", "transactional_mail_dns_check_failed"];
+  const mailDeferred = (task: Task) => task.kind === "gmail" && task.status === "pending" && deferredMailErrors.includes(task.lastError || "");
+  const mailSetupError = (task: Task) => task.kind === "gmail" && task.status !== "uncertain" && (isMailSetupError(task.lastError || "") || /^transactional_mail_(?:key_required|domain_not_verified|reply_domain_not_verified|sender_not_verified|account_not_enabled|auth_required|invalid_key)$/.test(task.lastError || ""));
   const automaticApplicantMail = (task: Task) => Boolean(task.applicationId && (task.id === `gmail:${task.applicationId}:confirmation` || task.id === `gmail:${task.applicationId}:rejection`));
   const legacyAutomaticSetup = (task: Task) => automaticApplicantMail(task) && ["candidate_mail_account_not_configured", "candidate_mail_account_connection_required", "gmail_sender_alias_not_verified", "google_oauth_reconnect_required", "google_required_permissions_missing"].includes(task.lastError || "");
   const setupExplanation = (error: string) => error.startsWith("transactional_mail_") ? automaticMailExplanation(error) : ({
@@ -369,20 +371,23 @@ export function Tasks({
                               : "neutral"
                         }
                       >
-                        {isDriveArchiveContinuation(task) ? "Archiving files" : mailSetupError(task) ? "Setup required" : task.status}
+                        {isDriveArchiveContinuation(task) ? "Archiving files" : mailDeferred(task) ? task.lastError === "transactional_mail_dns_check_failed" ? "Waiting for DNS check" : "Waiting for email capacity" : mailSetupError(task) ? "Setup required" : task.status}
                       </Badge>
                     </td>
                     <td>{task.attempts}</td>
                     <td>{displayDate(task.updatedAt)}</td>
-                    <td className={isDriveArchiveContinuation(task) ? "hub-muted" : "hub-task-error"}>
+                    <td className={isDriveArchiveContinuation(task) || mailDeferred(task) ? "hub-muted" : "hub-task-error"}>
                       {isDriveArchiveContinuation(task)
                         ? "Progress saved; the background worker will continue automatically."
-                        : mailSetupError(task) ? (legacyAutomaticSetup(task) ? "This earlier automatic applicant email now uses SendGrid. Check Settings → Company, then preview failed emails to review its recovery eligibility." : setupExplanation(task.lastError || "")) + " This message is held; completing setup does not send historical messages automatically." : task.lastError || "—"}
+                        : mailDeferred(task) ? task.lastError === "transactional_mail_dns_check_failed" ? "The reply-domain DNS check is temporarily unavailable. This email remains queued and retries automatically; the application remains saved. Nothing was sent without a verified reply domain." : "The app sending budget or provider allowance has been reached. This email remains queued and will retry automatically when capacity is available." : mailSetupError(task) ? (legacyAutomaticSetup(task) ? "This earlier automatic applicant email now uses SendGrid. Check Settings → Company, then preview failed emails to review its recovery eligibility." : setupExplanation(task.lastError || "")) + " This message is held; completing setup does not send historical messages automatically." : task.lastError || "—"}
+                      {mailDeferred(task) && typeof task.runAfter === "number" && task.runAfter > 0 && <span className="hub-secondary-line">Next check: {displayDate(task.runAfter)}</span>}
                       {task.phase && <span className="hub-secondary-line">{driveArchivePhases[task.phase]}</span>}
                       {task.providerStatus && <span className="hub-secondary-line">Provider response: {task.providerStatus}</span>}
                     </td>
                     <td>
-                      {mailSetupError(task) ? (
+                      {mailDeferred(task) ? (
+                        <span className="hub-muted">Queued for automatic retry</span>
+                      ) : mailSetupError(task) ? (
                         <div className="hub-button-row"><a className="hub-button secondary" href={automaticApplicantMail(task) || task.lastError?.startsWith("transactional_mail_") || task.lastError === "gmail_sender_alias_not_verified" ? "/team?view=settings&section=company" : "/team?view=settings"}>Open email settings</a>{admin && task.status === "failed" && <button type="button" className="hub-button secondary" disabled={mutation.busy} onClick={() => {if (window.confirm("Have you reviewed this held message and corrected its sender, permissions and template? Retrying can send it to the applicant.")) void retry(task.id);}}>Review and retry held message</button>}</div>
                       ) : task.status === "uncertain" && task.kind === "calendar" ? (
                         <button
