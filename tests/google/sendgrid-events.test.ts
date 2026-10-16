@@ -181,3 +181,16 @@ test("global event and recipient index are committed atomically", async () => {
     assert.equal((await receiveSendgridEvents(f.store, raw, timestamp, signed(raw), encodedKey, now)).accepted, 1);
   } finally { f.database.close(); }
 });
+
+test("a bounded burst of 1,000 signed events commits once and repeated delivery stays deduplicated", async () => {
+  const f = createStore(), e = await event();
+  try {
+    const raw = body(Array.from({ length: 1_000 }, (_, index) => ({ ...e, sg_event_id: `bulk-event-${index}`, aicl_message: index.toString(16).padStart(64, "0") })));
+    assert.ok(raw.byteLength < SENDGRID_EVENT_MAX_BYTES);
+    assert.equal((await receiveSendgridEvents(f.store, raw, timestamp, signed(raw), encodedKey, now)).accepted, 1_000);
+    assert.equal(await count(f.store), 1_000); assert.equal(await count(f.store, "sendgrid_mail:"), 1_000);
+    const repeated = await receiveSendgridEvents(f.store, raw, timestamp, signed(raw), encodedKey, now + 1_000);
+    assert.equal(repeated.accepted, 0); assert.equal(repeated.duplicates, 1_000);
+    assert.equal(await count(f.store), 1_000); assert.equal(await count(f.store, "sendgrid_mail:"), 1_000);
+  } finally { f.database.close(); }
+});
