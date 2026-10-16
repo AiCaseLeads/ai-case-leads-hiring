@@ -1,3 +1,4 @@
+import { AUTOMATIC_REPLY_TO } from './email/contracts';
 import { automaticMailTransport, reserveAutomaticMail, isAutomaticMailDeferred, type AutomaticMailResolver } from './email/service';
 import { candidateTaskMailMode, isMailSetupError } from "./google/mail-setup";
 import { processStaffInvites } from "./staff/service";
@@ -80,7 +81,7 @@ async function sendAutomaticTask(task:Task,mail:MailInput,store:HubStore,db:D1Da
   const {deliveryAccount:_oldAccount,...payload}=task.payload;void _oldAccount;
   const pinned=await db.prepare("UPDATE hub_tasks SET payload_json=? WHERE id=? AND lease_token=? AND status='running' AND lease_until>? RETURNING id").bind(JSON.stringify({...payload,deliveryProvider:'sendgrid',deliveryFingerprint:transport.fingerprint,deliveryTo:mail.to,deliveryStartedAt:Date.now()}),task.id,task.leaseToken,Date.now()).first();
   if(!pinned)throw {code:'task_lease_expired'};
-  return {...await transport.sendMail({...mail,sender:CANDIDATE_SENDER,replyTo:[CANDIDATE_SENDER],candidateAccount:undefined})};
+  return {...await transport.sendMail({...mail,sender:CANDIDATE_SENDER,replyTo:[AUTOMATIC_REPLY_TO],candidateAccount:undefined})};
 }
 async function taskEffect(task:Task,store:HubStore,db:D1Database,bucket:R2Bucket|undefined,google:GoogleWorkspace|undefined,deadline:number,owners:string[],resolver?:CandidateMailResolver,automaticResolver:AutomaticMailResolver=automaticMailTransport):Promise<Record<string,unknown>>{
   if(task.kind==='gmail'||task.kind==='calendar') {

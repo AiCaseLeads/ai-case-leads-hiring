@@ -29,7 +29,7 @@ test("staff invitations send through verified automatic email without Google and
     } });
     const result = await processStaffInvites(f.store, null, owners, 3, async () => transport);
     assert.equal(result.sent, 1); assert.equal(observed.length, 1);
-    assert.equal(observed[0].to, RECRUITER.email); assert.equal(observed[0].sender, "no-reply@notify.aicaseleads.com");
+    assert.equal(observed[0].to, RECRUITER.email); assert.equal(observed[0].sender, "no-reply@aicaseleads.com");
     assert.deepEqual(observed[0].replyTo, ["no-reply@notify.aicaseleads.com"]);
     assert.match(observed[0].body, /\/recruiter-guide.pdf/);
     const saved = await f.store.setting<Record<string, unknown>>(key, {});

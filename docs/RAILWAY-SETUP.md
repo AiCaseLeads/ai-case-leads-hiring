@@ -8,7 +8,7 @@ The current deployment has dated evidence for Google authorization, volume persi
 
 `sales@aicaseleads.com` remains the owner login and existing company Drive/fallback Calendar connection. It is not an applicant-mail transport. Recruiters authorize their own Gmail separately through **Settings → My setup → My recruiting email**, while signed in as themselves.
 
-Automatic emails use the company's existing SendGrid account and `no-reply@notify.aicaseleads.com`, with no Gmail alias or mailbox. Configure the restricted server key and DNS using [Automatic email setup](AUTOMATIC-EMAIL-SETUP.md). `CANDIDATE_MAIL_ACCOUNT` now selects only Gmail reply synchronization and legacy uncertain-message reconciliation. Do not replace the company Drive grant or change `EXPECTED_RECRUITING_EMAIL` to connect personal mail.
+Automatic emails use the company's existing SendGrid account and `no-reply@aicaseleads.com`, with Reply-To `no-reply@notify.aicaseleads.com`. SendGrid needs no Gmail alias or mailbox. Configure the restricted server key and DNS using [Automatic email setup](AUTOMATIC-EMAIL-SETUP.md). `CANDIDATE_MAIL_ACCOUNT` now selects only Gmail reply synchronization and legacy uncertain-message reconciliation. Do not replace the company Drive grant or change `EXPECTED_RECRUITING_EMAIL` to connect personal mail.
 
 Each interviewer connects a personal calendar separately. Existing invitations retain their original organizer; the shared fallback calendar remains available. Workspace ownership does not authorize another employee’s mailbox. The app uses user OAuth, not domain-wide delegation.
 

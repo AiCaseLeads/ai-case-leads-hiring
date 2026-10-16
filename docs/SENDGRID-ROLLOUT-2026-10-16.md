@@ -1,8 +1,8 @@
 # Independent automatic-email rollout — 16 October 2026
 
-The user's existing SendGrid account replaces the automatic Gmail alias path. Automatic receipts, screening rejections, timed reminders, internal job alerts and new team invitations use AI Case Leads Recruiting <no-reply@notify.aicaseleads.com>. Human recruiter conversations stay in personal Gmail. Company Drive and Calendar remain separate.
+The user's existing SendGrid account replaces the automatic Gmail alias path. Automatic receipts, screening rejections, timed reminders, internal job alerts and new team invitations use AI Case Leads Recruiting <no-reply@aicaseleads.com> with Reply-To no-reply@notify.aicaseleads.com. Human recruiter conversations stay in personal Gmail. Company Drive and Calendar remain separate.
 
-A restricted key was created with Mail Send and Sender Authentication read; live `/v3/scopes` confirmed only mail.send and whitelabel.read plus account eligibility flags. The key and signed-event public verification key were saved privately in Railway without triggering an intermediate deployment. No new subscription or Email Activity add-on was purchased. Notify-domain authentication and Null MX must complete before sending. The outgoing-domain check fails closed; temporary DNS errors defer and retry rather than permanently parking mail.
+A restricted key was created with Mail Send and Sender Authentication read; live `/v3/scopes` confirmed only mail.send and whitelabel.read plus account eligibility flags. The key and signed-event public verification key were saved privately in Railway without triggering an intermediate deployment. No new subscription or Email Activity add-on was purchased. Root-domain authentication and reply-subdomain Null MX must verify before sending. The earlier design used the Null MX domain in From; RFC 7505 prohibits that, so only Reply-To uses notify. The existing root-domain authentication and Google MX remain intact. The outgoing-domain check fails closed; temporary DNS errors defer and retry rather than permanently parking mail.
 
 ## Verification
 
@@ -22,7 +22,7 @@ Connecting the provider never automatically releases historical setup-held messa
 
 ## Outstanding live gate
 
-Verify notify-domain DNS authentication, Null MX bounce, the signed callback on the deployed endpoint, actual received From/Reply-To/Sender/Return-Path/body, and one controlled receipt/rejection before releasing eligible historical candidate mail. API acceptance is separate from inbox delivery. Record completed live checks below rather than claiming setup is delivery.
+Verify root-domain DNS authentication, notify Null MX bounce, direct root no-reply rejection, the signed callback on the deployed endpoint, actual received From/Reply-To/Sender/Return-Path/body, and one controlled receipt/rejection before releasing eligible historical candidate mail. API acceptance is separate from inbox delivery. Record completed live checks below rather than claiming setup is delivery.
 
 ## Live deployed evidence
 
@@ -30,4 +30,4 @@ GitHub main commit1fe876cd9f14c7c5c3c97e5abe5432bfa2e6b1da deployed successfully
 
 The dedicated SendGrid webhook7d566f26-ea06-46ea-8e9d-01ad69bb4427 is enabled with signatures and only processed/dropped/deferred/bounced/delivered events. SendGrid's integration test returned204; Railway HTTP records independently confirmed two actual POST callbacks returned200 at15:01:20UTC and15:03:04UTC. Test payloads had no application correlation and were ignored without creating candidate records.
 
-IONOS sign-in is still required for the exact SendGrid DNS records and Null MX. Actual no-reply receipt/rejection delivery, incoming bounce and historical applicant recovery remain pending. Do not interpret callback success as outbound-email delivery. No actual applicant backlog was released during this setup.
+The earlier DNS handoff above reflects setup at that time. Root-domain authentication is used for outbound mail; live verification of reply-domain Null MX and the existing root no-reply rejection rule is still required. Actual no-reply receipt/rejection delivery, incoming bounce and historical applicant recovery remain pending. Do not interpret callback success as outbound-email delivery. No actual applicant backlog was released during this setup.

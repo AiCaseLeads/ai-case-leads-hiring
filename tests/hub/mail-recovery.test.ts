@@ -16,7 +16,7 @@ const candidateAccount = "recruiter@example.invalid";
 const priorAccount = process.env.CANDIDATE_MAIL_ACCOUNT;
 test.before(() => { process.env.CANDIDATE_MAIL_ACCOUNT = candidateAccount; });
 test.after(() => { if (priorAccount === undefined) delete process.env.CANDIDATE_MAIL_ACCOUNT; else process.env.CANDIDATE_MAIL_ACCOUNT = priorAccount; });
-function ready(now?: number): RecoveryDependencies { return { env: { ADMIN_EMAILS: MANAGER.email }, automatic: async () => automaticFixture(), now: now === undefined ? undefined : () => now, resolve: async account => ({ verifyMailSender: async (sender, required) => { assert.equal(account, candidateAccount); assert.equal(required, candidateAccount); assert.ok([candidateAccount, "no-reply@notify.aicaseleads.com"].includes(sender)); } }) }; }
+function ready(now?: number): RecoveryDependencies { return { env: { ADMIN_EMAILS: MANAGER.email }, automatic: async () => automaticFixture(), now: now === undefined ? undefined : () => now, resolve: async account => ({ verifyMailSender: async (sender, required) => { assert.equal(account, candidateAccount); assert.equal(required, candidateAccount); assert.ok([candidateAccount, "no-reply@aicaseleads.com"].includes(sender)); } }) }; }
 async function fixture(count = 1) {
   const f = createStore();
   f.database.prepare("INSERT INTO hub_members(id,email,role,active,created_at,updated_at) VALUES (?,?,'recruiter',1,0,0)").run(RECRUITER.userId, RECRUITER.email);
@@ -38,7 +38,7 @@ test("bulk recovery previews eligible receipts, preserves no-reply privacy and M
     const preview = await previewMailRecovery(f.store, MANAGER, f.window, ready());
     assert.equal(preview.eligible, 2); assert.equal(preview.counts["Application receipt"], 2);
     assert.ok(preview.skipped.some(item => item.reason.includes("uncertain")));
-    assert.ok(preview.messages.every(item => item.sender === "no-reply@notify.aicaseleads.com" && item.replyTo.join() === item.sender));
+    assert.ok(preview.messages.every(item => item.sender === "no-reply@aicaseleads.com" && item.replyTo.join() === "no-reply@notify.aicaseleads.com"));
     assert.equal(f.database.prepare("SELECT status FROM hub_tasks WHERE application_id=? AND kind='gmail'").get(f.ids[0])!.status, "failed");
     const plan = { planId: preview.planId, digest: preview.digest };
     assert.deepEqual(await executeMailRecovery(f.store, MANAGER, plan, ready()), { queued: 2, alreadyQueued: false });
@@ -129,15 +129,15 @@ test("automatic envelope excludes staff routing and stale queued replyTo/sender 
     let emitted = "", writes = 0;
     const client = { request: async (url: string, init?: RequestInit) => {
       if (url.endsWith("/profile")) return Response.json({ emailAddress: candidateAccount });
-      if (url.endsWith("/settings/sendAs")) return Response.json({ sendAs: [{ sendAsEmail: "no-reply@notify.aicaseleads.com", verificationStatus: "accepted" }] });
+      if (url.endsWith("/settings/sendAs")) return Response.json({ sendAs: [{ sendAsEmail: "no-reply@aicaseleads.com", verificationStatus: "accepted" }] });
       if (url.includes("/messages?")) return Response.json({ messages: [] });
       if (url.endsWith("/messages/send")) { writes++; emitted = new TextDecoder().decode(fromBase64url(JSON.parse(String(init!.body)).raw)); return Response.json({ id: "sent", threadId: "thread" }); }
       throw new Error("Unexpected provider path");
     } } as unknown as GoogleClient;
     const mail = await candidateMail(f.store, { to: "synthetic@example.invalid", subject: "Application received", body: "Your application was received.", messageId: "receipt@jobs.example.invalid", sender: candidateAccount, replyTo: [candidateAccount] }, [MANAGER.email], { applicationId: f.ids[0] });
-    await new Gmail(client, candidateAccount).verifySender("no-reply@notify.aicaseleads.com", candidateAccount); assert.equal(writes, 0);
+    await new Gmail(client, candidateAccount).verifySender("no-reply@aicaseleads.com", candidateAccount); assert.equal(writes, 0);
     await new Gmail(client, candidateAccount).send({...mail,candidateAccount});
-    assert.equal(writes, 1); assert.match(emitted, /^From: no-reply@notify.aicaseleads.com\r\nTo:/); assert.match(emitted, /\r\nReply-To: no-reply@notify.aicaseleads.com\r\n/);
+    assert.equal(writes, 1); assert.match(emitted, /^From: no-reply@aicaseleads.com\r\nTo:/); assert.match(emitted, /\r\nReply-To: no-reply@notify.aicaseleads.com\r\n/);
     assert.doesNotMatch(emitted, /(?:^|\r\n)(?:Sender|Cc|Bcc):|recruiter@example.invalid|sales@/i);
   } finally { f.database.close(); }
 });
@@ -178,7 +178,7 @@ test("legacy automatic receipt routing fields cannot turn it into a private recr
   try {
     f.database.prepare("UPDATE hub_tasks SET payload_json=json_set(payload_json,'$.mailMode','recruiter','$.actor',?,'$.sender',?,'$.replyTo',json(?)) WHERE kind='gmail'").run(RECRUITER.email, RECRUITER.email, JSON.stringify([RECRUITER.email]));
     const preview = await previewMailRecovery(f.store, MANAGER, f.window, ready());
-    assert.equal(preview.eligible, 1); assert.equal(preview.messages[0].sender, "no-reply@notify.aicaseleads.com");
+    assert.equal(preview.eligible, 1); assert.equal(preview.messages[0].sender, "no-reply@aicaseleads.com");
     assert.deepEqual(preview.messages[0].replyTo, ["no-reply@notify.aicaseleads.com"]);
   } finally { f.database.close(); }
 });

@@ -1,5 +1,5 @@
 import { SendGridMail } from './sendgrid';
-import { AUTOMATIC_SENDER } from './contracts';
+import { AUTOMATIC_SENDER, AUTOMATIC_REPLY_TO } from './contracts';
 import { verifyNoReplyDomain } from './dns';
 import { readSendgridEvidence } from './sendgrid-events';
 import { sha256 } from '../hiring/crypto';
@@ -45,7 +45,7 @@ export function isAutomaticMailDeferred(code: string) {
   return ['transactional_mail_daily_limit', 'transactional_mail_rate_limited', 'transactional_mail_quota_exhausted','transactional_mail_dns_check_failed'].includes(code);
 }
 export async function automaticMailStatus(resolve: AutomaticMailResolver = automaticMailTransport) {
-  const base = { provider: 'sendgrid' as const, sender: AUTOMATIC_SENDER, configured: !!process.env.SENDGRID_API_KEY?.trim(), dailyLimit: automaticMailDailyLimit(), setupUrl: 'https://app.sendgrid.com' };
+  const base = { provider: 'sendgrid' as const, sender: AUTOMATIC_SENDER, replyTo: AUTOMATIC_REPLY_TO, configured: !!process.env.SENDGRID_API_KEY?.trim(), dailyLimit: automaticMailDailyLimit(), setupUrl: 'https://app.sendgrid.com' };
   try {
     const transport = await resolve(); transport.setDeadline?.(Date.now() + 20_000); await transport.verify();
     return { ...base, configured: true, ready: true, error: null, checkedAt: Date.now() };

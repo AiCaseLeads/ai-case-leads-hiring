@@ -2,8 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createStore, jobInput, applicationInput, MANAGER } from './fixtures';
 import { processHubTasks } from '../../lib/task-runner';
-import { reserveAutomaticMail, type AutomaticMailTransport } from '../../lib/email/service';
-import { AUTOMATIC_SENDER } from '../../lib/email/contracts';
+import { reserveAutomaticMail, automaticMailStatus, type AutomaticMailTransport } from '../../lib/email/service';
+import { AUTOMATIC_SENDER, AUTOMATIC_REPLY_TO } from '../../lib/email/contracts';
 import { previewMailRecovery, executeMailRecovery } from '../../lib/hub/mail-recovery';
 import type { GoogleWorkspace } from '../../lib/google/workspace';
 
@@ -20,7 +20,7 @@ test('automatic receipt uses SendGrid with no Google connection, preserves priva
   const f = await fixture(); let sends = 0;
   try {
     const sender = transport({ sendMail: async mail => {
-      sends++; assert.equal(mail.sender, AUTOMATIC_SENDER); assert.deepEqual(mail.replyTo, [AUTOMATIC_SENDER]); assert.equal(mail.candidateAccount, undefined);
+      sends++; assert.equal(mail.sender, AUTOMATIC_SENDER); assert.deepEqual(mail.replyTo, [AUTOMATIC_REPLY_TO]); assert.equal(mail.candidateAccount, undefined);
       assert.doesNotMatch(JSON.stringify(mail), /sales@|mariam@|\"(?:cc|bcc)\"/i);
       return { id: 'sendgrid-id', provider: 'sendgrid', accepted: true };
     } });
@@ -73,7 +73,7 @@ test('legacy uncertain Gmail cannot migrate to SendGrid when the provider change
   } finally { f.database.close(); }
 });
 
-test('1000 simultaneous reservations cannot exceed the durable free-plan daily budget', async () => {
+test('1000 simultaneous reservations cannot exceed the configured durable daily budget', async () => {
   const f = createStore();
   try {
     const now = Date.UTC(2026, 9, 16, 14);
@@ -112,4 +112,12 @@ test('recovery verifies SendGrid independently and key changes invalidate an app
     await assert.rejects(executeMailRecovery(f.store, MANAGER, { planId: preview.planId, digest: preview.digest }, deps), { code: 'recovery_plan_changed' });
     assert.equal((await f.store.tasks()).find(t => t.id === f.id)!.status, 'failed');
   } finally { f.database.close(); }
+});
+
+test('status distinguishes the authenticated automatic sender from the Null MX reply address', async () => {
+  const status = await automaticMailStatus(async () => transport());
+  assert.equal(status.ready, true);
+  assert.equal(status.sender, 'no-reply@aicaseleads.com');
+  assert.equal(status.replyTo, 'no-reply@notify.aicaseleads.com');
+  assert.notEqual(status.sender, status.replyTo);
 });

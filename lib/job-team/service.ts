@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { AUTOMATIC_SENDER as CANDIDATE_SENDER } from '../email/contracts';
+import { AUTOMATIC_SENDER as CANDIDATE_SENDER, AUTOMATIC_REPLY_TO } from '../email/contracts';
 import { AUTOMATED_MAIL_NOTICE } from "../hiring/receipt-email";
 import type { HubStore } from "../hub/store";
 import type { Task } from "../hub/types";
@@ -55,13 +55,13 @@ export async function jobNotificationMail(task:Task,store:HubStore,owners:string
 export { AUTOMATIC_SENDER as CANDIDATE_SENDER } from '../email/contracts';
 export async function candidateReplyTo(_store:HubStore,_applicationId:string,_owners:string[]=[]):Promise<string[]>{
  void _store; void _applicationId; void _owners;
- return [CANDIDATE_SENDER];
+ return [AUTOMATIC_REPLY_TO];
 }
 export async function candidateMail(store:HubStore,input:MailInput,owners:string[]=[],context?:{mailMode?:unknown;actor?:unknown;applicationId:string}):Promise<MailInput>{
  const staff=await store.rows<{email:string}>("SELECT lower(trim(email)) AS email FROM hub_members");
  const connected=await store.setting<string>("google_sender","");
  const privateAddresses=new Set([...staff.map(person=>person.email),...owners,connected].filter(Boolean).map(value=>value.toLowerCase()));
- let replyTo=CANDIDATE_SENDER;
+ let replyTo=AUTOMATIC_REPLY_TO;
  if(context?.mailMode==="recruiter"){
   const active=await activeJobStaff(store,owners);
   const eligible=(value:unknown):value is string=>typeof value==="string"&&value.toLowerCase()!=="sales@aicaseleads.com"&&active.some(person=>person.email===value.toLowerCase());
@@ -76,6 +76,6 @@ export async function candidateMail(store:HubStore,input:MailInput,owners:string
  const addresses=`${input.subject} ${input.body}`.match(/[A-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi)||[];
  if(addresses.some(address=>address.toLowerCase()!==CANDIDATE_SENDER&&address.toLowerCase()!==replyTo&&privateAddresses.has(address.toLowerCase())))throw new HiringError("candidate_mail_exposes_staff_address",422,"Remove staff email addresses from the applicant email template before retrying.");
  // Copy only the supported envelope fields: queued legacy replyTo/sender cannot leak through.
- const notice=replyTo===CANDIDATE_SENDER?AUTOMATED_MAIL_NOTICE:"You can reply to this email to contact your recruiter. For application help or privacy requests, visit https://jobs.aicaseleads.com/help.";
- return {to:input.to,subject:input.subject,body:input.body.includes(notice)?input.body:`${input.body}\n\n${notice}`,messageId:input.messageId,sender:replyTo===CANDIDATE_SENDER?CANDIDATE_SENDER:replyTo,replyTo:[replyTo],candidateMail:true,candidateAccount:replyTo===CANDIDATE_SENDER?undefined:replyTo};
+ const notice=replyTo===AUTOMATIC_REPLY_TO?AUTOMATED_MAIL_NOTICE:"You can reply to this email to contact your recruiter. For application help or privacy requests, visit https://jobs.aicaseleads.com/help.";
+ return {to:input.to,subject:input.subject,body:input.body.includes(notice)?input.body:`${input.body}\n\n${notice}`,messageId:input.messageId,sender:replyTo===AUTOMATIC_REPLY_TO?CANDIDATE_SENDER:replyTo,replyTo:[replyTo],candidateMail:true,candidateAccount:replyTo===AUTOMATIC_REPLY_TO?undefined:replyTo};
 }

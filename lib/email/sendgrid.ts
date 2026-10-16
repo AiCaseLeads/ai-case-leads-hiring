@@ -1,7 +1,7 @@
 import type { MailInput } from "../google/gmail";
 import { emailAddress, hash, utf8 } from "../google/http";
 import { normalizedMessageId } from "../google/gmail";
-import { AUTOMATIC_MAIL_DOMAIN, AUTOMATIC_SENDER } from "./contracts";
+import { AUTOMATIC_MAIL_DOMAIN, AUTOMATIC_SENDER, AUTOMATIC_REPLY_TO } from "./contracts";
 
 // https://www.twilio.com/docs/sendgrid/api-reference/mail-send/mail-send
 // https://www.twilio.com/docs/sendgrid/api-reference/domain-authentication/list-all-authenticated-domains
@@ -230,7 +230,7 @@ export class SendGridMail {
   async send(input: MailInput): Promise<SendGridAcceptedMail> {
     const to = recipientAddress(input.to);
     if (input.sender !== undefined && (typeof input.sender !== "string" || input.sender.toLowerCase() !== TRANSACTIONAL_MAIL_SENDER)) throw new SendGridError("transactional_mail_sender_not_allowed");
-    if (input.replyTo !== undefined && (!Array.isArray(input.replyTo) || input.replyTo.length !== 1 || typeof input.replyTo[0] !== "string" || input.replyTo[0].toLowerCase() !== TRANSACTIONAL_MAIL_SENDER)) throw new SendGridError("transactional_mail_reply_to_not_allowed");
+    if (input.replyTo !== undefined && (!Array.isArray(input.replyTo) || input.replyTo.length !== 1 || typeof input.replyTo[0] !== "string" || input.replyTo[0].toLowerCase() !== AUTOMATIC_REPLY_TO)) throw new SendGridError("transactional_mail_reply_to_not_allowed");
     if (typeof input.subject !== "string" || !input.subject || input.subject.length > 500 || /[\u0000-\u001f\u007f]/.test(input.subject)) throw new SendGridError("transactional_mail_subject_invalid");
     if (typeof input.body !== "string" || utf8(input.body).length > 1_000_000) throw new SendGridError("transactional_mail_body_invalid");
     const identity = await sendgridMessageIdentity(input.messageId);
@@ -238,7 +238,7 @@ export class SendGridMail {
     const { response } = await this.request("/mail/send", { method: "POST", body: JSON.stringify({
       from: { email: TRANSACTIONAL_MAIL_SENDER, name: TRANSACTIONAL_MAIL_NAME },
       personalizations: [{ to: [{ email: to }], custom_args: { aicl_message: identity.tag } }],
-      reply_to: { email: TRANSACTIONAL_MAIL_SENDER, name: TRANSACTIONAL_MAIL_NAME }, subject: input.subject,
+      reply_to: { email: AUTOMATIC_REPLY_TO, name: TRANSACTIONAL_MAIL_NAME }, subject: input.subject,
       content: [{ type: "text/plain", value: input.body }, { type: "text/html", value: `<html><body><div style="white-space:pre-wrap;font-family:Arial,sans-serif">${escapedHtml(input.body)}</div></body></html>` }],
       headers: { "X-AICL-Message-ID": identity.messageId },
       tracking_settings: { click_tracking: { enable: false, enable_text: false }, open_tracking: { enable: false } },

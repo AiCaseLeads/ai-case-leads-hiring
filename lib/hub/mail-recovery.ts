@@ -1,3 +1,4 @@
+import { AUTOMATIC_REPLY_TO } from '../email/contracts';
 import { automaticMailTransport, type AutomaticMailResolver } from '../email/service';
 import { z } from "zod";
 import type { HubMember } from "./auth";
@@ -75,7 +76,7 @@ async function envelope(store: HubStore, row: Row, env: PersonalMailEnv, now: nu
       mail = await candidateMail(store, payload as unknown as MailInput, owners, { mailMode: candidateTaskMailMode(row.id, row.application_id, payload), actor: payload.actor, applicationId: row.application_id });
     }
     if (!mail || mail.to.toLowerCase() === "sales@aicaseleads.com") return { reason: "Notification is no longer current or owner notifications are disabled" };
-    return { kind: messageKind, mail: internal ? { ...mail, sender:CANDIDATE_SENDER,replyTo:[CANDIDATE_SENDER],candidateAccount:undefined } : mail };
+    return { kind: messageKind, mail: internal ? { ...mail, sender:CANDIDATE_SENDER,replyTo:[AUTOMATIC_REPLY_TO],candidateAccount:undefined } : mail };
   } catch (error) { return { reason: safeIssue(error) }; }
 }
 type Readiness = { issue: string | null; identity: string };

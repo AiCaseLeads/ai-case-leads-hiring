@@ -136,7 +136,7 @@ text("Drive folders follow <b>Recruiting > Job > Location > Posting > Applicant<
 heading("Run one controlled practice hire")
 table([("Test", "Confirm the actual result"),
        ("Post & apply", "Publish a TEST ONLY job. Submit one synthetic resume and required answers from a team-owned test inbox."),
-       ("Save & notify", "Find the applicant, original PDF and Drive copy. Check the receipt From is no-reply@notify.aicaseleads.com, with no recruiter identity; confirm the selected recruiters receive job alerts."),
+       ("Save & notify", "Find the applicant, original PDF and Drive copy. Check the receipt From is no-reply@aicaseleads.com and Reply-To is no-reply@notify.aicaseleads.com, with no recruiter identity; confirm the selected recruiters receive job alerts."),
        ("Screen & rank", "Test a passing answer and a below-minimum answer. Check screening labels and, if enabled, the rejection email. Confirm a completed AI result cites the supplied evidence."),
        ("Shortlist & book", "Shortlist the test applicant. Request interview, choose the ready interviewer, send a link and book a free slot. Check time zones, Calendar event and Meet link."),
        ("Change & close", "Reschedule and cancel through the hiring flow, verifying Calendar updates. Pause or archive the test posting and keep its records for the audit.")], first=120)

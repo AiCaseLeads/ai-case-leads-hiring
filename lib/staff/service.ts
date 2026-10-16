@@ -1,4 +1,4 @@
-import { AUTOMATIC_SENDER } from '../email/contracts';
+import { AUTOMATIC_SENDER, AUTOMATIC_REPLY_TO } from '../email/contracts';
 import { z } from "zod";
 import type { HubStore } from "../hub/store";
 import type { HubMember } from "../hub/auth-core";
@@ -78,7 +78,7 @@ export async function processStaffInvites(store:HubStore,google:Pick<GoogleWorks
       if(!pin)throw {code:"invite_lease_lost",uncertain:false};
       claim=pinned;
       providerStarted=true;
-      delivered=await transport.sendMail({...mail,sender:AUTOMATIC_SENDER,replyTo:[AUTOMATIC_SENDER]});
+      delivered=await transport.sendMail({...mail,sender:AUTOMATIC_SENDER,replyTo:[AUTOMATIC_REPLY_TO]});
      }
     }else{
      if(!google)throw {code:"candidate_mail_account_connection_required",uncertain:false};

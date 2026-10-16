@@ -5,7 +5,7 @@ import { readFileSync } from "node:fs";
 import { build } from "esbuild";
 import { chromium } from "playwright";
 
-const initial = { provider: "sendgrid", sender: "no-reply@notify.aicaseleads.com", configured: false, ready: false, error: "transactional_mail_key_required", checkedAt: null, dailyLimit: 300, setupUrl: "https://app.sendgrid.com" };
+const initial = { provider: "sendgrid", sender: "no-reply@aicaseleads.com", replyTo: "no-reply@notify.aicaseleads.com", configured: false, ready: false, error: "transactional_mail_key_required", checkedAt: null, dailyLimit: 300, setupUrl: "https://app.sendgrid.com" };
 async function setup(t, { mode = "setup", taskError = "transactional_mail_domain_not_verified", taskStatus = "failed", mailStatus = initial } = {}) {
   const render = mode === "tasks" ? "<Tasks admin={true} refresh={0} changed={()=>{}}/>" : "<AutomaticMailSetup/>";
   const { outputFiles } = await build({ stdin: { contents: `import React from 'react';import{createRoot}from'react-dom/client';import{AutomaticMailSetup}from'./components/hub/automatic-mail';import{Tasks}from'./components/hub/settings';createRoot(document.getElementById('root')).render(${render});`, resolveDir: process.cwd(), loader: "tsx" }, bundle: true, write: false, format: "iife", jsx: "automatic" });
@@ -32,6 +32,9 @@ test("automatic mail setup stays compact, hides keys and separates provider read
   const { page, reads, writes, errors, setStatus } = await setup(t);
   await page.getByText("Not connected", { exact: true }).waitFor();
   assert.equal(await page.locator("details").evaluate(element => element.open), false);
+  const senderDescription = await page.locator("p.hub-muted").first().innerText();
+  assert.match(senderDescription, /Sender: no-reply@aicaseleads\.com/);
+  assert.match(senderDescription, /Reply-To: no-reply@notify\.aicaseleads\.com/);
   assert.equal(await page.locator("input,textarea").count(), 0);
   assert.equal(await page.getByRole("link", { name: "Open SendGrid", exact: true }).getAttribute("href"), "https://app.sendgrid.com");
   await page.getByText("Connect automatic email · one-time setup", { exact: true }).click();
@@ -66,14 +69,14 @@ test("failed automatic sender checks can be refreshed and never display a stale 
   assert.equal(await page.getByText("Sender verified", { exact: true }).count(), 0);
   setFailure(false); setStatus({ ...initial, configured: true, error: "transactional_mail_sender_not_verified" });
   await page.getByRole("button", { name: "Try again", exact: true }).click();
-  await page.getByText("Authenticate the notify.aicaseleads.com sending domain in SendGrid for no-reply@notify.aicaseleads.com.", { exact: true }).waitFor();
+  await page.getByText("Authenticate the aicaseleads.com sending domain in SendGrid for no-reply@aicaseleads.com.", { exact: true }).waitFor();
   assert.deepEqual(errors, []);
 });
 
 test("delivery activity explains transactional sender failures without sending users into Gmail aliases", async t => {
   const { page, reads, writes, errors } = await setup(t, { mode: "tasks" });
   await page.getByRole("cell", { name: "Setup required", exact: true }).waitFor();
-  await page.getByText(/Authenticate notify.aicaseleads.com in SendGrid using the DNS records it provides/).waitFor();
+  await page.getByText(/Authenticate aicaseleads.com in SendGrid using the DNS records it provides/).waitFor();
   assert.equal(await page.getByText(/Send mail as/).count(), 0);
   assert.equal(await page.getByRole("link", { name: "Open email settings", exact: true }).getAttribute("href"), "/team?view=settings&section=company");
   assert.equal(reads.includes("/api/personal-mail"), false);
@@ -111,7 +114,7 @@ for (const taskError of ["transactional_mail_daily_limit", "transactional_mail_r
 test("missing Null MX explains DNS isolation before the generic sending-domain hint", async t => {
   const { page, errors } = await setup(t, { mailStatus: { ...initial, configured: true, error: "transactional_mail_reply_domain_not_verified" } });
   await page.getByRole("alert").filter({ hasText: "Add and verify a Null MX record (priority 0, target .)" }).waitFor();
-  assert.equal(await page.getByText("Authenticate notify.aicaseleads.com in SendGrid using the DNS records it provides.", { exact: true }).count(), 0);
+  assert.equal(await page.getByText("Authenticate aicaseleads.com in SendGrid using the DNS records it provides.", { exact: true }).count(), 0);
   assert.deepEqual(errors, []);
 });
 

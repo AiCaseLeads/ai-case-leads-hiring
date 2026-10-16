@@ -1,7 +1,7 @@
 # Automatic applicant email
 
 Application receipts and automatic screening rejections use **SendGrid**, with
-**AI Case Leads Recruiting <no-reply@notify.aicaseleads.com>** as the company sender.
+**AI Case Leads Recruiting <no-reply@aicaseleads.com>** as the company sender.
 They do not use Maria’s Gmail account or the owner’s mailbox. They include no
 staff CC or BCC.
 
@@ -13,15 +13,17 @@ the shared Google Drive archive remain unchanged.
 
 1. Open your existing [SendGrid account](https://app.sendgrid.com). Complete any
    pending account approval required for sending.
-2. In **Settings → Sender Authentication**, add **notify.aicaseleads.com**. Add the exact DNS
-   authentication records SendGrid supplies in **IONOS**, then wait for SendGrid to
-   verify them. Add a **Null MX** record on **notify** with priority **0** and
-   target **.** to reject incoming mail to that subdomain. Keep the main
-   **aicaseleads.com** domain’s existing Google Workspace mail records unchanged.
-3. The app’s sender is **AI Case Leads Recruiting
-   <no-reply@notify.aicaseleads.com>**. Domain authentication must pass before
-   it is ready. An authenticated sending domain does not require a new Gmail
-   mailbox or a Gmail “Send mail as” alias.
+2. In **Settings → Sender Authentication**, verify **aicaseleads.com** is authenticated.
+   This account already has root-domain authentication; keep its existing SendGrid
+   records and Google Workspace mail records unchanged. If authentication needs
+   repair, use only the exact records SendGrid supplies.
+3. The app sends from **AI Case Leads Recruiting <no-reply@aicaseleads.com>**,
+   with **Reply-To: no-reply@notify.aicaseleads.com**. Add a **Null MX** record on
+   **notify** with priority **0** and target **.** to reject replies without an
+   inbox. Null MX belongs only on the reply subdomain: RFC 7505 prohibits using
+   a Null MX domain in From. No Gmail sending alias or mailbox is needed by SendGrid.
+   Verify the existing Google company mail rule also rejects mail addressed
+   directly to the root no-reply From address before recovering earlier messages.
 4. Create or use a restricted SendGrid API key with **Mail Send** and **Domain
    Authentication read** access. If your account supports it, **Email Activity
    read-only** access can help reconcile uncertain delivery. Save the key
@@ -41,8 +43,8 @@ the shared Google Drive archive remain unchanged.
 ## Verify before recovering earlier emails
 
 - Send one controlled synthetic application to an address the team owns.
-- Check the actual received **From** and **Reply-To** headers; both automatic
-  identities must be the company no-reply address. Check that no recruiter or
+- Check the actual received **From: no-reply@aicaseleads.com** and
+  **Reply-To: no-reply@notify.aicaseleads.com** headers. Check that no recruiter or
   owner address appears in the headers or message body.
 - Confirm the application and its PDF archive remain available independently
   of the email result. Check the provider message ID and delivery activity.
@@ -61,7 +63,9 @@ It does not prove delivery to an inbox; the controlled test does.
 SendGrid handles outgoing mail. The dedicated **notify.aicaseleads.com**
 subdomain’s **Null MX (0 .)** record tells sending servers that it accepts no
 incoming email. Verify a controlled reply bounces before claiming this is
-working. No Google mailbox, alias, or Admin changes are needed. Recruiter
+working. Also test a message sent directly to **no-reply@aicaseleads.com**
+against the existing company rejection rule; it must not reach a staff inbox.
+No new Google mailbox or sending alias is needed. Recruiter
 conversations can receive replies in the recruiter’s own Gmail.
 
 The app’s configured sending budget appears in the setup card. The initial

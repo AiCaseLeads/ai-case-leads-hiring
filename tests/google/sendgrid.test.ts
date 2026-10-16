@@ -1,10 +1,16 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { SendGridError, SendGridMail, sendgridApiKeyFingerprint, sendgridMessageIdentity, TRANSACTIONAL_MAIL_NAME, TRANSACTIONAL_MAIL_SENDER, type SendGridMailOptions } from "../../lib/email/sendgrid";
+import { AUTOMATIC_REPLY_TO, AUTOMATIC_REPLY_DOMAIN, AUTOMATIC_MAIL_DOMAIN } from '../../lib/email/contracts';
 import type { MailInput } from "../../lib/google/gmail";
 
 const apiKey = "fixture-sendgrid-key-do-not-log", now = Date.parse("2026-10-16T12:00:00Z");
-const mail: MailInput = { to: "Candidate@example.com", subject: "Application received — Zoë", body: "Hello Zoë,\nWe received <your> application & résumé.", messageId: "application-123-confirmation@jobs.aicaseleads.com", sender: TRANSACTIONAL_MAIL_SENDER, replyTo: [TRANSACTIONAL_MAIL_SENDER], candidateMail: true, candidateAccount: "mariam@aicaseleads.com" };
+const mail: MailInput = { to: "Candidate@example.com", subject: "Application received — Zoë", body: "Hello Zoë,\nWe received <your> application & résumé.", messageId: "application-123-confirmation@jobs.aicaseleads.com", sender: TRANSACTIONAL_MAIL_SENDER, replyTo: [AUTOMATIC_REPLY_TO], candidateMail: true, candidateAccount: "mariam@aicaseleads.com" };
+test("automatic From uses the deliverable authenticated root, distinct from the Null MX Reply-To", () => {
+  assert.equal(TRANSACTIONAL_MAIL_SENDER, "no-reply@aicaseleads.com");
+  assert.notEqual(AUTOMATIC_MAIL_DOMAIN, AUTOMATIC_REPLY_DOMAIN);
+  assert.equal(AUTOMATIC_REPLY_TO, "no-reply@notify.aicaseleads.com");
+});
 function response(value: unknown, status = 200, headers: Record<string, string> = {}): Response { return new Response(JSON.stringify(value), { status, headers: { "Content-Type": "application/json", ...headers } }); }
 function accepted(id = "provider-123"): Response { return new Response(null, { status: 202, headers: { "x-message-id": id } }); }
 type ProviderCall = (path: string, init: RequestInit, url: URL) => Promise<Response> | Response;
@@ -15,7 +21,7 @@ function fixture(call: ProviderCall = () => accepted(), options: Partial<SendGri
     assert.equal(url.origin, "https://api.sendgrid.com"); assert.equal(init.redirect, "manual");
     assert.equal(new Headers(init.headers).get("Authorization"), `Bearer ${apiKey}`);
     assert.equal(new Headers(init.headers).get("api-key"), null); assert.ok(init.signal instanceof AbortSignal);
-    if (url.pathname === "/v3/whitelabel/domains") return response([{ domain: "notify.aicaseleads.com", valid: true, user_id: 123, username: "private-admin@example.com" }]);
+    if (url.pathname === "/v3/whitelabel/domains") return response([{ domain: "aicaseleads.com", valid: true, user_id: 123, username: "private-admin@example.com" }]);
     return call(url.pathname, init, url);
   };
   return { client: new SendGridMail({ apiKey, fetcher, now: () => now, cacheReadiness: false, ...options }), calls };
@@ -31,8 +37,8 @@ test("SendGrid uses one fixed branded no-reply envelope and no private account, 
   const request = calls.find(call => call.init.method === "POST")!;
   assert.equal(request.url.pathname, "/v3/mail/send");
   const payload = JSON.parse(String(request.init.body));
-  assert.deepEqual(payload.from, { email: "no-reply@notify.aicaseleads.com", name: TRANSACTIONAL_MAIL_NAME });
-  assert.deepEqual(payload.reply_to, { email: TRANSACTIONAL_MAIL_SENDER, name: TRANSACTIONAL_MAIL_NAME });
+  assert.deepEqual(payload.from, { email: "no-reply@aicaseleads.com", name: TRANSACTIONAL_MAIL_NAME });
+  assert.deepEqual(payload.reply_to, { email: AUTOMATIC_REPLY_TO, name: TRANSACTIONAL_MAIL_NAME });
   assert.deepEqual(payload.personalizations, [{ to: [{ email: "candidate@example.com" }], custom_args: { aicl_message: identity.tag } }]);
   assert.deepEqual(payload.content[0], { type: "text/plain", value: mail.body });
   assert.ok(payload.content[1].value.includes("&lt;your&gt; application &amp; résumé"));
@@ -53,7 +59,7 @@ test("message identity is normalized, deterministic and has no invented provider
 
 test("readiness returns sanitized exact authenticated domain/account only", async () => {
   const { client, calls } = fixture();
-  assert.deepEqual(await client.verifySender(), { sender: TRANSACTIONAL_MAIL_SENDER, domain: "notify.aicaseleads.com", verified: true, accountId: "sendgrid-user-123" });
+  assert.deepEqual(await client.verifySender(), { sender: TRANSACTIONAL_MAIL_SENDER, domain: "aicaseleads.com", verified: true, accountId: "sendgrid-user-123" });
   assert.equal(calls[0].url.pathname, "/v3/whitelabel/domains"); assert.equal(calls[0].url.searchParams.get("limit"), "100");
 });
 
@@ -67,9 +73,9 @@ test("credential fingerprint is stable, key rotation differs, malformed/missing 
 
 for (const [name, data] of [
   ["no authenticated domains", []],
-  ["parent domain alone", [{ domain: "aicaseleads.com", valid: true }]],
-  ["deceptive domain", [{ domain: "notify.aicaseleads.com.evil.com", valid: true }]],
-  ["unverified exact domain", [{ domain: "notify.aicaseleads.com", valid: false }]],
+  ["Null MX reply domain alone", [{ domain: "notify.aicaseleads.com", valid: true }]],
+  ["deceptive domain", [{ domain: "aicaseleads.com.evil.com", valid: true }]],
+  ["unverified exact domain", [{ domain: "aicaseleads.com", valid: false }]],
 ] as const) test(`readiness rejects ${name} before any send`, async () => {
   let sends = 0;
   const fetcher: typeof fetch = async (_input, init = {}) => { if (init.method === "POST") sends++; return response(data); };
@@ -80,7 +86,7 @@ test("domain readiness paginates and bounds malformed/oversized lists", async ()
   const offsets: string[] = [];
   const fetcher: typeof fetch = async input => {
     const url = new URL(String(input)); offsets.push(url.searchParams.get("offset")!);
-    return response(url.searchParams.get("offset") === "0" ? Array.from({ length: 100 }, () => ({ domain: "elsewhere.example", valid: true })) : [{ domain: "notify.aicaseleads.com", valid: true }]);
+    return response(url.searchParams.get("offset") === "0" ? Array.from({ length: 100 }, () => ({ domain: "elsewhere.example", valid: true })) : [{ domain: "aicaseleads.com", valid: true }]);
   };
   assert.equal((await new SendGridMail({ apiKey, fetcher, cacheReadiness: false }).verifySender()).verified, true); assert.deepEqual(offsets, ["0", "100"]);
   const bad = new SendGridMail({ apiKey, fetcher: async () => response({ domains: [] }), cacheReadiness: false });
@@ -92,7 +98,7 @@ test("domain readiness paginates and bounds malformed/oversized lists", async ()
 function sharedFixture(key: string) {
   let checks = 0, valid = true, postStatus = 202;
   const fetcher: typeof fetch = async input => {
-    if (new URL(String(input)).pathname === "/v3/whitelabel/domains") { checks++; await new Promise(resolve => setTimeout(resolve, 5)); return response([{ domain: "notify.aicaseleads.com", valid, user_id: 7 }]); }
+    if (new URL(String(input)).pathname === "/v3/whitelabel/domains") { checks++; await new Promise(resolve => setTimeout(resolve, 5)); return response([{ domain: "aicaseleads.com", valid, user_id: 7 }]); }
     return postStatus === 202 ? accepted() : response({ errors: [{ message: "Permission denied" }] }, postStatus);
   };
   return { client: (options: Partial<SendGridMailOptions> = {}) => new SendGridMail({ apiKey: key, fetcher, now: () => now, ...options }), count: () => checks, setValid: (value: boolean) => { valid = value; }, rejectSends: () => { postStatus = 401; } };
@@ -127,6 +133,8 @@ test("private addresses and malformed envelopes fail before any external request
   for (const [changed, code] of [
     [{ sender: "sales@aicaseleads.com" }, "transactional_mail_sender_not_allowed"],
     [{ sender: "mariam@aicaseleads.com" }, "transactional_mail_sender_not_allowed"],
+    [{ sender: AUTOMATIC_REPLY_TO }, "transactional_mail_sender_not_allowed"],
+    [{ replyTo: [TRANSACTIONAL_MAIL_SENDER] }, "transactional_mail_reply_to_not_allowed"],
     [{ replyTo: ["mariam@aicaseleads.com"] }, "transactional_mail_reply_to_not_allowed"],
     [{ replyTo: [TRANSACTIONAL_MAIL_SENDER, "mariam@aicaseleads.com"] }, "transactional_mail_reply_to_not_allowed"],
     [{ to: "victim@example.com\r\nBCC:other@example.com" }, "transactional_mail_recipient_invalid"],
