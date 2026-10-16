@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import { createStore, jobInput, applicationInput, MANAGER } from './fixtures';
 import { applicationTrash, changeApplicationTrash } from '../../lib/hub/application-lifecycle';
 import { changeJobLifecycle } from '../../lib/hub/job-lifecycle';
+import { processHubTasks } from '../../lib/task-runner';
+import type { GoogleWorkspace } from '../../lib/google/workspace';
 
 test('concurrent Trash and Restore each have one winner and record one history event', async () => {
   const { store, database } = createStore();
@@ -95,5 +97,36 @@ test('a job paused between validation and application commit rejects acceptance 
     for (const table of ['hub_applications', 'hub_tasks', 'hub_communications', 'hub_history']) {
       assert.equal(database.prepare(`SELECT COUNT(*) n FROM ${table}`).get()!.n, 0, table);
     }
+  } finally { database.close(); }
+});
+
+test('the worker suppresses stale repaired Gmail and Calendar work for Trash while archiving retained records', async () => {
+  const { store, database, db } = createStore();
+  try {
+    const job = await store.saveJob(jobInput()), app = await store.acceptApplication(applicationInput(job.id));
+    await changeApplicationTrash(store, app.id, 'trash', 1, MANAGER);
+    // Simulate a delayed repair/recovery enqueue that arrives after deletion.
+    database.prepare("UPDATE hub_tasks SET status='pending',run_after=0 WHERE application_id=? AND kind='gmail'").run(app.id);
+    await store.taskStatement('calendar:synthetic-stale-task', app.id, 'calendar', { operation: 'create', interviewId: 'synthetic-old-interview', revision: 1 }, 0).run();
+    let archives = 0;
+    const google = {
+      async archiveApplication(detail: { id: string; revision: number }) {
+        archives++;
+        assert.equal(detail.id, app.id);
+        return { folderId: 'synthetic-folder', folderUrl: 'https://drive.google.com/drive/folders/synthetic-folder', archivedRevision: detail.revision, archiveFormat: 'pdf-v1' };
+      },
+      async sendMail() { assert.fail('Trashed applicants must not receive stale email.'); },
+      async createInterview() { assert.fail('Trashed applicants must not receive stale calendar events.'); },
+      async updateInterview() { assert.fail('Trashed applicants must not receive stale calendar updates.'); },
+    } as unknown as GoogleWorkspace;
+    await processHubTasks(store, db, {} as R2Bucket, google, 5, [], async () => null);
+    assert.ok(archives >= 1, 'Files/hiring records remain eligible for durable archival.');
+    const tasks = database.prepare("SELECT kind,status,result_json FROM hub_tasks WHERE application_id=? AND kind IN ('gmail','calendar')").all(app.id);
+    assert.equal(tasks.length, 2);
+    for (const task of tasks) {
+      assert.equal(task.status, 'done');
+      assert.equal(JSON.parse(String(task.result_json)).applicationTrashed, true);
+    }
+    assert.equal((await store.getApplication(app.id)).trashed, true);
   } finally { database.close(); }
 });
