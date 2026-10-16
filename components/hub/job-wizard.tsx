@@ -7,7 +7,7 @@ import { hasDescriptionText } from "@/lib/job-description";
 import { DescriptionEditor } from "./description-editor";
 import { SafeDescription } from "../careers/safe-description";
 import { useEffect, useRef, useState } from "react";
-import { ArrowLeft, Plus, Trash2 } from "lucide-react";
+import { ArrowLeft, ArrowUp, ArrowDown, Plus, Trash2, Copy, FileText, ClipboardList } from "lucide-react";
 import { hubRequest, useHubMutation } from "./api";
 import { Badge, Feedback, Field, ResourceState } from "./shared";
 import { JobTeamFields, useJobTeam } from "./job-team";
@@ -186,63 +186,23 @@ function StartChoices({
         <div>
           <h2>Create a job</h2>
           <p>
-            Choose a starting point. You’ll review each step before publishing.
+            Start with what you already have. You can save and finish later.
           </p>
         </div>
       </div>
-      <div className="hub-job-grid">
-        <article className="hub-card">
-          <h3>Start blank</h3>
-          <p>Add your own job details and questions.</p>
-          <button
-            className="hub-button"
-            onClick={() => choose({ kind: "blank" })}
-          >
-            Create blank job
-          </button>
-        </article>
-        <article className="hub-card">
-          <h3>Duplicate a job</h3>
-          <p>
-            Reuse an existing posting. Its applicants stay with the original.
-          </p>
-          <button
-            className="hub-button secondary"
-            disabled={!jobs.length}
-            onClick={() => {
-              setMode("duplicate");
-              setPicked("");
-            }}
-          >
-            Choose existing job
-          </button>
-        </article>
-        <article className="hub-card">
-          <h3>Use a saved template</h3>
-          <p>Start with a reusable description, questions and scorecard.</p>
-          <button
-            className="hub-button secondary"
-            onClick={() => {
-              setMode("template");
-              setPicked("");
-            }}
-          >
-            Choose template
-          </button>
-        </article>
-        <article className="hub-card">
-          <h3>From a hiring request</h3>
-          <p>Fill out a short request or turn a saved request into a job.</p>
-          <button
-            className="hub-button secondary"
-            onClick={() => {
-              setMode("request");
-              setPicked("");
-            }}
-          >
-            Open hiring requests
-          </button>
-        </article>
+      <div className="hub-start-options" aria-label="Job starting point">
+        <button className="hub-start-option" aria-label="Create blank job" onClick={() => choose({ kind: "blank" })}>
+          <Plus size={20} /><span><strong>Start from scratch</strong><small>Add a title, description and questions.</small></span>
+        </button>
+        <button className="hub-start-option" aria-label="Choose existing job" disabled={!jobs.length} onClick={() => { setMode("duplicate"); setPicked(""); }}>
+          <Copy size={20} /><span><strong>Duplicate an existing job</strong><small>Reuse its setup. Previous applicants stay saved.</small></span>
+        </button>
+        <button className="hub-start-option" aria-label="Choose template" onClick={() => { setMode("template"); setPicked(""); }}>
+          <FileText size={20} /><span><strong>Use a template</strong><small>Start with a saved job setup.</small></span>
+        </button>
+        <button className="hub-start-option" aria-label="Open hiring requests" onClick={() => { setMode("request"); setPicked(""); }}>
+          <ClipboardList size={20} /><span><strong>Use a hiring request</strong><small>Turn an internal request into a posting.</small></span>
+        </button>
       </div>
       <Feedback error={mutation.error} />
       {mode === "duplicate" && (
@@ -930,9 +890,9 @@ function Editor({
             {
               [
                 "Job details",
-                "Application form",
-                "AI review",
-                "Review and publish",
+                "Application questions",
+                "Review setup",
+                "Publish",
               ][step]
             }
           </p>
@@ -947,14 +907,8 @@ function Editor({
       <ol
         className="hub-wizard-steps"
         aria-label="Job setup progress"
-        style={{
-          display: "flex",
-          flexWrap: "wrap",
-          gap: "1rem",
-          paddingLeft: "1.5rem",
-        }}
       >
-        {["Details", "Application", "AI review", "Publish"].map((label, i) => (
+        {["Job details", "Application questions", "Review setup", "Publish"].map((label, i) => (
           <li key={label} aria-current={i === step ? "step" : undefined}>
             <button
               type="button"
@@ -1038,7 +992,7 @@ function Editor({
               />
               <Field
                 label="Job description"
-                hint="Use approved responsibilities and requirements. You can save a draft before this is ready."
+                hint="Describe responsibilities and requirements. These also guide AI matching."
               >
                 <DescriptionEditor
                   data-field-control
@@ -1075,53 +1029,32 @@ function Editor({
                 </Field>
               </details>
             </section>
-            <section className="hub-card hub-job-team-panel">
-              <h3>Who is hiring for this job?</h3>
-              <ResourceState
-                loading={hiringTeam.resource.loading}
-                error={hiringTeam.resource.error}
-                retry={() => void hiringTeam.resource.reload()}
-              />
-              {hiringTeam.resource.data && hiringTeam.draft && (
-                <JobTeamFields
-                  data={hiringTeam.resource.data}
-                  value={hiringTeam.draft}
-                  change={(value) => {
-                    hiringTeam.setDraft(value);
 
-                  }}
-                />
-              )}
-              {hiringTeam.resource.error && (
-                <p className="hub-muted">
-                  Your job details are preserved. You can save the job and
-                  configure its hiring team from Jobs later.
-                </p>
-              )}
-            </section>
           </>
         )}
         {step === 1 && (
           <section className="hub-card">
             <h3>What should applicants send?</h3>
-            <p>
-              Contact details stay at the top: first and last name, email, and phone with country code are required. Use Move up or Move down to arrange every question below them.
-            </p>
+            <div className="hub-required-contacts">
+              <strong>Contact details included</strong>
+              <span>First name · Last name · Email · Phone number</span>
+              <span className="hub-muted">Required on every application.</span>
+            </div>
             {fields.some(field => field.type === "Phone" && !contactPaths.includes(field.path)) && <p className="hub-muted">This form also has an extra phone question. The required Phone number field already collects it; you can remove the extra question below if it is a duplicate. Existing application answers are kept.</p>}
             <div className="hub-editor-list">
-              {fields.map((f, i) => (
+              {fields.map((f, i) => contactPaths.includes(f.path) ? null : (
                 <article className="hub-question" key={f.path}>
                   <div className="hub-question-heading">
                     <strong>{f.title || "New question"}</strong>
                     <Badge>{f.required ? "Required" : "Optional"}</Badge>
                     {!contactPaths.includes(f.path) && (
                       <>
-                        <button type="button" className="hub-button secondary" aria-label={`Move ${f.title || "new question"} up`} disabled={i <= contactPaths.length} onClick={() => {
+                        <button type="button" className="hub-icon-button" title="Move question up" aria-label={`Move ${f.title || "new question"} up`} disabled={i <= contactPaths.length} onClick={() => {
                           setFields(current => { const next = [...current]; [next[i - 1], next[i]] = [next[i], next[i - 1]]; return next; });
-                        }}>Move up</button>
-                        <button type="button" className="hub-button secondary" aria-label={`Move ${f.title || "new question"} down`} disabled={i === fields.length - 1} onClick={() => {
+                        }}><ArrowUp size={16} /></button>
+                        <button type="button" className="hub-icon-button" title="Move question down" aria-label={`Move ${f.title || "new question"} down`} disabled={i === fields.length - 1} onClick={() => {
                           setFields(current => { const next = [...current]; [next[i], next[i + 1]] = [next[i + 1], next[i]]; return next; });
-                        }}>Move down</button>
+                        }}><ArrowDown size={16} /></button>
                         <button
                           type="button"
                           className="hub-icon-button"
@@ -1148,7 +1081,7 @@ function Editor({
                   ) : (
                     <>
                       <div className="hub-form-grid">
-                        <Field label={`Question ${i + 1} label`}>
+                        <Field label={`Question ${i - contactPaths.length + 1} label`}>
                           <input
                             required
                             maxLength={160}
@@ -1158,7 +1091,7 @@ function Editor({
                             }
                           />
                         </Field>
-                        <Field label={`Question ${i + 1} requirement`}>
+                        <Field label={`Question ${i - contactPaths.length + 1} requirement`}>
                           <select
                             value={f.required ? "required" : "optional"}
                             disabled={
@@ -1189,7 +1122,7 @@ function Editor({
                         </Field>
                       </div>
                       <div>
-                        <Field label={`Question ${i + 1} answer format`}>
+                        <Field label={`Question ${i - contactPaths.length + 1} answer format`}>
                           <select
                             value={f.type}
                             disabled={rules.some((r) => r.fieldPath === f.path)}
@@ -1216,7 +1149,7 @@ function Editor({
                         <details className="hub-question-instructions">
                           <summary>{f.description ? "Edit instructions (optional)" : "Add instructions (optional)"}</summary>
                         <Field
-                          label={`Question ${i + 1} instructions (optional)`}
+                          label={`Question ${i - contactPaths.length + 1} instructions (optional)`}
                         >
                           <textarea
                             rows={2}
@@ -1241,7 +1174,7 @@ function Editor({
                       {["ValueSelect", "MultiValueSelect"].includes(f.type) && (
                         <ChoiceInput
                           key={f.path + f.type}
-                          label={`Question ${i + 1} choices`}
+                          label={`Question ${i - contactPaths.length + 1} choices`}
                           options={f.options || []}
                           change={(options) => updateField(i, { options })}
                         />
@@ -1330,28 +1263,44 @@ function Editor({
         {step === 2 && (
           <section className="hub-card">
             <h3>Find the strongest matches for this job</h3>
-            <p>
-              AI compares each applicant’s resume and application answers with the
-              job-related requirements in your description. You do not need to build
-              a scorecard.
-            </p>
+            <p>Compare resumes and application answers against this job’s requirements.</p>
             <label className="hub-checkbox hub-ai-match-choice">
               <input type="checkbox" checked={aiMatchEnabled}
                 onChange={(e) => setAiMatchEnabled(e.target.checked)} />
-              <span><strong>Use AI to score and rank applicants for this job</strong>
-                <span className="hub-ai-match-help">Allow OpenRouter and OpenAI to review résumé text and answers for this job.</span>
+              <span><strong>Rank applicants with AI</strong>
+                <span className="hub-ai-match-help">A match score, a short summary, strengths and gaps for each applicant.</span>
               </span>
             </label>
-            <ul className="hub-ai-match-explainer">
-              <li>See a match score, supporting evidence and missing information.</li>
-              <li>Compare applicants within this job, with the strongest matches first.</li>
-              <li>Your team decides who moves forward. AI scores do not reject applicants.</li>
-            </ul>
-            <p className="hub-muted">
-              AI review needs the company’s AI connection in Settings. Scores appear
-              after processing; unreadable or missing evidence is flagged for review.
-              Minimum-answer rejection rules from the Application step work separately.
-            </p>
+            <p className="hub-muted">Your team chooses who moves forward. Minimum-answer screening rules work separately.</p>
+            <details className="hub-review-explainer">
+              <summary>How AI matching works</summary>
+              <p>OpenAI, connected through OpenRouter, compares resume text and answers with the job description. Scores appear after processing. Missing or unreadable information is clearly marked. AI does not reject applicants.</p>
+              <p>The company’s AI connection is managed in Settings.</p>
+            </details>
+            <details className="hub-review-team">
+              <summary>Hiring team and notifications <span className="hub-muted">{hiringTeam.draft?.members.length ? `· ${hiringTeam.draft.members.length} selected` : "· no team selected"}</span></summary>
+              <ResourceState
+                loading={hiringTeam.resource.loading}
+                error={hiringTeam.resource.error}
+                retry={() => void hiringTeam.resource.reload()}
+              />
+              {hiringTeam.resource.data && hiringTeam.draft && (
+                <JobTeamFields
+                  data={hiringTeam.resource.data}
+                  value={hiringTeam.draft}
+                  change={(value) => {
+                    hiringTeam.setDraft(value);
+
+                  }}
+                />
+              )}
+              {hiringTeam.resource.error && (
+                <p className="hub-muted">
+                  Your job details are preserved. You can save the job and
+                  configure its hiring team from Jobs later.
+                </p>
+              )}
+            </details>
             <details className="hub-optional-scorecard" open={choice === "new" ? true : undefined}>
               <summary>Optional: manual reviewer scorecard</summary>
               <p className="hub-muted">For teams that also want to record interview or portfolio ratings. This does not control the AI match score.</p>
@@ -1553,22 +1502,18 @@ function Editor({
                   ? hiringTeam.draft.members.join(", ")
                   : "No team selected"}
               </p>
-              <p>Automated applicant emails use the no-reply address. Recruiter conversations use the connected recruiter’s email.</p>
               <p>
                 {fields.filter((f) => f.required).length} required fields ·{" "}
                 {fields.filter((f) => !f.required).length} optional fields
               </p>
-              <ul>
-                {fields.map((f) => (
-                  <li key={f.path}>
-                    {f.title} — {f.required ? "Required" : "Optional"}
-                  </li>
-                ))}
-              </ul>
+              <details>
+                <summary>Preview application questions</summary>
+                <ul>{fields.map((f) => <li key={f.path}>{f.title} — {f.required ? "Required" : "Optional"}</li>)}</ul>
+              </details>
               <p>
                 AI applicant matching: {aiMatchEnabled ? "Enabled after saving" : "Off"}
               </p>
-              <p>
+              <p hidden={choice === "none"}>
                 Optional reviewer scorecard:{" "}
                 {choice === "none"
                   ? "None"
@@ -1584,19 +1529,17 @@ function Editor({
                   html={description || "Add a description before publishing."}
                 />
               </details>
-              <p className="hub-muted">
-                A new posting keeps a separate set of applicants automatically.
-                Earlier postings and files stay available; no batch names are
-                needed.
-              </p>
+              <p className="hub-muted">Previous applicants remain saved when you duplicate or close a job.</p>
             </section>
             <section className="hub-card">
-              <h3>Screening decisions</h3>
+              <h3>Automatic screening</h3>
               <p>
                 {autoReject
-                  ? "Automatic rejection is on. Applicants with complete screening answers who fail an enabled requirement are rejected and receive the rejection email. Missing optional screening answers always go to human review."
-                  : "Automatic rejection is off. Every application goes to recruiter review."}
+                  ? "On — complete answers below your minimums receive the rejection email. Missing screening answers stay in the recruiter queue."
+                  : "Off — applicants enter your New queue for the team to review."}
               </p>
+              <details>
+              <summary>View screening requirements ({rules.filter((r) => r.enabled).length})</summary>
               <ul>
                 {rules
                   .filter((r) => r.enabled)
@@ -1620,6 +1563,7 @@ function Editor({
                     </li>
                   ))}
               </ul>
+              </details>
               <button
                 type="button"
                 className="hub-text-button"
@@ -1649,14 +1593,7 @@ function Editor({
               Back
             </button>
           )}
-          <button
-            type="button"
-            className="hub-button secondary"
-            disabled={recovery.busy}
-            onClick={() => void recovery.save()}
-          >
-            Save progress
-          </button>
+
           {job?.status !== "open" && (
             <button
               type="button"

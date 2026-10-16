@@ -225,7 +225,7 @@ test('AI review is simple by default, preserves manual bindings and saves explic
  const {page,writes}=await setup(t);await edit(page);await next(page);await next(page);
  await page.getByRole('heading',{name:'Find the strongest matches for this job'}).waitFor();
  assert.equal(await page.getByLabel('Review scorecard',{exact:true}).isVisible(),false);
- await page.getByRole('checkbox',{name:'Use AI to score and rank applicants for this job'}).check();
+ await page.getByRole('checkbox',{name:/Rank applicants with AI/}).check();
  await save(page);assert.equal(writes[0].job.aiMatchEnabled,true);assert.deepEqual(writes[0].scorecard,scores.bindings[prior.id]);
 });
 test('collapsed scorecard fields do not create blank scroll space at mobile or desktop widths',async t=>{

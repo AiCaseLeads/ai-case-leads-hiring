@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-import { Plus, Copy } from "lucide-react";
+import { Plus, Copy, ChevronDown, ExternalLink, Users, Files, Settings2 } from "lucide-react";
 import { useHubMutation, useHubResource } from "./api";
 import { Badge, EmptyState, Feedback, Field, ResourceState } from "./shared";
 import type { HubJob } from "./types";
@@ -91,7 +91,7 @@ export function Jobs({
     }
     return url;
   }
-  function openEditor(job?: HubJob, chosen?: JobStart) {
+  function openEditor(job?: HubJob, chosen?: JobStart, targetStep = 0) {
     currentSession.current = crypto.randomUUID();
     setEditorSession(currentSession.current);
     setEditing(job || null);
@@ -99,11 +99,9 @@ export function Jobs({
     setStart(chosen || null);
     setChoosingStart(!job && !chosen);
     setEditorVisible(true);
-    window.history.pushState(
-      { aiclHub: true },
-      "",
-      editorUrl(job?.id || "new", chosen),
-    );
+    const url = editorUrl(job?.id || "new", chosen);
+    if (job && targetStep > 0) url.searchParams.set("jobStep", String(targetStep));
+    window.history.pushState({ aiclHub: true }, "", url);
   }
   function chooseStart(chosen: JobStart) {
     const identity = (value: JobStart) =>
@@ -245,12 +243,8 @@ export function Jobs({
       <div hidden={!editorVisible}>{editorVisible ? editor : null}</div>
       <section hidden={editorVisible} aria-labelledby="jobs-title">
         {!!drafts.data?.length && (
-          <section className="hub-card" aria-label="Your saved job progress">
-            <h3>Your saved job progress</h3>
-            <p>
-              Private drafts saved automatically. Published jobs stay unchanged
-              until you explicitly save them.
-            </p>
+          <section className="hub-saved-drafts" aria-label="Your saved job progress">
+            <h3>Continue a saved draft <span className="hub-muted">({drafts.data.length})</span></h3>
             {drafts.data.map((draft) => (
               <div key={draft.key} className="hub-inline">
                 <strong>{draft.title || "Untitled job"}</strong>
@@ -296,10 +290,7 @@ export function Jobs({
           <div>
             <p className="hub-kicker">HIRING</p>
             <h2 id="jobs-title">Jobs</h2>
-            <p>
-              Create a posting, review its applicants, and close it when hiring
-              is finished.
-            </p>
+            <p>Manage your job postings and their applicants.</p>
           </div>
           {admin && (
             <button
@@ -335,7 +326,7 @@ export function Jobs({
             void scores.reload();
           }}
         />
-        <div className="hub-card hub-form-grid">
+        <div className="hub-job-filters hub-form-grid">
           <Field label="Search jobs">
             <input
               value={search}
@@ -343,110 +334,86 @@ export function Jobs({
               placeholder="Job title or location"
             />
           </Field>
-          <Field label="Show postings">
+          <Field label="Job status">
             <select value={status} onChange={(e) => setStatus(e.target.value)}>
               <option value="active">Open jobs and drafts</option>
               <option value="open">Open jobs</option>
               <option value="draft">Drafts</option>
-              <option value="closed">Previous postings</option>
-              <option value="all">All postings</option>
+              <option value="closed">Closed jobs</option>
+              <option value="all">All jobs</option>
             </select>
           </Field>
         </div>
-        <p className="hub-muted">
-          Each posting keeps its own applicants and files. Hiring again?
-          Duplicate a job to create a fresh posting. Previous applicants stay
-          saved.
-        </p>
         {!jobs.loading &&
           !jobs.error &&
           (filtered.length ? (
-            <div className="hub-job-grid">
+            <div className="hub-job-list">
               {filtered.map((j) => (
-                <article className="hub-card hub-role-card" key={j.id}>
-                  <Badge tone={j.status === "open" ? "success" : "neutral"}>
-                    {j.status === "open"
-                      ? "Open"
-                      : j.status === "closed"
-                        ? "Closed"
-                        : "Draft"}
-                  </Badge>
-                  <h3>{j.title}</h3>
-                  <p>{j.location || j.archiveCountry || "Location not set"}</p>
-                  <p className="hub-muted">
-                    {j.fields.length} application fields ·{" "}
-                    {scores.data?.bindings[j.id]
-                      ? "Scorecard assigned"
-                      : "Manual review"}
-                  </p>
-                  <p className="hub-muted">/jobs/{j.slug}</p>
-                  <div className="hub-button-row">
-                    <button
+                <article className="hub-job-row" key={j.id}>
+                  <div className="hub-job-info">
+                    <div className="hub-job-title-row">
+                      <h3>{j.title}</h3>
+                      <Badge tone={j.status === "open" ? "success" : "neutral"}>
+                        {j.status === "open" ? "Open" : j.status === "closed" ? "Closed" : "Draft"}
+                      </Badge>
+                    </div>
+                    <p className="hub-muted">
+                      {j.location || j.archiveCountry || "Location not set"}
+                      {j.department ? ` · ${j.department}` : ""}
+                      {j.aiMatchEnabled ? " · AI matching on" : ""}
+                    </p>
+                  </div>
+                  <div className="hub-job-actions">
+                    <a
                       className="hub-button secondary"
-                      aria-expanded={teamJob?.id === j.id}
-                      onClick={() =>
-                        setTeamJob(teamJob?.id === j.id ? null : j)
-                      }
-                    >
-                      Hiring team & emails
-                    </button>
+                      href={"/team?view=applications&jobId=" + encodeURIComponent(j.id)}
+                      aria-label={`View applicants for ${j.title}`}
+                    >View applicants</a>
                     {admin && (
-                      <button
-                        className="hub-button secondary"
-                        disabled={mutation.busy}
-                        onClick={() => openEditor(j)}
-                      >
+                      <button className="hub-text-button" disabled={mutation.busy} onClick={() => openEditor(j)}>
                         Edit job
                       </button>
                     )}
+                    <details className="hub-job-menu" onKeyDown={(event) => {
+                      if (event.key !== "Escape") return;
+                      event.preventDefault();
+                      event.currentTarget.removeAttribute("open");
+                      event.currentTarget.querySelector("summary")?.focus();
+                    }}>
+                      <summary aria-label={`Actions for ${j.title}`}>Actions <ChevronDown size={14} /></summary>
+                      <div className="hub-job-menu-items">
+                        <button
+                          className="hub-text-button"
+                          disabled={mutation.busy}
+                          aria-expanded={teamJob?.id === j.id}
+                          onClick={(event) => {
+                            event.currentTarget.closest("details")?.removeAttribute("open");
+                            setTeamJob(teamJob?.id === j.id ? null : j);
+                          }}
+                        ><Users size={15} /> Hiring team & emails</button>
+                        {admin && <>
+                          {j.status !== "draft" && <button className="hub-text-button" disabled={mutation.busy} onClick={() => openEditor(j, undefined, 3)}>
+                            <Settings2 size={15} /> Posting status
+                          </button>}
+                          <button className="hub-text-button" disabled={mutation.busy} onClick={() => openEditor(undefined, { kind: "duplicate", source: j })}>
+                            <Copy size={15} /> Duplicate job
+                          </button>
+                          <button className="hub-text-button" disabled={mutation.busy} onClick={(event) => {
+                            event.currentTarget.closest("details")?.removeAttribute("open");
+                            setSuccess("");
+                            mutation.clear();
+                            setTemplateJob(j);
+                            setTemplateName(j.title);
+                          }}><Files size={15} /> Save as template</button>
+                        </>}
+                        {j.status === "open" && (
+                          <a className="hub-text-button" href={"/jobs/" + encodeURIComponent(j.slug)} target="_blank" rel="noopener noreferrer">
+                            <ExternalLink size={15} /> View public job
+                          </a>
+                        )}
+                      </div>
+                    </details>
                   </div>
-                  {admin && (
-                    <>
-                      <button
-                        className="hub-text-button"
-                        disabled={mutation.busy}
-                        onClick={() => {
-                          openEditor(undefined, {
-                            kind: "duplicate",
-                            source: j,
-                          });
-                        }}
-                      >
-                        <Copy size={14} /> Duplicate job
-                      </button>
-                      <button
-                        className="hub-text-button"
-                        disabled={mutation.busy}
-                        onClick={() => {
-                          setSuccess("");
-                          mutation.clear();
-                          setTemplateJob(j);
-                          setTemplateName(j.title);
-                        }}
-                      >
-                        Save as template
-                      </button>
-                    </>
-                  )}
-                  <a
-                    className="hub-text-button"
-                    href={
-                      "/team?view=applications&jobId=" +
-                      encodeURIComponent(j.id)
-                    }
-                  >
-                    View applicants
-                  </a>
-                  {j.status === "open" && (
-                    <a
-                      className="hub-text-button"
-                      href={"/jobs/" + encodeURIComponent(j.slug)}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                    >
-                      View public job
-                    </a>
-                  )}
                 </article>
               ))}
             </div>
@@ -486,8 +453,8 @@ export function Jobs({
           >
             <h3>Save a reusable job template</h3>
             <p>
-              This copies the description, application questions, location and
-              assigned scorecard. Applicants are never copied.
+              Reuse this job’s description, questions and review settings next time.
+              Its applicants stay with the original posting.
             </p>
             <fieldset
               disabled={mutation.busy}

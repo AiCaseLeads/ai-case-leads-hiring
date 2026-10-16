@@ -229,7 +229,7 @@ test('formatted job survives save, edit, duplicate and applicant preview without
  assert.match(writes[0].job.descriptionHtml,/Updated/);assert.match(writes[0].job.descriptionHtml,/<strong>great<\/strong>/);
  await page.reload();await edit(page);assert.equal(await page.getByRole('textbox',{name:'Job description',exact:true}).locator('ol li').count(),2);
  await page.getByRole('button',{name:'Back to jobs',exact:true}).click();
- await page.getByRole('button',{name:'Duplicate job',exact:true}).click();
+ await page.getByLabel(`Actions for ${prior.title}`,{exact:true}).click();await page.getByRole('button',{name:'Duplicate job',exact:true}).click();
  assert.equal(await page.getByRole('textbox',{name:'Job description',exact:true}).locator('strong').textContent(),'great');
  await page.goto(new URL('/?public=1',page.url()).href);await page.getByRole('heading',{name:prior.title,exact:true}).waitFor();
  assert.equal(await page.locator('.job-description strong').textContent(),'great');assert.equal(await page.locator('.job-description ol li').count(),2);assert.match(await page.locator('.job-description').innerText(),/Updated/);

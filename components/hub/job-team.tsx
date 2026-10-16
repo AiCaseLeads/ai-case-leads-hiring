@@ -46,7 +46,7 @@ export function JobTeamFields({ data, value, change, readOnly = false }: {
     change({ ...value, members, replyTo: value.replyTo && members.includes(value.replyTo) ? value.replyTo : null });
   }
   return <div className="hub-job-team-fields">
-    <p>Select everyone who should receive alerts for this posting. Different jobs can have different teams.</p>
+    <p>Assign the recruiters for this job. Only the selected team receives its email alerts.</p>
     <fieldset disabled={readOnly} className="hub-team-member-picker">
       <legend>Recruiters for this job</legend>
       {data.staff.map(person => <label className="hub-checkbox" key={person.email}>
@@ -59,15 +59,16 @@ export function JobTeamFields({ data, value, change, readOnly = false }: {
         <span>{email}<small className="hub-muted">Access removed — will not receive emails. Uncheck to remove.</small></span>
       </label>)}
     </fieldset>
-    <p className="hub-muted">Add or remove staff login access in Settings → Team access, then return here to assign them.</p>
+    <p className="hub-muted">Missing someone? Add them in Settings → Team.</p>
     {!value.members.length && <p className="hub-notice">No recruiters selected. This job will not send team alerts. Applications still appear in the dashboard.</p>}
-    <p className="hub-muted">Automatic receipts and screening rejections use no-reply. Messages and invitations sent by a recruiter direct replies to that recruiter; their email is intentionally visible in Reply-To. Team assignments control internal notifications. Calendar invitations can show the interview organizer’s address.</p>
-    <Field label="Recruiter who handles candidate replies" hint="Used when the owner sends an invitation or message. Recruiters sending their own messages receive replies themselves. This person must connect their recruiting Gmail under My setup.">
+    <Field label="Recruiter who handles candidate replies" hint="Receives candidate replies when an owner sends a message. This recruiter needs to connect Gmail in My setup.">
       <select disabled={readOnly} value={value.replyTo || ""} onChange={event => change({...value,replyTo:event.target.value || null})}>
         <option value="">Choose a recruiter (or use the application assignee)</option>
         {value.members.filter(email=>active.has(email)&&email.toLowerCase()!=="sales@aicaseleads.com").map(email=><option key={email} value={email}>{email}</option>)}
       </select>
     </Field>
+    <details className="hub-team-alert-settings">
+      <summary>Email notification settings</summary>
     <fieldset disabled={readOnly} className="hub-team-alert-picker">
       <legend>Email this team about</legend>
       {([
@@ -80,7 +81,12 @@ export function JobTeamFields({ data, value, change, readOnly = false }: {
         <span>{label}</span>
       </label>)}
     </fieldset>
-    <p className="hub-muted">Notifications use the configured recruiting Gmail account. Staff sign-in gives dashboard access; each recruiter connects their Gmail under My setup. Saving a team does not email earlier applicants.</p>
+    <p className="hub-muted">Each recruiter connects Gmail in My setup. Saving this team does not email previous applicants.</p>
+    </details>
+    <details>
+      <summary>How candidate replies work</summary>
+      <p className="hub-muted">Automatic receipts and screening rejections use no-reply. A recruiter’s messages and interview invitations direct replies to that recruiter. Interview organizers appear on calendar invitations.</p>
+    </details>
   </div>;
 }
 

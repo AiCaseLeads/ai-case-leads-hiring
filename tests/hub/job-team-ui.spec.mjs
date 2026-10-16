@@ -53,6 +53,7 @@ test("job team saves private recruiter recipients with a clear candidate reply r
   await page.getByRole("checkbox", { name: /alex@example.invalid/ }).check();
   assert.equal(await page.getByLabel("Recruiter who handles candidate replies", { exact: true }).count(), 1);
   await page.getByLabel("Recruiter who handles candidate replies",{exact:true}).selectOption(staff[2].email);
+  await page.getByText("Email notification settings", {exact:true}).click();
   await page.getByRole("checkbox", { name: "Submitted assessments", exact: true }).uncheck();
   await page.getByRole("button", { name: "Save hiring team", exact: true }).click();
   await page.getByRole("alert").filter({ hasText: "Temporary connection" }).waitFor();
@@ -84,13 +85,17 @@ test("new blank job saves selected team atomically with the job and wizard Back 
   await page.getByRole("button", { name: "Create job", exact: true }).click();
   await page.getByRole("button", { name: "Create blank job", exact: true }).click();
   await page.getByLabel("Job title", { exact: true }).fill("Engineer Spain");
+  await page.getByRole("button", { name: "Continue", exact: true }).click();
+  await page.getByRole("button", { name: "Continue", exact: true }).click();
+  await page.locator('.hub-review-team > summary').click();
   await page.getByRole("checkbox", { name: /maria@example.invalid/ }).check();
   await page.getByRole("checkbox", { name: /alex@example.invalid/ }).check();
   assert.equal(await page.getByLabel("Recruiter who handles candidate replies", { exact: true }).count(), 1);
   await page.getByLabel("Recruiter who handles candidate replies",{exact:true}).selectOption(staff[1].email);
   await page.getByRole("button", { name: "Continue", exact: true }).click();
   await page.goBack();
-  await page.getByLabel("Job title", { exact: true }).waitFor();
+  await page.locator('.hub-review-team > summary').waitFor();
+  await page.locator('.hub-review-team > summary').click();
   assert.equal(await page.getByRole("checkbox", { name: /alex@example.invalid/ }).isChecked(), true);
   await page.getByRole("button", { name: "Save draft job", exact: true }).click();
   await page.getByText("Draft saved.", { exact: false }).waitFor();
@@ -102,14 +107,21 @@ test("new blank job saves selected team atomically with the job and wizard Back 
 
 test("duplicating a posting starts with an empty team; editing loads the existing team's revision", async t => {
   const { page, jobWrites } = await setup(t, { mode: "jobs" });
+  await page.getByLabel(`Actions for ${job.title}`, {exact:true}).click();
   await page.getByRole("button", { name: "Duplicate job", exact: true }).click();
+  await page.getByRole("button", { name: "Continue", exact: true }).click();
+  await page.getByRole("button", { name: "Continue", exact: true }).click();
+  await page.locator('.hub-review-team > summary').click();
   await page.getByRole("checkbox", { name: /maria@example.invalid/ }).waitFor();
   assert.equal(await page.getByRole("checkbox", { name: /maria@example.invalid/ }).isChecked(), false);
   await page.getByRole("button", { name: "Cancel", exact: true }).click();
+  if(await page.getByRole("button", {name:"Leave without saving",exact:true}).count()) await page.getByRole("button", {name:"Leave without saving",exact:true}).click();
   await page.getByRole("button", { name: "Edit job", exact: true }).click();
+  await page.getByRole("list",{name:"Job setup progress"}).getByRole("button",{name:"Review setup",exact:true}).click();
+  await page.locator('.hub-review-team > summary').click();
   await page.getByRole("checkbox", { name: /maria@example.invalid/ }).waitFor();
   assert.equal(await page.getByRole("checkbox", { name: /maria@example.invalid/ }).isChecked(), true);
-  for(let i=0;i<3;i++)await page.getByRole("button",{name:"Continue",exact:true}).click();
+  await page.getByRole("button",{name:"Continue",exact:true}).click();
   await page.getByRole("button", { name: "Unpublish job", exact: true }).click();
   await page.getByText("Draft saved.", { exact: false }).waitFor();
   assert.equal(jobWrites[0].expectedTeamRevision, 2);
