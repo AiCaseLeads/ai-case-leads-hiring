@@ -1378,11 +1378,6 @@ nav a:hover {
 .hub-main .description-copy h4 { font-size: 1.1em; }
 .hub-main .description-copy h2, .hub-main .description-copy h3, .hub-main .description-copy h4 { font-weight: 700; line-height: 1.35; margin: 1em 0 .6em; }
 
-.hub-recovery-fields { border:0; padding:0; margin:0; min-width:0; }
-.hub-draft-status { display:flex; flex-wrap:wrap; align-items:center; gap:12px; margin:0 0 20px; color:var(--hub-muted,#526d74); }
-.hub-draft-overlay { position:fixed; inset:0; z-index:100; background:#12383d88; display:grid; place-items:center; padding:20px; }
-.hub-draft-dialog { max-width:600px; width:100%; max-height:90vh; overflow:auto; box-shadow:0 15px 50px #12383d55; }
-.hub-draft-dialog .hub-inline { flex-wrap:wrap; gap:12px; }
 
 /* Job-first applicant browsing keeps each role and download scope explicit. */
 .hub-application-jobs { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr)); gap:20px; align-items:stretch; }

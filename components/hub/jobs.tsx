@@ -1,12 +1,13 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-import { Plus, Copy, ChevronDown, ExternalLink, Users, Files, Pause, Play, Archive, ArchiveRestore, Trash2 } from "lucide-react";
+import { Plus, Copy, ExternalLink, Users, Files, Pause, Play, Archive, ArchiveRestore, Trash2 } from "lucide-react";
 import { useHubMutation, useHubResource } from "./api";
 import { Badge, EmptyState, Feedback, Field, ResourceState } from "./shared";
 import type { HubJob } from "./types";
 import type { SetupCatalog } from "@/lib/job-setup/model";
 import type { Catalog } from "@/lib/scorecards/model";
 import { JobWizard, JobStart } from "./job-wizard";
+import { JobActionMenu } from "./action-menu";
 import { JobTeamPanel } from "./job-team";
 import type { JobLifecycleAction } from "@/lib/hub/job-lifecycle";
 const completedJobSessions = new Set<string>();
@@ -440,14 +441,7 @@ export function Jobs({
                     )}
                     {admin && collection === "active" && j.status !== "draft" && <button className="hub-text-button" disabled={mutation.busy} onClick={() => void lifecycleAction(j, j.status === "open" ? "pause" : "resume")}>{j.status === "open" ? <><Pause size={15} /> Pause job</> : <><Play size={15} /> Resume job</>}</button>}
                     {admin && collection !== "active" && <button className="hub-text-button" disabled={mutation.busy} onClick={() => void lifecycleAction(j, "restore")}><ArchiveRestore size={15} /> Restore job</button>}
-                    <details className="hub-job-menu" onKeyDown={(event) => {
-                      if (event.key !== "Escape") return;
-                      event.preventDefault();
-                      event.currentTarget.removeAttribute("open");
-                      event.currentTarget.querySelector("summary")?.focus();
-                    }}>
-                      <summary aria-label={`Actions for ${j.title}`}>Actions <ChevronDown size={14} /></summary>
-                      <div className="hub-job-menu-items">
+                    <JobActionMenu label={`Actions for ${j.title}`}>
                         {collection === "active" && <button
                           className="hub-text-button"
                           disabled={mutation.busy}
@@ -476,8 +470,7 @@ export function Jobs({
                             <ExternalLink size={15} /> View public job
                           </a>
                         )}
-                      </div>
-                    </details>
+                    </JobActionMenu>
                   </div>
                 </article>
               ))}

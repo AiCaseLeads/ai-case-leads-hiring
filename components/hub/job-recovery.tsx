@@ -261,7 +261,7 @@ export function useJobRecovery(
             discard your draft changes. The published job will not change.
           </p>
           {error && <p role="alert">{error}</p>}
-          <div className="hub-inline">
+          <div className="hub-dialog-actions">
             <button
               type="button"
               className="hub-button"

@@ -189,7 +189,7 @@ export function Candidates(props: CandidatesProps) {
         <div><h3>{job.title}</h3><p className="hub-muted">{job.location || jobLocation(job)} · {job.lifecycle?.state === "archived" ? "Archived" : job.lifecycle?.state === "deleted" ? "In Trash" : job.status === "open" ? "Open" : job.status === "closed" ? "Paused" : "Draft"}</p></div>
         <div className="hub-job-applicant-count"><strong>{counts.data ? count?.total || 0 : counts.loading ? "…" : "—"}</strong><span>applicants</span></div>
         <button className="hub-button secondary" type="button" onClick={() => {const params = new URLSearchParams(); params.set("jobId", job.id); if (props.initialStage) params.set("stage", props.initialStage); props.onFilterChange?.(params.toString(), 1);}}>View applications<span className="sr-only"> for {job.title}</span></button>
-        <details className="hub-job-download-menu"><summary>Download<span className="sr-only"> applications for {job.title}</span></summary><div className="hub-button-row"><button className="hub-text-button" type="button" disabled={!!downloadBusy} onClick={() => void downloadJob(job,"zip")}>Download all applications ZIP<span className="sr-only"> for {job.title}</span></button></div></details>
+        <button className="hub-text-button hub-job-download-button" type="button" disabled={!!downloadBusy} aria-label={`Download all applications ZIP for ${job.title}`} onClick={() => void downloadJob(job,"zip")}><Download size={16} />{downloadBusy === job.id ? "Preparing ZIP…" : "Download ZIP"}</button>
       </article>;
     })}</div>
     {!jobs.length && <EmptyState title="No jobs found"><p>Try another search or create a posting from Jobs.</p></EmptyState>}

@@ -81,8 +81,10 @@ test('redesigned workspace stays usable across mobile, tablet and desktop widths
   await page.getByRole('button',{name:detail.name,exact:true}).waitFor();await noOverflow(page);
   const downloadSummary=page.locator('.hub-application-downloads > summary');await downloadSummary.click();await page.getByLabel('Download scope',{exact:true}).waitFor();await noOverflow(page);
   const buttonBoxes=await page.locator('.hub-download-actions > .hub-button').evaluateAll(es=>es.map(e=>e.getBoundingClientRect().toJSON()));
-  assert.ok(buttonBoxes[1].left>=buttonBoxes[0].right+8||buttonBoxes[1].top>=buttonBoxes[0].bottom+8,'CSV and ZIP click targets stay separated');
-  if(width<=640)assert.ok(buttonBoxes[1].top>=buttonBoxes[0].bottom+8,'Mobile download controls stack');
+  assert.equal(buttonBoxes.length,1,'The ordinary download action is the PDF/originals ZIP');
+  const scopeBox=await page.getByLabel('Download scope',{exact:true}).boundingBox();
+  assert.ok(buttonBoxes[0].left>=scopeBox.x+scopeBox.width+8||buttonBoxes[0].top>=scopeBox.y+scopeBox.height+8,'Scope and ZIP targets stay separated');
+  if(width<=640)assert.ok(buttonBoxes[0].top>=scopeBox.y+scopeBox.height+8,'Mobile download controls stack');
   await downloadSummary.click();
   if(artifacts){await page.evaluate(()=>window.scrollTo(0,0));await page.screenshot({path:`${artifacts}/applications-${width}.png`,fullPage:true});}
   if(width<=680){assert.equal(await page.locator('.hub-applications-table').evaluate(e=>e.scrollWidth<=e.clientWidth+1),true);await page.getByLabel('Select '+detail.name,{exact:true}).check();assert.equal(await page.getByLabel('Select '+detail.name,{exact:true}).isChecked(),true);}
