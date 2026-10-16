@@ -170,7 +170,7 @@ test("batches containing only untagged account status events never open private 
 test("invalid JSON, malformed event fields and too many events reject the whole batch without writes", async () => {
   const f = createStore();
   try {
-    for (const value of [{ email: recipient }, [await event(), await event({ email: "invalid" })], [await event({ aicl_message: "not-a-sha256" })], Array.from({ length: 1_001 }, () => ({ email: recipient, timestamp: 1, event: "processed", sg_event_id: "same" }))]) {
+    for (const value of [{ email: recipient }, [await event(), await event({ email: "invalid" })], [await event({ aicl_message: "not-a-sha256" })], Array.from({ length: 5_001 }, () => ({ email: recipient, timestamp: 1, event: "processed", sg_event_id: "same" }))]) {
       const raw = body(value);
       await assert.rejects(receiveSendgridEvents(f.store, raw, timestamp, signed(raw), encodedKey, now), { code: "invalid_sendgrid_events" });
     }
@@ -178,6 +178,23 @@ test("invalid JSON, malformed event fields and too many events reject the whole 
     await assert.rejects(receiveSendgridEvents(f.store, raw, timestamp, signed(raw), encodedKey, now), { code: "invalid_sendgrid_events" });
     assert.equal(await count(f.store), 0);
   } finally { f.database.close(); }
+});
+
+test("legitimate shared-account batches larger than 768 KB remain bounded and keep application evidence", async () => {
+  const f = createStore();
+  try {
+    const raw = body([{ event: "account_status_change", sg_event_id: "large-account-event", timestamp: 1709142428, type: "compliance_suspend", unrelated_details: "x".repeat(800_000) }, await event()]);
+    assert.ok(raw.byteLength > 768 * 1024); assert.ok(raw.byteLength < SENDGRID_EVENT_MAX_BYTES);
+    const result = await receiveSendgridEvents(f.store, raw, timestamp, signed(raw), encodedKey, now);
+    assert.deepEqual(result, { accepted: 1, duplicates: 0, ignored: 1 }); assert.equal(await count(f.store), 1);
+  } finally { f.database.close(); }
+});
+
+test("up to 5,000 small unrelated account events are ignored without opening application storage", async () => {
+  let opened = false;
+  const raw = body(Array.from({ length: 5_000 }, () => ({ event: "future-provider-event" })));
+  const result = await receiveSendgridEvents(async () => { opened = true; throw new Error("No application evidence"); }, raw, timestamp, signed(raw), encodedKey, now);
+  assert.deepEqual(result, { accepted: 0, duplicates: 0, ignored: 5_000 }); assert.equal(opened, false);
 });
 
 test("webhook body size is bounded even without a declared content length; read methods expose no records", async () => {

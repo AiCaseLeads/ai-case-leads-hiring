@@ -8,8 +8,9 @@ import { errorResponse, jsonResponse } from "../hiring/http";
 
 export const SENDGRID_SIGNATURE_HEADER = "X-Twilio-Email-Event-Webhook-Signature";
 export const SENDGRID_TIMESTAMP_HEADER = "X-Twilio-Email-Event-Webhook-Timestamp";
-export const SENDGRID_EVENT_MAX_BYTES = 512 * 1024;
-const MAX_EVENTS = 1_000, MAX_CLOCK_SKEW_SECONDS = 300;
+// SendGrid can aggregate up to 768 KB before POSTing a shared account's events.
+export const SENDGRID_EVENT_MAX_BYTES = 1024 * 1024;
+const MAX_EVENTS = 5_000, MAX_EVIDENCE_EVENTS = 1_000, MAX_CLOCK_SKEW_SECONDS = 300;
 const eventSchema = z.object({
   sg_event_id: z.string().min(1).max(512).regex(/^[\x21-\x7e]+$/),
   sg_message_id: z.string().trim().min(1).max(512).regex(/^[\x21-\x7e]+$/).optional(),
@@ -104,7 +105,7 @@ export async function readSendgridEvidence(store: HubStore, messageId: string, t
   const email = z.string().trim().email().max(254).parse(to).toLowerCase();
   const tag = await sha256(normalizedMessageId(messageId)), recipientHash = await sha256(email);
   const rows = await store.rows<{ value: string }>("SELECT value FROM hub_settings WHERE key LIKE ? ORDER BY updated_at LIMIT 1001", `sendgrid_mail:${tag}:${recipientHash}:%`);
-  if (rows.length > MAX_EVENTS) throw { code: "transactional_mail_evidence_limit", uncertain: true };
+  if (rows.length > MAX_EVIDENCE_EVENTS) throw { code: "transactional_mail_evidence_limit", uncertain: true };
   const observed = rows.map(row => JSON.parse(row.value) as StoredSendgridEvent).filter(event => event.tag === tag && event.email === email && (!sentAt || event.timestamp * 1_000 >= sentAt - 60_000));
   if (!observed.length) return null;
   const ids = [...new Set(observed.map(event => providerIdentity(event.messageId)))];
