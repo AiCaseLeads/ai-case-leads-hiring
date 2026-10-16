@@ -41,7 +41,7 @@ export function AiReviewSettings() {
           <input type="number" min={30} max={1000} step={1} required value={hourlyLimit??config.data.hourlyLimit??120} onChange={e=>setHourlyLimit(e.target.value)} disabled={mutation.busy}/>
         </Field>
       </details>}
-      <button className="hub-button secondary" disabled={mutation.busy || (!(config.data.configured || apiKey.trim()) && (enable ?? config.data.enabled))}>{mutation.busy ? "Saving…" : "Save AI connection"}</button>
+      <button className="hub-button secondary" disabled={mutation.busy || (config.data.canManageConnection===false && (hourlyLimit===null || Number(hourlyLimit)===(config.data.hourlyLimit??120))) || (!(config.data.configured || apiKey.trim()) && (enable ?? config.data.enabled))}>{mutation.busy ? "Saving…" : config.data.canManageConnection===false?"Save processing capacity":"Save AI connection"}</button>
       <Feedback error={mutation.error} success={mutation.success} />
     </form>}
   </section>;

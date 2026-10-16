@@ -32,7 +32,8 @@ function configStatus(config:Configuration,key?:string,member?:HubMember){
 export async function handleAiConfig(request:Request,member:HubMember|null,deps:AiDependencies):Promise<Response>{
   try{
     requireMember(member);
-    const config=await deps.store.setting<Configuration>(CONFIG,{enabled:false});
+    const snapshot=await deps.store.stmt("SELECT value FROM hub_settings WHERE key=?",CONFIG).first<{value:string}>();
+    const config:Configuration=snapshot?JSON.parse(snapshot.value):{enabled:false};
     if(request.method==="GET")return jsonResponse({data:configStatus(config,deps.encryptionKey,member)});
     if(request.method!=="PATCH")throw new HiringError("method_not_allowed",405,"Use the configuration form to update AI settings.");
     assertSameOrigin(request);
@@ -42,11 +43,19 @@ export async function handleAiConfig(request:Request,member:HubMember|null,deps:
     const sealedKey=input.apiKey?await sealToken(input.apiKey,deps.encryptionKey):config.sealedKey;
     if(input.enabled&&!sealedKey)throw new HiringError("ai_key_required",422,"Add an OpenRouter API key before enabling AI review.");
     const updated={enabled:input.enabled,sealedKey,hourlyLimit:input.hourlyLimit??matchHourlyLimit(config),updatedBy:member.email,updatedAt:Date.now()};
-    await deps.store.db.batch([
-      deps.store.settingStatement(CONFIG,updated),
+    // The first statement is a transaction guard. A capacity-only administrator
+    // must never restore an owner’s connection/key from a stale configuration.
+    const save=snapshot
+      ?deps.store.stmt("INSERT INTO hub_settings(key,value,updated_at) VALUES(?,CASE WHEN EXISTS(SELECT 1 FROM hub_settings WHERE key=? AND value=?) THEN ? ELSE NULL END,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_at=excluded.updated_at",CONFIG,CONFIG,snapshot.value,JSON.stringify(updated),Date.now())
+      :deps.store.stmt("INSERT INTO hub_settings(key,value,updated_at) VALUES(?,CASE WHEN NOT EXISTS(SELECT 1 FROM hub_settings WHERE key=?) THEN ? ELSE NULL END,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_at=excluded.updated_at",CONFIG,CONFIG,JSON.stringify(updated),Date.now());
+    try{await deps.store.db.batch([
+      save,
       ...(input.apiKey?[deps.store.stmt("DELETE FROM hub_settings WHERE key=?",MATCH_PROVIDER_PAUSE_KEY)]:[]),
       ...(updated.hourlyLimit>matchHourlyLimit(config)?[deps.store.stmt("UPDATE hub_ai_matches SET run_after=0,error=NULL WHERE status='pending' AND error='ai_hourly_capacity'")]:[]),
-    ]);
+    ]);}catch(error){
+      if(/NOT NULL|constraint/i.test(String(error)))throw new HiringError("ai_config_conflict",409,"The AI settings changed while you were saving. Refresh and try again; no settings were overwritten.");
+      throw error;
+    }
     return jsonResponse({data:configStatus(updated,deps.encryptionKey,member)});
   }catch(error){return errorResponse(error);}
 }

@@ -122,3 +122,9 @@ test('processing capacity is collapsed, retains120default, and an explicit admin
  await page.getByText('Processing capacity',{exact:true}).click();const limit=page.getByLabel('Maximum AI requests per hour');assert.equal(await limit.inputValue(),'120');assert.equal(writes.length,0);
  await limit.fill('180');await page.getByRole('button',{name:'Save AI connection',exact:true}).click();await page.getByRole('status').filter({hasText:'AI review settings saved'}).waitFor();assert.deepEqual(writes,[{method:'PATCH',enabled:true,hourlyLimit:180}]);
 });
+
+test('non-owner admin sees capacity-only editing and cannot submit an unchanged connection form',async t=>{
+ const {page,writes}=await setup(t,{mode:'config',data:{enabled:true,configured:true,model:'openai/gpt-5-mini',provider:'OpenRouter / OpenAI',reviewOnly:true,hourlyLimit:120,canManageConnection:false,canChangeCapacity:true}});
+ const save=page.getByRole('button',{name:'Save processing capacity',exact:true});await save.waitFor();assert.equal(await save.isDisabled(),true);assert.equal(await page.getByRole('checkbox',{name:'Enable AI reviews'}).count(),0);assert.equal(await page.locator('input[type=password]').count(),0);
+ await page.getByText('Processing capacity',{exact:true}).click();await page.getByLabel('Maximum AI requests per hour').fill('180');assert.equal(await save.isEnabled(),true);await save.click();await page.getByRole('status').filter({hasText:'AI review settings saved'}).waitFor();assert.deepEqual(writes,[{method:'PATCH',enabled:true,hourlyLimit:180}]);assert.equal(await save.isDisabled(),true);
+});

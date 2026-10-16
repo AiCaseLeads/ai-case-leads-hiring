@@ -172,3 +172,33 @@ test('disabling the AI connection while a PDF is read prevents new provider requ
   await processAiMatches(f.deps);assert.equal(f.metrics().calls,0);assert.equal(await f.store.stmt("SELECT attempts FROM hiring_rate_limits WHERE key_hash='ai-match-global'").first(),null);assert.equal((await matchDetail(f.store,f.ids[0])).status,'setup_required');
  }finally{f.database.close();}
 });
+
+test('a stale capacity-only admin cannot restore a key or connection state changed by the owner',async()=>{
+ const {handleAiConfig}=await import('../../lib/ai/http');const {MANAGER}=await import('../hub/fixtures');
+ for(const ownerEnabled of [false,true]){
+  const f=await fixture(1);try{
+   const old=await f.store.setting<{enabled:boolean;sealedKey:string;hourlyLimit?:number}>('ai_openrouter_config_v1',{enabled:false,sealedKey:''});
+   const rotated={...old,enabled:ownerEnabled,sealedKey:await sealToken('sk-or-anotherfakekeyneverreal',encryptionKey),hourlyLimit:90,updatedBy:'owner@example.invalid',updatedAt:Date.now()};
+   await f.store.stmt("UPDATE hub_ai_matches SET error='ai_hourly_capacity',run_after=9999999999999 WHERE application_id=?",f.ids[0]).run();
+   const batch=f.db.batch.bind(f.db);
+   f.db.batch=(async statements=>{f.db.batch=batch;await f.store.setSetting('ai_openrouter_config_v1',rotated);return batch(statements);}) as typeof f.db.batch;
+   const response=await handleAiConfig(new Request('https://jobs.example.invalid/api/ai/config',{method:'PATCH',headers:{origin:'https://jobs.example.invalid','content-type':'application/json'},body:JSON.stringify({enabled:true,hourlyLimit:180})}),{...MANAGER,isOwner:false},f.deps);
+   assert.equal(response.status,409);assert.deepEqual(await f.store.setting('ai_openrouter_config_v1',null),rotated);
+   assert.equal((await f.store.stmt('SELECT run_after FROM hub_ai_matches WHERE application_id=?',f.ids[0]).first<{run_after:number}>())?.run_after,9999999999999);
+  }finally{f.database.close();}
+ }
+});
+
+test('a non-owner administrator can change only capacity while retaining the encrypted key and enabled state',async()=>{
+ const {handleAiConfig}=await import('../../lib/ai/http');const {MANAGER}=await import('../hub/fixtures');
+ const f=await fixture(1);try{
+  const old=await f.store.setting<{enabled:boolean;sealedKey:string}>('ai_openrouter_config_v1',{enabled:false,sealedKey:''});
+  const request=(body:unknown)=>new Request('https://jobs.example.invalid/api/ai/config',{method:'PATCH',headers:{origin:'https://jobs.example.invalid','content-type':'application/json'},body:JSON.stringify(body)});
+  const admin={...MANAGER,isOwner:false};
+  assert.equal((await handleAiConfig(request({enabled:old.enabled,hourlyLimit:180}),admin,f.deps)).status,200);
+  const changed=await f.store.setting<{enabled:boolean;sealedKey:string;hourlyLimit:number}>('ai_openrouter_config_v1',{} as never);assert.equal(changed.sealedKey,old.sealedKey);assert.equal(changed.enabled,old.enabled);assert.equal(changed.hourlyLimit,180);
+  assert.equal((await handleAiConfig(request({enabled:false,hourlyLimit:90}),admin,f.deps)).status,403);
+  assert.equal((await handleAiConfig(request({enabled:true,hourlyLimit:90,apiKey:'sk-or-anotherfakekeyneverreal'}),admin,f.deps)).status,403);
+  assert.deepEqual(await f.store.setting('ai_openrouter_config_v1',null),changed);
+ }finally{f.database.close();}
+});
