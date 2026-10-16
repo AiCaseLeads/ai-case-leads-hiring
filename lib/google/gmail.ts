@@ -95,9 +95,20 @@ export class Gmail {
     // Validate the complete envelope before any external request.
     const sender = emailAddress(input.sender || this.sender).toLowerCase();
     const raw = base64url(utf8(mimeMessage(sender, input)));
+    await this.verifySender(sender, input.candidateMail ? input.candidateAccount?.trim().toLowerCase() || process.env.CANDIDATE_MAIL_ACCOUNT?.trim().toLowerCase() : undefined, !!input.candidateMail);
+    const present = await this.reconcile(input.messageId);
+    if (present) return present;
+    const response = await this.client.request(`${API}/messages/send`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ raw }) }, true);
+    const data = await json<Partial<SentMail>>(response, true);
+    if (!data.id || !data.threadId) throw new GoogleError("gmail_send_response_invalid", response.status, true);
+    return { id: data.id, threadId: data.threadId };
+  }
+  /** Read-only provider check. A stored OAuth grant alone does not verify its identity or an alias. */
+  async verifySender(sender: string, candidateAccount?: string, candidateMail = true): Promise<{ account: string; sender: string; verified: true }> {
+    sender = emailAddress(sender).toLowerCase();
     const profile = await this.profile();
-    if (input.candidateMail) {
-      const required = input.candidateAccount?.trim().toLowerCase() || process.env.CANDIDATE_MAIL_ACCOUNT?.trim().toLowerCase();
+    if (candidateMail) {
+      const required = candidateAccount?.trim().toLowerCase();
       if (!required || required === "sales@aicaseleads.com") throw new GoogleError("candidate_mail_account_not_configured");
       if (profile.email !== emailAddress(required)) throw new GoogleError("candidate_mail_account_connection_required");
     }
@@ -106,12 +117,7 @@ export class Gmail {
       const identities = await json<{ sendAs?: Array<{ sendAsEmail: string; verificationStatus?: string }> }>(await this.client.request(`${API}/settings/sendAs`));
       if (!identities.sendAs?.some(identity => identity.sendAsEmail.toLowerCase() === sender && identity.verificationStatus === "accepted")) throw new GoogleError("gmail_sender_alias_not_verified");
     }
-    const present = await this.reconcile(input.messageId);
-    if (present) return present;
-    const response = await this.client.request(`${API}/messages/send`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ raw }) }, true);
-    const data = await json<Partial<SentMail>>(response, true);
-    if (!data.id || !data.threadId) throw new GoogleError("gmail_send_response_invalid", response.status, true);
-    return { id: data.id, threadId: data.threadId };
+    return { account: profile.email, sender, verified: true };
   }
   async attachmentBytes(messageId: string, part: MailAttachment, limit = ATTACHMENT_LIMIT): Promise<Uint8Array> {
     if (!Number.isSafeInteger(part.size) || part.size < 0 || part.size > limit) throw new GoogleError("gmail_attachment_too_large");

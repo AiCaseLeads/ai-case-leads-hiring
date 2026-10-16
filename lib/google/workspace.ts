@@ -31,6 +31,7 @@ export class GoogleWorkspace {
   }
   status() { return { connected: !!(this.config.clientId && this.config.clientSecret && this.config.refreshToken), sender: this.config.sender, calendar: !!this.config.calendarId, drive: !!(this.config.driveRootId && this.config.archiveState) }; }
   profile() { return this.gmail.profile(); }
+  verifyMailSender(sender: string, candidateAccount?: string, candidateMail = true) { return this.gmail.verifySender(sender, candidateAccount, candidateMail); }
   setDeadline(deadline?: number) { this.client.budget.deadline = deadline; this.drive.budget.deadline = deadline; }
   sendMail(input: MailInput) { return this.gmail.send(input); }
   reconcileMail(messageId: string) { return this.gmail.reconcile(messageId); }

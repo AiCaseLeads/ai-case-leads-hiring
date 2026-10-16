@@ -170,6 +170,13 @@ export async function handleHubRequest(
       admin(member);
       await json(request);
       data = await store.seedDraftJobs();
+    } else if (section === "mail-recovery" && request.method === "POST" && ["preview", "execute"].includes(id)) {
+      admin(member);
+      const { previewMailRecovery, executeMailRecovery } = await import("./mail-recovery");
+      const { resolvedWorkspaceEnv } = await import("../workspace-config");
+      const dependencies = { env: await resolvedWorkspaceEnv() };
+      const input = await json(request);
+      data = id === "preview" ? await previewMailRecovery(store, member, input, dependencies) : await executeMailRecovery(store, member, input, dependencies);
     } else if (section === "tasks" && request.method === "GET") {
       const page = new URL(request.url).searchParams.get("page") || "1";
       if (!/^[1-9]\d{0,4}$/.test(page) || Number(page) > 10000)

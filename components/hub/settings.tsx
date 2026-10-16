@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { isMailSetupError } from "../../lib/google/mail-setup";
+import { MailRecovery } from "./mail-recovery";
 import { driveArchivePhases, isDriveArchiveContinuation } from "../../lib/hub/task-progress";
 import { ExternalLink } from "lucide-react";
 import {
@@ -299,6 +300,7 @@ export function Tasks({
         </div>
       </div>
       {mail.data?.candidateConnected === false && <p className="hub-notice">Automatic recruiting email is not connected. {mail.data.candidateAccount || "The assigned recruiter"} must sign in and connect their own Gmail under Settings → My connections. Other recruiters can use their own connected mailboxes. Company Drive and Calendar connections do not enable recruiting email. <a className="hub-button secondary" href="/team?view=settings">Connect recruiting email</a></p>}
+      {admin && <MailRecovery changed={() => { changed(); void resource.reload(); }} />}
       <Feedback error={mutation.error} success={mutation.success} />
       {processResult && (
         <p

@@ -1,4 +1,4 @@
-import { isMailSetupError } from "./google/mail-setup";
+import { candidateTaskMailMode, isMailSetupError } from "./google/mail-setup";
 import { processStaffInvites } from "./staff/service";
 import { interviewCalendar } from "./personal-calendar/service";
 import { personalCalendarEffect } from "./personal-calendar/client";
@@ -92,7 +92,13 @@ async function taskEffect(task:Task,store:HubStore,db:D1Database,bucket:R2Bucket
       if(!await store.setting("interview_reminders_enabled",false)||!current||current.status!=="booked"||current.revision!==Number(task.payload.revision)||current.start!==task.payload.interviewStart||!current.start||!Number.isFinite(Date.parse(current.start))||Date.parse(current.start)<=Date.now()||["Rejected","Withdrawn","Hired"].includes((await store.applicationRow(task.applicationId)).stage))return {stale:true};
     }
     if(/:(assessment|interview):/.test(task.id)&&["Rejected","Withdrawn","Hired"].includes((await store.applicationRow(task.applicationId)).stage))return {stale:true};
-    const mail=await candidateMail(store,task.payload as unknown as MailInput,owners,{mailMode:task.payload.mailMode || (/:(manual|assessment|interview):/.test(task.id)||/:rejection:/.test(task.id)?"recruiter":undefined),actor:task.payload.actor,applicationId:task.applicationId});
+    if(/:(assessment|interview):.*:invitation:/.test(task.id)) {
+      const linkKind=task.id.includes(":assessment:")?"assessment":"interview";
+      const match=typeof task.payload.body==="string"?new RegExp(`https?:\\/\\/[^\\s]+\\/${linkKind}\\/([a-f0-9]{64})(?:\\s|$)`).exec(task.payload.body):null;
+      const link=match?await db.prepare("SELECT expires_at,used_at FROM hub_links WHERE token_hash=? AND application_id=? AND kind=?").bind(await sha256(match[1]),task.applicationId,linkKind).first<{expires_at:number;used_at:number|null}>():null;
+      if(!link||link.used_at!==null||link.expires_at<=Date.now())return {stale:true,expiredInvitation:true};
+    }
+    const mail=await candidateMail(store,task.payload as unknown as MailInput,owners,{mailMode:candidateTaskMailMode(task.id,task.applicationId,task.payload),actor:task.payload.actor,applicationId:task.applicationId});
     const transport=await candidateTransport(store,mail.candidateAccount,resolver);
     transport.setDeadline?.(deadline);
     // Pin transport before the irreversible send so an uncertain response is reconciled in the same mailbox.

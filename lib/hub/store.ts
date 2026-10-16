@@ -1971,6 +1971,8 @@ export class HubStore {
         409,
         "Delivery is uncertain. Reconcile the provider result before retrying.",
       );
+    if (current.kind === "gmail" && await this.stmt("SELECT 1 AS blocked FROM hub_communications WHERE task_id=? AND (status IN ('sent','uncertain','cancelled') OR provider_id IS NOT NULL OR thread_id IS NOT NULL)", id).first())
+      throw new HiringError("task_not_retryable", 409, "This email has a sent, uncertain or cancelled delivery record. It cannot be resent through retry.");
     if (
       current.status !== "failed" &&
       !(current.kind === "calendar" && current.status === "uncertain")
@@ -1996,6 +1998,10 @@ export class HubStore {
       current.payload_json,
     ];
     const payload = decode<Record<string, unknown>>(current.payload_json, {});
+    if (current.kind === "gmail") {
+      guards.push("NOT EXISTS(SELECT 1 FROM hub_communications c WHERE c.task_id=? AND (c.status IN ('sent','uncertain','cancelled') OR c.provider_id IS NOT NULL OR c.thread_id IS NOT NULL))", "NOT EXISTS(SELECT 1 FROM hub_settings s WHERE s.key='application_trash:'||?)");
+      values.push(id, current.application_id);
+    }
     if (current.kind === "calendar") {
       const interviewId =
         typeof payload.interviewId === "string" ? payload.interviewId : "";
