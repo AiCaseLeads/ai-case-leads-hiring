@@ -190,3 +190,43 @@ test("individual recovery cannot revive cancelled or provider-confirmed delivery
     assert.equal(f.database.prepare("SELECT COUNT(*) n FROM hub_tasks WHERE kind='gmail' AND status='pending'").get()!.n, 0);
   } finally { f.database.close(); }
 });
+test("reactivating a reviewed rejection cancels its recovered email; the worker also guards older retained decisions", async () => {
+  const f = await fixture();
+  try {
+    await currentAction(f.store, f.ids[0], { action: "reject", reason: "Synthetic reason" }, RECRUITER);
+    f.database.prepare("UPDATE hub_tasks SET status='failed',last_error='candidate_mail_account_connection_required',run_after=? WHERE kind='gmail'").run(Number.MAX_SAFE_INTEGER);
+    f.database.prepare("UPDATE hub_communications SET status='failed'").run();
+    const preview = await previewMailRecovery(f.store, MANAGER, f.window, ready());
+    assert.equal(preview.eligible, 2); assert.equal(preview.counts["Recruiter rejection"], 1);
+    await executeMailRecovery(f.store, MANAGER, { planId: preview.planId, digest: preview.digest }, ready());
+    const rejectedMail = (await f.store.tasks()).find(task => task.id.includes(":rejection:"))!;
+    await currentAction(f.store, f.ids[0], { action: "stage", stage: "Screening" }, RECRUITER);
+    assert.equal(f.database.prepare("SELECT status FROM hub_communications WHERE task_id=?").get(rejectedMail.id)!.status, "cancelled");
+    // Simulate a retained pre-fix task to prove the send boundary independently guards the current decision.
+    f.database.prepare("UPDATE hub_tasks SET status='pending',last_error=NULL,run_after=0 WHERE id=?").run(rejectedMail.id);
+    f.database.prepare("UPDATE hub_communications SET status='pending' WHERE task_id=?").run(rejectedMail.id);
+    const emitted: string[] = [];
+    const google = { archiveApplication: async (detail: { revision: number }) => ({ folderId: "folder", folderUrl: "https://drive.google.com/drive/folders/folder", archivedRevision: detail.revision, archiveFormat: "pdf-v2", legacyJsonFileIds: [] }), profile: async () => ({ email: candidateAccount, historyId: "1" }), mailHistory: async () => ({ historyId: "1", messages: [] }), threadMessages: async () => [], reconcileMail: async () => null, sendMail: async (mail: { subject: string }) => { emitted.push(mail.subject); return { id: "sent", threadId: "thread" }; } } as unknown as GoogleWorkspace;
+    await processHubTasks(f.store, f.db, {} as R2Bucket, google, 10, [MANAGER.email], async () => google);
+    assert.deepEqual(emitted, [`Application received: ${f.job.title}`]);
+    assert.equal(f.database.prepare("SELECT status FROM hub_communications WHERE task_id=?").get(rejectedMail.id)!.status, "cancelled");
+    await currentAction(f.store, f.ids[0], { action: "reject", reason: "New synthetic decision" }, RECRUITER);
+    assert.equal((await f.store.tasks()).find(task => task.id === rejectedMail.id)!.status, "done");
+  } finally { f.database.close(); }
+});
+test("reopening cannot race with an in-flight rejection send, including a lease claimed at final mutation", async () => {
+  const f = await fixture();
+  try {
+    await currentAction(f.store, f.ids[0], { action: "reject", reason: "Synthetic reason" }, RECRUITER);
+    const rejectedMail = (await f.store.tasks()).find(task => task.id.includes(":rejection:"))!;
+    f.database.prepare("UPDATE hub_tasks SET status='running',lease_token='worker-lease',lease_until=? WHERE id=?").run(Date.now() + 600_000, rejectedMail.id);
+    await assert.rejects(currentAction(f.store, f.ids[0], { action: "stage", stage: "Screening" }, RECRUITER), { code: "rejection_delivery_in_progress" });
+    assert.equal((await f.store.applicationRow(f.ids[0])).stage, "Rejected");
+    f.database.prepare("UPDATE hub_tasks SET status='pending',lease_token=NULL WHERE id=?").run(rejectedMail.id);
+    const original = f.store.db.batch.bind(f.store.db);
+    f.store.db.batch = async statements => { f.store.db.batch = original; f.database.prepare("UPDATE hub_tasks SET status='running',lease_token='raced-worker' WHERE id=?").run(rejectedMail.id); return original(statements); };
+    await assert.rejects(currentAction(f.store, f.ids[0], { action: "stage", stage: "Screening" }, RECRUITER), { code: "record_changed" });
+    assert.equal((await f.store.applicationRow(f.ids[0])).stage, "Rejected");
+    assert.equal(f.database.prepare("SELECT status FROM hub_tasks WHERE id=?").get(rejectedMail.id)!.status, "running");
+  } finally { f.database.close(); }
+});

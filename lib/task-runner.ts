@@ -91,6 +91,10 @@ async function taskEffect(task:Task,store:HubStore,db:D1Database,bucket:R2Bucket
       const current=await db.prepare("SELECT revision,status,start FROM hub_interviews WHERE id=? AND application_id=?").bind(String(task.payload.interviewId||""),task.applicationId).first<{revision:number;status:string;start:string|null}>();
       if(!await store.setting("interview_reminders_enabled",false)||!current||current.status!=="booked"||current.revision!==Number(task.payload.revision)||current.start!==task.payload.interviewStart||!current.start||!Number.isFinite(Date.parse(current.start))||Date.parse(current.start)<=Date.now()||["Rejected","Withdrawn","Hired"].includes((await store.applicationRow(task.applicationId)).stage))return {stale:true};
     }
+    if(task.id===`gmail:${task.applicationId}:rejection`||task.id.startsWith(`gmail:${task.applicationId}:rejection:`)) {
+      const decision=await store.applicationRow(task.applicationId);
+      if(decision.stage!=="Rejected"||task.createdAt<decision.stage_entered_at)return {stale:true,supersededRejection:true};
+    }
     if(/:(assessment|interview):/.test(task.id)&&["Rejected","Withdrawn","Hired"].includes((await store.applicationRow(task.applicationId)).stage))return {stale:true};
     if(/:(assessment|interview):.*:invitation:/.test(task.id)) {
       const linkKind=task.id.includes(":assessment:")?"assessment":"interview";

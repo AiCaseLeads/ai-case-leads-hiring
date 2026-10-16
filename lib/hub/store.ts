@@ -1194,7 +1194,7 @@ export class HubStore {
     reason = app.rejection_reason,
   ) {
     return this.stmt(
-      "UPDATE hub_applications SET id=CASE WHEN revision=? AND NOT EXISTS(SELECT 1 FROM hub_settings deleted WHERE deleted.key='application_trash:'||hub_applications.id) THEN id ELSE NULL END,stage=?,assignee=?,rejection_reason=?,stage_entered_at=CASE WHEN stage<>? THEN ? ELSE stage_entered_at END,revision=revision+1,updated_at=? WHERE id=?",
+      `UPDATE hub_applications SET id=CASE WHEN revision=? AND NOT EXISTS(SELECT 1 FROM hub_settings deleted WHERE deleted.key='application_trash:'||hub_applications.id) ${app.stage === "Rejected" && stage !== "Rejected" ? "AND NOT EXISTS(SELECT 1 FROM hub_tasks sending WHERE sending.application_id=hub_applications.id AND sending.kind='gmail' AND sending.status='running' AND (sending.id='gmail:'||hub_applications.id||':rejection' OR instr(sending.id,'gmail:'||hub_applications.id||':rejection:')=1))" : ""} THEN id ELSE NULL END,stage=?,assignee=?,rejection_reason=?,stage_entered_at=CASE WHEN stage<>? THEN ? ELSE stage_entered_at END,revision=revision+1,updated_at=? WHERE id=?`,
       app.revision,
       stage,
       assignee,
@@ -1522,6 +1522,14 @@ export class HubStore {
         text = renewing ? "Interview invitation renewed and queued" : "Interview invitation queued";
         break;
       }
+    }
+    if (stage !== app.stage && app.stage === "Rejected") {
+      if (await this.stmt("SELECT 1 FROM hub_tasks WHERE application_id=? AND kind='gmail' AND status='running' AND (id=? OR instr(id,?)=1)", app.id, `gmail:${app.id}:rejection`, `gmail:${app.id}:rejection:`).first())
+        throw new HiringError("rejection_delivery_in_progress", 409, "A rejection email is being delivered. Wait for its delivery result before reopening this application.");
+      statements.push(
+        this.stmt("UPDATE hub_tasks SET status='done',result_json=?,last_error=NULL,lease_token=NULL,lease_until=NULL,updated_at=? WHERE application_id=? AND kind='gmail' AND status IN ('pending','failed') AND (id=? OR instr(id,?)=1)", JSON.stringify({ stale: true, cancelled: true, supersededRejection: true }), now, app.id, `gmail:${app.id}:rejection`, `gmail:${app.id}:rejection:`),
+        this.stmt("UPDATE hub_communications SET status='cancelled',updated_at=? WHERE application_id=? AND task_id IN (SELECT id FROM hub_tasks WHERE application_id=? AND kind='gmail' AND status='done' AND json_extract(result_json,'$.supersededRejection')=1)", now, app.id, app.id),
+      );
     }
     if (
       stage !== app.stage &&

@@ -15,7 +15,7 @@ const LIMIT = 200;
 const PLAN_MS = 10 * 60_000;
 const windowInput = z.object({ from: z.number().int().nonnegative(), to: z.number().int().positive() }).strict();
 const executeInput = z.object({ planId: z.string().regex(/^[a-f0-9]{64}$/), digest: z.string().regex(/^[a-f0-9]{64}$/) }).strict();
-type Row = { id: string; application_id: string; payload_json: string; status: Task["status"]; attempts: number; run_after: number; lease_token: string | null; lease_until: number | null; last_error: string | null; result_json: string | null; created_at: number; updated_at: number; app_revision: number; app_stage: string; app_email: string; app_name: string; job_title: string; communication_status: string | null; communication_updated_at: number | null; provider_id: string | null; thread_id: string | null };
+type Row = { id: string; application_id: string; payload_json: string; status: Task["status"]; attempts: number; run_after: number; lease_token: string | null; lease_until: number | null; last_error: string | null; result_json: string | null; created_at: number; updated_at: number; app_revision: number; app_stage: string; app_stage_entered_at: number; app_email: string; app_name: string; job_title: string; communication_status: string | null; communication_updated_at: number | null; provider_id: string | null; thread_id: string | null };
 type RecoveryTransport = { verifyMailSender: (sender: string, account?: string, candidateMail?: boolean) => Promise<unknown>; setDeadline?: (value?: number) => void };
 export type RecoveryDependencies = { env: PersonalMailEnv; resolve?: (account: string) => Promise<RecoveryTransport | null>; now?: () => number };
 type Planned = { id: string; snapshot: string; envelope: string };
@@ -23,7 +23,7 @@ type Plan = { actor: string; from: number; to: number; expiresAt: number; digest
 type MailKind = "Application receipt" | "Automatic rejection" | "Recruiter message" | "Assessment invitation" | "Interview invitation" | "Recruiter rejection" | "Team notification" | "Review reminder";
 export type RecoveryPreview = { planId: string | null; digest: string | null; expiresAt: number | null; eligible: number; remaining: number; scanned: number; counts: Partial<Record<MailKind, number>>; skipped: Array<{ reason: string; count: number }>; messages: Array<{ id: string; applicant: string; job: string; kind: MailKind; sender: string; replyTo: string[]; subject: string }>; automaticSender: string; privacy: string };
 
-const columns = "t.*,a.revision AS app_revision,a.stage AS app_stage,a.email AS app_email,a.name AS app_name,a.job_title,c.status AS communication_status,c.updated_at AS communication_updated_at,c.provider_id,c.thread_id";
+const columns = "t.*,a.revision AS app_revision,a.stage AS app_stage,a.stage_entered_at AS app_stage_entered_at,a.email AS app_email,a.name AS app_name,a.job_title,c.status AS communication_status,c.updated_at AS communication_updated_at,c.provider_id,c.thread_id";
 const joins = "FROM hub_tasks t JOIN hub_applications a ON a.id=t.application_id LEFT JOIN hub_communications c ON c.task_id=t.id";
 function admin(member: HubMember) { if (member.role !== "admin") throw new HiringError("admin_access_required", 403, "Only managers can recover historical email deliveries."); }
 function kind(row: Row, payload: Record<string, unknown>): MailKind | null {
@@ -55,7 +55,7 @@ async function envelope(store: HubStore, row: Row, env: PersonalMailEnv, now: nu
   if (!messageKind) return { reason: "Message needs individual review before recovery" };
   const internal = messageKind === "Team notification" || messageKind === "Review reminder";
   if (!internal && row.communication_status === null) return { reason: "Original approved communication record is missing" };
-  if (["Automatic rejection", "Recruiter rejection"].includes(messageKind) && row.app_stage !== "Rejected") return { reason: "Rejection decision is no longer current" };
+  if (["Automatic rejection", "Recruiter rejection"].includes(messageKind) && (row.app_stage !== "Rejected" || row.created_at < row.app_stage_entered_at)) return { reason: "Rejection decision is no longer current" };
   if (["Assessment invitation", "Interview invitation"].includes(messageKind)) {
     if (["Rejected", "Withdrawn", "Hired"].includes(row.app_stage)) return { reason: "Invitation belongs to an inactive application" };
     const linkKind = messageKind === "Assessment invitation" ? "assessment" : "interview";
