@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { createServer } from 'node:http';
-import { existsSync, readFileSync, mkdirSync } from 'node:fs';
+import { existsSync, readFileSync, mkdirSync, mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import { build } from 'esbuild';
+import os from 'node:os';
+import path from 'node:path';
 import { chromium } from 'playwright';
 import postcss from 'postcss';
 import tailwind from '@tailwindcss/postcss';
@@ -13,13 +15,15 @@ const member = { email: longEmail, role: 'admin', isOwner:true };
 const job = { id: 'job-1', title: 'Synthetic Creative Strategist', slug: 'synthetic-creative', location: 'Remote · Spain and United States', status: 'open', fields: [], rules: [], formVersion: 1, archiveCountry: 'Spain', hiringRound: 'October' };
 const detail = { id: 'app-1', revision: 1, name: 'Synthetic Applicant With A Long Name', email: longEmail, jobId: job.id, jobTitle: job.title, stage: 'Application Review', qualification: 'review', assignee: longEmail, createdAt: Date.now(), updatedAt: Date.now(), source: 'test', fields: [{path:'experience',title:'Experience',type:'LongText',required:false}], answers: [{path:'experience',value:'Synthetic work sample'}], files: [{id:'file-1',filename:'synthetic-resume-with-a-long-original-file-name.pdf',url:'/api/files/file-1',contentType:'application/pdf',size:500}], history: [], notes: [], communications: [], scorecards: [], qualificationEvidence: [],aiMatch:{status:'ready',score:88,updatedAt:Date.now()} };
 const settings = {settingsVersion:1,members:[member,{email:'reviewer@example.invalid',role:'recruiter'}],google:{connected:true,sender:longEmail,expectedSender:longEmail,calendarId:longEmail,driveRootId:'shared'},queue:{pending:0,failed:0},templates:{rejection:'Thank you for applying.'},applicationsEnabled:true,accessAudit:[{id:'audit-1',type:'Company configuration updated',actor:longEmail,createdAt:Date.now(),before:{calendarId:longEmail},after:{calendarId:longEmail,driveRootId:'synthetic-shared-folder-'+ 'x'.repeat(80)}}],scheduling:{timeZone:'America/Bogota',startHour:10,endHour:16,durationMinutes:30,weekdays:[1,2,3,4,5],configured:true,remindersEnabled:false}};
-async function setup(t,{role='admin',isOwner=true}={}) {
+async function setup(t,{role='admin',isOwner=true,browserZoom=1}={}) {
  const currentMember={...member,role,isOwner};
  const {outputFiles}=await build({stdin:{contents:`import React from 'react';import{createRoot}from'react-dom/client';import{HiringDashboard}from'./components/hub/dashboard';createRoot(document.getElementById('root')).render(<HiringDashboard member={${JSON.stringify(currentMember)}} signOutHref='/logout'/>);`,loader:'tsx',resolveDir:process.cwd()},bundle:true,write:false,format:'iife',jsx:'automatic'});
  const globalCss=(await postcss([tailwind()]).process(readFileSync('app/globals.css','utf8'),{from:'app/globals.css'})).css;
  const css=globalCss+'\n'+readFileSync('components/hub/hub.css','utf8');
  const server=createServer((req,res)=>{res.setHeader('Content-Type',req.url==='/bundle.js'?'text/javascript':req.url==='/styles.css'?'text/css':'text/html');res.end(req.url==='/bundle.js'?outputFiles[0].text:req.url==='/styles.css'?css:'<meta name="viewport" content="width=device-width, initial-scale=1"><link rel="stylesheet" href="/styles.css"><div id="root"></div><script src="/bundle.js"></script>');});await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
- const chrome='/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';const browser=await chromium.launch({headless:true,...(existsSync(chrome)?{executablePath:chrome}:{})});t.after(async()=>{await browser.close();await new Promise(resolve=>server.close(resolve));});const page=await browser.newPage();page.setDefaultTimeout(5000);const writes=[];
+ const chrome='/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';let profile=null;
+ if(browserZoom!==1){profile=mkdtempSync(path.join(os.tmpdir(),'hiring-layout-zoom-'));mkdirSync(path.join(profile,'Default'));writeFileSync(path.join(profile,'Default','Preferences'),JSON.stringify({partition:{default_zoom_level:{x:Math.log(browserZoom)/Math.log(1.2)}}}));}
+ const launch={headless:true,...(existsSync(chrome)?{executablePath:chrome}:{})};const browser=profile?await chromium.launchPersistentContext(profile,launch):await chromium.launch(launch);t.after(async()=>{await browser.close();await new Promise(resolve=>server.close(resolve));if(profile)rmSync(profile,{recursive:true,force:true});});const page=await browser.newPage();page.setDefaultTimeout(5000);const writes=[];
  await page.route('**/api/**',route=>{
   const path=new URL(route.request().url()).pathname;if(route.request().method()!=='GET')writes.push(path);let data={};
   if(path==='/api/hub/overview')data={counts:{applications:1,active:1,rejected:0,hired:0},stageCounts:[{stage:'Application Review',count:1}],recentApplications:[detail],integrations:{google:true,drive:true,applicationsEnabled:true},jobs:[job]};
@@ -158,5 +162,52 @@ test('role-specific settings preserve recruiter and head recruiter boundaries',a
   assert.equal(await nav.getByRole('button',{name:'Team',exact:true}).count(),role==='admin'?1:0);
   await nav.getByRole('button',{name:'My connections',exact:true}).click();await page.getByRole('heading',{name:'My interview calendar',exact:true}).waitFor();await noOverflow(page);
   await page.goto(origin+'/?view=jobs');await page.getByRole('button',{name:'Create job',exact:true}).waitFor();
+ }
+});
+
+test('workspace contains wide tables without clipping nested scrolling or keyboard-accessible menus',async t=>{
+ const{page,origin,writes}=await setup(t);
+ // 767/984 are the effective CSS widths reported by 130% browser zoom in the
+ // live panel; 498 also covers a997px panel at200% browser zoom. Root CSS zoom
+ // does not change media queries and is not a browser-zoom substitute.
+ for(const width of [498,767,901,940,960,984,997,1280])for(const zoom of [1]){
+  await page.setViewportSize({width,height:900});await page.goto(origin+'/?view=applications&jobId=job-1');await page.getByRole('button',{name:detail.name,exact:true}).waitFor();await page.evaluate(z=>document.documentElement.style.zoom=String(z),zoom);
+  const dimensions=await page.evaluate(()=>({inner:innerWidth,htmlClient:document.documentElement.clientWidth,htmlScroll:document.documentElement.scrollWidth,bodyClient:document.body.clientWidth,bodyScroll:document.body.scrollWidth}));
+  assert.ok(dimensions.htmlScroll<=dimensions.htmlClient+1,`Nested table overflow stays out of the document at${width}px zoom${zoom}: ${JSON.stringify(dimensions)}`);
+  const horizontal=await page.evaluate(()=>{window.scrollTo({left:10000,top:0,behavior:'instant'});return window.scrollX;});assert.equal(horizontal,0,`Wide table contents cannot scroll the entire page horizontally at ${width}px CSS zoom ${zoom}: ${JSON.stringify(dimensions)}`);
+  await noOverflow(page);
+  const metadata=page.locator('.hub-applications-table tbody .hub-optional-owner');assert.equal(await metadata.isVisible(),width<=680||width>1100,'Owner metadata stays in mobile cards and desktop rows while tablet prioritizes actions');
+  const stageLines=await page.locator('.hub-applications-table td[data-label="Stage"] .hub-badge').evaluate(e=>{const range=document.createRange();range.selectNodeContents(e);return range.getClientRects().length;});assert.equal(stageLines,1,'The New stage remains a readable word');
+  const wrap=page.locator('.hub-table-wrap').filter({has:page.locator('.hub-applications-table')});
+  const scrolling=await wrap.evaluate(e=>{e.scrollLeft=e.scrollWidth;return{position:e.scrollLeft,max:e.scrollWidth-e.clientWidth};});
+  if(width>680&&scrolling.max>0)assert.ok(scrolling.position>=scrolling.max-1,'Contained table can still scroll to its final column');
+  const interview=page.getByRole('button',{name:'Request interview with '+detail.name,exact:true});await interview.focus();
+  assert.equal(await interview.evaluate(e=>e===document.activeElement),true);
+  await interview.scrollIntoViewIfNeeded();assert.equal(await interview.evaluate(e=>{const r=e.getBoundingClientRect();return e.contains(document.elementFromPoint(r.left+r.width/2,r.top+r.height/2));}),true,'Final-column interview action stays reachable after keyboard focus');
+  await page.goto(origin+'/?view=jobs');await page.getByRole('heading',{name:'Jobs',exact:true}).waitFor();await page.evaluate(z=>document.documentElement.style.zoom=String(z),zoom);
+  await page.locator('.hub-job-menu > summary').focus();await page.keyboard.press('Enter');await page.getByRole('button',{name:'Hiring team & emails',exact:true}).waitFor();
+  await noOverflow(page);const team=page.getByRole('button',{name:'Hiring team & emails',exact:true});await team.focus();await team.scrollIntoViewIfNeeded();assert.equal(await team.evaluate(e=>{const r=e.getBoundingClientRect();return e.contains(document.elementFromPoint(r.left+r.width/2,r.top+r.height/2));}),true,'Expanded job menu action stays reachable');
+  await page.locator('.hub-job-menu > summary').press('Escape');assert.equal(await team.isVisible(),false);
+ }
+ assert.deepEqual(writes,[],'Zooming, scrolling, focusing and opening menus never sends applicant messages');
+});
+
+
+test('real browser zoom at 130% and 200% preserves applicant actions and document containment',async t=>{
+ for(const browserZoom of [1.3,2]){
+  const{page,origin,writes}=await setup(t,{browserZoom});const cdp=await page.context().newCDPSession(page);
+  for(const physicalWidth of [997,1280]){
+   await page.setViewportSize({width:physicalWidth,height:900});await page.goto(origin+'/?view=applications&jobId=job-1');await page.getByRole('button',{name:detail.name,exact:true}).waitFor();
+   const metrics=await cdp.send('Page.getLayoutMetrics');assert.ok(Math.abs(metrics.cssVisualViewport.zoom-browserZoom)<.01,'The fixture uses actual Chrome browser zoom');
+   const width=metrics.cssLayoutViewport.clientWidth;
+   assert.ok(metrics.cssContentSize.width<=width+1,`Browser page content stays contained at${browserZoom}× zoom: ${JSON.stringify(metrics)}`);
+   await noOverflow(page);
+   assert.equal(await page.evaluate(()=>{window.scrollTo({left:10000,top:0,behavior:'instant'});return window.scrollX;}),0);
+   const owner=page.locator('.hub-applications-table tbody .hub-optional-owner');assert.equal(await owner.isVisible(),width<=680||width>1100,'Enlarged tablet view prioritizes next-step actions while mobile cards retain metadata');
+   const wrap=page.locator('.hub-table-wrap').filter({has:page.locator('.hub-applications-table')});await wrap.evaluate(e=>e.scrollLeft=e.scrollWidth);
+   const interview=page.getByRole('button',{name:'Request interview with '+detail.name,exact:true});await interview.focus();await interview.scrollIntoViewIfNeeded();assert.equal(await interview.evaluate(e=>{const r=e.getBoundingClientRect();return e===document.activeElement&&e.contains(document.elementFromPoint(r.left+r.width/2,r.top+r.height/2));}),true,'Interview controls remain focusable and reachable at actual browser zoom');
+   await page.goto(origin+'/?view=jobs');await page.getByRole('heading',{name:'Jobs',exact:true}).waitFor();await page.locator('.hub-job-menu > summary').focus();await page.keyboard.press('Enter');const team=page.getByRole('button',{name:'Hiring team & emails',exact:true});await team.waitFor();await noOverflow(page);await team.focus();await team.scrollIntoViewIfNeeded();assert.equal(await team.evaluate(e=>{const r=e.getBoundingClientRect();return e.contains(document.elementFromPoint(r.left+r.width/2,r.top+r.height/2));}),true,'Job action menus remain usable at actual browser zoom');
+  }
+  assert.deepEqual(writes,[]);
  }
 });
