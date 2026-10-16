@@ -59,7 +59,7 @@ and stored answers are unchanged.
 
 ## Release verification — 2026-10-15
 
-The final merged release passed 423 backend checks (three optional native OCR
+The final merged release passed 425 backend checks (three optional native OCR
 checks skipped), 21 Railway runtime checks, typecheck, lint with no errors, and
 the Railway build. Independent continuation tests cover slow provider responses,
 more than eight restarted cycles, late JSON arrivals, retry accounting, private
@@ -73,3 +73,17 @@ bytes, readable PDF/ZIP downloads, and cancelled emails staying cancelled.
 These isolated checks do not establish hosted throughput, live Google delivery,
 or backup restoration. Live archive conversion is a separate deployment check;
 old folders are converted asynchronously without replaying applicant emails.
+
+Hosted verification passed on the fictional AI-match test application: its current
+PDF and all five historical JSON revisions became readable PDFs in the existing
+Drive folder, the original résumé remained, and the task completed with `pdf-v2`.
+Only that synthetic task was temporarily prioritized to exercise every continuation
+through the backlog; no real candidate decision or email was changed. The temporary
+Railway SSH key used for the check was removed. Other old folders remain background
+work and are not represented as fully converted by this one-folder test.
+
+The hosted single PDF and job ZIP downloaded successfully; all five ZIP entries
+were valid PDFs, including the two original uploads, with no JSON/CSV entries.
+Native question dragging was saved in a private draft and verified after reopening.
+The draft was moved to recoverable Trash without being published. Job and application
+Archive/Trash/Restore retained files and AI results; cancelled emails were not replayed.
