@@ -97,12 +97,12 @@ export function CandidateEvidence({ detail, saved, draft }: { detail: Applicatio
   async function review() {
     const result = await mutation.run("/api/ai/review", "POST", {
       applicationId: detail.id, expectedRevision: detail.revision, resumeText: fileId ? "" : resumeText, ...(fileId ? {resumeFileId:fileId} : {}), linkedinText, jobCriteria, consent,
-    }, "AI evidence review saved in applicant notes. Check its citations before recording your manager grade.");
+    }, "Evidence review saved to the applicant’s notes. Read its sources and suggested follow-up questions before deciding the next step.");
     if (result !== undefined) { setConsent(false); saved(); }
   }
   return <section className="hub-card" aria-label="Evidence and verification">
-    <h3>Evidence & verification</h3>
-    <p>Compare what the candidate says with work they can explain. A tailored résumé or AI-assisted writing does not establish dishonesty. Missing information means “ask the candidate,” not “fraud.”</p>
+    <h3>Additional verification</h3>
+    <p>Record references, work samples, and any experience you want to clarify with the candidate.</p>
     <details>
       <summary>Record verification checks</summary>
       <p className="hub-muted">Record the source and the candidate’s explanation. A difference between sources needs clarification; a LinkedIn profile is also a self-reported source.</p>
@@ -113,7 +113,8 @@ export function CandidateEvidence({ detail, saved, draft }: { detail: Applicatio
       <button className="hub-button secondary" onClick={() => void saveVerification()} disabled={mutation.busy || !notes.trim()}>Save verification notes</button>
     </details>
     <details onToggle={event => setPanelOpen(event.currentTarget.open)}>
-      <summary>Compare résumé, profile and application with AI</summary>
+      <summary>Custom evidence comparison (optional)</summary>
+      <p className="hub-muted">The main AI match already compares the résumé and answers with the job description. Use this only to check additional information supplied by the candidate.</p>
       <ResourceState loading={config.loading} error={config.error} retry={() => void config.reload()} />
       {!config.loading && config.data && !ready && <p className="hub-notice">AI review is off. An administrator can connect OpenRouter under Settings → AI evidence review. You can still review files and record manager scores.</p>}
       <p className="hub-muted">PDFs are read locally when you open this panel, using OCR for scanned pages. Nothing is sent to AI until you confirm and request a review. Select the correct résumé below and compare its text with the original. LinkedIn is not scraped.</p>

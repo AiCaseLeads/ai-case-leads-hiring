@@ -42,7 +42,7 @@ const diagnosticErrors: Record<string,string> = {
 function diagnosticError(code: string | null) {return diagnosticErrors[code || ""] || "The review failed. An administrator should inspect server logs using this error code.";}
 export function MatchScore({match}:{match?:MatchSummary}) {
   return match?.status === "ready" && typeof match.score === "number"
-    ? <span><strong>{Math.round(match.score)} / 100</strong><span className="hub-secondary-line">Job-match evidence</span></span>
+    ? <span className="hub-ai-score"><strong>{Math.round(match.score)} / 100</strong></span>
     : <span className="hub-muted">{labels[match?.status || "disabled"] || "Not reviewed"}</span>;
 }
 export function JobMatchSetup({jobId, changed}:{jobId:string;changed:()=>void}) {
@@ -77,18 +77,29 @@ export function CandidateMatch({applicationId}:{applicationId:string}) {
   const reload=resource.reload;
   const pending=["pending","preparing","running"].includes(resource.data?.status || "");
   useEffect(()=>{if(!pending)return;const timer=setInterval(()=>void reload(),15000);return()=>clearInterval(timer);},[pending,reload]);
-  return <section className="hub-card" aria-label="AI job match">
-    <h3>AI job match</h3>
-    <p>A comparison of the résumé and application answers against this job’s requirements.</p>
+  const match=resource.data;
+  const criteria=match?.status === "ready" ? match.criteria || [] : [];
+  const strengths=criteria.filter(criterion=>criterion.status === "evidence_found");
+  const questions=criteria.filter(criterion=>criterion.status !== "evidence_found");
+  return <section className="hub-card hub-match-overview" aria-label="AI job match">
+    <div className="hub-section-heading compact"><div><h3>AI job match</h3><p>Résumé and answers compared with this job’s requirements.</p></div>{match && <MatchScore match={match}/>}</div>
     <ResourceState loading={resource.loading} error={resource.error} retry={()=>void reload()}/>
-    {resource.data && <><MatchScore match={resource.data}/>
-      {resource.data.error && <p role="alert">{diagnosticError(resource.data.error)} {/^[a-z0-9_]{1,100}$/.test(resource.data.error) && <small>Code: {resource.data.error}</small>}</p>}
-      {resource.data.sourceWarnings?.map(w=><p className="hub-notice" key={w}>{w}</p>)}
-      {resource.data.status==="disabled" && <p>Enable AI matching under Applications after selecting this job, or in the job’s AI review step.</p>}
-      <p className="hub-muted">The score measures supported job requirements, not a probability of success. Missing evidence is not proof of missing ability. Check the original files and speak with the candidate before deciding.</p>
-      {!!resource.data.criteria?.length && <div>{resource.data.criteria.map((c,i)=><article className="hub-history-item" key={i}><strong>{c.criterion}</strong><p>{c.status==="evidence_found"?"Evidence found":c.status==="needs_verification"?"Needs clarification":"Evidence not found"} — {c.explanation}</p>{c.citations.map((q,n)=><blockquote key={n}><p>{q.quote}</p><small>Source: {q.source}</small></blockquote>)}</article>)}</div>}
-      <small>{resource.data.model ? `Model: ${resource.data.model}. ` : ""}{resource.data.updatedAt ? `${resource.data.status === "ready" ? "Reviewed" : "Updated"} ${new Date(resource.data.updatedAt).toLocaleString()}.` : ""}</small>
+    {match && <>
+      {match.error && <p role="alert">{diagnosticError(match.error)} {/^[a-z0-9_]{1,100}$/.test(match.error) && <small>Code: {match.error}</small>}</p>}
+      {match.status==="disabled" && <p>Enable AI matching for this job to compare applicants automatically.</p>}
+      {match.status==="needs_review" && <p>The source material could not be assessed automatically. Open the résumé and application answers to check the missing information.</p>}
+      {criteria.length>0 && <>
+        <p className="hub-match-coverage"><strong>{strengths.length} of {criteria.length} requirements supported</strong>{questions.length>0 ? ` · ${questions.length} to clarify` : " · Supporting evidence found for every requirement"}</p>
+        <div className="hub-match-summary-grid">
+          <section aria-labelledby="match-strengths"><h4 id="match-strengths">Relevant strengths</h4>{strengths.length ? <ul>{strengths.slice(0,3).map(criterion=><li key={criterion.criterion}><strong>{criterion.criterion}</strong><p>{criterion.explanation}</p></li>)}</ul> : <p>No supporting evidence was found in the submitted material.</p>}</section>
+          <section aria-labelledby="match-questions"><h4 id="match-questions">What to clarify</h4>{questions.length ? <ul>{questions.slice(0,3).map(criterion=><li key={criterion.criterion}><strong>{criterion.criterion}</strong><p>{criterion.explanation}</p></li>)}</ul> : <p>Confirm the candidate’s experience and contribution in the interview.</p>}</section>
+        </div>
+        <details className="hub-match-source-evidence"><summary>View source evidence · {criteria.length} requirements</summary><div>{criteria.map((criterion,index)=><article className="hub-history-item" key={index}><strong>{criterion.criterion}</strong><p>{criterion.status==="evidence_found"?"Evidence found":criterion.status==="needs_verification"?"Needs clarification":"Evidence not found"} — {criterion.explanation}</p>{criterion.citations.map((citation,i)=><blockquote key={i}><p>{citation.quote}</p><small>Source: {citation.source}</small></blockquote>)}</article>)}</div></details>
+      </>}
+      {!!match.sourceWarnings?.length && <details className="hub-match-source-warnings"><summary>Source limitations · {match.sourceWarnings.length}</summary>{match.sourceWarnings.map(warning=><p className="hub-notice" key={warning}>{warning}</p>)}</details>}
+      <p className="hub-muted">AI match measures evidence against the job description. Missing evidence is not proof of missing ability. Your team makes the hiring decision.</p>
+      <details className="hub-match-review-details"><summary>Review details</summary><small>{match.model ? `Model: ${match.model}. ` : ""}{match.updatedAt ? `${match.status === "ready" ? "Reviewed" : "Updated"} ${new Date(match.updatedAt).toLocaleString()}.` : ""}</small></details>
     </>}
-    <div className="hub-button-row"><button type="button" className="hub-button secondary" disabled={resource.loading} onClick={()=>void reload()}>Refresh AI review</button></div>
+    <button type="button" className="hub-text-button" disabled={resource.loading} onClick={()=>void reload()}>Refresh AI review</button>
   </section>;
 }

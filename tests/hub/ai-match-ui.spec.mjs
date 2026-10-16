@@ -4,6 +4,8 @@ import {createServer} from 'node:http';
 import {existsSync,readFileSync} from 'node:fs';
 import {build} from 'esbuild';
 import {chromium} from 'playwright';
+import postcss from 'postcss';
+import tailwind from '@tailwindcss/postcss';
 
 const job={id:'job-test',title:'Test engineer',slug:'engineer',status:'open',location:'Remote',fields:[],rules:[]};
 const applicant={id:'app-test',name:'Synthetic Applicant',email:'applicant@example.invalid',jobId:job.id,jobTitle:job.title,stage:'Application Review',qualification:'review',createdAt:1,revision:1};
@@ -11,7 +13,7 @@ async function setup(t,{mode='candidate',data={status:'ready',score:80,criteria:
  const view=mode==='candidate'?'<CandidateMatch applicationId="app-test"/>':mode==='setup'?'<JobMatchSetup jobId="job-test" changed={()=>{}}/>':`<Candidates jobs={${JSON.stringify([job])}} refresh={0} changed={()=>{}} reviewerEmail="reviewer@example.invalid" initialJobId="job-test"/>`;
  const {outputFiles}=await build({stdin:{contents:`import React from 'react';import{createRoot}from'react-dom/client';import{CandidateMatch,JobMatchSetup}from'./components/hub/ai-match';import{Candidates}from'./components/hub/candidates';createRoot(document.getElementById('root')).render(${view});`,loader:'tsx',resolveDir:process.cwd()},bundle:true,write:false,format:'iife',jsx:'automatic'});
  // Keep application CSS, excluding build-only Tailwind directives.
- const css=readFileSync('app/globals.css','utf8').replace(/^@import.*$/gm,'').replace(/^@tailwind.*$/gm,'');
+ const css=(await postcss([tailwind()]).process(readFileSync('app/globals.css','utf8'),{from:'app/globals.css'})).css+'\n'+readFileSync('components/hub/hub.css','utf8');
  const server=createServer((req,res)=>{res.setHeader('Content-Type',req.url==='/bundle.js'?'text/javascript':'text/html');res.end(req.url==='/bundle.js'?outputFiles[0].text:`<meta name="viewport" content="width=device-width, initial-scale=1"><style>${css}</style><main class="hub-main"><div id="root"></div></main><script src="/bundle.js"></script>`);});
  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
  const chrome='/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';const browser=await chromium.launch({headless:true,...(existsSync(chrome)?{executablePath:chrome}:{})});
@@ -35,7 +37,7 @@ async function setup(t,{mode='candidate',data={status:'ready',score:80,criteria:
 
 test('completed AI match shows job evidence, citations and uncertainty without replacing reviewer decisions',async t=>{
  const {page,errors}=await setup(t,{data:{status:'ready',score:83.6,model:'openai/test',sourceWarnings:['Portfolio file was not readable.'],criteria:[{criterion:'React experience',status:'evidence_found',explanation:'Resume describes React delivery.',citations:[{source:'resume:cv.pdf',quote:'Built React interfaces for 3 years.'}]},{criterion:'Team leadership',status:'needs_verification',explanation:'Clarify team size in interview.',citations:[]}]}});
- await page.getByText('84 / 100',{exact:true}).waitFor();assert.equal(await page.getByText('Built React interfaces for 3 years.',{exact:true}).isVisible(),true);
+ await page.getByText('84 / 100',{exact:true}).waitFor();await page.locator('.hub-match-source-evidence > summary').click();await page.locator('.hub-match-source-warnings > summary').click();assert.equal(await page.getByText('Built React interfaces for 3 years.',{exact:true}).isVisible(),true);
  assert.equal(await page.getByText('Source: resume:cv.pdf',{exact:true}).isVisible(),true);
  assert.equal(await page.getByText(/Needs clarification — Clarify team size/).isVisible(),true);
  assert.equal(await page.getByText('Portfolio file was not readable.',{exact:true}).isVisible(),true);
@@ -46,7 +48,7 @@ test('completed AI match shows job evidence, citations and uncertainty without r
 test('pending, stale, failed and unreadable reviews never display misleading numeric scores',async t=>{
  for(const [status,label] of [['pending','Waiting for AI review'],['stale','Job changed · review needed'],['failed','AI review needs attention'],['needs_review','Needs manual review']]){
   const {page}=await setup(t,{data:{status,score:99,updatedAt:1,criteria:[],...(status==='failed'?{error:'Source extraction failed'}:{})}});
-  await page.getByText(label,{exact:true}).waitFor();await page.getByText(/^Updated /).waitFor();assert.equal(await page.getByText('99 / 100',{exact:true}).count(),0);
+  await page.getByText(label,{exact:true}).waitFor();await page.locator('.hub-match-review-details > summary').click();await page.getByText(/^Updated /).waitFor();assert.equal(await page.getByText('99 / 100',{exact:true}).count(),0);
   if(status==='failed'){assert.match(await page.getByRole('alert').textContent(),/administrator should inspect server logs/);assert.equal(await page.getByText('Source extraction failed',{exact:true}).count(),0);}
  }
 });
