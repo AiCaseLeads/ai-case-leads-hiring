@@ -1,19 +1,47 @@
-# Applications by job and bulk downloads
+# Readable application downloads and Drive archive
 
-Open **Applications**, then choose a job. Search by job title or location, or select open, closed, or draft postings. Counts show applicants and those in Application Review. Closed postings retain their records and downloads.
+The hiring database remains the authoritative record. Applicant-facing upload
+files and all private original uploads are retained without changes.
 
-Within a posting, apply search/stage/qualification filters. **Top 10 AI matches** keeps those filters and shows up to ten active applicants with completed scores for the current job version. Rejected, withdrawn, hired, pending, unreadable and outdated reviews are excluded from this shortcut. **Show all applicants** removes the ten-person limit. **Clear filters** keeps the selected job. **All jobs** returns to the chooser.
+- A single application downloads as a readable PDF summary.
+- A bulk download is a streaming ZIP. Each applicant has an independent folder
+  containing `Application summary.pdf` and their original uploaded files.
+- `Download report.pdf` records the count and any unavailable/mismatched original
+  files. Missing originals never silently disappear from the report.
+- No generated JSON or spreadsheet is included in a ZIP. The authenticated CSV
+  API remains available for reporting and contains readable answers rather than
+  raw JSON columns.
 
-## Download scope
+PDF summaries contain the recorded question labels and answers, screening result,
+available AI findings and quotes, attachment names, assessments, interviews,
+team reviews, messages, and hiring history. A current job description is clearly
+labeled as current; it is not presented as a historical description snapshot.
+Private file routes and assessment/interview capability URLs are not printed as
+attachment or scheduling metadata.
 
-- **Current view:** every matching applicant across pages, or the top-ten shortlist when active.
-- **All applicants for this job:** ignores the current filters, including the top-ten shortcut.
-- **Selected applicants:** only the checked applicants in the current view. Selecting a checkbox chooses this scope automatically. Navigation or refreshed records can clear the selection; check the displayed count before downloading.
+## Drive
 
-**Download spreadsheet (CSV)** includes names, email, stage, qualification, current AI score/status, reviewer grade, Drive links, readable question answers, and machine-readable answers/questions. Spreadsheet formula characters are neutralized.
+Existing Recruiting / Project / Location / Hiring round / Applicant identities
+stay the same. New summaries use immutable `Application-rN.pdf` revision names.
+PDF metadata and font subsets are deterministic, so retries do not create new
+files or change bytes merely because the worker restarted.
 
-**Download application files (ZIP)** includes that spreadsheet, a separate application JSON file for each applicant, original uploaded attachments, and a manifest. Applicant and file IDs distinguish duplicate names. Read `manifest.json` for unavailable originals; a missing file does not erase its application data. Exports do not include full private communication/interview history.
+During archival, historical `application-rN.json` files are converted only when
+the filename, application folder, app-generated property hash, retained file ID,
+checksum, application ID, job ID, and revision agree. Each historical PDF is
+uploaded and verified first. Then the matching app-created JSON is moved to
+Google Drive Trash, where it can be recovered under the account's retention
+rules. There is no permanent deletion, and unrelated JSON files are untouched.
+Original Drive IDs and checksums remain in the private `archive_items` table;
+successful task results include the IDs moved during that attempt.
 
-Downloads require a current staff login and stay private. A preflight validates the scope and size, then the browser download manager streams the file. “Download started” means the browser has begun; confirm completion in its download list. No Google connection is needed to download originals stored on Railway.
+Conversion failure retains the JSON and leaves the task retryable. The worker
+must only record `archiveFormat: pdf-v1` after conversion completes. The separate
+backfill queue converts older completed archives without sending emails or
+changing candidate decisions. Company Drive consent and a private root folder
+remain required.
 
-Downloads are limited to 10,000 matching applications, 1,000 explicitly selected IDs, and 3 GB of uploaded files per ZIP. The server rejects larger requests instead of silently truncating them. Narrow filters or select fewer applicants when a limit is reached. Individual files are processed sequentially rather than collecting all PDFs in memory.
+The licensed Noto Sans fonts are packaged with the Railway Docker image. Latin,
+Greek and Cyrillic text render normally. Other unsupported characters are shown
+as explicit Unicode code points, preserving the original value; original files
+and stored answers are unchanged.

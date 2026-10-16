@@ -122,7 +122,7 @@ export async function handleHubRequest(
     } else if (section === "applications-export" && request.method === "GET" && !id) {
       if(new URL(request.url).searchParams.has("format")) {
         const format=new URL(request.url).searchParams.get("format");
-        if(format !== "csv" && format !== "zip") throw new HiringError("invalid_export_format",422,"Choose CSV or ZIP.");
+        if(format !== "csv" && format !== "zip" && format !== "pdf") throw new HiringError("invalid_export_format",422,"Choose PDF, CSV or ZIP.");
         const bucket=format === "zip" ? (await import("../hiring/runtime")).getHiringEnv().BUCKET : undefined;
         return await downloadApplications(request,store,applicationFilters(request),bucket);
       }

@@ -1,10 +1,12 @@
 import { GoogleDriveArchive } from "../archive/drive";
 import type { ItemState } from "../archive/contracts";
-import { GoogleError, utf8 } from "./http";
+import { GoogleError } from "./http";
 import { GoogleBudget } from "./budget";
+import { applicationPdf, type ReadableApplication } from "../pdf/application";
+import { sha256 } from "../archive/security";
 
 export type { ArchiveItem, ItemState } from "../archive/contracts";
-export interface ApplicationSnapshot {
+export interface ApplicationSnapshot extends ReadableApplication {
   id: string; revision: number; name: string; jobId: string; jobTitle: string;
   archiveProject?: string; archiveCountry?: string; hiringRound?: string;
   updatedAt?: number; driveFolderId?: string; driveFolderUrl?: string;
@@ -15,7 +17,7 @@ export interface OriginalFile { id?: string; name: string; bytes: Uint8Array; mi
 export interface OriginalFileSource { id: string; name: string; size: number; mimeType: string; load: () => Promise<Uint8Array> }
 export type ArchiveOriginal = OriginalFile | OriginalFileSource;
 export interface ArchiveContinuation { read: () => Promise<number>; write: (nextIndex: number) => Promise<void> }
-export interface ArchiveResult { folderId: string; folderUrl: string; archivedRevision: number }
+export interface ArchiveResult { folderId: string; folderUrl: string; archivedRevision: number; archiveFormat: "pdf-v1"; legacyJsonFileIds: string[] }
 
 export class WorkspaceDrive {
   private archive?: GoogleDriveArchive;
@@ -75,10 +77,10 @@ export class WorkspaceDrive {
     if (clean.assessment) delete clean.assessment.assessmentUrl;
     for (const interview of clean.interviews ?? []) delete interview.bookingUrl;
     for (const assessment of clean.assessments ?? []) delete assessment.assessmentUrl;
-    const snapshot = utf8(JSON.stringify({ schemaVersion: 1, application: clean }, null, 2));
+    const snapshot = await applicationPdf(clean);
     // A worker whose lease expires may finish after a newer worker. Distinct,
     // immutable revision identities keep that old upload away from newer data.
-    await this.archive.file(`hub:application:${detail.id}:snapshot:revision:${detail.revision}`, `application-r${detail.revision}.json`, "application/json", folderId, snapshot);
+    await this.archive.file(`hub:application:${detail.id}:pdf:v1:revision:${detail.revision}`, `Application-r${detail.revision}.pdf`, "application/pdf", folderId, snapshot);
     const nextIndex=continuation?await continuation.read():0;
     if(!Number.isSafeInteger(nextIndex)||nextIndex<0||nextIndex>matched.length)throw new GoogleError("drive_checkpoint_invalid");
     for (let index=nextIndex;index<matched.length;index++) {
@@ -89,6 +91,15 @@ export class WorkspaceDrive {
       await this.archive.file(`hub:application:${detail.id}:original:${file.id}`, file.name, file.mimeType, folderId, bytes);
       if(continuation)await continuation.write(index+1);
     }
-    return { folderId, folderUrl: `https://drive.google.com/drive/folders/${folderId}`, archivedRevision: detail.revision };
+    const legacyJsonFileIds: string[] = [];
+    for await (const legacy of this.archive.legacyApplicationSnapshots(detail.id, folderId)) {
+      this.budget.check();
+      if (legacy.application.jobId !== detail.jobId || typeof legacy.application.name !== "string" || typeof legacy.application.jobTitle !== "string") throw new GoogleError("drive_legacy_snapshot_identity_mismatch");
+      const legacyPdf = await applicationPdf(legacy.application as unknown as ReadableApplication);
+      const pdfId = await this.archive.file(`hub:application:${detail.id}:pdf:v1:revision:${legacy.revision}`, `Application-r${legacy.revision}.pdf`, "application/pdf", folderId, legacyPdf);
+      await this.archive.retireLegacyApplicationSnapshot(detail.id, legacy, folderId, pdfId, await sha256(legacyPdf));
+      legacyJsonFileIds.push(legacy.fileId);
+    }
+    return { folderId, folderUrl: `https://drive.google.com/drive/folders/${folderId}`, archivedRevision: detail.revision, archiveFormat: "pdf-v1", legacyJsonFileIds };
   }
 }

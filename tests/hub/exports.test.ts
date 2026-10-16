@@ -7,6 +7,7 @@ import {writeFileSync,mkdtempSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {execFileSync} from 'node:child_process';
+import {readablePdf} from '../pdf/readable';
 test('CSV escapes formula cells and ZIP filenames cannot traverse directories',()=>{
  assert.equal(csvCell(' =HYPERLINK("x")'),'"\' =HYPERLINK(""x"")"');assert.equal(csvCell('a,b\nc'),'"a,b\nc"');assert.equal(safeFilename('../../résumé.pdf'),'__.._résumé.pdf');
 });
@@ -19,7 +20,7 @@ test('download requires one job, preserves answers and rejects cross-job selecte
  await assert.rejects(downloadApplications(request('&ids='+b.id),store,{jobId:job.id}),{code:'export_selection_changed'});
  const response=await downloadApplications(request('&ids='+a.id),store,{jobId:job.id});
  assert.equal(response.headers.get('X-Application-Count'),'1');assert.equal(response.headers.get('Cache-Control'),'private, no-store');
- const csv=await response.text();assert.match(csv,/Application answers JSON/);assert.match(csv,/experience/);assert.match(csv,/Years of experience: 5/);assert.match(csv,new RegExp(a.id));assert.ok(!csv.includes(b.id));
+ const csv=await response.text();assert.ok(!csv.includes("Application answers JSON"));assert.ok(!csv.includes("Questions JSON"));assert.match(csv,/experience/);assert.match(csv,/Years of experience: 5/);assert.match(csv,new RegExp(a.id));assert.ok(!csv.includes(b.id));
  const counts=await handleHubRequest(new Request('https://jobs.example.invalid/api/hub/application-counts'),['application-counts'],MANAGER,store);
  assert.equal(counts.status,200);assert.equal((await store.applicationCounts()).items.find(row=>row.jobId===job.id)?.total,1);
  }finally{database.close();}
@@ -48,7 +49,7 @@ test('ZIP missing originals are reported and application data stays available',a
  database.prepare("INSERT INTO hub_files(id,session_hash,job_id,field_path,filename,content_type,size,object_key,expires_at,uploaded_at,application_id) VALUES('missing','test',?,'resume','missing.pdf','application/pdf',10,'missing-key',1,1,?)").run(job.id,app.id);
  const bucket={get:async()=>null} as unknown as Pick<R2Bucket,'get'>;
  const response=await downloadApplications(new Request('https://jobs.example.invalid/api/hub/applications-export?format=zip'),store,{jobId:job.id},bucket);
- const dir=mkdtempSync(join(tmpdir(),'hiring-export-'));try{const path=join(dir,'test.zip');writeFileSync(path,Buffer.from(await response.arrayBuffer()));execFileSync('python3',['-c','import zipfile,sys,json; z=zipfile.ZipFile(sys.argv[1]); assert z.testzip() is None; m=json.loads(z.read("manifest.json")); assert len(m["missingFiles"])==1; assert m["includedFiles"]==0; assert "applications.csv" in z.namelist()',path]);}finally{rmSync(dir,{recursive:true,force:true});}
+ const dir=mkdtempSync(join(tmpdir(),'hiring-export-'));try{const path=join(dir,'test.zip');writeFileSync(path,Buffer.from(await response.arrayBuffer()));const report=execFileSync('python3',['-c','import zipfile,sys; z=zipfile.ZipFile(sys.argv[1]); assert z.testzip() is None; assert all(p.endswith(".pdf") for p in z.namelist()); assert "Download report.pdf" in z.namelist(); assert len(z.namelist())==2; print(z.read("Download report.pdf").hex())',path]); const parsed=await readablePdf(new Uint8Array(Buffer.from(report.toString().trim(),'hex')));assert.ok(parsed.text.includes('File missing from storage'));assert.ok(parsed.text.includes('missing.pdf'));}finally{rmSync(dir,{recursive:true,force:true});}
  }finally{database.close();}
 });
 test('1000 applications export incrementally without accumulating answers or file bodies',async()=>{
@@ -80,11 +81,28 @@ test('ZIP verifies original object identity and size before including bytes',asy
   const bucket={get:async(key:string)=>({size:key==='wrong-size'?5:4,customMetadata:key==='missing-id'?{}:{fileId:key==='wrong-id'?'another-applicant-file':key},body:new ReadableStream<Uint8Array>({start(controller){controller.enqueue(new TextEncoder().encode(key==='good'?'GOOD':'NOPE'));if(key==='good')controller.close();},cancel(){cancelled++;}})})} as unknown as Pick<R2Bucket,'get'>;
   const response=await downloadApplications(new Request('https://jobs.example.invalid/api/hub/applications-export?format=zip'),store,{jobId:job.id},bucket);
   const path=join(dir,'verified.zip');writeFileSync(path,Buffer.from(await response.arrayBuffer()));
-  execFileSync('python3',['-c',`import zipfile,sys,json
+  const report=execFileSync('python3',['-c',`import zipfile,sys
 z=zipfile.ZipFile(sys.argv[1]);assert z.testzip() is None
-m=json.loads(z.read('manifest.json'));assert m['includedFiles']==1;assert len(m['missingFiles'])==3
-pdfs=[p for p in z.namelist() if p.endswith('.pdf')];assert len(pdfs)==1;assert z.read(pdfs[0])==b'GOOD'
-assert all('identity or size' in f['reason'] for f in m['missingFiles'])`,path]);
+assert not any(p.endswith('.json') or p.endswith('.csv') for p in z.namelist())
+originals=[p for p in z.namelist() if p.endswith('-good.pdf')];assert len(originals)==1;assert z.read(originals[0])==b'GOOD'
+assert len(z.namelist())==3
+print(z.read('Download report.pdf').hex())`,path]);
+  const parsed=await readablePdf(new Uint8Array(Buffer.from(report.toString().trim(),'hex')));assert.equal((parsed.text.match(/identity or size/g)||[]).length,3);
   assert.equal(cancelled,3);
  } finally {database.close();rmSync(dir,{recursive:true,force:true});}
+});
+
+test('single application download is a private Unicode PDF without file storage and rejects multiple or foreign selections',async()=>{
+ const {store,database}=createStore();try{
+  const job=await store.saveJob(jobInput()),other=await store.saveJob(jobInput()),a=await store.acceptApplication(applicationInput(job.id)),b=await store.acceptApplication(applicationInput(job.id)),foreign=await store.acceptApplication(applicationInput(other.id));
+  database.prepare('UPDATE hub_applications SET name=? WHERE id=?').run('María Алексей',a.id);
+  const request=(ids:string)=>new Request('https://jobs.example.invalid/api/hub/applications-export?format=pdf&jobId='+job.id+'&ids='+ids);
+  const response=await downloadApplications(request(a.id),store,{jobId:job.id});
+  assert.equal(response.headers.get('Content-Type'),'application/pdf');assert.equal(response.headers.get('Cache-Control'),'private, no-store');assert.equal(response.headers.get('X-Content-Type-Options'),'nosniff');
+  assert.ok(response.headers.get('Content-Disposition')?.includes("filename*=UTF-8''"));
+  const parsed=await readablePdf(new Uint8Array(await response.arrayBuffer()));assert.ok(parsed.text.includes('María Алексей'));assert.ok(parsed.text.includes('Years of experience'));assert.ok(!parsed.text.includes(b.id));
+  await assert.rejects(downloadApplications(request(a.id+','+b.id),store,{jobId:job.id}),{code:'single_application_required'});
+  await assert.rejects(downloadApplications(request(foreign.id),store,{jobId:job.id}),{code:'export_selection_changed'});
+  const dispatched=await handleHubRequest(request(a.id),['applications-export'],MANAGER,store);assert.equal(dispatched.status,200);assert.equal(dispatched.headers.get('Content-Type'),'application/pdf');
+ }finally{database.close();}
 });

@@ -22,7 +22,7 @@ test("archive tasks defer each R2 read to the individual file loader",async()=>{
         assert.deepEqual(await source.load(),new Uint8Array([1,2,3]));
         assert.equal(reads.length,index+1);await checkpoint!.write(index+1);
       }
-      return {folderId:"synthetic-folder",folderUrl:"https://drive.google.com/drive/folders/synthetic-folder",archivedRevision:detail.revision};
+      return {folderId:"synthetic-folder",folderUrl:"https://drive.google.com/drive/folders/synthetic-folder",archivedRevision:detail.revision,archiveFormat:"pdf-v1",legacyJsonFileIds:[]};
     };
     assert.equal((await processHubTasks(store,db,originals,google,1)).healthy,true);
     assert.equal(reads.length,2);

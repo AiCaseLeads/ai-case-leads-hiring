@@ -5,7 +5,8 @@ import { safeDriveSession, sha256 } from "./security";
 const API = "https://www.googleapis.com/drive/v3";
 const UPLOAD = "https://www.googleapis.com/upload/drive/v3/files";
 const FOLDER = "application/vnd.google-apps.folder";
-interface DriveFile { id: string; name: string; mimeType: string; parents?: string[]; trashed?: boolean; appProperties?: Record<string, string>; sha256Checksum?: string }
+interface DriveFile { id: string; name: string; mimeType: string; parents?: string[]; trashed?: boolean; appProperties?: Record<string, string>; sha256Checksum?: string; size?: string }
+export interface LegacyApplicationSnapshot { fileId: string; revision: number; application: Record<string, unknown>; hash: string }
 export interface DriveCredentials { clientId: string; clientSecret: string; refreshToken: string }
 
 function driveId(value: string): string {
@@ -117,6 +118,83 @@ export class GoogleDriveArchive {
     if (!file || file.mimeType !== FOLDER) throw new Error("drive_folder_missing");
     this.matches(file, key, parentId);
     return file.id;
+  }
+
+  /** Only historical JSONs made by this app in this application folder are eligible. */
+  async *legacyApplicationSnapshots(applicationId: string, parentId: string): AsyncGenerator<LegacyApplicationSnapshot> {
+    let pageToken: string | undefined;
+    const candidates: DriveFile[] = [];
+    // Snapshot metadata before moving any file: page cursors cannot skip records
+    // when the caller trashes files between yields. File bodies remain sequential.
+    for (let page = 0; page < 100; page++) {
+      const params = new URLSearchParams({
+        q: `'${driveId(parentId)}' in parents and trashed = false and mimeType = 'application/json'`,
+        fields: "files(id,name,mimeType,parents,trashed,appProperties,sha256Checksum,size),nextPageToken", pageSize: "100",
+        supportsAllDrives: "true", includeItemsFromAllDrives: "true", ...(pageToken ? { pageToken } : {}),
+      });
+      const response = await this.request(`${API}/files?${params}`);
+      if (!response.ok) throw new ProviderError("google_drive", response.status);
+      const listed = await response.json() as { files: DriveFile[]; nextPageToken?: string };
+      candidates.push(...listed.files);
+      if (!listed.nextPageToken) { pageToken = undefined; break; }
+      if (pageToken === listed.nextPageToken) throw new Error("drive_legacy_pagination_stalled");
+      pageToken = listed.nextPageToken;
+    }
+    if (pageToken) throw new Error("drive_legacy_pagination_limit");
+    for (const file of candidates) {
+      const match = /^application-r([1-9]\d*)\.json$/.exec(file.name);
+      if (!match || !Number.isSafeInteger(Number(match[1]))) continue;
+      const revision = Number(match[1]), key = await sha256(`hub:application:${applicationId}:snapshot:revision:${revision}`);
+      if (file.appProperties?.aclArchiveKey !== key) continue;
+      this.matches(file, key, parentId);
+      const reserved = await this.state.get(key) ?? await this.state.reserve(key, driveId(file.id), parentId);
+      if (reserved.drive_id !== file.id || reserved.parent_id !== parentId) throw new Error("drive_legacy_snapshot_identity_mismatch");
+      if (file.mimeType !== "application/json" || Number(file.size || 0) > 5 * 1024 * 1024) throw new Error("drive_legacy_snapshot_invalid");
+      const latest = await this.metadata(file.id);
+      if (!latest || latest.trashed) continue;
+      this.matches(latest, key, parentId);
+      const content = await this.request(`${API}/files/${driveId(file.id)}?alt=media&supportsAllDrives=true`);
+      if (!content.ok || !content.body) throw new ProviderError("google_drive", content.status);
+      const reader = content.body.getReader(), chunks: Uint8Array[] = []; let size = 0;
+      try {
+        while (true) {
+          const chunk = await reader.read(); if (chunk.done) break;
+          size += chunk.value.length;
+          if (size > 5 * 1024 * 1024) throw new Error("drive_legacy_snapshot_invalid");
+          chunks.push(chunk.value);
+        }
+      } finally { await reader.cancel().catch(() => undefined); reader.releaseLock(); }
+      const bytes = new Uint8Array(size); let offset = 0;
+      for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.length; }
+      const hash = await sha256(bytes);
+      if (latest.sha256Checksum && hash !== latest.sha256Checksum) throw new Error("drive_legacy_snapshot_changed");
+      if (reserved.content_hash && hash !== reserved.content_hash) throw new Error("drive_legacy_snapshot_changed");
+      let snapshot: { schemaVersion?: unknown; application?: Record<string, unknown> };
+      try { snapshot = JSON.parse(new TextDecoder().decode(bytes)); } catch { throw new Error("drive_legacy_snapshot_invalid"); }
+      if (snapshot.schemaVersion !== 1 || !snapshot.application || snapshot.application.id !== applicationId || snapshot.application.revision !== revision) throw new Error("drive_legacy_snapshot_identity_mismatch");
+      yield { fileId: file.id, revision, application: snapshot.application, hash };
+    }
+  }
+
+  /** Recoverable cleanup only after the distinct PDF replacement is confirmed in Drive. */
+  async retireLegacyApplicationSnapshot(applicationId: string, legacy: LegacyApplicationSnapshot, parentId: string, pdfId: string, pdfHash: string): Promise<void> {
+    const key = await sha256(`hub:application:${applicationId}:snapshot:revision:${legacy.revision}`);
+    const replacementKey = await sha256(`hub:application:${applicationId}:pdf:v1:revision:${legacy.revision}`);
+    const [old, replacement] = await Promise.all([this.metadata(legacy.fileId), this.metadata(pdfId)]);
+    if (!old || old.trashed) return;
+    this.matches(old, key, parentId);
+    if (old.name !== `application-r${legacy.revision}.json` || old.mimeType !== "application/json" || old.sha256Checksum !== legacy.hash) throw new Error("drive_legacy_snapshot_changed");
+    if (!replacement) throw new Error("drive_pdf_replacement_missing");
+    this.matches(replacement, replacementKey, parentId);
+    if (replacement.mimeType !== "application/pdf" || replacement.sha256Checksum !== pdfHash) throw new Error("drive_pdf_replacement_unverified");
+    const response = await this.request(`${API}/files/${driveId(legacy.fileId)}?supportsAllDrives=true&fields=id,trashed`, {
+      method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ trashed: true }),
+    });
+    if (!response.ok) throw new ProviderError("google_drive", response.status);
+    const retired = await response.json() as { id?: string; trashed?: boolean };
+    if (retired.id !== legacy.fileId || retired.trashed !== true) throw new Error("drive_legacy_retirement_unconfirmed");
+    // Preserve the original file identity and checksum for audit/recovery from Drive Trash.
+    await this.state.update(key, legacy.hash, null);
   }
 
   private async uploadStatus(session: string, total: number): Promise<Response> {
