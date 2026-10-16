@@ -1,4 +1,5 @@
 import { jobTeam,teamKey,validateTeam } from "../job-team/service";
+import { unchangedJobMatchStatements } from "../ai/reuse";
 import type { HubMember } from "../hub/auth-core";
 import { HubStore, DEFAULT_REJECTION } from "../hub/store";
 import { assertJobEditable, jobLifecycleKey } from "../hub/job-lifecycle";
@@ -306,6 +307,11 @@ export async function handleJobSetup(
           now,
         ),
       );
+    if (previous) statements.push(...unchangedJobMatchStatements(store, previous, {
+      title: job.title,
+      descriptionHtml: description,
+      aiMatchEnabled: job.aiMatchEnabled ?? previous.aiMatchEnabled,
+    }));
     if(team)statements.push(store.settingStatement(teamKey(jobId),{...team,revision:(previousTeam?.revision||0)+1,createdAt:previousTeam?.createdAt||now,updatedAt:now}));
     statements.push(
       store.settingStatement(KEY, setup),

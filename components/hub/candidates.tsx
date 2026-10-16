@@ -254,7 +254,7 @@ function JobCandidates({
       refresh,
     ),
     mutation = useHubMutation();
-  const waitingForAi = resource.data?.items.some(item => item.aiMatch?.status === "pending");
+  const waitingForAi = resource.data?.items.some(item => item.aiMatch?.retryPending || ["pending", "preparing", "running"].includes(item.aiMatch?.status || ""));
   const reloadApplications = resource.reload;
   useEffect(() => {
     if (!waitingForAi) return;

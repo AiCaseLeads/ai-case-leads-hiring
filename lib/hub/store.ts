@@ -6,6 +6,7 @@ import { canonicalJson, privateToken, sha256 } from "../hiring/crypto";
 import { HiringError } from "../hiring/errors";
 import { validateAnswers, MAX_APPLICATION_FILE_BYTES } from "../hiring/validation";
 import { matchDetail } from "../ai/matching";
+import { unchangedJobMatchStatements } from "../ai/reuse";
 import { applicantDisplayName, withRequiredPhone } from "../hiring/contact-fields";
 import { applicationReceipt } from "../hiring/receipt-email";
 import { gradeForScorecards } from "./grading";
@@ -342,7 +343,7 @@ export class HubStore {
         : sanitizeDescription(input.descriptionHtml);
     try {
       if (previous) {
-        const result = await this.stmt(
+        const update = this.stmt(
           "UPDATE hub_jobs SET title=?,slug=?,department=?,description_html=?,location=?,status=?,fields_json=?,rules_json=?,auto_reject=?,ai_match_enabled=?,rejection_template=?,assessment_prompt=?,archive_project=?,archive_country=?,hiring_round=?,form_version=form_version+1,updated_at=? WHERE id=? AND form_version=? AND COALESCE((SELECT json_extract(value,'$.revision') FROM hub_settings WHERE key=?),0)=?",
           input.title,
           input.slug,
@@ -364,8 +365,13 @@ export class HubStore {
           previous.formVersion,
           jobLifecycleKey(jobId),
           previous.lifecycle?.revision || 0,
-        ).run();
-        if (result.meta.changes !== 1) throw conflict();
+        );
+        const results = await this.db.batch([update, ...unchangedJobMatchStatements(this, previous, {
+          title: input.title,
+          descriptionHtml: description,
+          aiMatchEnabled: input.aiMatchEnabled ?? previous.aiMatchEnabled,
+        })]);
+        if (results[0].meta.changes !== 1) throw conflict();
       } else
         await this.stmt(
           "INSERT INTO hub_jobs (id,title,slug,department,description_html,location,status,fields_json,rules_json,auto_reject,ai_match_enabled,rejection_template,assessment_prompt,archive_project,archive_country,hiring_round,form_version,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,?,?)",
@@ -792,8 +798,8 @@ export class HubStore {
     const matches = new Map<string, import("../ai/matchtypes").AiMatchSummary>();
     for(let offset=0;offset<rows.length;offset+=100){
       const ids=rows.slice(offset,offset+100).map(row=>row.id);
-      const selected=await this.rows<{id:string;enabled:number;version:number;status:string|null;criteria_status:string|null;score:number|null;updated_at:number|null}>(`SELECT a.id,j.ai_match_enabled AS enabled,j.form_version AS version,m.status,c.status AS criteria_status,m.score,m.updated_at FROM hub_applications a JOIN hub_jobs j ON j.id=a.job_id LEFT JOIN hub_ai_matches m ON m.application_id=a.id AND m.form_version=j.form_version LEFT JOIN hub_ai_criteria c ON c.job_id=j.id AND c.form_version=j.form_version WHERE a.id IN (${ids.map(()=>"?").join(",")})`,...ids);
-      for(const m of selected)matches.set(m.id,{status:!m.enabled?'disabled':m.status==='ready'?'ready':!aiAvailable?'setup_required':m.criteria_status==='failed'?'failed':m.status==='needs_review'?'needs_review':m.status==='failed'?'failed':'pending',score:m.enabled&&m.status==='ready'?m.score:null,version:m.version,updatedAt:m.updated_at});
+      const selected=await this.rows<{id:string;enabled:number;version:number;status:string|null;criteria_status:string|null;score:number|null;updated_at:number|null;lease_until:number|null;attempts:number|null;criteria_attempts:number|null}>(`SELECT a.id,j.ai_match_enabled AS enabled,j.form_version AS version,m.status,c.status AS criteria_status,m.score,m.updated_at,m.lease_until,m.attempts,c.attempts AS criteria_attempts FROM hub_applications a JOIN hub_jobs j ON j.id=a.job_id LEFT JOIN hub_ai_matches m ON m.application_id=a.id AND m.form_version=j.form_version LEFT JOIN hub_ai_criteria c ON c.job_id=j.id AND c.form_version=j.form_version WHERE a.id IN (${ids.map(()=>"?").join(",")})`,...ids);
+      for(const m of selected)matches.set(m.id,{status:!m.enabled?'disabled':m.status==='ready'?'ready':!aiAvailable?'setup_required':m.criteria_status==='failed'?'failed':m.status==='needs_review'?'needs_review':m.status==='failed'?'failed':m.status==='running'&&(m.lease_until||0)>Date.now()?'running':m.criteria_status!=='ready'?'preparing':'pending',score:m.enabled&&m.status==='ready'?m.score:null,version:m.version,updatedAt:m.updated_at,retryPending:!!m.enabled&&aiAvailable&&!['ready','needs_review'].includes(m.status||'')&&(m.criteria_status==='failed'?(m.criteria_attempts||0)<5:m.status==='failed'&&(m.attempts||0)<5)});
     }
     return rows.map((row)=>({...summary(row),grade:gradeForScorecards(cards.get(row.id)||[]),aiMatch:matches.get(row.id)}));
   }
