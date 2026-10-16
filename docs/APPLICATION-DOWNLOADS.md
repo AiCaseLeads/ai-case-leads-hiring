@@ -56,3 +56,20 @@ The licensed Noto Sans fonts are packaged with the Railway Docker image. Latin,
 Greek and Cyrillic text render normally. Other unsupported characters are shown
 as explicit Unicode code points, preserving the original value; original files
 and stored answers are unchanged.
+
+## Release verification — 2026-10-15
+
+The final merged release passed 423 backend checks (three optional native OCR
+checks skipped), 21 Railway runtime checks, typecheck, lint with no errors, and
+the Railway build. Independent continuation tests cover slow provider responses,
+more than eight restarted cycles, late JSON arrivals, retry accounting, private
+file identity, and preservation of different historical/current PDFs.
+
+The real built-server browser/HTTP rehearsal accepted 3,000 synthetic applications,
+including 1,002 private PDFs and a burst of 1,000 simultaneous submissions. Twenty
+duplicate requests produced one application; all 3,003 records survived restart.
+Separate built-server checks verified application Trash/Restore, private original
+bytes, readable PDF/ZIP downloads, and cancelled emails staying cancelled.
+These isolated checks do not establish hosted throughput, live Google delivery,
+or backup restoration. Live archive conversion is a separate deployment check;
+old folders are converted asynchronously without replaying applicant emails.
