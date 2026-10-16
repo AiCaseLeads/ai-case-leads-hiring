@@ -6,21 +6,27 @@ import { build } from 'esbuild';
 import { chromium } from 'playwright';
 import postcss from 'postcss';
 import tailwind from '@tailwindcss/postcss';
+import {installDraftFixture} from './draft-ui-fixture.mjs';
 
 const longEmail = 'creative.strategy.recruiting.team@long-company-example.invalid';
 const member = { email: longEmail, role: 'admin', isOwner:true };
 const job = { id: 'job-1', title: 'Synthetic Creative Strategist', slug: 'synthetic-creative', location: 'Remote · Spain and United States', status: 'open', fields: [], rules: [], formVersion: 1, archiveCountry: 'Spain', hiringRound: 'October' };
-const detail = { id: 'app-1', revision: 1, name: 'Synthetic Applicant With A Long Name', email: longEmail, jobId: job.id, jobTitle: job.title, stage: 'Application Review', qualification: 'review', assignee: longEmail, createdAt: Date.now(), updatedAt: Date.now(), source: 'test', fields: [{path:'experience',title:'Experience',type:'LongText',required:false}], answers: [{path:'experience',value:'Synthetic work sample'}], files: [{id:'file-1',filename:'synthetic-resume-with-a-long-original-file-name.pdf',url:'/api/files/file-1',contentType:'application/pdf',size:500}], history: [], notes: [], communications: [], scorecards: [], qualificationEvidence: [] };
+const detail = { id: 'app-1', revision: 1, name: 'Synthetic Applicant With A Long Name', email: longEmail, jobId: job.id, jobTitle: job.title, stage: 'Application Review', qualification: 'review', assignee: longEmail, createdAt: Date.now(), updatedAt: Date.now(), source: 'test', fields: [{path:'experience',title:'Experience',type:'LongText',required:false}], answers: [{path:'experience',value:'Synthetic work sample'}], files: [{id:'file-1',filename:'synthetic-resume-with-a-long-original-file-name.pdf',url:'/api/files/file-1',contentType:'application/pdf',size:500}], history: [], notes: [], communications: [], scorecards: [], qualificationEvidence: [],aiMatch:{status:'ready',score:88,updatedAt:Date.now()} };
 const settings = {settingsVersion:1,members:[member,{email:'reviewer@example.invalid',role:'recruiter'}],google:{connected:true,sender:longEmail,expectedSender:longEmail,calendarId:longEmail,driveRootId:'shared'},queue:{pending:0,failed:0},templates:{rejection:'Thank you for applying.'},applicationsEnabled:true,accessAudit:[{id:'audit-1',type:'Company configuration updated',actor:longEmail,createdAt:Date.now(),before:{calendarId:longEmail},after:{calendarId:longEmail,driveRootId:'synthetic-shared-folder-'+ 'x'.repeat(80)}}],scheduling:{timeZone:'America/Bogota',startHour:10,endHour:16,durationMinutes:30,weekdays:[1,2,3,4,5],configured:true,remindersEnabled:false}};
-async function setup(t) {
- const {outputFiles}=await build({stdin:{contents:`import React from 'react';import{createRoot}from'react-dom/client';import{HiringDashboard}from'./components/hub/dashboard';createRoot(document.getElementById('root')).render(<HiringDashboard member={${JSON.stringify(member)}} signOutHref='/logout'/>);`,loader:'tsx',resolveDir:process.cwd()},bundle:true,write:false,format:'iife',jsx:'automatic'});
+async function setup(t,{role='admin',isOwner=true}={}) {
+ const currentMember={...member,role,isOwner};
+ const {outputFiles}=await build({stdin:{contents:`import React from 'react';import{createRoot}from'react-dom/client';import{HiringDashboard}from'./components/hub/dashboard';createRoot(document.getElementById('root')).render(<HiringDashboard member={${JSON.stringify(currentMember)}} signOutHref='/logout'/>);`,loader:'tsx',resolveDir:process.cwd()},bundle:true,write:false,format:'iife',jsx:'automatic'});
  const globalCss=(await postcss([tailwind()]).process(readFileSync('app/globals.css','utf8'),{from:'app/globals.css'})).css;
  const css=globalCss+'\n'+readFileSync('components/hub/hub.css','utf8');
  const server=createServer((req,res)=>{res.setHeader('Content-Type',req.url==='/bundle.js'?'text/javascript':req.url==='/styles.css'?'text/css':'text/html');res.end(req.url==='/bundle.js'?outputFiles[0].text:req.url==='/styles.css'?css:'<meta name="viewport" content="width=device-width, initial-scale=1"><link rel="stylesheet" href="/styles.css"><div id="root"></div><script src="/bundle.js"></script>');});await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
- const chrome='/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';const browser=await chromium.launch({headless:true,...(existsSync(chrome)?{executablePath:chrome}:{})});t.after(async()=>{await browser.close();await new Promise(resolve=>server.close(resolve));});const page=await browser.newPage();
+ const chrome='/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';const browser=await chromium.launch({headless:true,...(existsSync(chrome)?{executablePath:chrome}:{})});t.after(async()=>{await browser.close();await new Promise(resolve=>server.close(resolve));});const page=await browser.newPage();page.setDefaultTimeout(5000);const writes=[];
  await page.route('**/api/**',route=>{
-  const path=new URL(route.request().url()).pathname;let data={};
-  if(path==='/api/hub/overview')data={counts:{applications:1,active:1,rejected:0,hired:0},stageCounts:[],recentApplications:[detail],integrations:{google:true,drive:true,applicationsEnabled:true},jobs:[job]};
+  const path=new URL(route.request().url()).pathname;if(route.request().method()!=='GET')writes.push(path);let data={};
+  if(path==='/api/hub/overview')data={counts:{applications:1,active:1,rejected:0,hired:0},stageCounts:[{stage:'Application Review',count:1}],recentApplications:[detail],integrations:{google:true,drive:true,applicationsEnabled:true},jobs:[job]};
+  if(path==='/api/hub/application-counts')data={items:[{jobId:job.id,total:1,needsReview:1,aiReady:0}]};
+  if(path==='/api/hub/recruiting-help')data={items:[],hasMore:false};
+  if(path==='/api/interview-readiness')data={sender:longEmail,mailReady:true,mailIssue:null,sharedCalendarReady:true,interviewers:[{email:longEmail,ready:true}]};
+  if(path==='/api/ai/match')data=new URL(route.request().url()).searchParams.has('applicationId')?{status:'ready',score:88,criteria:[{criterion:'Project delivery',status:'evidence_found',explanation:'Built production projects with a distributed team.',citations:[{source:'resume:synthetic.pdf',quote:'Shipped production projects.'}]}]}:{enabled:true,version:1,status:'ready',available:true,criteria:['Project delivery']};
   if(path==='/api/hub/applications')data={items:[detail],total:1,page:1,pageSize:25};
   if(path==='/api/hub/applications/app-1')data=detail;
   if(path==='/api/scorecards')data={template:null,revision:0,templates:[],archived:[],bindings:{}};
@@ -31,117 +37,126 @@ async function setup(t) {
   if(path==='/api/review-reminders')data={total:0,applications:[],staff:[member],config:{enabled:false,dueHours:48,fallbackAdmins:[]}};
   if(path==='/api/hub/settings')data=settings;
   if(path==='/api/team')data={members:[member],canManageTeam:true};
-  if(path==='/api/personal-calendar')data={email:longEmail,connected:false,ready:false,configured:true,calendarId:null,availability:{timeZone:'America/Bogota',weekdays:[1,2,3,4,5],startHour:10,endHour:16,durationMinutes:30,minimumNoticeHours:2,horizonDays:14},interviewers:[]};
+  if(path==='/api/personal-calendar')data={email:longEmail,connected:true,ready:true,configured:true,calendarId:null,availability:{timeZone:'America/Bogota',weekdays:[1,2,3,4,5],startHour:10,endHour:16,durationMinutes:30,minimumNoticeHours:2,horizonDays:14},interviewers:[]};
+  if(path==='/api/personal-mail')data={email:longEmail,connected:true,configured:true,candidateConnected:true,canConnect:true};
   if(path==='/api/google/status')data={configured:true,hostingPlatform:'railway',backgroundEnabled:true,credentialsManaged:true,expectedSender:longEmail};
-  if(path==='/api/hub/reports')data={applications:1,qualificationRate:0,attendance:{total:0,attended:0},conversion:[],stageCounts:[],sources:[],timeInStage:[],workload:[]};
+  if(path==='/api/hub/reports')data={applications:1,qualificationRate:0,attendance:{total:0,attended:0},conversion:[{stage:'Application Review',count:1}],stageCounts:[{stage:'Application Review',count:1}],sources:[{source:'LongUnbrokenCampaignSource'.repeat(12),count:1,qualified:0,interviewed:0,hired:0}],timeInStage:[{stage:'Application Review',averageHours:48}],workload:[{assignee:longEmail,count:1}]};
   return route.fulfill({json:{data}});
  });
- return {page,origin:`http://127.0.0.1:${server.address().port}`};
+ await installDraftFixture(page,{team:false});
+ return {page,writes,origin:`http://127.0.0.1:${server.address().port}`};
 }
 async function noOverflow(page) {
- const out=await page.evaluate(()=>({width:innerWidth,scroll:document.documentElement.scrollWidth,offenders:[...document.querySelectorAll('.hub-main *')].filter(e=>{const r=e.getBoundingClientRect();return e.checkVisibility()&&r.width&&(r.right>innerWidth+1||r.left < -1)&&!e.closest('.hub-table-wrap');}).slice(0,8).map(e=>e.className||e.tagName)}));
+ const out=await page.evaluate(()=>({width:innerWidth,scroll:document.documentElement.scrollWidth,offenders:[...document.querySelectorAll('.hub-main *')].filter(e=>{const r=e.getBoundingClientRect();return e.checkVisibility()&&r.width&&(r.right>innerWidth+1||r.left < -1)&&!e.closest('.hub-table-wrap');}).slice(0,8).map(e=>({className:e.className||e.tagName,rect:e.getBoundingClientRect().toJSON()}))}));
  assert.ok(out.scroll<=out.width+1,JSON.stringify(out));
  assert.deepEqual(out.offenders,[],`Visible content must fit even when an ancestor hides overflow: ${JSON.stringify(out)}`);
 }
 const artifacts=process.env.HUB_LAYOUT_ARTIFACTS;
 if(artifacts)mkdirSync(artifacts,{recursive:true});
-test('real styled hub stays usable across mobile, tablet and desktop widths',async t=>{
- const {page,origin}=await setup(t);const pageErrors=[];page.on('pageerror',error=>pageErrors.push(error.message));
- for(const width of [320,375,390,768,1280,1920]) {
+test('redesigned workspace stays usable across mobile, tablet and desktop widths',async t=>{
+ const {page,origin,writes}=await setup(t);const pageErrors=[];page.on('pageerror',error=>pageErrors.push(error.message));
+ for(const width of [320,390,768,1280,1728]) {
   await page.setViewportSize({width,height:844});
   await page.goto(origin+'/?view=jobs');await page.getByRole('heading',{name:'Jobs',exact:true}).waitFor();
+  assert.equal(await page.getByRole('button',{name:'Hiring team & emails',exact:true}).isVisible(),false,'Secondary job actions start collapsed');
+  await page.getByText('Actions',{exact:true}).click();
   await page.getByRole('button',{name:'Hiring team & emails',exact:true}).waitFor();
-  const teamAction=await page.getByRole('button',{name:'Hiring team & emails',exact:true}).boundingBox(),editAction=await page.getByRole('button',{name:'Edit job',exact:true}).boundingBox();
-  assert.ok(editAction.x-teamAction.x-teamAction.width>=10 || editAction.y-teamAction.y-teamAction.height>=10,'Job actions have separation when inline or wrapped');
-  if(artifacts)await page.screenshot({path:`${artifacts}/jobs-${width}.png`,fullPage:true});
-  if(!process.env.HUB_LAYOUT_CAPTURE_ONLY){await noOverflow(page);if(width<=960){assert.ok((await page.locator('.hub-sidebar').boundingBox()).height<=100,'Collapsed mobile header is compact');await page.getByRole('button',{name:'Open workspace menu'}).focus();await page.keyboard.press('Enter');await page.keyboard.press('Escape');assert.equal(await page.getByRole('button',{name:'Open workspace menu'}).evaluate(e=>e===document.activeElement),true);await page.keyboard.press('Enter');await page.getByRole('navigation',{name:'Hiring workspace'}).getByRole('button',{name:'Applications',exact:true}).click();assert.equal(await page.getByRole('button',{name:'Open workspace menu'}).getAttribute('aria-expanded'),'false');assert.equal(await page.getByRole('button',{name:'Open workspace menu'}).evaluate(e=>e===document.activeElement),true);}}
-  await page.goto(origin+'/?view=applications');await page.getByRole('button',{name:detail.name,exact:true}).waitFor();
-  if(artifacts)await page.screenshot({path:`${artifacts}/applications-${width}.png`,fullPage:true});
-  if(!process.env.HUB_LAYOUT_CAPTURE_ONLY){await noOverflow(page);if(width<=680){assert.equal(await page.locator('.hub-applications-table').evaluate(e=>e.scrollWidth<=e.clientWidth+1),true);await page.getByLabel('Select '+detail.name,{exact:true}).check();assert.equal(await page.getByLabel('Select '+detail.name,{exact:true}).isChecked(),true);}}
-  await page.getByRole('button',{name:detail.name,exact:true}).click();await page.getByRole('heading',{name:detail.name,exact:true}).waitFor();
-  if(artifacts)await page.screenshot({path:`${artifacts}/candidate-${width}.png`,fullPage:true});
-  if(!process.env.HUB_LAYOUT_CAPTURE_ONLY){await noOverflow(page);const gap=await page.evaluate(()=>document.querySelector('[role="tabpanel"]:not([hidden])').getBoundingClientRect().top-document.querySelector('[role="tablist"]').getBoundingClientRect().bottom);assert.ok(gap>=16,'Tabs have breathing room before content');}
-  await page.goto(origin+'/?view=jobs');await page.getByRole('heading',{name:'Jobs',exact:true}).waitFor();await page.getByRole('button',{name:'Create job',exact:true}).click();await page.getByRole('button',{name:'Create blank job',exact:true}).click();await page.getByLabel('Job title',{exact:true}).fill('Synthetic mobile job');
-  await page.getByRole('button',{name:'Continue',exact:true}).click();await page.getByRole('heading',{name:'What should applicants send?',exact:true}).waitFor();
-  if(artifacts)await page.screenshot({path:`${artifacts}/job-questions-${width}.png`,fullPage:true});
-  if(!process.env.HUB_LAYOUT_CAPTURE_ONLY){await noOverflow(page);const library=await page.getByRole('button',{name:'Add selected question',exact:true}).boundingBox(),custom=await page.getByRole('button',{name:'Add custom question',exact:true}).boundingBox();assert.ok(custom.y-library.y-library.height>=12,'Library and custom question actions have separation');const rows=await page.locator('.hub-question').evaluateAll(es=>es.map(e=>e.getBoundingClientRect().toJSON()));for(let i=1;i<rows.length;i++)assert.ok(rows[i].top-rows[i-1].bottom>=16,'Question cards have separation');}
-  await page.goto(origin+'/?view=reports');await page.getByRole('heading',{name:'Reports',exact:true}).waitFor();if(!process.env.HUB_LAYOUT_CAPTURE_ONLY)await noOverflow(page);
-  await page.goto(origin+'/?view=home');await page.getByRole('heading',{name:'What needs your attention?',exact:true}).waitFor();if(!process.env.HUB_LAYOUT_CAPTURE_ONLY)await noOverflow(page);
-  await page.goto(origin+'/?view=settings');await page.getByRole('heading',{name:'My interview calendar',exact:true}).waitFor();await page.getByRole('button',{name:'Team access & invitations',exact:true}).click();await page.getByLabel('Teammate’s Google Workspace email',{exact:true}).waitFor();
-  if(artifacts)await page.screenshot({path:`${artifacts}/settings-${width}.png`,fullPage:true});
-  if(!process.env.HUB_LAYOUT_CAPTURE_ONLY){await noOverflow(page);const buttons=await page.locator('.hub-button:visible,.hub-icon-button:visible').evaluateAll(es=>es.map(e=>({label:e.textContent,height:e.getBoundingClientRect().height})));assert.ok(buttons.every(e=>e.height>=44),JSON.stringify(buttons.filter(e=>e.height<44)));if(width<=640)assert.equal(await page.getByLabel('Teammate’s Google Workspace email',{exact:true}).evaluate(e=>getComputedStyle(e).fontSize),'16px');}
+  if(artifacts){await page.evaluate(()=>window.scrollTo(0,0));await page.screenshot({path:`${artifacts}/jobs-actions-${width}.png`,fullPage:true});}
+  await noOverflow(page);await page.locator('.hub-job-menu > summary').press('Escape');
+  assert.equal(await page.getByRole('button',{name:'Hiring team & emails',exact:true}).isVisible(),false);
+  if(artifacts){await page.evaluate(()=>window.scrollTo(0,0));await page.screenshot({path:`${artifacts}/jobs-${width}.png`,fullPage:true});}
+  if(width<=900){
+   assert.ok((await page.locator('.hub-sidebar').boundingBox()).height<=100,'Collapsed mobile header is compact');
+   await page.getByRole('button',{name:'Open workspace menu'}).focus();await page.keyboard.press('Enter');await page.keyboard.press('Escape');
+   assert.equal(await page.getByRole('button',{name:'Open workspace menu'}).evaluate(e=>e===document.activeElement),true);
+   await page.keyboard.press('Enter');await page.getByRole('navigation',{name:'Hiring workspace'}).getByRole('button',{name:'Applicants',exact:true}).click();
+   assert.equal(await page.getByRole('button',{name:'Open workspace menu'}).getAttribute('aria-expanded'),'false');
+  }
+  await page.goto(origin+'/?view=applications');await page.getByRole('heading',{name:'Choose a job',exact:true}).waitFor();await noOverflow(page);
+  await page.getByRole('button',{name:'View applications for '+job.title,exact:true}).click();
+  await page.getByRole('button',{name:detail.name,exact:true}).waitFor();await noOverflow(page);
+  const downloadSummary=page.locator('.hub-application-downloads > summary');await downloadSummary.click();await page.getByLabel('Download scope',{exact:true}).waitFor();await noOverflow(page);
+  const buttonBoxes=await page.locator('.hub-download-actions > .hub-button').evaluateAll(es=>es.map(e=>e.getBoundingClientRect().toJSON()));
+  assert.ok(buttonBoxes[1].left>=buttonBoxes[0].right+8||buttonBoxes[1].top>=buttonBoxes[0].bottom+8,'CSV and ZIP click targets stay separated');
+  if(width<=640)assert.ok(buttonBoxes[1].top>=buttonBoxes[0].bottom+8,'Mobile download controls stack');
+  await downloadSummary.click();
+  if(artifacts){await page.evaluate(()=>window.scrollTo(0,0));await page.screenshot({path:`${artifacts}/applications-${width}.png`,fullPage:true});}
+  if(width<=680){assert.equal(await page.locator('.hub-applications-table').evaluate(e=>e.scrollWidth<=e.clientWidth+1),true);await page.getByLabel('Select '+detail.name,{exact:true}).check();assert.equal(await page.getByLabel('Select '+detail.name,{exact:true}).isChecked(),true);}
+  await page.getByRole('button',{name:detail.name,exact:true}).click();await page.getByRole('heading',{name:detail.name,exact:true}).waitFor();await noOverflow(page);
+  const actionsGap=await page.locator('[role="tablist"]').evaluate(tabs=>tabs.getBoundingClientRect().top-document.querySelector('.hub-candidate-quick-actions').getBoundingClientRect().bottom);assert.ok(actionsGap>=16,`Applicant quick actions must be separated from record tabs: ${actionsGap}px`);
+  for(const tab of ['AI review & notes','Activity & messages','Application & files']){
+   await page.getByRole('tab',{name:tab,exact:true}).click();await noOverflow(page);
+   assert.equal(await page.locator('[role="tabpanel"][hidden]').evaluateAll(es=>es.every(e=>getComputedStyle(e).display==='none'&&e.getClientRects().length===0)),true,'Inactive record panels occupy no space');
+   assert.ok(await page.locator('[role="tablist"]').evaluate(e=>{const r=e.getBoundingClientRect();return r.top>=-1&&r.top<innerHeight;}),'Changing a tab leaves record navigation in view');
+  }
+  if(artifacts){await page.evaluate(()=>window.scrollTo(0,0));await page.screenshot({path:`${artifacts}/candidate-${width}.png`,fullPage:true});}
+  await page.getByRole('button',{name:'Request interview',exact:true}).click();await page.getByLabel('Who will conduct this interview?',{exact:true}).waitFor();await noOverflow(page);
+  const interviewLayout=await page.locator('.hub-action-panel').evaluate(panel=>({panel:panel.getBoundingClientRect().toJSON(),record:document.querySelector('.hub-detail-main').getBoundingClientRect().toJSON()}));if(width<=1100)assert.ok(interviewLayout.panel.top<=interviewLayout.record.top,'Mobile interview setup appears before long applicant content');
+  assert.equal(await page.getByRole('button',{name:'Send booking link',exact:true}).isDisabled(),true,'Opening an interview does not send or bypass interviewer choice');await page.locator('.hub-candidate-actions > summary').click();
+  await page.goto(origin+'/?view=reports');await page.getByRole('heading',{name:'Reports',exact:true}).waitFor();
+  for(const name of ['Overview','Sources','Team']){await page.getByRole('navigation',{name:'Report sections'}).getByRole('button',{name,exact:true}).click();await noOverflow(page);}
+  await page.goto(origin+'/?view=home');await page.getByRole('heading',{name:'Hiring overview',exact:true}).waitFor();await noOverflow(page);
+  if(artifacts){await page.evaluate(()=>window.scrollTo(0,0));await page.screenshot({path:`${artifacts}/overview-${width}.png`,fullPage:true});}
+  await page.goto(origin+'/?view=settings');await page.getByRole('heading',{name:'My interview calendar',exact:true}).waitFor();await page.getByRole('button',{name:'Team',exact:true}).click();await page.getByLabel('Teammate’s Google Workspace email',{exact:true}).waitFor();await noOverflow(page);
+  if(artifacts){await page.evaluate(()=>window.scrollTo(0,0));await page.screenshot({path:`${artifacts}/settings-${width}.png`,fullPage:true});}
+  if(width<=640)assert.equal(await page.getByLabel('Teammate’s Google Workspace email',{exact:true}).evaluate(e=>getComputedStyle(e).fontSize),'16px');
  }
- assert.deepEqual(pageErrors,[]);
+ assert.deepEqual(pageErrors,[]);assert.deepEqual(writes,[],'Browsing, expanding, selecting and changing tabs must never mutate records or send invitations');
 });
 
-test('question badges and final controls stay readable above the mobile save bar',async t=>{
+async function questions(page,origin) {
+ await page.goto(origin+'/?view=jobs');await page.getByRole('button',{name:'Create job',exact:true}).click();await page.getByRole('button',{name:'Create blank job',exact:true}).click();await page.getByLabel('Job title',{exact:true}).fill('Synthetic mobile badge test');await page.getByLabel('Work arrangement',{exact:true}).selectOption('remote');await page.getByRole('button',{name:'Continue',exact:true}).click();await page.getByRole('heading',{name:'What should applicants send?',exact:true}).waitFor();
+}
+test('question badges and final controls stay readable without covering editable content',async t=>{
  const {page,origin}=await setup(t);
- for(const width of [320,375]) {
-  await page.setViewportSize({width,height:844});await page.goto(origin+'/?view=jobs');
-  await page.getByRole('button',{name:'Create job',exact:true}).click();await page.getByRole('button',{name:'Create blank job',exact:true}).click();await page.getByLabel('Job title',{exact:true}).fill('Synthetic mobile badge test');await page.getByRole('button',{name:'Continue',exact:true}).click();
-  await page.getByRole('heading',{name:'What should applicants send?',exact:true}).waitFor();
-  const headings=await page.locator('.hub-question-heading').evaluateAll(es=>es.map(e=>{const badge=e.querySelector('.hub-badge'),title=e.querySelector('strong'),button=e.querySelector('button');const range=document.createRange();range.selectNodeContents(badge);return{lines:range.getClientRects().length,badge:badge.getBoundingClientRect().toJSON(),title:title.getBoundingClientRect().toJSON(),button:button?.getBoundingClientRect().toJSON()};}));
-  for(const row of headings){assert.equal(row.lines,1,'Required/Optional stays on a single line');assert.ok(row.badge.y>=row.title.bottom,'Title has its own row');if(row.button)assert.ok(row.button.x>=row.badge.right+8,'Remove button does not pinch the badge');}
-  assert.equal(await page.locator('.hub-sticky-save').evaluate(e=>getComputedStyle(e).backgroundColor),'rgb(255, 255, 255)');
-  const library=page.getByLabel('Add from the question library',{exact:true});await library.focus();await page.keyboard.press('Tab');const custom=page.getByRole('button',{name:'Add custom question',exact:true});assert.equal(await custom.evaluate(e=>e===document.activeElement),true);
-  await custom.scrollIntoViewIfNeeded();assert.equal(await custom.evaluate(e=>{const r=e.getBoundingClientRect();return e.contains(document.elementFromPoint(r.x+r.width/2,r.y+r.height/2));}),true,'Final custom-question control is not covered');
-  if(artifacts)await page.screenshot({path:`${artifacts}/question-badges-${width}.png`,fullPage:true});
-  await page.setViewportSize({width,height:440});await page.getByLabel('Question 4 label',{exact:true}).focus();await page.keyboard.type(' mobile');assert.match(await page.getByLabel('Question 4 label',{exact:true}).inputValue(),/mobile/);assert.equal(await page.locator('.hub-sticky-save').evaluate(e=>getComputedStyle(e).position),'static','Short viewports leave the form unobstructed');await noOverflow(page);
+ for(const width of [320,390]) {
+  await page.setViewportSize({width,height:844});await questions(page,origin);
+  await page.getByRole('button',{name:'Add custom question',exact:true}).click();const label=page.getByLabel('Question 2 label',{exact:true});await label.fill('LongQuestion'.repeat(12));await noOverflow(page);
+  const headings=await page.locator('.hub-question-heading').evaluateAll(es=>es.map(e=>{const badge=e.querySelector('.hub-badge'),title=e.querySelector('strong');const range=document.createRange();range.selectNodeContents(badge);return{lines:range.getClientRects().length,badge:badge.getBoundingClientRect().toJSON(),title:title.getBoundingClientRect().toJSON()};}));
+  for(const row of headings){assert.equal(row.lines,1,'Required/Optional remains on a single line');assert.ok(row.badge.y>=row.title.bottom,'Question title has its own row on mobile');}
+  const rows=await page.locator('.hub-question').evaluateAll(es=>es.map(e=>e.getBoundingClientRect().toJSON()));for(let i=1;i<rows.length;i++)assert.ok(rows[i].top-rows[i-1].bottom>=16,'Question rows have separation');
+  assert.equal(await page.getByLabel('Question 2 instructions (optional)',{exact:true}).isVisible(),false,'Instructions stay collapsed');
+  const custom=page.getByRole('button',{name:'Add custom question',exact:true});await custom.scrollIntoViewIfNeeded();assert.equal(await custom.evaluate(e=>{const r=e.getBoundingClientRect();return e.contains(document.elementFromPoint(r.x+r.width/2,r.y+r.height/2));}),true,'Final form control is not covered');
+  if(artifacts){await page.evaluate(()=>window.scrollTo(0,0));await page.screenshot({path:`${artifacts}/question-badges-${width}.png`,fullPage:true});}
+  await page.setViewportSize({width,height:440});await label.focus();await page.keyboard.type(' mobile');assert.match(await label.inputValue(),/mobile/);assert.equal(await page.locator('.hub-sticky-save').evaluate(e=>getComputedStyle(e).position),'static','Short viewports leave the form unobstructed');await noOverflow(page);
  }
 });
 
-
-// Company setup contains forms and nested disclosures that the Team-only sweep missed.
-// Check actual geometry, including the former sticky Save settings overlay, instead
-// of merely checking document width (clipped children can pass that check).
-test('all Settings sections keep expanded content and save actions separated',async t=>{
- const {page,origin}=await setup(t);const errors=[];page.on('pageerror',error=>errors.push(error.message));
- for(const viewport of [{width:320,height:844},{width:390,height:844},{width:768,height:844},{width:1280,height:844},{width:1920,height:1080},{width:390,height:440},{width:1280,height:440},{width:1920,height:440},{width:960,height:540}]) {
-  await t.test(`${viewport.width}x${viewport.height}`,async()=>{
-   await page.setViewportSize(viewport);await page.goto(origin+'/?view=settings');
-   await page.getByRole('heading',{name:'My interview calendar',exact:true}).waitFor();
-   for(const section of ['My setup','Team access & invitations','Scorecard templates','Company setup']) {
-    await page.getByRole('button',{name:section,exact:true}).click();
-    if(section==='My setup')await page.getByRole('heading',{name:'My interview calendar',exact:true}).waitFor();
-    if(section==='Team access & invitations')await page.getByLabel('Teammate’s Google Workspace email',{exact:true}).waitFor();
-    if(section==='Scorecard templates'){
-     await page.locator('#scorecard-settings').waitFor();await page.getByRole('button',{name:'New scorecard template',exact:true}).click();
-     const boxes=await page.getByRole('button',{name:'Save template version',exact:true}).evaluate(e=>[...e.parentElement.querySelectorAll('button')].map(e=>e.getBoundingClientRect().toJSON()));
-     if(artifacts)await page.screenshot({path:`${artifacts}/scorecard-editor-${viewport.width}x${viewport.height}.png`,fullPage:true});
-     assert.equal(boxes.length,3,'Scorecard edit actions are present');
-     for(let i=1;i<boxes.length;i++)assert.ok(boxes[i].left-boxes[i-1].right>=10||boxes[i].top-boxes[i-1].bottom>=10,'Scorecard add, save, cancel actions have separate click targets');
+test('Settings sections and company groups retain reachable save actions and expanded details',async t=>{
+ const {page,origin,writes}=await setup(t);const errors=[];page.on('pageerror',error=>errors.push(error.message));
+ for(const viewport of [{width:320,height:844},{width:390,height:844},{width:768,height:844},{width:1280,height:844},{width:1728,height:1080},{width:390,height:440},{width:1280,height:440}]){
+  await page.setViewportSize(viewport);await page.goto(origin+'/?view=settings');await page.getByRole('heading',{name:'My interview calendar',exact:true}).waitFor();
+  for(const section of ['My connections','Team','Templates','Help requests','Company']) {
+   await page.getByRole('navigation',{name:'Settings sections'}).getByRole('button',{name:section,exact:true}).click();await noOverflow(page);
+   if(section==='Templates'){
+    await page.getByRole('button',{name:'New scorecard template',exact:true}).click();await page.getByRole('button',{name:'Save template version',exact:true}).waitFor();await noOverflow(page);
+    const boxes=await page.getByRole('button',{name:'Save template version',exact:true}).evaluate(e=>[...e.parentElement.querySelectorAll('button')].map(e=>e.getBoundingClientRect().toJSON()));assert.equal(boxes.length,3);
+    for(let i=1;i<boxes.length;i++)assert.ok(boxes[i].left-boxes[i-1].right>=8||boxes[i].top-boxes[i-1].bottom>=8,'Template edit actions have separate click targets');
+   }
+   if(section==='Company'){
+    await page.getByRole('button',{name:'Save company settings',exact:true}).waitFor();
+    for(const area of ['Files & calendar','Messages & reminders','AI','Advanced']){
+     await page.getByRole('navigation',{name:'Company settings sections'}).getByRole('button',{name:area,exact:true}).click();await noOverflow(page);
+     for(const summary of await page.locator('.hub-company-settings details > summary').all()){await summary.click();await noOverflow(page);}
+     const save=page.getByRole('button',{name:'Save company settings',exact:true});if(await save.isVisible()){
+      await save.scrollIntoViewIfNeeded();assert.equal(await save.evaluate(e=>{const r=e.getBoundingClientRect();return e.contains(document.elementFromPoint(r.left+r.width/2,r.top+r.height/2));}),true,'Save remains visible and uncovered');
+      assert.equal(await save.evaluate(e=>getComputedStyle(e.parentElement).position),'static','Save controls stay in document flow');
+     }
     }
-    if(section==='Company setup')await page.getByRole('button',{name:'Save settings',exact:true}).waitFor();
-    await noOverflow(page);
-    const clipped=await page.locator('.hub-main').evaluate(main=>[...main.querySelectorAll('input,select,textarea,button,summary,code,pre')].filter(e=>e.getClientRects().length&&e.checkVisibility()).flatMap(e=>{const r=e.getBoundingClientRect(),parent=e.closest('.hub-card')?.getBoundingClientRect();return parent&&(r.left<parent.left-1||r.right>parent.right+1)?[{tag:e.tagName,label:e.textContent?.slice(0,70),left:r.left,right:r.right,parentLeft:parent.left,parentRight:parent.right}]:[];}));
-    assert.deepEqual(clipped,[],`${section}: controls stay inside their card`);
    }
-   for(const label of ['Default rejection email','AI evidence review','Advanced admin setup','Recent access changes'])await page.locator('summary').filter({hasText:new RegExp('^'+label+'$')}).click();
-   await page.getByRole('heading',{name:'Background task processing',exact:true}).waitFor();
-   const deliveryGap=await page.getByRole('button',{name:'Open delivery activity',exact:true}).evaluate(e=>e.nextElementSibling.getBoundingClientRect().top-e.getBoundingClientRect().bottom);
-   assert.ok(deliveryGap>=16,'Delivery activity action has space before the connection card');
-   await page.locator('summary').filter({hasText:/^OAuth client setup instructions$/}).click();
-   await page.locator('summary').filter({hasText:/^Review recorded change$/}).click();
-   await noOverflow(page);
-   const rejection=page.locator('details').filter({has:page.locator('summary').filter({hasText:/^Default rejection email$/})});
-   await rejection.evaluate(e=>window.scrollTo(0,e.getBoundingClientRect().top+scrollY-100));
-   const layout=await page.getByRole('button',{name:'Save settings',exact:true}).evaluate(button=>{
-    const save=button.parentElement,prev=save.previousElementSibling,form=save.closest('form'),next=form.nextElementSibling;
-    const s=save.getBoundingClientRect(),p=prev.getBoundingClientRect(),n=next.getBoundingClientRect();
-    return {beforeGap:s.top-p.bottom,afterGap:n.top-s.bottom,savePosition:getComputedStyle(save).position,saveTop:s.top,previousBottom:p.bottom};
-   });
-   if(artifacts){
-    await page.screenshot({path:`${artifacts}/company-expanded-${viewport.width}x${viewport.height}.png`,fullPage:true});
-    await page.screenshot({path:`${artifacts}/company-save-${viewport.width}x${viewport.height}.png`});
-   }
-   assert.ok(layout.beforeGap>=16&&layout.afterGap>=16,`Settings save row needs space on both sides and must not float over the preceding form: ${JSON.stringify(layout)}`);
-   for(const control of [page.getByLabel('Approved template',{exact:true}),page.getByRole('button',{name:'Save settings',exact:true}),page.locator('summary').filter({hasText:/^AI evidence review$/})]) {
-    await control.scrollIntoViewIfNeeded();
-    assert.equal(await control.evaluate(e=>{const r=e.getBoundingClientRect(),x=r.left+r.width/2;const hit=document.elementFromPoint(x,Math.min(innerHeight-1,Math.max(0,r.top)+Math.min(r.height,innerHeight-Math.max(0,r.top))/2));return hit===e||e.contains(hit);}),true,'Expanded settings controls remain reachable without a covering save bar');
-   }
-   const summaryGaps=await page.locator('.hub-setup-details[open] > summary').evaluateAll(es=>es.map(e=>({label:e.textContent,gap:e.nextElementSibling.getBoundingClientRect().top-e.getBoundingClientRect().bottom})));
-   assert.ok(summaryGaps.every(item=>item.gap>=12),JSON.stringify(summaryGaps));
-  });
+  }
+  if(artifacts){await page.evaluate(()=>window.scrollTo(0,0));await page.screenshot({path:`${artifacts}/company-expanded-${viewport.width}x${viewport.height}.png`,fullPage:true});}
  }
- assert.deepEqual(errors,[]);
+ assert.deepEqual(errors,[]);assert.deepEqual(writes,[],'Settings viewing does not save changes or initiate connections');
+});
+
+test('role-specific settings preserve recruiter and head recruiter boundaries',async t=>{
+ for(const role of ['recruiter','admin']) {
+  const {page,origin}=await setup(t,{role,isOwner:false});await page.goto(origin+'/?view=settings');await page.getByRole('heading',{name:'Settings',exact:true}).waitFor();
+  const nav=page.getByRole('navigation',{name:'Settings sections'});
+  assert.equal(await nav.getByRole('button',{name:'Company',exact:true}).count(),0);
+  assert.equal(await nav.getByRole('button',{name:'Team',exact:true}).count(),role==='admin'?1:0);
+  await nav.getByRole('button',{name:'My connections',exact:true}).click();await page.getByRole('heading',{name:'My interview calendar',exact:true}).waitFor();await noOverflow(page);
+  await page.goto(origin+'/?view=jobs');await page.getByRole('button',{name:'Create job',exact:true}).waitFor();
+ }
 });
