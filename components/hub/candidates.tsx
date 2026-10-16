@@ -103,8 +103,8 @@ export function CandidateTable({
             <th scope="col" role="columnheader">Stage</th>
             <th scope="col" role="columnheader">Screening</th>
             <th scope="col" role="columnheader">AI job match</th>
-            <th scope="col" role="columnheader">Owner</th>
-            <th scope="col" role="columnheader">Applied</th>
+            <th scope="col" role="columnheader" className="hub-optional-owner">Owner</th>
+            <th scope="col" role="columnheader" className="hub-optional-applied">Applied</th>
             {(shortlist || interview) && <th scope="col" role="columnheader">Next step</th>}
           </tr>
         </thead>
@@ -139,8 +139,8 @@ export function CandidateTable({
                 <span title={item.qualification === "review" ? screeningConfigured === false ? "This job has no enabled screening rules. The AI match is shown separately." : "An answer needed by the screening rules is missing or could not be evaluated. Check the application answers. The AI match is shown separately." : undefined}><Badge tone={qualificationTone(item.qualification)}>{qualificationLabel(item.qualification, screeningConfigured)}</Badge></span>
               </td>
               <td role="cell" data-label="AI job match"><MatchScore match={item.aiMatch} /></td>
-              <td role="cell" data-label="Owner">{item.assignee || "Unassigned"}</td>
-              <td role="cell" data-label="Applied" className="hub-nowrap">{displayDate(item.createdAt)}</td>
+              <td role="cell" data-label="Owner" className="hub-optional-owner">{item.assignee || "Unassigned"}</td>
+              <td role="cell" data-label="Applied" className="hub-nowrap hub-optional-applied">{displayDate(item.createdAt)}</td>
               {(shortlist || interview) && <td role="cell" data-label="Next step"><div className="hub-candidate-row-actions">
                 {shortlist && item.stage === "Application Review" && <button type="button" className="hub-button secondary" disabled={busy} onClick={() => shortlist(item)}>Shortlist<span className="sr-only"> {item.name}</span></button>}
                 {interview && !["Rejected", "Withdrawn", "Hired"].includes(item.stage) && <button type="button" className="hub-text-button" disabled={busy} onClick={() => interview(item)}>Request interview<span className="sr-only"> with {item.name}</span></button>}
