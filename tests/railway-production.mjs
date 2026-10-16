@@ -1,7 +1,7 @@
 // Real built Vinext Node server + production SQLite/files. Google remains disconnected.
 // Staff identity is seeded ONLY in this isolated test database, never via an app bypass.
 import assert from 'node:assert/strict';
-import {mkdtempSync,realpathSync,rmSync,existsSync} from 'node:fs';
+import {mkdtempSync,realpathSync,rmSync,existsSync,readFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {spawn,execFile} from 'node:child_process';
@@ -44,7 +44,7 @@ function syntheticResume(padding=20000, label="Synthetic isolated resume"){
  return Buffer.from(pdf);
 }
 const sample=syntheticResume();assert.ok(sample.length>512*1024);
-const started=performance.now(),latencies=[];
+const started=performance.now(),latencies=[];let phase='initial checks',acceptedRequests=0;
 function verifyOneApplication(receipts){
  const db=new DatabaseSync(path.join(dataDir,'hiring.sqlite'),{readOnly:true});
  try{
@@ -78,18 +78,22 @@ try{
  await team.goto(origin+'/team');await team.getByRole('button',{name:'Jobs',exact:true}).click();await team.getByRole('button',{name:'Create job',exact:true}).click();
  await team.getByRole('button',{name:'Create blank job',exact:true}).click();
  await team.getByLabel('Job title',{exact:true}).fill('Railway Test Engineer');await team.getByText('More details: department and page address',{exact:true}).click();await team.getByLabel('Public page address',{exact:true}).fill('railway-test-engineer');await team.getByLabel('Job description',{exact:true}).fill('Isolated Railway verification role. No real applications or outreach.');
- await team.getByRole('checkbox',{name:/maria@example.invalid/}).check();await team.getByRole('checkbox',{name:/alex@example.invalid/}).check();await team.getByLabel('Applicant reply contact',{exact:true}).selectOption('maria@example.invalid');
- for(let n=0;n<3;n++)await team.getByRole('button',{name:'Continue',exact:true}).click();await team.getByRole('checkbox',{name:'I have reviewed the job description',exact:false}).check();
+ for(let n=0;n<2;n++)await team.getByRole('button',{name:'Continue',exact:true}).click();
+ await team.locator('.hub-review-team > summary').click();
+ await team.getByRole('checkbox',{name:/maria@example.invalid/}).check();await team.getByRole('checkbox',{name:/alex@example.invalid/}).check();await team.getByLabel('Recruiter who handles candidate replies',{exact:true}).selectOption('maria@example.invalid');
+ await team.getByRole('button',{name:'Continue',exact:true}).click();
+ assert.equal(await team.getByRole('checkbox',{name:/I have reviewed|I approve/}).count(),0);
  await team.getByRole('button',{name:'Publish job',exact:true}).click();await team.getByRole('heading',{name:'Jobs',exact:true}).waitFor();
  let jobs=await api('/api/hub/jobs');assert.equal(jobs.length,1);const engineer=jobs[0];assert.equal(engineer.title,'Railway Test Engineer');assert.equal(engineer.status,'open');
+ assert.ok(engineer.fields.slice(0,4).every(field=>field.required));assert.equal(engineer.fields.find(field=>field.path==='_systemfield_phone').type,'Phone');
  const engineerTeam=await api('/api/job-team?jobId='+engineer.id);assert.deepEqual(engineerTeam.config.members,['maria@example.invalid','alex@example.invalid']);assert.equal(engineerTeam.config.replyTo,'maria@example.invalid');
  const creative=await api('/api/hub/jobs','POST',{title:'Railway Test Creative',slug:'railway-test-creative',department:'Isolated test',descriptionHtml:'<p>Isolated test role.</p>',status:'open',fields:engineer.fields,rules:[],autoReject:false,assessmentPrompt:'Isolated assessment',rejectionTemplate:'Isolated rejection for {{name}}.'});
  await api('/api/job-team','PUT',{jobId:creative.id,expectedRevision:0,members:['sam@example.invalid'],replyTo:'sam@example.invalid',notifyNewApplications:true,notifyAssessmentSubmissions:true,notifyReplies:true,notifyOverdueReviews:true});
  // Every starting point uses the real built server; these remain private drafts.
  const jobCard=title=>team.locator('article').filter({has:team.getByRole('heading',{name:title,exact:true})});
- async function finishDraft(title){await team.getByLabel('Job title',{exact:true}).fill(title);for(let n=0;n<3;n++)await team.getByRole('button',{name:'Continue',exact:true}).click();await team.getByRole('button',{name:'Save draft',exact:true}).click();await team.getByRole('heading',{name:'Jobs',exact:true}).waitFor();}
- await jobCard(engineer.title).getByRole('button',{name:'Duplicate job',exact:true}).click();await finishDraft('Isolated Duplicate Posting');
- await jobCard(engineer.title).getByRole('button',{name:'Save as template',exact:true}).click();await team.getByLabel('Template name',{exact:true}).fill('Isolated Engineering Template');await team.getByRole('button',{name:'Save template',exact:true}).click();await team.getByText('Job template saved.',{exact:false}).waitFor();
+ async function finishDraft(title){await team.getByLabel('Job title',{exact:true}).fill(title);for(let n=0;n<3;n++)await team.getByRole('button',{name:'Continue',exact:true}).click();await team.getByRole('button',{name:'Save draft job',exact:true}).click();await team.getByRole('heading',{name:'Jobs',exact:true}).waitFor();}
+ await jobCard(engineer.title).getByLabel(`Actions for ${engineer.title}`,{exact:true}).click();await jobCard(engineer.title).getByRole('button',{name:'Duplicate job',exact:true}).click();await finishDraft('Isolated Duplicate Posting');
+ await jobCard(engineer.title).getByLabel(`Actions for ${engineer.title}`,{exact:true}).click();await jobCard(engineer.title).getByRole('button',{name:'Save as template',exact:true}).click();await team.getByLabel('Template name',{exact:true}).fill('Isolated Engineering Template');await team.getByRole('button',{name:'Save template',exact:true}).click();await team.getByText('Job template saved.',{exact:false}).waitFor();
  await team.getByRole('button',{name:'Create job',exact:true}).click();await team.getByRole('button',{name:'Choose template',exact:true}).click();const savedSetup=await api('/api/job-setup');assert.equal(savedSetup.templates.length,1);await team.getByLabel('Job template',{exact:true}).selectOption(savedSetup.templates[0].id);await team.getByRole('button',{name:'Use this template',exact:true}).click();await finishDraft('Isolated Template Posting');
  await team.getByRole('button',{name:'Create job',exact:true}).click();await team.getByRole('button',{name:'Open hiring requests',exact:true}).click();await team.getByRole('button',{name:'Create a hiring request',exact:true}).click();await team.getByLabel('Requested job title',{exact:true}).fill('Isolated Requested Posting');await team.getByLabel('Why do we need this hire?',{exact:true}).fill('Synthetic internal request verification only.');await team.getByLabel('Draft responsibilities (optional)',{exact:true}).fill('Synthetic responsibilities.');await team.getByRole('button',{name:'Save hiring request',exact:true}).click();await team.getByRole('button',{name:'Create job from request',exact:true}).click();await finishDraft('Isolated Requested Posting');
  const setupResult=await api('/api/job-setup');assert.equal(setupResult.requests[0].status,'used');const privateDrafts=(await api('/api/hub/jobs')).filter(job=>job.status==='draft');assert.equal(privateDrafts.length,3);assert.equal((await api('/api/hub/jobs')).find(job=>job.id===engineer.id).status,'open');
@@ -97,7 +101,7 @@ try{
  let firstId,firstFile;
  for(const [index,job] of [engineer,creative].entries()){
   const applicant=await browser.newContext({viewport:index?{width:390,height:844}:{width:1440,height:1000}}),page=await applicant.newPage();page.on('pageerror',error=>errors.push(error.message));
-  await page.goto(origin+`/jobs/${job.slug}?utm_source=railway-verified`);await page.getByLabel('Full name',{exact:false}).fill(`Isolated Browser Candidate ${index}`);await page.getByLabel('Email address',{exact:false}).fill(`isolated-browser-${index}@example.invalid`);await page.locator('input[type=file]').setInputFiles({name:'isolated-resume.pdf',mimeType:'application/pdf',buffer:sample});
+  await page.goto(origin+`/jobs/${job.slug}?utm_source=railway-verified`);await page.getByLabel('First name',{exact:false}).fill('Isolated Browser');await page.getByLabel('Last name',{exact:false}).fill(`Candidate ${index}`);await page.getByLabel('Email address',{exact:false}).fill(`isolated-browser-${index}@example.invalid`);await page.getByLabel('Phone number',{exact:false}).fill('+1 305 555 0123');await page.locator('input[type=file]').setInputFiles({name:'isolated-resume.pdf',mimeType:'application/pdf',buffer:sample});
   await page.getByRole('button',{name:'Submit application',exact:false}).click();await page.waitForURL(/\/applications\/[a-f0-9]{64}$/, {timeout:15000}).catch(async error=>{throw new Error(`${error.message}\n${(await page.locator('body').innerText()).slice(-2000)}`);});
   assert.equal((await fetch(origin+'/api'+new URL(page.url()).pathname)).status,200);await applicant.close();
  }
@@ -112,24 +116,39 @@ try{
  const mismatch=await fetch(origin+'/api/ai/resume-text',{method:'POST',headers:{Origin:origin,Cookie:ownerCookie,'Content-Type':'application/json'},body:JSON.stringify({...pdfRequest,applicationId:another.id})});assert.equal(mismatch.status,404);
  // Real browser history on the built server, without changing applicant data.
  const nav=team.getByRole('navigation',{name:'Hiring workspace'});
- await nav.getByRole('button',{name:'Applications',exact:true}).click();await team.getByRole('heading',{name:'Applications',exact:true}).waitFor();
+ await nav.getByRole('button',{name:'Applicants',exact:true}).click();await team.getByRole('heading',{name:'Choose a job',exact:true}).waitFor();
  const applicationListUrl=team.url();
  await nav.getByRole('button',{name:'Jobs',exact:true}).click();await team.getByRole('heading',{name:'Jobs',exact:true}).waitFor();
- await team.goBack();await team.getByRole('heading',{name:'Applications',exact:true}).waitFor();assert.equal(team.url(),applicationListUrl);
+ await team.goBack();await team.getByRole('heading',{name:'Choose a job',exact:true}).waitFor();assert.equal(team.url(),applicationListUrl);
  await team.goForward();await team.getByRole('heading',{name:'Jobs',exact:true}).waitFor().catch(async error=>{throw new Error(error.message+'\nURL: '+team.url()+'\n'+(await team.locator('body').innerText()).slice(0,1500)+'\nBrowser errors: '+JSON.stringify({errors,consoleErrors})+'\nServer logs: '+logs.slice(-1500));});
- await nav.getByRole('button',{name:'Applications',exact:true}).click();await team.getByRole('heading',{name:'Applications',exact:true}).waitFor();
+ await nav.getByRole('button',{name:'Applicants',exact:true}).click();await team.getByRole('heading',{name:'Choose a job',exact:true}).waitFor();
+ const chosenJob=[engineer,creative].find(job=>job.id===detail.jobId);assert.ok(chosenJob);
+ await team.getByRole('button',{name:`View applications for ${chosenJob.title}`,exact:true}).click();await team.getByRole('heading',{name:chosenJob.title,exact:true}).waitFor();
+ const jobApplicationsUrl=team.url();
+ // Real browser exports retain answers and original files, with job scope made explicit.
+ await team.getByText('Download applications',{exact:true}).click();
+ await team.getByLabel('Download scope',{exact:true}).selectOption('all');
+ const [csvDownload]=await Promise.all([team.waitForEvent('download'),team.getByRole('button',{name:'Download spreadsheet (CSV)',exact:true}).click()]);
+ assert.match(csvDownload.suggestedFilename(),/\.csv$/);const csv=readFileSync(await csvDownload.path(),'utf8');assert.ok(csv.includes(detail.email));assert.ok(csv.includes(detail.name));
+ const [zipDownload]=await Promise.all([team.waitForEvent('download'),team.getByRole('button',{name:'Download application files (ZIP)',exact:true}).click()]);
+ assert.match(zipDownload.suggestedFilename(),/\.zip$/);const zip=readFileSync(await zipDownload.path());assert.equal(zip.subarray(0,2).toString(),'PK');assert.ok(zip.includes(Buffer.from('isolated-resume.pdf')));
  await team.getByRole('button',{name:detail.name,exact:true}).click();await team.getByRole('heading',{name:detail.name,exact:true}).waitFor();
  assert.equal(new URL(team.url()).searchParams.get('application'),firstId);
- await team.goBack();await team.getByRole('heading',{name:'Applications',exact:true}).waitFor();
+ await team.getByRole('button',{name:'Shortlist',exact:true}).click();await team.getByText('Added to the shortlist.',{exact:true}).waitFor();
+ assert.equal((await api('/api/hub/applications/'+firstId)).stage,'Screening');
+ await team.getByRole('button',{name:'Request interview',exact:true}).click();await team.getByRole('button',{name:'Send booking link',exact:true}).waitFor();
+ assert.equal(await team.getByRole('button',{name:'Send booking link',exact:true}).isDisabled(),true,'Disconnected Gmail/Calendar cannot send an interview invitation');
+ assert.equal((await api('/api/hub/applications/'+firstId)).interviews.length,0);
+ await team.goBack();await team.getByRole('heading',{name:chosenJob.title,exact:true}).waitFor();assert.equal(team.url(),jobApplicationsUrl);
  await team.goForward();await team.getByRole('heading',{name:detail.name,exact:true}).waitFor();
- await team.getByRole('button',{name:'Back to applications',exact:true}).click();await team.getByRole('heading',{name:'Applications',exact:true}).waitFor();
- await team.goto(origin+'/team?application='+firstId);await team.getByLabel('Action',{exact:true}).selectOption('scorecard');await team.getByLabel('Overall reviewer grade',{exact:false}).selectOption('4');await team.getByLabel('Evaluation criteria',{exact:false}).fill('Isolated job-specific rubric');await team.getByLabel('Review notes',{exact:true}).fill('Synthetic test evidence only.');await team.getByRole('button',{name:'Save action',exact:true}).click();await team.getByText('Saved to this application.',{exact:true}).waitFor();
+ await team.getByRole('button',{name:'Back to applications',exact:true}).click();await team.getByRole('heading',{name:chosenJob.title,exact:true}).waitFor();
+ await team.goto(origin+'/team?application='+firstId);await team.getByText('More actions',{exact:true}).click();await team.getByLabel('Action',{exact:true}).selectOption('scorecard');await team.getByLabel('Overall reviewer grade',{exact:false}).selectOption('4');await team.getByLabel('Evaluation criteria',{exact:false}).fill('Isolated job-specific rubric');await team.getByLabel('Review notes',{exact:true}).fill('Synthetic test evidence only.');await team.getByRole('button',{name:'Save action',exact:true}).click();await team.getByText('Saved to this application.',{exact:true}).waitFor();
  const graded=await api('/api/hub/applications/'+firstId);assert.equal(graded.grade.scorePercent,80);assert.equal(graded.grade.reviewerCount,1);
  let catalog=await api('/api/scorecards');
  const rubric={name:'Synthetic reusable rubric',criteria:[{label:'Implementation evidence',weight:1,anchors:['1','2','3','4','5']},{label:'Communication evidence',weight:1,anchors:['1','2','3','4','5']}]};
  catalog=await api('/api/scorecards','PATCH',{action:'save',expectedRevision:catalog.revision,rubric});const template=catalog.templates[0];
  catalog=await api('/api/scorecards','PATCH',{action:'bind',expectedRevision:catalog.revision,jobId:another.jobId,templateId:template.id,version:template.version});
- await team.goto(origin+'/team?application='+another.id);await team.getByRole('tab',{name:'Review & scorecard',exact:true}).click();await team.getByRole('heading',{name:'Reusable scorecard review',exact:true}).waitFor();
+ await team.goto(origin+'/team?application='+another.id);await team.getByRole('tab',{name:'AI review & notes',exact:true}).click();await team.getByText('Optional: human grades and scorecards',{exact:true}).click();await team.getByRole('heading',{name:'Reusable scorecard review',exact:true}).waitFor();
  await team.getByLabel('Implementation evidence: score',{exact:true}).selectOption('3');await team.getByLabel('Implementation evidence: supporting evidence',{exact:true}).fill('Synthetic sample includes a working API.');
  await team.getByLabel('Communication evidence: score',{exact:true}).selectOption('4');await team.getByLabel('Communication evidence: supporting evidence',{exact:true}).fill('Synthetic explanation identifies constraints.');
  await team.getByRole('button',{name:'Save reusable scorecard',exact:true}).click();
@@ -138,16 +157,17 @@ try{
  await api('/api/scorecards','PATCH',{action:'save',expectedRevision:catalog.revision,templateId:template.id,rubric:{...rubric,name:'Synthetic rubric revised'}});
  const assigned=await api('/api/scorecards?jobId='+another.jobId);assert.equal(assigned.template.version,1);
  assert.equal((await api('/api/hub/applications/'+another.id)).grade.scorePercent,70);
- await team.getByText('Compare résumé, profile and application with AI',{exact:true}).click();await team.getByLabel('Text read from uploaded PDF',{exact:true}).waitFor();
+ await team.getByText('Advanced: evidence and verification tools',{exact:true}).click();await team.getByText('Custom evidence comparison (optional)',{exact:true}).click();await team.getByLabel('Text read from uploaded PDF',{exact:true}).waitFor();
  await team.waitForFunction(()=>document.querySelector('textarea[readonly]')?.value.includes('Synthetic isolated resume'));
- await team.getByRole('button',{name:'Settings',exact:true}).click();await team.getByRole('heading',{name:'Settings',exact:true}).waitFor();await team.getByRole('heading',{name:'My interview calendar',exact:true}).waitFor();await team.getByRole('button',{name:'Company setup',exact:true}).click();await team.getByText('Advanced admin setup',{exact:true}).click();await team.getByText('No Google Apps Script scheduler is needed.',{exact:false}).waitFor();assert.equal(await team.getByText('No Google Apps Script scheduler is needed.',{exact:false}).count(),1);assert.equal(await team.getByRole('button',{name:'Save Google client configuration',exact:true}).count(),0);
+ await team.getByRole('button',{name:'Settings',exact:true}).click();await team.getByRole('heading',{name:'Settings',exact:true}).waitFor();await team.getByRole('heading',{name:'My interview calendar',exact:true}).waitFor();await team.getByRole('button',{name:'Company',exact:true}).click();await team.getByRole('button',{name:'Advanced',exact:true}).click();await team.getByText('Background processing',{exact:true}).click();await team.getByText('No Google Apps Script scheduler is needed.',{exact:false}).waitFor();assert.equal(await team.getByText('No Google Apps Script scheduler is needed.',{exact:false}).count(),1);assert.equal(await team.getByRole('button',{name:'Save Google client configuration',exact:true}).count(),0);
  await staff.close();assert.deepEqual(errors,[]);await browser.close();browser=undefined;console.log('Seeded owner browser job posting, desktop/mobile application uploads, private files and grading passed.');
- const payload=(job,seq)=>({jobPostingId:job.id,formVersion:job.formVersion,submissionKey:crypto.randomUUID(),fieldSubmissions:[{path:'_systemfield_name',value:`Isolated Load Candidate ${seq}`},{path:'_systemfield_email',value:`isolated-load-${seq}@example.invalid`}],utmData:{utm_source:'isolated-load'}});
+ const payload=(job,seq)=>({jobPostingId:job.id,formVersion:job.formVersion,submissionKey:crypto.randomUUID(),fieldSubmissions:[{path:'_systemfield_name',value:'Isolated Load'},{path:'_systemfield_last_name',value:`Candidate ${seq}`},{path:'_systemfield_email',value:`isolated-load-${seq}@example.invalid`},{path:'_systemfield_phone',value:'+1305'+String(seq).padStart(7,'0')}],utmData:{utm_source:'isolated-load'}});
+ phase='synthetic application load';
  const submit=async(job,seq,input=payload(job,seq),session=randomBytes(32).toString('hex'))=>{
-  const began=performance.now(),response=await fetch(origin+'/api/applications',{method:'POST',headers:{'Content-Type':'application/json',Origin:origin,Cookie:`hiring_session=${session}`,'x-real-ip':`198.18.${(seq>>8)&255}.${seq&255}`},body:JSON.stringify(input)}),value=await response.json();latencies.push(performance.now()-began);assert.equal(response.status,201,JSON.stringify(value));assert.equal(value.status,'accepted');return value;
+  const began=performance.now(),response=await fetch(origin+'/api/applications',{method:'POST',headers:{'Content-Type':'application/json',Origin:origin,Cookie:`hiring_session=${session}`,'x-real-ip':`198.18.${(seq>>8)&255}.${seq&255}`},body:JSON.stringify(input)}),value=await response.json();latencies.push(performance.now()-began);assert.equal(response.status,201,JSON.stringify(value));assert.equal(value.status,'accepted');acceptedRequests++;return value;
  };
  const resumeJourneys=[];
- for(let batch=0;batch<20;batch++)await Promise.all(Array.from({length:100},async(_,index)=>{
+ for(let batch=0;batch<20;batch++){phase=`load batch ${batch+1}/20`;await Promise.all(Array.from({length:100},async(_,index)=>{
   const seq=batch*100+index, job=seq%2?creative:engineer;
   if(seq>=1000)return submit(job,seq);
   const began=performance.now(),session=randomBytes(32).toString('hex'),input=payload(job,seq);
@@ -159,8 +179,10 @@ try{
   const stored=await fetch(slot.url,{method:'POST',headers,body:form});assert.equal(stored.status,204,await stored.text());
   input.fieldSubmissions.push({path:job.fields.find(f=>f.type==='File').path,value:slot.handle});
   await submit(job,seq,input,session);resumeJourneys.push(performance.now()-began);
- }));
+ }));}
+ phase='1,000 simultaneous submission requests';console.log('2,000 synthetic applications accepted, including 1,000 private PDF uploads. Starting 1,000-request burst.');
  await Promise.all(Array.from({length:1000},(_,index)=>{const seq=2000+index;return submit(seq%2?creative:engineer,seq);}));
+ phase='file matching and overdue review checks';console.log('3,000 synthetic applications accepted. Checking private files and review queues.');
  const checkedFiles=new DatabaseSync(path.join(dataDir,'hiring.sqlite'),{readOnly:true});
  assert.equal(checkedFiles.prepare('SELECT COUNT(*) AS n FROM hub_files WHERE application_id IS NOT NULL AND uploaded_at>0').get().n,1002);const selected=checkedFiles.prepare("SELECT id,application_id,filename FROM hub_files WHERE filename IN ('synthetic-0.pdf','synthetic-500.pdf','synthetic-999.pdf')").all();checkedFiles.close();
  for(const file of selected){const seq=file.filename.match(/synthetic-(\d+)/)[1];const data=await api('/api/ai/resume-text','POST',{applicationId:file.application_id,fileId:file.id});assert.equal(data.status,'ready');assert.match(data.text,new RegExp(`Synthetic candidate ${seq}:`));}
@@ -172,12 +194,14 @@ try{
  const secondPage=await api('/api/review-reminders?offset=50');assert.equal(secondPage.total,1000);assert.equal(new Set([...overdue.applications,...secondPage.applications].map(a=>a.id)).size,100);
  assert.equal((await fetch(origin+'/api/review-reminders')).status,403);
  resumeJourneys.sort((a,b)=>a-b);
+ phase='20 simultaneous duplicate submission requests';
  const duplicate=payload(engineer,4000),session=randomBytes(32).toString('hex');const repeats=await Promise.all(Array.from({length:20},()=>submit(engineer,4000,duplicate,session)));verifyOneApplication(repeats.map(value=>value.receipt));
  assert.equal((await api('/api/hub/reports')).applications,3003);
  const routed=new DatabaseSync(path.join(dataDir,'hiring.sqlite'),{readOnly:true});
  const notices=routed.prepare("SELECT a.job_id,json_extract(t.payload_json,'$.recipient') AS recipient,COUNT(*) AS n FROM hub_tasks t JOIN hub_applications a ON a.id=t.application_id WHERE json_extract(t.payload_json,'$.jobNotification')=1 GROUP BY a.job_id,recipient").all();
  const totals=routed.prepare('SELECT job_id,COUNT(*) AS n FROM hub_applications GROUP BY job_id').all();
  assert.equal(notices.length,3);for(const notice of notices){assert.ok((notice.job_id===engineer.id?['maria@example.invalid','alex@example.invalid']:['sam@example.invalid']).includes(notice.recipient));assert.equal(notice.n,totals.find(row=>row.job_id===notice.job_id).n);}routed.close();
+ phase='restart persistence and accepted replay';
  await stop();await start(false);
  assert.equal((await api('/api/hub/reports')).applications,3003);assert.equal((await api('/api/hub/applications/'+firstId)).grade.scorePercent,80);
  assert.deepEqual((await api('/api/job-team?jobId='+engineer.id)).config.members,['maria@example.invalid','alex@example.invalid']);
@@ -187,5 +211,5 @@ try{
  const logoutPage=await fetch(origin+'/api/auth/logout',{headers:{Cookie:ownerCookie}});assert.equal(logoutPage.status,200);assert.match(await logoutPage.text(),/form method="post"/);assert.ok(await api('/api/hub/overview'));
  const logout=await fetch(origin+'/api/auth/logout',{method:'POST',redirect:'manual',headers:{Cookie:ownerCookie,Origin:origin}});assert.equal(logout.status,303);assert.equal((await fetch(origin+'/api/hub/overview',{headers:{Cookie:ownerCookie}})).status,403);
  latencies.sort((a,b)=>a-b);
- console.log(JSON.stringify({status:'passed',existingBrowserChecks:20,seededOwnerBrowserJobPosting:true,browserBackForwardVerified:true,guidedStartingPoints:['blank','duplicate','template','request'],desktopAndMobileRealApplications:2,originalResumeBytes:sample.length,privateFiles:true,gradePersisted:80,reusableRubricGrade:70,autoPdfReading:true,overdueReviews:1000,syntheticLoadApplications:3000,applicationsWithPrivatePdfs:1002,pdfJourneyP95Ms:Math.round(resumeJourneys[Math.floor(resumeJourneys.length*.95)]),concurrentRequests:1000,concurrentPdfJourneys:100,duplicateHttpRequests:20,duplicateApplicationsCreated:1,persistedApplications:3003,restartAndPausedReplay:true,elapsedMs:Math.round(performance.now()-started),httpP95Ms:Math.round(latencies[Math.floor(latencies.length*.95)]),limits:'Real built Node server on local disk with production SQLite/files. Synthetic account session is seeded only in the isolated test database. This isolated run does not exercise live Google delivery/quotas, the hosted Docker image, Railway throughput or backup restoration.'},null,2));
-}finally{if(browser)await browser.close();await stop();rmSync(dataDir,{recursive:true,force:true});}
+ console.log(JSON.stringify({status:'passed',existingBrowserChecks:20,seededOwnerBrowserJobPosting:true,browserBackForwardVerified:true,jobScopedBrowserCsvAndZip:true,oneClickShortlist:true,disconnectedInterviewGate:true,guidedStartingPoints:['blank','duplicate','template','request'],desktopAndMobileRealApplications:2,originalResumeBytes:sample.length,privateFiles:true,gradePersisted:80,reusableRubricGrade:70,autoPdfReading:true,overdueReviews:1000,syntheticLoadApplications:3000,applicationsWithPrivatePdfs:1002,pdfJourneyP95Ms:Math.round(resumeJourneys[Math.floor(resumeJourneys.length*.95)]),concurrentRequests:1000,concurrentPdfJourneys:100,duplicateHttpRequests:20,duplicateApplicationsCreated:1,persistedApplications:3003,restartAndPausedReplay:true,elapsedMs:Math.round(performance.now()-started),httpP95Ms:Math.round(latencies[Math.floor(latencies.length*.95)]),limits:'Real built Node server on local disk with production SQLite/files. Synthetic account session is seeded only in the isolated test database. This isolated run does not exercise live Google delivery/quotas, the hosted Docker image, Railway throughput or backup restoration.'},null,2));
+}catch(error){console.error(JSON.stringify({phase,acceptedRequests,serverExitCode:child?.exitCode,serverLogs:logs.slice(-1500)}));throw error;}finally{if(browser)await browser.close();await stop();rmSync(dataDir,{recursive:true,force:true});}
