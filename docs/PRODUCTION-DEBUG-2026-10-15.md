@@ -1,3 +1,5 @@
+> Update16October: the automatic Gmail alias path below is superseded by SendGrid. See [SendGrid rollout](SENDGRID-ROLLOUT-2026-10-16.md). Earlier diagnostic evidence remains historical; it is not the current setup instruction.
+
 # Hiring production debugging — 15 October 2026
 
 ## Reproduced causes and fixes
