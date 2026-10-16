@@ -21,3 +21,14 @@ Current screenshots in outputs/backend-redesign-audit document the old oversized
 
 ## Verification limits
 Screenshots alone do not verify mutations, permissions or mail delivery. Fixture-based tests cover actions, validation, navigation and layout. Live checks must use read-only real records or explicitly synthetic records. Recruiter Gmail authorization remains necessary before invitations can be delivered from that account.
+
+## Audit steps and outcome
+1. Job applicants: the old download card displaced the applicant list. Replaced with a compact filter/pipeline toolbar and optional download panel.
+2. Home: help/privacy management appeared above daily recruiting work. Moved to Settings; added direct active-job and applicant entry points.
+3. Jobs: oversized cards exposed all actions at once. Replaced with rows and an Actions menu.
+4. Reports: tables competed on one long page. Organized into Overview, Sources and Team with metric definitions.
+5. Settings: onboarding instructions dominated the screen. My connections opens personal setup; less frequent company/technical controls are grouped and collapsed.
+6. Applicant AI review: technical explanations and source quotes preceded useful synthesis. Supported requirements, strengths and questions now lead; original quotes expand on demand.
+7. Job setup: oversized starting choices and repeated controls obscured the steps. Compact starting buttons and a four-step wizard retain drafts and validation.
+
+Independent review resolved offscreen mobile menus, stretched mobile headers, action/tab spacing, and mismatches between displayed interview readiness and server prerequisites. A production-style test also exposed concurrent submission retries consuming the email spam quota repeatedly; the fix counts an allowed submission intent once while preserving limits for distinct attempts.
