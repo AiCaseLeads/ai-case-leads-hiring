@@ -81,7 +81,7 @@ export function JobTeamFields({ data, value, change, readOnly = false }: {
         <span>{label}</span>
       </label>)}
     </fieldset>
-    <p className="hub-muted">Each recruiter connects Gmail in My setup. Saving this team does not email previous applicants.</p>
+    <p className="hub-muted">Each recruiter connects Gmail in My connections. Saving this team does not email previous applicants.</p>
     </details>
     <details>
       <summary>How candidate replies work</summary>

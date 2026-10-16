@@ -92,7 +92,7 @@ export function HiringDashboard({
     window.addEventListener("hub:navigate", readLocation);
     const params = new URLSearchParams(window.location.search), outcome = params.get("workspace"), personalOutcome = params.get("personalCalendar");
     if (personalOutcome) queueMicrotask(() => {
-      setWorkspaceNotice(personalOutcome === "connected" ? "Your calendar is connected. Confirm your interview hours in My setup, then complete a test booking." : "Your calendar authorization did not complete. Connect again in My setup using your own dashboard account and approve Calendar access.");
+      setWorkspaceNotice(personalOutcome === "connected" ? "Your calendar is connected. Confirm your interview hours in My connections, then complete a test booking." : "Your calendar authorization did not complete. Connect again in My connections using your own dashboard account and approve Calendar access.");
     });
     if (outcome) queueMicrotask(() => {
       if (outcome === "connection_failed") {
@@ -278,7 +278,7 @@ export function HiringDashboard({
                   </section>
                   <ReviewReminderQueue refresh={refresh} onSelect={selectApplication} compact />
                 </div>
-                <div className="hub-home-status" aria-label="Hiring connections"><span className="hub-muted">{data.integrations.google && data.integrations.drive && data.integrations.applicationsEnabled ? "Company connections ready" : "Company setup needs attention"}</span><button className="hub-text-button" onClick={() => changeView("settings")}>Connections &amp; team</button><button className="hub-text-button" onClick={() => changeView("tasks")}>Delivery activity</button></div>
+                <div className="hub-home-status" aria-label="Hiring connections"><span className="hub-muted">{data.integrations.google && data.integrations.drive && data.integrations.applicationsEnabled ? "Company connections ready" : "Company needs attention"}</span><button className="hub-text-button" onClick={() => changeView("settings")}>Connections &amp; team</button><button className="hub-text-button" onClick={() => changeView("tasks")}>Delivery activity</button></div>
               </>}
             </>
           ) : view === "applications" ? null : view === "jobs" ? (

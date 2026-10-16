@@ -7,10 +7,10 @@ export type MatchSummary = {status: string; score: number | null; updatedAt?: nu
 type MatchDetail = MatchSummary & {model?: string; error?: string; sourceWarnings?: string[]; criteria?: {criterion: string; status: string; explanation: string; citations: {source: string; quote: string}[]}[]};
 type MatchDiagnostics = {errors?:{code:string|null;count:number}[];counts:{pending:number;running:number;complete:number;failed:number;needsReview:number;notQueued:number;total:number};criteria:{status:string;error?:string|null;attempts:number;nextRetryAt?:number|null};budget:{limit:number;used:number;remaining:number;resetsAt:number};worker:{enabled:boolean|null;encryptionKeyConfigured:boolean;leaseUntil?:number|null};nextRetryAt?:number|null;reasons:string[]};
 type MatchJob = {diagnostics?:MatchDiagnostics;enabled: boolean; jobId: string; version: number; available?: boolean; criteria: string[]; status: string; error?: string};
-const labels: Record<string,string> = {disabled:"AI review off",setup_required:"Connect AI in Company setup",pending:"Waiting for AI review",preparing:"Preparing job requirements",running:"AI review in progress",needs_review:"Needs manual review",failed:"AI review needs attention",stale:"Job changed · review needed"};
+const labels: Record<string,string> = {disabled:"AI review off",setup_required:"Connect AI in Company",pending:"Waiting for AI review",preparing:"Preparing job requirements",running:"AI review in progress",needs_review:"Needs manual review",failed:"AI review needs attention",stale:"Job changed · review needed"};
 const diagnosticReasons: Record<string,string> = {
   job_disabled:"AI matching is off for this job.",
-  provider_not_configured:"Connect and enable OpenRouter in Company setup before reviews can run.",
+  provider_not_configured:"Connect and enable OpenRouter in Company before reviews can run.",
   encryption_key_missing:"The server encryption key is missing. Ask the administrator to check deployment settings.",
   background_worker_disabled:"Background processing is disabled. Ask the administrator to enable the worker.",
   hourly_budget_exhausted:"Hourly AI capacity is exhausted. Reviews will resume after reset.",
@@ -37,7 +37,7 @@ const diagnosticErrors: Record<string,string> = {
   pdf_temporarily_unavailable:"Resume extraction or OCR was temporarily unavailable.",
   ai_match_failed:"The review did not finish. This may be a timeout or invalid provider response; inspect server logs for the cause.",
   ai_review_failed:"The provider review did not finish or returned an invalid response.",
-  ai_not_configured:"OpenRouter is not configured or enabled in Company setup.",
+  ai_not_configured:"OpenRouter is not configured or enabled in Company.",
 };
 function diagnosticError(code: string | null) {return diagnosticErrors[code || ""] || "The review failed. An administrator should inspect server logs using this error code.";}
 export function MatchScore({match}:{match?:MatchSummary}) {
