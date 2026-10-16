@@ -1,13 +1,17 @@
 "use client";
 import { contactPaths, withRequiredContacts } from "@/lib/hiring/contact-fields";
+import { reorderApplicationQuestions } from "@/lib/job-setup/question-order";
+import { closestCenter, pointerWithin, DndContext, DragOverlay, KeyboardSensor, MouseSensor, TouchSensor, useSensor, useSensors, type CollisionDetection, type Modifier } from "@dnd-kit/core";
+import { SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { useJobRecovery } from "./job-recovery";
 import { requestDraftNavigation } from "./draft-navigation";
 import type { JobRecoveryState } from "@/lib/job-setup/drafts";
 import { hasDescriptionText } from "@/lib/job-description";
 import { DescriptionEditor } from "./description-editor";
 import { SafeDescription } from "../careers/safe-description";
-import { useEffect, useRef, useState } from "react";
-import { ArrowLeft, ArrowUp, ArrowDown, Plus, Trash2, Copy, FileText, ClipboardList } from "lucide-react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { ArrowLeft, ArrowUp, ArrowDown, Plus, Trash2, Copy, FileText, ClipboardList, GripVertical } from "lucide-react";
 import { hubRequest, useHubMutation } from "./api";
 import { Badge, Feedback, Field, ResourceState } from "./shared";
 import { JobTeamFields, useJobTeam } from "./job-team";
@@ -439,6 +443,41 @@ export function JobWizard({
   );
 }
 
+const questionCollision: CollisionDetection = args => args.pointerCoordinates ? pointerWithin(args) : closestCenter(args);
+// Keyboard coordinates include scroll compensation; only constrain pointer movement.
+const verticalQuestionDrag: Modifier = ({ transform, activatorEvent }) => activatorEvent?.type === "keydown" ? transform : ({ ...transform, x: 0 });
+
+function SortableQuestion({ field, number, disabled, children }: {
+  field: ApplicationField;
+  number: number;
+  disabled: boolean;
+  children: (handle: ReactNode) => ReactNode;
+}) {
+  const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({
+    id: field.path,
+    disabled,
+    data: { label: field.title || "New question", number },
+  });
+  return <article
+    ref={setNodeRef}
+    className={`hub-question${isDragging ? " hub-question-dragging" : ""}`}
+    style={{ transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.35 : undefined }}
+    data-question-path={field.path}
+  >
+    {children(<button
+      ref={setActivatorNodeRef}
+      {...attributes}
+      {...listeners}
+      type="button"
+      className="hub-icon-button hub-question-drag-handle"
+      disabled={disabled}
+      style={{ touchAction: "none", cursor: disabled ? undefined : "grab", userSelect: "none" }}
+      aria-label={`Reorder ${field.title || "new question"}`}
+      title="Drag to reorder. Or press Space, use arrow keys, then Space to finish."
+    ><GripVertical size={20} aria-hidden="true" /></button>)}
+  </article>;
+}
+
 function Editor({
   active,
   job,
@@ -528,6 +567,12 @@ function Editor({
     [questionPreset, setQuestionPreset] = useState("");
   const [creationId, setCreationId] = useState(() => crypto.randomUUID());
   const mutation = useHubMutation();
+  const [draggedQuestion, setDraggedQuestion] = useState<string | null>(null);
+  const questionSensors = useSensors(
+    useSensor(MouseSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 180, tolerance: 8 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates, scrollBehavior: "auto" }),
+  );
   const [postingLabel, setPostingLabel] = useState(
     () => `${new Date().toISOString().slice(0, 10)} ${creationId.slice(0, 8)}`,
   );
@@ -784,7 +829,7 @@ function Editor({
       action: "save",
       creationId,
       ...(job
-        ? { jobId: job.id, formVersion: draftFormVersion ?? job.formVersion }
+        ? { jobId: job.id, formVersion: draftFormVersion ?? job.formVersion, expectedLifecycleRevision: job.lifecycle?.revision || 0 }
         : {}),
       job: {
         title,
@@ -1041,19 +1086,43 @@ function Editor({
               <span className="hub-muted">Required on every application.</span>
             </div>
             {fields.some(field => field.type === "Phone" && !contactPaths.includes(field.path)) && <p className="hub-muted">This form also has an extra phone question. The required Phone number field already collects it; you can remove the extra question below if it is a duplicate. Existing application answers are kept.</p>}
+            <p className="hub-muted hub-question-order-help">Drag the dotted handle to change the order. With a keyboard, press Space on the handle, use the arrow keys, then press Space to finish.</p>
+            <DndContext
+              sensors={questionSensors}
+              collisionDetection={questionCollision}
+              modifiers={[verticalQuestionDrag]}
+              accessibility={{
+                screenReaderInstructions: { draggable: "To reorder a question, press Space or Enter. Use the up and down arrow keys to move it. Press Space or Enter to finish, or Escape to cancel." },
+                announcements: {
+                  onDragStart: ({ active }) => `Picked up ${active.data.current?.label || "question"}.`,
+                  onDragOver: ({ active, over }) => over ? `${active.data.current?.label || "Question"} is at position ${over.data.current?.number} of ${fields.length - contactPaths.length}.` : undefined,
+                  onDragEnd: ({ active, over }) => over ? `${active.data.current?.label || "Question"} moved to position ${over.data.current?.number}.` : "Question order unchanged.",
+                  onDragCancel: () => "Reordering cancelled. Question order unchanged.",
+                },
+              }}
+              onDragStart={({ active }) => setDraggedQuestion(String(active.id))}
+              onDragCancel={() => setDraggedQuestion(null)}
+              onDragEnd={({ active, over }) => {
+                setDraggedQuestion(null);
+                if (over) setFields(current => reorderApplicationQuestions(current, String(active.id), String(over.id)));
+              }}
+            >
+            <SortableContext items={fields.filter(field => !contactPaths.includes(field.path)).map(field => field.path)} strategy={verticalListSortingStrategy}>
             <div className="hub-editor-list">
               {fields.map((f, i) => contactPaths.includes(f.path) ? null : (
-                <article className="hub-question" key={f.path}>
+                <SortableQuestion key={f.path} field={f} number={i - contactPaths.length + 1} disabled={mutation.busy || !recovery.ready}>
+                  {(handle) => <>
                   <div className="hub-question-heading">
+                    {handle}
                     <strong>{f.title || "New question"}</strong>
                     <Badge>{f.required ? "Required" : "Optional"}</Badge>
                     {!contactPaths.includes(f.path) && (
                       <>
                         <button type="button" className="hub-icon-button" title="Move question up" aria-label={`Move ${f.title || "new question"} up`} disabled={i <= contactPaths.length} onClick={() => {
-                          setFields(current => { const next = [...current]; [next[i - 1], next[i]] = [next[i], next[i - 1]]; return next; });
+                          setFields(current => reorderApplicationQuestions(current, f.path, current[i - 1]?.path || ""));
                         }}><ArrowUp size={16} /></button>
                         <button type="button" className="hub-icon-button" title="Move question down" aria-label={`Move ${f.title || "new question"} down`} disabled={i === fields.length - 1} onClick={() => {
-                          setFields(current => { const next = [...current]; [next[i], next[i + 1]] = [next[i + 1], next[i]]; return next; });
+                          setFields(current => reorderApplicationQuestions(current, f.path, current[i + 1]?.path || ""));
                         }}><ArrowDown size={16} /></button>
                         <button
                           type="button"
@@ -1181,9 +1250,18 @@ function Editor({
                       )}
                     </>
                   )}
-                </article>
+                  </>}
+                </SortableQuestion>
               ))}
             </div>
+            </SortableContext>
+            <DragOverlay dropAnimation={null}>
+              {draggedQuestion && <div className="hub-question hub-question-drag-preview" style={{ display: "flex", alignItems: "center", gap: 12, boxShadow: "0 8px 24px #173e4430", background: "white" }}>
+                <GripVertical size={20} aria-hidden="true" />
+                <strong>{fields.find(field => field.path === draggedQuestion)?.title || "New question"}</strong>
+              </div>}
+            </DragOverlay>
+            </DndContext>
             <div className="hub-form-grid">
               <Field label="Add from the question library">
                 <select
