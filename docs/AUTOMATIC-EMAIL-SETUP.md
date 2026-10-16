@@ -1,6 +1,6 @@
 # Automatic applicant email
 
-Application receipts and automatic screening rejections use **Brevo**, with
+Application receipts and automatic screening rejections use **SendGrid**, with
 **AI Case Leads Recruiting <no-reply@notify.aicaseleads.com>** as the company sender.
 They do not use Maria’s Gmail account or the owner’s mailbox. They include no
 staff CC or BCC.
@@ -11,18 +11,22 @@ the shared Google Drive archive remain unchanged.
 
 ## One-time connection
 
-1. Create a company-owned account at [Brevo](https://app.brevo.com). Enable
-   transactional email and complete any account review Brevo requests.
-2. In Brevo’s sender/domain settings, add **notify.aicaseleads.com**. Add the exact DNS
-   authentication records Brevo supplies in **IONOS**, then wait for Brevo to
+1. Open your existing [SendGrid account](https://app.sendgrid.com). Complete any
+   pending account approval required for sending.
+2. In **Settings → Sender Authentication**, add **notify.aicaseleads.com**. Add the exact DNS
+   authentication records SendGrid supplies in **IONOS**, then wait for SendGrid to
    verify them. Add a **Null MX** record on **notify** with priority **0** and
    target **.** to reject incoming mail to that subdomain. Keep the main
    **aicaseleads.com** domain’s existing Google Workspace mail records unchanged.
-3. Set **no-reply@notify.aicaseleads.com** as a verified sender, named **AI Case Leads
-   Recruiting**. An authenticated sending domain does not require a new Gmail
+3. The app’s sender is **AI Case Leads Recruiting
+   <no-reply@notify.aicaseleads.com>**. Domain authentication must pass before
+   it is ready. An authenticated sending domain does not require a new Gmail
    mailbox or a Gmail “Send mail as” alias.
-4. Create a Brevo API key and save it directly in the hiring app’s **Railway →
-   Variables → BREVO_API_KEY** field. Redeploy so the running service receives
+4. Create or use a restricted SendGrid API key with **Mail Send** and **Domain
+   Authentication read** access. If your account supports it, **Email Activity
+   read-only** access can help reconcile uncertain delivery. Save the key
+   directly in the hiring app’s **Railway →
+   Variables → SENDGRID_API_KEY** field. Redeploy so the running service receives
    it. Keep the key private; do not put it in Git, screenshots, or chat.
 5. In the hiring hub, open **Settings → Company → Automatic applicant emails**
    and click **Check automatic email**. The owner and head recruiter can see
@@ -41,25 +45,28 @@ the shared Google Drive archive remain unchanged.
 - In **Delivery activity → Retry earlier failed emails**, choose the date and
   preview. Review the exact messages, then retry the eligible batch. Sent and
   uncertain deliveries remain excluded; uncertain Gmail deliveries must be
-  reconciled with Gmail, rather than blindly resent through Brevo.
+  reconciled with Gmail, rather than blindly resent through SendGrid.
 
 A successful sender check verifies the connection and sender configuration.
 It does not prove delivery to an inbox; the controlled test does.
 
 ## Replies and limits
 
-Brevo handles outgoing mail. The dedicated **notify.aicaseleads.com**
+SendGrid handles outgoing mail. The dedicated **notify.aicaseleads.com**
 subdomain’s **Null MX (0 .)** record tells sending servers that it accepts no
 incoming email. Verify a controlled reply bounces before claiming this is
 working. No Google mailbox, alias, or Admin changes are needed. Recruiter
 conversations can receive replies in the recruiter’s own Gmail.
 
-The configured sending queue limit appears in the setup card. The initial
-limit is **300 automatic emails per day**. An application receipt and a later
+The app’s configured sending budget appears in the setup card. The initial
+budget is **300 automatic emails per day**, independent of your SendGrid
+account’s actual allowance. This does not assert a free-tier limit or change
+your existing subscription. An application receipt and a later
 automatic rejection count as separate messages. A large burst may therefore
-delay email while applications continue to be accepted and archived. Monitor
-the queue and the actual Brevo account allowance; changing to a paid plan is
-a separate business decision.
+delay email while applications continue to be accepted and archived. Excess
+messages remain queued and are processed when capacity is available again.
+Monitor the queue and the actual SendGrid account allowance; a subscription
+change is a separate business decision.
 
 Changing provider configuration does not automatically release held
 historical email. Recover it explicitly after verification. If account access,

@@ -16,7 +16,7 @@ async function setup(t, { blocked = false } = {}) {
   page.on("pageerror", error => errors.push(error.message));
   await page.route("**/api/hub/mail-recovery/**", async route => {
     writes.push({ path: new URL(route.request().url()).pathname, input: route.request().postDataJSON() });
-    if (route.request().url().endsWith("/preview")) return route.fulfill({ json: { data: blocked ? { ...plan, eligible: 0, planId: null, digest: null, messages: [], counts: {}, skipped: [{ reason: "The no-reply sender is not verified in Brevo", count: 17 }] } : plan } });
+    if (route.request().url().endsWith("/preview")) return route.fulfill({ json: { data: blocked ? { ...plan, eligible: 0, planId: null, digest: null, messages: [], counts: {}, skipped: [{ reason: "The no-reply sender is not verified in SendGrid", count: 17 }] } : plan } });
     await new Promise(resolve => setTimeout(resolve, 200));
     return route.fulfill({ json: { data: { queued: 2, alreadyQueued: false } } });
   });

@@ -17,10 +17,10 @@ export function PersonalMailSetup({ member, refresh = 0 }: { member:Member; refr
     </div>
     <ResourceState loading={resource.loading} error={resource.error} retry={() => void resource.reload()} />
     {blocked ? <>
-      <p className="hub-muted">Automatic receipts and rejections use Brevo. Recruiter conversations use the recruiter selected on each job. Manage automatic email under Settings → Company.</p>
+      <p className="hub-muted">Automatic receipts and rejections use SendGrid. Recruiter conversations use the recruiter selected on each job. Manage automatic email under Settings → Company.</p>
       <details className="hub-setup-details"><summary>Why this account cannot connect email</summary><p className="hub-muted">This login’s company Drive and fallback Calendar connection is separate. Connecting company Google does not subscribe you to job notifications or send applicant email from this account.</p></details>
     </> : <>
-      <p className="hub-muted">Your account: <strong>{member.email}</strong>. This connection is for your recruiter conversations. Automatic receipts and rejections use Brevo.</p>
+      <p className="hub-muted">Your account: <strong>{member.email}</strong>. This connection is for your recruiter conversations. Automatic receipts and rejections use SendGrid.</p>
       {resource.data && !resource.data.configured && <p className="hub-notice hub-error" role="alert">The owner needs to complete Google app configuration before you can connect.</p>}
       <div className="hub-button-row"><button className="hub-button" disabled={!resource.data?.configured || mutation.busy} onClick={() => void connect()}>{mutation.busy ? "Opening Google…" : resource.data?.connected ? "Reconnect recruiting email" : "Connect recruiting email"}</button><button className="hub-text-button" onClick={() => void resource.reload()}>Check connection</button></div>
       <Feedback error={mutation.error} success={mutation.success} />

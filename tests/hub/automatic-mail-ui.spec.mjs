@@ -5,7 +5,7 @@ import { readFileSync } from "node:fs";
 import { build } from "esbuild";
 import { chromium } from "playwright";
 
-const initial = { provider: "brevo", sender: "no-reply@notify.aicaseleads.com", configured: false, ready: false, error: "transactional_mail_api_key_missing", checkedAt: null, dailyLimit: 300, setupUrl: "https://app.brevo.com" };
+const initial = { provider: "sendgrid", sender: "no-reply@notify.aicaseleads.com", configured: false, ready: false, error: "transactional_mail_api_key_missing", checkedAt: null, dailyLimit: 300, setupUrl: "https://app.sendgrid.com" };
 async function setup(t, { mode = "setup", taskError = "transactional_mail_domain_not_verified" } = {}) {
   const render = mode === "tasks" ? "<Tasks admin={true} refresh={0} changed={()=>{}}/>" : "<AutomaticMailSetup/>";
   const { outputFiles } = await build({ stdin: { contents: `import React from 'react';import{createRoot}from'react-dom/client';import{AutomaticMailSetup}from'./components/hub/automatic-mail';import{Tasks}from'./components/hub/settings';createRoot(document.getElementById('root')).render(${render});`, resolveDir: process.cwd(), loader: "tsx" }, bundle: true, write: false, format: "iife", jsx: "automatic" });
@@ -33,9 +33,12 @@ test("automatic mail setup stays compact, hides keys and separates provider read
   await page.getByText("Not connected", { exact: true }).waitFor();
   assert.equal(await page.locator("details").evaluate(element => element.open), false);
   assert.equal(await page.locator("input,textarea").count(), 0);
-  assert.equal(await page.getByRole("link", { name: "Open Brevo", exact: true }).getAttribute("href"), "https://app.brevo.com");
+  assert.equal(await page.getByRole("link", { name: "Open SendGrid", exact: true }).getAttribute("href"), "https://app.sendgrid.com");
   await page.getByText("Connect automatic email · one-time setup", { exact: true }).click();
-  await page.getByText("BREVO_API_KEY", { exact: true }).waitFor();
+  await page.getByText("SENDGRID_API_KEY", { exact: true }).waitFor();
+  await page.getByText(/Open your existing SendGrid account/).waitFor();
+  await page.getByText(/App sending budget:/).waitFor();
+  assert.equal(await page.getByText(/Create a company-owned/).count(), 0);
   assert.equal(await page.getByText(/Send mail as/).count(), 0);
   for (const width of [320, 390, 768, 1280]) {
     await page.setViewportSize({ width, height: 844 });
@@ -63,14 +66,14 @@ test("failed automatic sender checks can be refreshed and never display a stale 
   assert.equal(await page.getByText("Sender verified", { exact: true }).count(), 0);
   setFailure(false); setStatus({ ...initial, configured: true, error: "transactional_mail_sender_not_verified" });
   await page.getByRole("button", { name: "Try again", exact: true }).click();
-  await page.getByText("Verify no-reply@notify.aicaseleads.com as an approved sender in Brevo.", { exact: true }).waitFor();
+  await page.getByText("Authenticate the notify.aicaseleads.com sending domain in SendGrid for no-reply@notify.aicaseleads.com.", { exact: true }).waitFor();
   assert.deepEqual(errors, []);
 });
 
 test("delivery activity explains transactional sender failures without sending users into Gmail aliases", async t => {
   const { page, reads, writes, errors } = await setup(t, { mode: "tasks" });
   await page.getByRole("cell", { name: "Setup required", exact: true }).waitFor();
-  await page.getByText(/Authenticate notify.aicaseleads.com in Brevo using the DNS records it provides/).waitFor();
+  await page.getByText(/Authenticate notify.aicaseleads.com in SendGrid using the DNS records it provides/).waitFor();
   assert.equal(await page.getByText(/Send mail as/).count(), 0);
   assert.equal(await page.getByRole("link", { name: "Open email settings", exact: true }).getAttribute("href"), "/team?view=settings&section=company");
   assert.equal(reads.includes("/api/personal-mail"), false);
@@ -79,14 +82,14 @@ test("delivery activity explains transactional sender failures without sending u
 });
 
 
-test("legacy automatic Gmail failures direct users to Brevo, while private template failures remain explicit", async t => {
+test("legacy automatic Gmail failures direct users to SendGrid, while private template failures remain explicit", async t => {
   const { page, errors } = await setup(t, { mode: "tasks", taskError: "candidate_mail_account_connection_required" });
-  await page.getByText(/This earlier automatic applicant email now uses Brevo/).waitFor();
+  await page.getByText(/This earlier automatic applicant email now uses SendGrid/).waitFor();
   assert.equal(await page.getByText(/Connect the assigned recruiter’s Gmail for recruiter conversations/).count(), 0);
   assert.equal(await page.getByRole("link", { name: "Open email settings", exact: true }).getAttribute("href"), "/team?view=settings&section=company");
   assert.deepEqual(errors, []);
   const privacy = await setup(t, { mode: "tasks", taskError: "candidate_mail_exposes_staff_address" });
   await privacy.page.getByText(/Update the email template to remove the private staff address before sending/).waitFor();
-  assert.equal(await privacy.page.getByText(/This earlier automatic applicant email now uses Brevo/).count(), 0);
+  assert.equal(await privacy.page.getByText(/This earlier automatic applicant email now uses SendGrid/).count(), 0);
   assert.deepEqual(privacy.errors, []);
 });

@@ -230,8 +230,8 @@ export function Tasks({
   const legacyAutomaticSetup = (task: Task) => automaticApplicantMail(task) && ["candidate_mail_account_not_configured", "candidate_mail_account_connection_required", "gmail_sender_alias_not_verified", "google_oauth_reconnect_required", "google_required_permissions_missing"].includes(task.lastError || "");
   const setupExplanation = (error: string) => error.startsWith("transactional_mail_") ? automaticMailExplanation(error) : ({
     candidate_mail_account_not_configured: "Check automatic applicant email in Settings → Company. Recruiter messages require a connected reply contact.",
-    candidate_mail_account_connection_required: "Connect the assigned recruiter’s Gmail for recruiter conversations. Automatic applicant emails use Brevo.",
-    gmail_sender_alias_not_verified: "This older automatic message needs migration to the verified Brevo sender. Preview failed emails to check its recovery eligibility.",
+    candidate_mail_account_connection_required: "Connect the assigned recruiter’s Gmail for recruiter conversations. Automatic applicant emails use SendGrid.",
+    gmail_sender_alias_not_verified: "This older automatic message needs migration to the verified SendGrid sender. Preview failed emails to check its recovery eligibility.",
     google_oauth_reconnect_required: "Reconnect the recruiting Gmail account; its authorization has expired or changed.",
     google_required_permissions_missing: "Reconnect recruiting Gmail and grant the required permissions.",
     recruiter_reply_contact_required: "Assign a connected recruiter as the job’s reply contact.",
@@ -377,7 +377,7 @@ export function Tasks({
                     <td className={isDriveArchiveContinuation(task) ? "hub-muted" : "hub-task-error"}>
                       {isDriveArchiveContinuation(task)
                         ? "Progress saved; the background worker will continue automatically."
-                        : mailSetupError(task) ? (legacyAutomaticSetup(task) ? "This earlier automatic applicant email now uses Brevo. Check Settings → Company, then preview failed emails to review its recovery eligibility." : setupExplanation(task.lastError || "")) + " This message is held; completing setup does not send historical messages automatically." : task.lastError || "—"}
+                        : mailSetupError(task) ? (legacyAutomaticSetup(task) ? "This earlier automatic applicant email now uses SendGrid. Check Settings → Company, then preview failed emails to review its recovery eligibility." : setupExplanation(task.lastError || "")) + " This message is held; completing setup does not send historical messages automatically." : task.lastError || "—"}
                       {task.phase && <span className="hub-secondary-line">{driveArchivePhases[task.phase]}</span>}
                       {task.providerStatus && <span className="hub-secondary-line">Provider response: {task.providerStatus}</span>}
                     </td>
