@@ -6,11 +6,11 @@ A restricted key was created with Mail Send and Sender Authentication read; live
 
 ## Verification
 
-- 532 backend tests passed; 3 native OCR tests skipped because local native OCR binaries are unavailable. Existing OCR behavior was not changed.
+- The final regression suite passed 534 backend tests; 3 native OCR tests skipped because local native OCR binaries are unavailable. Existing OCR behavior was not changed.
 - 21 Railway/runtime checks passed.
 - 17 focused browser tests passed, plus the independent UI agent's role/layout tests. Responsive setup, capacity waits, DNS waits, held recovery and uncertain-send controls were checked.
 - TypeScript, scoped ESLint, Railway production build and diff checks passed.
-- 1,000 simultaneous SQLite email-budget reservations admitted exactly 300; all 700 excess reservations deferred. Accepted applications are independent of email delivery.
+- With a configured test budget of 300, 1,000 simultaneous SQLite email-budget reservations admitted exactly 300; all 700 excess reservations deferred. Accepted applications are independent of email delivery.
 - Signed callbacks tested against SendGrid's published signature fixture, a 1,000-event deduplicated burst, bounded shared-account batches above768KB, malformed/stale signatures and mixed unrelated events. No callback changes a hiring decision or sends a new email.
 - Independent review caught/fixed the old staff-invite sender, misleading quota setup labels and a permanent hold after transient DNS outages.
 - RuFlo's strict swarm watchdog passed. Its review execution failed with an invalid provider model ID; this is not a Claude review verdict. The actual independent Codex review and tests above form the review evidence.
@@ -20,9 +20,9 @@ A restricted key was created with Mail Send and Sender Authentication read; live
 
 Connecting the provider never automatically releases historical setup-held messages. Recovery previews exact recipients, stage/decision currency, invitation validity, row/communication snapshots, regenerated envelopes and provider fingerprint; provider changes invalidate the plan. Old uncertain Gmail sends remain Gmail reconciliation-only. A SendGrid POST timeout, 5xx, malformed202 or local persistence failure stays uncertain; absent provider evidence never licenses a resend.
 
-## Outstanding live gate
+## Completed live gate
 
-Verify root-domain DNS authentication, notify Null MX bounce, direct root no-reply rejection, the signed callback on the deployed endpoint, actual received From/Reply-To/Sender/Return-Path/body, and one controlled receipt/rejection before releasing eligible historical candidate mail. API acceptance is separate from inbox delivery. Record completed live checks below rather than claiming setup is delivery.
+Root-domain DNS authentication, notify Null MX bounce, direct rejection at the unassigned root sender, signed callbacks on the deployed endpoint, actual received headers/body, and controlled application receipt/rejection all passed before historical candidate mail was released. API acceptance remains separate from inbox delivery. The only held email is a pre-existing uncertain Gmail notification; no blind resend was attempted.
 
 ## Live deployed evidence
 
@@ -42,4 +42,10 @@ The real public form was tested through the deployed CAPTCHA/upload flow with tw
 
 Exactly one receipt arrived for the passing application; one receipt and one rejection arrived for the failing application. All three had the final From/Reply-To, SPF/DKIM/DMARC pass, no staff sender/body leak, and signed processed/delivered events. The rejection explained the synthetic minimum of seven. Revisiting the first form returned its saved confirmation rather than creating a duplicate.
 
-The existing SendGrid EmailAPI plan was verified read-only as Essentials50K, with50,000emails/month and2,775used at the check. No plan or billing change was made. The app's daily attempt budget was raised to1,000within the existing allowance, sufficient for normal expected recruiting traffic and this backlog. Provider capacity/rate limits still defer safely; APIacceptance is distinct from recipient delivery. Historical recovery is underway using exact reviewed plans. A plan whose records changed was correctly rejected atomically with no sends, then will be refreshed after current processing.
+The existing SendGrid Email API plan was verified read-only as Essentials 50K, with 50,000 emails/month and 2,775 used at the check. No plan or billing change was made. The app's daily attempt budget was raised to 1,000 within the existing allowance, sufficient for normal expected recruiting traffic and this backlog. Provider capacity/rate limits still defer safely; API acceptance is distinct from recipient delivery.
+
+Historical recovery finished using four successfully consumed plans (200 + 200 + 200 + 47): all 647 exact eligible tasks reached done, with 647 unique persisted SendGrid message IDs and zero recovery errors or failed email tasks. A plan whose records changed was rejected atomically with no sends before its fresh replacement was executed. The one pre-existing uncertain Gmail notification remains held to avoid a possible duplicate; an empty Sent-mail search is not proof of non-delivery.
+
+These counts confirm SendGrid accepted the 647 messages; they do not assert delivery to every recipient inbox. Signed delivery/bounce events remain the provider outcome evidence. A later recipient bounce is distinct from an application or queue failure.
+
+The final application release, GitHub main commit 3dfb756f7899f2cd376625cff8f97b257ee9740b, deployed successfully as Railway b180ab0c-149d-4f41-910e-5db1a885ca69. The live Company settings card shows Sender verified and the final sender/reply pair. The task-specific Railway SSH key was revoked after verification; no permanent testing access remains.
