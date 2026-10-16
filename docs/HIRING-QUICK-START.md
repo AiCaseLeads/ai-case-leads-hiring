@@ -1,99 +1,92 @@
 # Hiring quick start
 
-Open https://jobs.aicaseleads.com/team and sign in with your invited work Google account. Read the [six-page recruiter handbook](../public/recruiter-guide.pdf), which is also available from Settings.
+Open [the hiring workspace](https://jobs.aicaseleads.com/team) and sign in with your invited work Google account. The [six-page recruiter handbook](../public/recruiter-guide.pdf) is also linked from Settings.
 
-The owner manages company connections and appoints head recruiters. Head recruiters invite/manage recruiters. All authorized recruiters can create/manage jobs, scorecards and applicant reviews. Each person connects their own interview calendar; no shared passwords are needed. Job assignment controls notifications, not visibility of hiring records.
+## Maria's first day
+
+1. Sign in using the work account that received the invitation.
+2. Open **Settings → My connections**. Connect recruiting Gmail, connect Google Calendar, and save your interview days, hours and time zone. Each person approves their own account; no shared password is needed.
+3. Open **Jobs → Actions → Hiring team & emails** on each posting. Select the recruiters who should receive that posting's alerts and its applicant reply contact. Leave the owner unselected when they should receive no alerts. Save the hiring team.
+4. Open **Settings → Team** to invite the other recruiters. They sign in and connect their own accounts.
+5. Run one controlled practice hire with a clearly marked test posting and a team-owned test inbox. Check actual email delivery, Drive files and the chosen calendar.
+
+The owner manages company connections and appoints head recruiters. Head recruiters manage recruiters and jobs. Recruiters can create/manage jobs and review applicants. All authorized staff can access hiring records; a job's hiring team controls notifications rather than record visibility.
 
 ## Create a job
 
-Choose **Jobs → Create job**, or use **Create job** on Home. Pick a starting point:
+Open **Jobs → Create job**. Choose **Start from scratch**, **Duplicate an existing job**, **Use a template**, or **Use a hiring request**. Copies and requests start as drafts; previous applicants remain on the original posting.
 
-- **Start blank:** add your own details.
-- **Duplicate a job:** copy a prior posting into a new draft. Its applicants stay with the original posting.
-- **Use a saved template:** reuse an approved description, questions and scorecard. Save a template from any job using **Save as template**.
-- **From a hiring request:** complete the short internal request form, or choose a saved request. Turning a request into a job does not publish it automatically.
+The four steps are:
 
-The setup has four steps:
+1. **Job details:** title, description, work arrangement and location. Remote roles can be worldwide or country-specific; hybrid/on-site roles need a city. The description editor supports bold, headings, bulleted/numbered lists, spacing cleanup and preview.
+2. **Application questions:** name, email and phone are required. Set additional questions to **Required** or **Optional**. Instructions and advanced options open only when needed. Number and yes/no questions can have objective screening rules.
+3. **Review setup:** optionally choose **Rank applicants with AI**. Open **Hiring team and notifications** to select recipients and the reply contact. A manual reviewer scorecard is optional.
+4. **Publish:** check the summary and publish when ready. Open **View public job** to check the live description and form.
 
-1. **Details:** title, work arrangement, location, description and hiring team. Remote jobs can accept applicants worldwide or from a selected country. Hybrid/on-site jobs need a country and workplace city. Select the recruiters who should receive alerts and choose an applicant reply contact.
-2. **Application:** name and email are always required. Each additional question has a Required/Optional dropdown. Add from the question library or add a custom question; answer formats and instructions are under a disclosure.
-3. **AI review:** optionally enable automatic résumé and answer matching against the job description. No manual scorecard is required. Manual scorecards remain an optional tool for your team.
-4. **Review:** check the description, questions and criteria. Save a draft or click Publish job. Qualification rules and automatic rejection are separate advanced controls and remain off for new postings.
+Use **Save progress now** while editing and **Save draft job** for an unpublished posting. Check the saved status before leaving. Browser Back/Forward and the setup Back control follow job steps; if an unsaved-change warning appears, save or explicitly discard the draft. Editing an open job keeps its public address.
 
-Use **Save draft** to pause setup. A draft needs a valid title, location and questions; unfinished custom criteria must be completed before saving them. **Save as draft (unpublish)** stops a currently published job accepting applications. **Edit job** updates that same posting and preserves its public address. **Duplicate job** creates a separate posting. **Previous postings** shows closed jobs. No batch number or batch name is required. Closing a job stops new applications and preserves its applicants and files. Legacy archive folder labels remain intact.
+In the Jobs list, **View applicants** opens one posting and **Edit job** opens its setup. **Actions** holds **Hiring team & emails**, **Posting status**, **Duplicate job**, **Save as template**, and **View public job** when applicable. Closing or unpublishing stops new applications while keeping earlier records. No batch number is required.
 
-## Assign recruiters and route job emails
+## Review applicants
 
-In **Settings → Team access & invitations**, invite each recruiter's work email so they can sign in with their own Google account. The owner can appoint a Head recruiter; head recruiters can invite other Recruiters. Invitations show queued, sent, failed or uncertain status; queued is not proof of delivery. Then choose **Jobs → Hiring team & emails** on a posting, or select its team in the first job-setup step. Recruiters can select multiple active staff per job, choose a reply contact, and save the changes in the dashboard. Hiring-team assignment controls alerts, not dashboard permissions; authorized recruiters still have access to all hiring records.
+Open **Applications**, choose a job, then use the pipeline tabs, search or **Top 10 AI matches**. Applicants are kept by posting, including closed postings. Unscored people remain available in the full list.
 
-Toggle alerts for new applications, submitted assessments, applicant replies received in the connected mailbox, and overdue reviews. An empty saved team receives no alerts and does not fall back to sales. Saving a team does not send old application alerts. Duplicated jobs and templates start with an empty team so you can choose the people for the new posting.
+- **New:** the applicant has not been moved forward by a recruiter. Running AI does not move the stage.
+- **Shortlisted:** a recruiter selected the person for further consideration.
+- **No screening rules:** no configured screening-rule decision was available; this does not mean AI failed.
+- **Check answers:** configured rules could not produce a clear pass/fail; inspect the answers and screening evidence.
+- **AI job match:** resume text and answers compared with this job's requirements. Its score is separate from screening and pipeline stage.
 
-Recruiters connect their own Gmail under **Settings → My setup → My recruiting email**. Human correspondence uses the acting recruiter's connected mailbox. Automatic messages use the approved no-reply alias on the configured `CANDIDATE_MAIL_ACCOUNT`; replies to no-reply are rejected. Sales is never an applicant-mail fallback. Applicants can use the website's `/help` form for private support requests. Staff login alone does not connect Gmail. See [email routing details](CANDIDATE-EMAIL-PRIVACY.md).
+Click **Shortlist** on a New applicant to save that stage change in one click. Select applicants and use **Shortlist selected** for a group. Shortlisting does not send applicant email.
 
-## Home and applicant review
+Click **Request interview** to open the booking controls. Choose a ready interviewer, then click **Send booking link**. The system checks recruiting email, reply contact and calendar readiness before enabling sending. An invitation is not a confirmed booking. Stage changes alone do not send invitations.
 
-Home shows work to review, your job postings, recent applicants and a compact connection status. Technical delivery details are available through **Delivery activity**.
+Each applicant has three views:
 
-In **Applications**, choose the job whose applicants you want to review. Each posting keeps its own applications, including closed postings. Use **Top 10 AI matches** to see the highest completed scores for that job, or filter by stage and qualification. Unscored applicants remain available in the full list. Clear filters keeps you within the selected job; Back to jobs returns to the job chooser. Each job card has **Download all CSV** and **Download all files ZIP**. Inside a job, **Bulk download applications** appears above filters: select the page, individual applicants, or **Select all matching for download** to include every matching page. The scope summary shows what will download. Selecting all matching does not select everyone for rejection or other record changes. CSV includes answers; ZIP includes answers and original uploads. Each download supports up to 10,000 applications; ZIP attachments are limited to 3 GB. Narrow the filters if needed.
+- **Application & files:** answers, private originals, screening evidence and the Drive archive link.
+- **AI review & notes:** the AI overview and source evidence, recruiter notes, and optional human grades/verification tools.
+- **Activity & messages:** decisions, communications, assessments and interview activity.
 
-Applicant records have three views:
+The AI overview shows relevant strengths and what to clarify. Expand **View source evidence** for the exact supplied quotes supporting each requirement. **Source limitations** explains missing or unreadable material. Missing evidence is not proof of missing ability. Recruiters decide who moves forward.
 
-- **Application & files:** answers, private original uploads, Drive link and qualification evidence.
-- **AI review & notes:** job-match score and evidence, with optional manual reviewer grades and verification checks.
-- **Activity & messages:** assessments, interviews, earlier reviews, notes, emails and hiring history.
+Optional human scorecards are under **Settings → Templates** and the applicant's human-grade panel. They do not control AI scores. Notes and drafts survive switching applicant views, but save before leaving the record or reloading the browser.
 
-Unsaved evidence and scorecard drafts survive switching these views. Reloading the entire browser or leaving the applicant can lose unsaved entries. The action panel records notes, assigns reviewers and explicitly sends assessments/interview booking links. Moving a stage alone sends no invitation.
+## Download applications and files
 
-Browser Back/Forward follows dashboard sections, applicant profiles and job-setup steps. Returning from an applicant restores the applied filters and list page; opening from Home returns to Home. A direct applicant link closes into Applications. Job details remain while moving backward and forward inside the same setup; save a draft before reloading or leaving for another section. A pending save can finish on the server even if you navigate back, but its response cannot close a newer setup.
+Within a job's Applications list, open **Download applications**. Choose **Current view**, **All applicants for this job**, or **Selected applicants**. Use **Select all matching for download** to include matching applicants across every page. Confirm the displayed scope.
 
-## Personal and company setup
+**Download spreadsheet (CSV)** includes application answers; **Download application files (ZIP)** includes originals and answers. Each download supports up to 10,000 applications, with a 3 GB attachment limit for ZIP. Narrow filters when needed. Download scope does not select everyone for rejection or other record changes. The job chooser also offers all-job downloads under **Download**.
 
-**Settings → My setup → My interview calendar** is available to every staff member. Choose **Connect my Google Calendar**, approve the connection using the same account used to sign in, and save your own interview hours, time zone, days, duration, notice period and booking horizon. Calendar authorization is separate from dashboard login. Only the account holder can finish Google sign-in/consent; no owner password or new API key is needed.
+## Settings map
 
-When sending a booking link, explicitly choose **Who will conduct this interview?** A recruiter is available only after connecting their calendar and saving their hours. The shared company calendar is an explicit alternative. Existing invitations keep their original interviewer/calendar, including during rescheduling and cancellation. Reconnecting a personal calendar must use the same email; a failed personal connection never silently switches the booking to the company calendar.
+| Section | Use |
+| --- | --- |
+| **My connections** | Your recruiting Gmail, Calendar and interview availability. Google authorization is separate from dashboard login. |
+| **Team** | Head recruiter/owner invitations, access management and optional staff review reminders. |
+| **Company** | Owner-only shared Drive and optional calendar, AI connection, message defaults and advanced technical setup. |
+| **Help requests** | Applicant support and privacy requests submitted through the website. Verify identity before changing or deleting data. |
+| **Templates** | Optional reusable criteria for manual scorecards. |
 
-**Settings → Company setup** is owner-only. The existing company Drive archive and fallback calendar stay separate from personal Gmail and interview calendars. Recruiters do not reconnect the company account or change its archive root. Maria connects her own Gmail and configures the approved no-reply Send mail as identity; the owner can see her connection status but cannot authorize her account.
+Company has **Files & calendar**, **AI**, **Messages & reminders**, and **Advanced**. Recruiters should leave shared company storage connected and connect their own Gmail/Calendar instead.
 
-**Team access & invitations** appears for head recruiters and the owner. **Scorecard templates** are available to recruiting staff. Company AI credentials and hosting controls are restricted to the owner. Connection status is not proof of email, calendar or archive delivery; inspect Delivery activity and the actual record.
+Each save button applies to its own settings: **Save my interview hours**, **Save review reminders**, **Save hiring team**, **Save company settings**, and **Save AI connection**. Company file/calendar/message edits remain while switching its subsections. Wait for a success message before leaving.
 
-## Scorecards and the shortlist
+For personal availability, set time zone, interview length, start/finish hours and days. Open **Booking notice & future dates** for advance notice and booking horizon. Busy Calendar events block times. Existing invitations retain their original interviewer and saved availability; check a real test booking, reschedule and cancellation.
 
-Reusable scorecards can be created during job setup or under **Settings → Scorecard templates**. Name the scorecard and add your approved job-related criteria. Rating descriptions and weights are optional advanced controls. Assign a saved scorecard when creating/editing a job or in the library assignment form.
+## Gmail, AI and delivery status
 
-For each candidate, open **Review & scorecard**, choose a score and record supporting evidence for every criterion. The server computes the weighted mean without rounding: equal-weight scores 3 and 4 produce 3.5/5 = 70/100. Missing evidence calls for a follow-up, not an invented score. Each reviewer's latest overall review counts once, with equal weight across reviewers. Ungraded applicants remain ungraded. Compare applicants to the same posting using the same approved criteria.
+Human recruiting correspondence uses the acting recruiter's connected mailbox. Automatic applicant messages use the approved no-reply alias on the configured recruiting account. Staff login alone does not authorize Gmail. Sales is never an applicant-mail fallback. Job teams can include multiple recruiters; an empty saved team receives no job alerts. Saving a team does not send old application alerts. Copies/templates start with an empty team.
 
-Qualification rules report requirements met, unmet or needing review separately from reviewer grades. AI never changes the grade, stage or hiring outcome. No score automatically rejects anyone.
+PDF text and English/Spanish OCR are read locally. AI matching requires the owner-managed OpenRouter connection and the job's matching setting. Job-relevant text and answers are shared with OpenRouter/OpenAI; keys remain encrypted on the server. AI does not scrape LinkedIn, verify employment, detect AI authorship, reject applicants or change hiring stages. Use original files, work samples and appropriate references to check uncertain claims.
 
-Editing a scorecard creates a new version. Existing jobs retain their assigned version until an authorized recruiter explicitly changes it. Saved reviews retain the complete original criteria, rating definitions and evidence. Archiving prevents new assignments while preserving existing ones.
+**Delivery activity → Setup required** means recruiting email needs attention. The assigned recruiter must approve their own account under **My connections**; shared company Google does not authorize it. Follow the shown issue for the sender alias, permissions, reply contact or template. Previously held messages stay held after connection until an administrator reviews and explicitly retries them. Avoid repeated sends when delivery is uncertain.
 
-## PDF reading, OCR and optional AI evidence review
+Optional daily review reminders follow each job's selected hiring team. Older postings without saved team routing use assigned reviewers and selected fallback managers. The waiting period is measured from entry into New; notes and AI alone do not clear this initial-review queue. Moving to the next stage or recording a human scorecard clears it. Review reminders go to staff, never candidates.
 
-In **Review & scorecard → Compare résumé, profile and application with AI**, the selected uploaded PDF is read automatically into a private preview. Text-based documents use PDF.js; scanned or mixed pages use local English/Spanish OCR. No additional OCR API key is needed. Original files remain private and unchanged.
+## Storage and a controlled practice hire
 
-Automatic reading supports PDFs up to 10 MB and 30 pages, including at most eight OCR pages. Text is capped at 30,000 characters. Incomplete extraction is visibly marked. One read runs at a time, with a 45-second deadline; busy reviewers can retry. Extraction never blocks application submission. OCR can misread names, dates and columns, so inspect the original before grading. Password-protected, unsupported or unreadable files offer manual excerpts as a fallback. See [PDF limits](PDF-READING.md).
+Accepted applications and originals save privately on Railway before Gmail/Drive work runs. Drive archives follow **Recruiting → Job → Location → Posting → Applicant**; every application has its own folder. Earlier posting folders remain available when hiring again. A temporary Google outage can delay delivery without erasing an accepted application. A saved connection or folder is not proof of successful delivery.
 
-Under **Settings → AI evidence review**, an OpenRouter key enables optional reviewer-requested OpenAI GPT-5 Mini evidence summaries. The key is encrypted and never returned to the browser. Set an OpenRouter spending limit. This is separate from PDF/OCR reading, which runs locally.
+Use a TEST ONLY posting and a synthetic resume to check the complete path: publish → apply → find one matching applicant/PDF → verify intended alerts and Drive copy → inspect screening/AI evidence → shortlist → send a booking link from the ready recruiter → book → reschedule → cancel → verify Calendar changes → close the test posting. Test a below-minimum answer separately and verify its rejection email only when approved automatic rules are enabled. Keep the test records for the audit.
 
-Confirm the PDF preview, enter the same approved job requirements used for the posting, and explicitly approve sharing selected text/answers with OpenRouter/OpenAI before generating. Use editable excerpts to remove unrelated personal information if needed. Candidate-supplied profile excerpts are optional; LinkedIn profiles are not scraped. The AI result saves as an audited note and queues Drive archival. It quotes supplied sources and suggests follow-ups; it does not verify employment or detect AI authorship. Check citations before interpreting them.
-
-## Verification and reminders
-
-Use **Record verification checks** to record timeline comparisons, portfolio contribution, a live job-related work sample and consented references. Record actual evidence and candidate explanations. Tailored or AI-assisted writing is not proof of fraud.
-
-Home's overdue queue lists applications in Application Review with no scorecard after the configured waiting period (currently 48 hours). Notes and AI summaries do not count as completed human reviews. This is an initial-review queue: an existing scorecard removes a candidate even if they return to Application Review later.
-
-**Settings → Review reminders** controls the waiting period, fallback managers and daily staff emails. Configured job teams receive overdue reminders for their postings when both the global reminder switch and that job's overdue toggle are enabled. Jobs without a saved team retain the earlier behavior: assigned active reviewers receive their own queue and selected managers cover unassigned/unavailable owners. At most one digest per recipient per Bogotá calendar day is queued. Staff reminders never message candidates. Delivery activity shows Gmail processing status. Interview reminders are separate.
-
-## Storage and recovery
-
-Applications and private files save on the Railway volume before Gmail or Drive work runs. Each accepted application queues a shared Drive archive independently; provider outages cannot erase an accepted application. A repeated job keeps previous postings/applicants and their folders. Files are available to authorized staff from the applicant record and the shared Drive location.
-
-The worker drains ready tasks sequentially, checking every five seconds while busy and once per minute while idle. Provider quotas can delay delivery; check Delivery activity for intervention. Isolated load tests measure intake/storage, not Google's quotas. Railway backup snapshots are enabled; restoration still needs an isolated recovery test.
-
-## Design references
-
-The guided setup and starting choices use patterns documented in [Recruitee job creation](https://support.recruitee.com/en/articles/1066242-create-a-new-job), [job templates](https://support.recruitee.com/en/articles/10233676-how-to-use-job-templates) and [hiring requests](https://support.recruitee.com/en/articles/6999536-use-requisition-approvals-in-your-hiring-process). This app remains a custom system; no Recruitee subscription is required.
-
-### Recruiting email setup holds
-
-**Delivery activity → Setup required** means recruiting email needs attention, not that Drive failed. Open **Connect recruiting email** and have the assigned recruiter authorize their own Gmail in **My setup**. A shared company Google connection does not authorize recruiter mail. Fix any sender alias, permissions, reply contact, or template issue shown. Previously held messages remain held after connection; an administrator must review a message and explicitly retry it.
+Record the posting, applicant, time and visible error if a step fails. Check Delivery activity before retrying. Live Gmail/Calendar verification requires the relevant connected accounts; local automated tests do not establish inbox delivery or Calendar behavior.
