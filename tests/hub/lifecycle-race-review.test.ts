@@ -130,3 +130,18 @@ test('the worker suppresses stale repaired Gmail and Calendar work for Trash whi
     assert.equal((await store.getApplication(app.id)).trashed, true);
   } finally { database.close(); }
 });
+
+test('failed cancellation cannot be hidden in Trash while its external interview may still exist', async () => {
+  const { store, database } = createStore();
+  try {
+    const job = await store.saveJob(jobInput()), app = await store.acceptApplication(applicationInput(job.id));
+    database.prepare("INSERT INTO hub_interviews(id,application_id,status,start,end,calendar_id,provider_id,created_at,updated_at) VALUES('synthetic-failed-cancel',?,'failed',?,?,'synthetic-calendar','external-event',?,?)")
+      .run(app.id, new Date(Date.now() + 3600000).toISOString(), new Date(Date.now() + 5400000).toISOString(), Date.now(), Date.now());
+    await store.taskStatement('calendar:synthetic-failed-cancel:2', app.id, 'calendar', { operation: 'cancel', interviewId: 'synthetic-failed-cancel', calendarId: 'synthetic-calendar', revision: 2 }, 0).run();
+    database.prepare("UPDATE hub_tasks SET status='failed',last_error='google_authorization_required' WHERE id='calendar:synthetic-failed-cancel:2'").run();
+    await assert.rejects(changeApplicationTrash(store, app.id, 'trash', 1, MANAGER), { code: 'cancel_interview_first' });
+    assert.equal(await applicationTrash(store, app.id), null);
+    assert.equal(database.prepare("SELECT status FROM hub_tasks WHERE id='calendar:synthetic-failed-cancel:2'").get()!.status, 'failed');
+    assert.equal(database.prepare("SELECT provider_id FROM hub_interviews WHERE id='synthetic-failed-cancel'").get()!.provider_id, 'external-event');
+  } finally { database.close(); }
+});
