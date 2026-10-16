@@ -19,7 +19,7 @@ Open **Jobs → Create job**. Choose **Start from scratch**, **Duplicate an exis
 The four steps are:
 
 1. **Job details:** title, description, work arrangement and location. Remote roles can be worldwide or country-specific; hybrid/on-site roles need a city. The description editor supports bold, headings, bulleted/numbered lists, spacing cleanup and preview.
-2. **Application questions:** name, email and phone are required. Set additional questions to **Required** or **Optional**. Instructions and advanced options open only when needed. Number and yes/no questions can have objective screening rules.
+2. **Application questions:** name, email and phone are required. Set additional questions to **Required** or **Optional**. Drag questions by their handles to reorder them. Instructions and advanced options open only when needed. Number and yes/no questions can have objective screening rules.
 3. **Review setup:** optionally choose **Rank applicants with AI**. Open **Hiring team and notifications** to select recipients and the reply contact. A manual reviewer scorecard is optional.
 4. **Publish:** check the summary and publish when ready. Open **View public job** to check the live description and form.
 
@@ -55,7 +55,7 @@ Optional human scorecards are under **Settings → Templates** and the applicant
 
 Within a job's Applications list, open **Download applications**. Choose **Current view**, **All applicants for this job**, or **Selected applicants**. Use **Select all matching for download** to include matching applicants across every page. Confirm the displayed scope.
 
-**Download spreadsheet (CSV)** includes application answers; **Download application files (ZIP)** includes originals and answers. Each download supports up to 10,000 applications, with a 3 GB attachment limit for ZIP. Narrow filters when needed. Download scope does not select everyone for rejection or other record changes. The job chooser also offers all-job downloads under **Download**.
+**Download applications (ZIP)** includes a readable PDF per applicant, original uploads and a PDF export report. Open one applicant and use **Download application PDF** for a single record. Each download supports up to 10,000 applications, with a 3 GB attachment limit for ZIP. Narrow filters when needed. Download scope does not select everyone for rejection or other record changes. The job chooser also offers all-job downloads under **Download**.
 
 ## Settings map
 
@@ -85,8 +85,14 @@ Optional daily review reminders follow each job's selected hiring team. Older po
 
 ## Storage and a controlled practice hire
 
-Accepted applications and originals save privately on Railway before Gmail/Drive work runs. Drive archives follow **Recruiting → Job → Location → Posting → Applicant**; every application has its own folder. Earlier posting folders remain available when hiring again. A temporary Google outage can delay delivery without erasing an accepted application. A saved connection or folder is not proof of successful delivery.
+Accepted applications and originals save privately on Railway before Gmail/Drive work runs. Drive archives follow **Recruiting → Job → Location → Posting → Applicant**; every application has its own folder. The archive contains readable PDFs and original uploads. Earlier posting folders remain available when hiring again. A temporary Google outage can delay delivery without erasing an accepted application. A saved connection or folder is not proof of successful delivery.
 
 Use a TEST ONLY posting and a synthetic resume to check the complete path: publish → apply → find one matching applicant/PDF → verify intended alerts and Drive copy → inspect screening/AI evidence → shortlist → send a booking link from the ready recruiter → book → reschedule → cancel → verify Calendar changes → close the test posting. Test a below-minimum answer separately and verify its rejection email only when approved automatic rules are enabled. Keep the test records for the audit.
 
 Record the posting, applicant, time and visible error if a step fails. Check Delivery activity before retrying. Live Gmail/Calendar verification requires the relevant connected accounts; local automated tests do not establish inbox delivery or Calendar behavior.
+
+## Pause, archive or delete
+
+In **Jobs**, use **Pause/Resume** on a job row. **Actions → Archive** stops new applications and keeps the posting in **Archived**. **Actions → Delete job** moves it into recoverable **Trash**. **Restore** leaves the posting paused. Applicant files and history remain intact.
+
+To remove an application, open it and choose **Delete application → Move to Trash**. Find it under that job’s **Trash** tab and choose **Restore application**. Unsent emails and booking links are cancelled, and are not sent again when restored. Cancel a booked interview first.

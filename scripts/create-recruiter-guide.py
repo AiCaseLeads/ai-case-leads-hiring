@@ -78,12 +78,12 @@ callout("Three settings with different jobs", "<b>Access</b> controls who can si
 page("02 / CREATE A JOB", "Four steps to a posting", "Start with an existing job or template when possible. Earlier applicants always stay with their original posting.")
 text("Open <b>Jobs > Create job</b>: choose <b>Start from scratch</b>, <b>Duplicate an existing job</b>, <b>Use a template</b>, or <b>Use a hiring request</b>.")
 step(1, "Job details", "Add the title, description and work arrangement. Remote jobs can be worldwide or country-specific; hybrid/on-site roles need a city. Use Bold, headings and real lists in the description editor. <b>Clean up spacing</b> removes extra blank space; preview before publishing.")
-step(2, "Application questions", "Name, email and phone are required. Set additional questions to <b>Required</b> or <b>Optional</b>. Open a question's instructions only when needed. Use number or yes/no questions for objective screening, such as a minimum of seven years.")
+step(2, "Application questions", "Name, email and phone are required. Set additional questions to <b>Required</b> or <b>Optional</b>. Drag a question by its handle to change its position. Open instructions only when needed. Use number or yes/no questions for objective screening, such as a minimum of seven years.")
 step(3, "Review setup", "Choose <b>Rank applicants with AI</b> if wanted. Open <b>Hiring team and notifications</b> to assign alerts and a reply contact. Manual reviewer scorecards are optional and do not control the AI score.")
 step(4, "Publish", "Check the posting summary, then publish when ready. Open <b>View public job</b> to verify the live description and form. Screening emails require both enabled rejection rules and a working recruiting email connection.")
 heading("Save as you go")
-text("Use <b>Save progress now</b> while editing or <b>Save draft job</b> for an unpublished posting. Draft recovery and autosave protect progress, but check the saved status before leaving. Back moves between setup steps. If prompted about unsaved changes, save or explicitly discard them.")
-callout("Keep the Jobs list clean", "<b>View applicants</b> opens one posting's candidates. <b>Edit job</b> changes that posting. The <b>Actions</b> menu holds Duplicate job, Save as template, Hiring team &amp; emails and posting status. No batch number is required.")
+text("Use <b>Save draft job</b> for an unpublished posting. Draft recovery and autosave protect progress, but check the saved status before leaving. Back moves between setup steps. If prompted about unsaved changes, save or explicitly discard them.")
+callout("Keep the Jobs list clean", "<b>View applicants</b> opens one posting's candidates. <b>Edit job</b> changes that posting. <b>Pause/Resume</b> is on the job row. <b>Actions</b> holds Archive, Delete, Duplicate and team settings. Open <b>Archived</b> or <b>Trash</b> to find saved jobs; Restore leaves them paused. No applicant files are deleted.")
 
 page("03 / APPLICANTS", "Review, shortlist, invite", "Open Applications, choose a job, then review that posting's applicants. Use stage tabs or Top 10 AI matches to focus the list.")
 table([("Label", "What it means"),
@@ -129,17 +129,17 @@ callout("Save the section you changed", "Save my interview hours, Save review re
 
 page("06 / FILES & PRACTICE HIRE", "Download and verify", "Accepted applications save privately before background email or Drive work runs. A later posting does not overwrite earlier applicants.")
 heading("Bulk download")
-text("Within a job's Applications list, open <b>Download applications</b>. Choose the current filtered view, the whole posting or selected applicants. Use <b>Select all matching for download</b> when you need matching applicants from every page. CSV contains application data; ZIP includes original uploads and answers. Confirm the displayed scope before downloading.")
+text("Within a job's Applications list, open <b>Download applications</b>. Choose the current filtered view, the whole posting or selected applicants. Use <b>Select all matching for download</b> when you need matching applicants from every page. The ZIP contains a readable application PDF for each applicant, original uploads and a PDF export report. Open an applicant and choose <b>Download application PDF</b> for one person. Confirm the displayed scope before downloading.")
 text("Each download supports up to 10,000 applications; a ZIP's attachments are limited to 3 GB. Narrow the filters when needed. Download selections do not select everyone for rejection or other record changes.", "SmallA")
 heading("The shared archive")
-text("Drive folders follow <b>Recruiting > Job > Location > Posting > Applicant</b>. Open originals from the applicant record or its matching Drive folder. Temporary Google outages can delay archival while the accepted application remains saved.")
+text("Drive folders follow <b>Recruiting > Job > Location > Posting > Applicant</b>. Each applicant folder holds readable application PDFs and original uploads. Older system JSON snapshots are converted to PDFs; originals remain intact. Temporary Google outages can delay archival while the accepted application remains saved.")
 heading("Run one controlled practice hire")
 table([("Test", "Confirm the actual result"),
        ("Post & apply", "Publish a TEST ONLY job. Submit one synthetic resume and required answers from a team-owned test inbox."),
        ("Save & notify", "Find one applicant under the right posting, open its original PDF and matching Drive copy, and check the intended recruiter receives the job alert."),
        ("Screen & rank", "Test a passing answer and a below-minimum answer. Check screening labels and, if enabled, the rejection email. Confirm a completed AI result cites the supplied evidence."),
        ("Shortlist & book", "Shortlist the test applicant. Request interview, choose the ready interviewer, send a link and book a free slot. Check time zones, Calendar event and Meet link."),
-       ("Change & close", "Reschedule and cancel through the hiring flow, verifying Calendar updates. Close the test posting and keep its records for the audit.")], first=120)
+       ("Change & close", "Reschedule and cancel through the hiring flow, verifying Calendar updates. Pause or archive the test posting and keep its records for the audit.")], first=120)
 text("If a step fails, record the posting, applicant, time and visible error. Inspect Delivery activity. Avoid repeated sends when delivery is uncertain. Live email and Calendar checks require the relevant connected accounts.", "SmallA")
 
 def chrome(canvas, doc):
