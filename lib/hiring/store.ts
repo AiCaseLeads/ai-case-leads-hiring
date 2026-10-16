@@ -38,7 +38,18 @@ export class D1HiringStore implements HiringStore {
     const row = await this.db.prepare("SELECT handle_hash FROM hiring_uploads WHERE handle_hash = ? AND session_hash = ? AND job_posting_id = ? AND field_path = ? AND expires_at > ?").bind(handleHash, sessionHash, jobPostingId, fieldPath, now).first();
     return row !== null;
   }
-  async takeRateLimit(keyHash: string, window: number, limit: number): Promise<boolean> {
+  async takeRateLimit(keyHash: string, window: number, limit: number, intentHash?: string): Promise<boolean> {
+    if (intentHash) {
+      const intentKey = `rate-intent:${intentHash}`;
+      // These run in one transaction: reserve an allowed intent, charge only a
+      // new reservation, then report its outcome. Denied intents never receive
+      // a marker, so a concurrent duplicate cannot bypass an exhausted budget.
+      await this.db.batch([
+        this.db.prepare("INSERT INTO hiring_rate_limits(key_hash,window,attempts) SELECT ?,?,1 WHERE NOT EXISTS(SELECT 1 FROM hiring_rate_limits WHERE key_hash=? AND window=? AND attempts>=?) ON CONFLICT(key_hash,window) DO NOTHING").bind(intentKey,window,keyHash,window,limit),
+        this.db.prepare("INSERT INTO hiring_rate_limits(key_hash,window,attempts) SELECT ?,?,1 WHERE changes()=1 ON CONFLICT(key_hash,window) DO UPDATE SET attempts=hiring_rate_limits.attempts+1").bind(keyHash,window),
+      ]);
+      return !!await this.db.prepare("SELECT attempts FROM hiring_rate_limits WHERE key_hash=? AND window=?").bind(intentKey,window).first();
+    }
     const result = await this.db.prepare("INSERT INTO hiring_rate_limits (key_hash,window,attempts) VALUES (?,?,1) ON CONFLICT(key_hash,window) DO UPDATE SET attempts = hiring_rate_limits.attempts + 1 WHERE hiring_rate_limits.attempts < ? RETURNING attempts").bind(keyHash, window, limit).first<{ attempts: number }>();
     return !!result && result.attempts <= limit;
   }

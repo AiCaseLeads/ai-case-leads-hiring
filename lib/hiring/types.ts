@@ -41,5 +41,5 @@ export interface HiringStore {
   addReceipt(keyHash: string, receiptHash: string): Promise<void>;
   rememberUpload(handleHash: string, sessionHash: string, input: UploadInput, expiresAt: number): Promise<void>;
   ownsUpload(handleHash: string, sessionHash: string, jobPostingId: string, fieldPath: string, now: number): Promise<boolean>;
-  takeRateLimit(keyHash: string, window: number, limit: number): Promise<boolean>;
+  takeRateLimit(keyHash: string, window: number, limit: number, intentHash?: string): Promise<boolean>;
 }
