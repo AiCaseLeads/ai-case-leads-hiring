@@ -1655,7 +1655,7 @@ export class HubStore {
       )
     ).map(task);
   }
-  async claimTask(now: number): Promise<Task | null> {
+  async claimTask(now: number, excludeDrive = false): Promise<Task | null> {
     // An expired mail lease means the provider may have sent it. Only explicit reconciliation may resolve it.
     await this.db.batch([
       this.stmt(
@@ -1677,7 +1677,7 @@ export class HubStore {
     const eligible =
       "((candidate.status IN ('pending','failed') AND candidate.run_after<=? AND candidate.attempts<8) OR (candidate.kind='calendar' AND candidate.status='uncertain' AND candidate.run_after<=? AND candidate.attempts<8) OR (candidate.kind<>'gmail' AND candidate.status='running' AND candidate.lease_until<=? AND candidate.attempts<8))";
     const row = await this.stmt(
-      `UPDATE hub_tasks SET status='running',attempts=attempts+1,lease_token=?,lease_until=?,updated_at=? WHERE id=(SELECT candidate.id FROM hub_tasks candidate WHERE ${eligible} AND NOT (candidate.kind='gmail' AND COALESCE(candidate.last_error,'') IN (${MAIL_SETUP_ERRORS.map(code=>`'${code}'`).join(",")})) AND NOT EXISTS (SELECT 1 FROM hub_tasks active WHERE active.application_id=candidate.application_id AND active.id<>candidate.id AND active.status='running' AND active.lease_until>?) ORDER BY candidate.run_after,candidate.created_at,candidate.id LIMIT 1) RETURNING *`,
+      `UPDATE hub_tasks SET status='running',attempts=attempts+1,lease_token=?,lease_until=?,updated_at=? WHERE id=(SELECT candidate.id FROM hub_tasks candidate WHERE ${eligible} AND (${excludeDrive ? "candidate.kind<>'drive'" : "1=1"}) AND NOT (candidate.kind='gmail' AND COALESCE(candidate.last_error,'') IN (${MAIL_SETUP_ERRORS.map(code=>`'${code}'`).join(",")})) AND NOT EXISTS (SELECT 1 FROM hub_tasks active WHERE active.application_id=candidate.application_id AND active.id<>candidate.id AND active.status='running' AND active.lease_until>?) ORDER BY CASE WHEN candidate.kind='drive' AND json_extract(candidate.payload_json,'$.pdfBackfill')=1 THEN 1 ELSE 0 END,candidate.run_after,candidate.created_at,candidate.id LIMIT 1) RETURNING *`,
       token,
       now + 10 * 60000,
       now,
@@ -1709,6 +1709,7 @@ export class HubStore {
       error?: string;
       runAfter?: number;
       setupHold?: boolean;
+      continuation?: boolean;
     },
   ): Promise<void> {
     const now = Date.now();
@@ -1730,6 +1731,7 @@ export class HubStore {
         422,
         "Choose a finished or retryable task state.",
       );
+    if (result.continuation && (current.kind !== "drive" || result.status !== "pending")) throw new HiringError("invalid_task_continuation",422,"Only Drive archival can continue as pending work.");
     const statements = [
       this.stmt(
         "UPDATE hub_tasks SET run_after=CASE WHEN lease_token=? AND status='running' AND lease_until>? THEN ? ELSE NULL END,status=?,result_json=?,last_error=?,attempts=MAX(0,attempts-?),lease_until=NULL,updated_at=? WHERE id=?",
@@ -1739,7 +1741,7 @@ export class HubStore {
         result.status,
         result.result ? JSON.stringify(result.result) : null,
         result.error?.slice(0, 1000) || null,
-        result.setupHold ? 1 : 0,
+        result.setupHold || result.continuation ? 1 : 0,
         now,
         id,
       ),

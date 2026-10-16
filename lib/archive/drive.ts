@@ -7,6 +7,7 @@ const UPLOAD = "https://www.googleapis.com/upload/drive/v3/files";
 const FOLDER = "application/vnd.google-apps.folder";
 interface DriveFile { id: string; name: string; mimeType: string; parents?: string[]; trashed?: boolean; appProperties?: Record<string, string>; sha256Checksum?: string; size?: string }
 export interface LegacyApplicationSnapshot { fileId: string; revision: number; application: Record<string, unknown>; hash: string }
+export interface LegacyApplicationRef { fileId: string; revision: number }
 export interface DriveCredentials { clientId: string; clientSecret: string; refreshToken: string }
 
 function driveId(value: string): string {
@@ -17,6 +18,8 @@ function name(value: string): string { return value.replace(/[\u0000-\u001f/\\]/
 
 export class GoogleDriveArchive {
   deadline?: number;
+  /** Increments only when a durable ID, upload session or provider creation advances. */
+  progressVersion = 0;
   private accessToken = "";
   private expiresAt = 0;
   private refreshing?: Promise<string>;
@@ -89,13 +92,19 @@ export class GoogleDriveArchive {
     const saved = await this.state.get(key);
     if (saved) { if (saved.parent_id !== parentId) throw new Error("archive_parent_mismatch"); return saved; }
     const found = await this.existing(key, parentId);
-    if (found) return this.state.reserve(key, found.id, parentId);
+    if (found) { const item = await this.state.reserve(key, found.id, parentId); this.progressVersion++; return item; }
     const response = await this.request(`${API}/files/generateIds?count=1&space=drive&type=files`);
     if (!response.ok) throw new ProviderError("google_drive", response.status);
     const data = await response.json() as { ids: string[] };
     if (!data.ids?.[0]) throw new Error("drive_id_missing");
     // Persist a pre-generated ID before creation. A retry reuses this ID and Drive returns 409 rather than making a duplicate.
-    return this.state.reserve(key, driveId(data.ids[0]), parentId);
+    const item = await this.state.reserve(key, driveId(data.ids[0]), parentId); this.progressVersion++; return item;
+  }
+
+  private async persist(key: string, hash: string, session: string | null) {
+    const saved = await this.state.get(key);
+    if (saved?.content_hash === hash && saved.session_url === session) return;
+    await this.state.update(key, hash, session); this.progressVersion++;
   }
 
   private matches(file: DriveFile, key: string, parentId: string): void {
@@ -113,15 +122,45 @@ export class GoogleDriveArchive {
       });
       if (response.status === 409) file = await this.metadata(item.drive_id);
       else if (!response.ok) throw new ProviderError("google_drive", response.status);
-      else file = await response.json() as DriveFile;
+      else { file = await response.json() as DriveFile; this.progressVersion++; }
     }
     if (!file || file.mimeType !== FOLDER) throw new Error("drive_folder_missing");
     this.matches(file, key, parentId);
     return file.id;
   }
 
+  /** Rechecks every existing parent identity concurrently, without parallel creation. */
+  async folderPath(rootId: string, parts: { identity: string; title: string }[]): Promise<string> {
+    if (!parts.length) return driveId(rootId);
+    const keys = await Promise.all(parts.map(part => sha256(part.identity)));
+    const saved = await Promise.all(keys.map(key => this.state.get(key)));
+    if (saved.every((item, index) => item && item.parent_id === (index ? saved[index - 1]?.drive_id : rootId))) {
+      const present = await Promise.all(saved.map(item => this.metadata(item!.drive_id)));
+      if (present.every(Boolean)) {
+        for (let index = 0; index < present.length; index++) {
+          if (present[index]!.mimeType !== FOLDER) throw new Error("drive_folder_missing");
+          this.matches(present[index]!, keys[index], saved[index]!.parent_id);
+        }
+        return present.at(-1)!.id;
+      }
+    }
+    let parent = rootId;
+    for (const part of parts) parent = await this.folder(part.identity, part.title, parent);
+    return parent;
+  }
+
+  async confirmFile(identity: string, parentId: string, id: string, hash: string): Promise<boolean> {
+    const key = await sha256(identity), saved = await this.state.get(key);
+    if (!saved || saved.drive_id !== id || saved.parent_id !== parentId) throw new Error("drive_identity_mismatch");
+    if (saved.content_hash !== hash) return false;
+    const file = await this.metadata(id);
+    if (!file || file.trashed) return false;
+    this.matches(file, key, parentId);
+    return file.mimeType === "application/pdf" && file.sha256Checksum === hash;
+  }
+
   /** Only historical JSONs made by this app in this application folder are eligible. */
-  async *legacyApplicationSnapshots(applicationId: string, parentId: string): AsyncGenerator<LegacyApplicationSnapshot> {
+  async listLegacyApplicationSnapshots(applicationId: string, parentId: string): Promise<LegacyApplicationRef[]> {
     let pageToken: string | undefined;
     const candidates: DriveFile[] = [];
     // Snapshot metadata before moving any file: page cursors cannot skip records
@@ -141,6 +180,7 @@ export class GoogleDriveArchive {
       pageToken = listed.nextPageToken;
     }
     if (pageToken) throw new Error("drive_legacy_pagination_limit");
+    const references: LegacyApplicationRef[] = [];
     for (const file of candidates) {
       const match = /^application-r([1-9]\d*)\.json$/.exec(file.name);
       if (!match || !Number.isSafeInteger(Number(match[1]))) continue;
@@ -149,10 +189,21 @@ export class GoogleDriveArchive {
       this.matches(file, key, parentId);
       const reserved = await this.state.get(key) ?? await this.state.reserve(key, driveId(file.id), parentId);
       if (reserved.drive_id !== file.id || reserved.parent_id !== parentId) throw new Error("drive_legacy_snapshot_identity_mismatch");
-      if (file.mimeType !== "application/json" || Number(file.size || 0) > 5 * 1024 * 1024) throw new Error("drive_legacy_snapshot_invalid");
+      references.push({fileId: file.id, revision});
+    }
+    return references.sort((a,b) => a.revision-b.revision || a.fileId.localeCompare(b.fileId));
+  }
+
+  async readLegacyApplicationSnapshot(applicationId: string, parentId: string, reference: LegacyApplicationRef): Promise<LegacyApplicationSnapshot | null> {
+    const key = await sha256(`hub:application:${applicationId}:snapshot:revision:${reference.revision}`);
+    const reserved = await this.state.get(key);
+    if (!reserved || reserved.drive_id !== reference.fileId || reserved.parent_id !== parentId) throw new Error("drive_legacy_snapshot_identity_mismatch");
+    const file = {id: reference.fileId};
+    const revision = reference.revision;
       const latest = await this.metadata(file.id);
-      if (!latest || latest.trashed) continue;
+      if (!latest || latest.trashed) return null;
       this.matches(latest, key, parentId);
+      if (latest.name !== `application-r${revision}.json` || latest.mimeType !== "application/json" || Number(latest.size || 0) > 5 * 1024 * 1024) throw new Error("drive_legacy_snapshot_invalid");
       const content = await this.request(`${API}/files/${driveId(file.id)}?alt=media&supportsAllDrives=true`);
       if (!content.ok || !content.body) throw new ProviderError("google_drive", content.status);
       const reader = content.body.getReader(), chunks: Uint8Array[] = []; let size = 0;
@@ -172,14 +223,21 @@ export class GoogleDriveArchive {
       let snapshot: { schemaVersion?: unknown; application?: Record<string, unknown> };
       try { snapshot = JSON.parse(new TextDecoder().decode(bytes)); } catch { throw new Error("drive_legacy_snapshot_invalid"); }
       if (snapshot.schemaVersion !== 1 || !snapshot.application || snapshot.application.id !== applicationId || snapshot.application.revision !== revision) throw new Error("drive_legacy_snapshot_identity_mismatch");
-      yield { fileId: file.id, revision, application: snapshot.application, hash };
+      return { fileId: file.id, revision, application: snapshot.application, hash };
+  }
+
+  async *legacyApplicationSnapshots(applicationId: string, parentId: string): AsyncGenerator<LegacyApplicationSnapshot> {
+    for (const reference of await this.listLegacyApplicationSnapshots(applicationId, parentId)) {
+      const snapshot = await this.readLegacyApplicationSnapshot(applicationId, parentId, reference);
+      if (snapshot) yield snapshot;
     }
   }
 
   /** Recoverable cleanup only after the distinct PDF replacement is confirmed in Drive. */
-  async retireLegacyApplicationSnapshot(applicationId: string, legacy: LegacyApplicationSnapshot, parentId: string, pdfId: string, pdfHash: string): Promise<void> {
+  async retireLegacyApplicationSnapshot(applicationId: string, legacy: Pick<LegacyApplicationSnapshot,"fileId"|"revision"|"hash">, parentId: string, pdfId: string, pdfHash: string, pdfIdentity = `hub:application:${applicationId}:pdf:v1:revision:${legacy.revision}`): Promise<void> {
     const key = await sha256(`hub:application:${applicationId}:snapshot:revision:${legacy.revision}`);
-    const replacementKey = await sha256(`hub:application:${applicationId}:pdf:v1:revision:${legacy.revision}`);
+    if (!["v1","historical-json:v1"].some(format => pdfIdentity === `hub:application:${applicationId}:pdf:${format}:revision:${legacy.revision}`)) throw new Error("drive_pdf_replacement_identity_mismatch");
+    const replacementKey = await sha256(pdfIdentity);
     const [old, replacement] = await Promise.all([this.metadata(legacy.fileId), this.metadata(pdfId)]);
     if (!old || old.trashed) return;
     this.matches(old, key, parentId);
@@ -194,7 +252,7 @@ export class GoogleDriveArchive {
     const retired = await response.json() as { id?: string; trashed?: boolean };
     if (retired.id !== legacy.fileId || retired.trashed !== true) throw new Error("drive_legacy_retirement_unconfirmed");
     // Preserve the original file identity and checksum for audit/recovery from Drive Trash.
-    await this.state.update(key, legacy.hash, null);
+    await this.persist(key, legacy.hash, null); this.progressVersion++;
   }
 
   private async uploadStatus(session: string, total: number): Promise<Response> {
@@ -219,7 +277,7 @@ export class GoogleDriveArchive {
     if (present) {
       this.matches(present, key, parentId);
       if (present.sha256Checksum === hash) {
-        await this.state.update(key, hash, null); return present.id;
+        await this.persist(key, hash, null); return present.id;
       }
     }
     let session = item.content_hash === hash ? item.session_url : null;
@@ -229,7 +287,7 @@ export class GoogleDriveArchive {
       if (status.ok) {
         const completed = await status.json() as { id?: string };
         if (completed.id !== item.drive_id) throw new Error("drive_upload_identity_mismatch");
-        await this.state.update(key, hash, null); return item.drive_id;
+        await this.persist(key, hash, null); return item.drive_id;
       }
       if (status.status === 308) offset = this.uploadedOffset(status);
       else if (status.status === 404 || status.status === 410) session = null;
@@ -247,7 +305,7 @@ export class GoogleDriveArchive {
       const location = response.headers.get("location");
       if (!location) throw new Error("drive_upload_session_missing");
       session = safeDriveSession(location);
-      await this.state.update(key, hash, session);
+      await this.persist(key, hash, session);
     }
     const chunkSize = 1024 * 1024; // 4 * 256 KiB, as required for non-final resumable chunks.
     let staleRanges = 0;
@@ -265,9 +323,9 @@ export class GoogleDriveArchive {
       if (response.ok) {
         const result = await response.json() as { id?: string };
         if (result.id !== item.drive_id) throw new Error("drive_upload_identity_mismatch");
-        await this.state.update(key, hash, null); return item.drive_id;
+        await this.persist(key, hash, null); return item.drive_id;
       }
-      if (response.status === 404 || response.status === 410) { await this.state.update(key, hash, null); throw new Error("drive_upload_session_expired"); }
+      if (response.status === 404 || response.status === 410) { await this.persist(key, hash, null); throw new Error("drive_upload_session_expired"); }
       if (response.status !== 308) throw new ProviderError("google_drive", response.status);
       const nextOffset = this.uploadedOffset(response);
       if (nextOffset < offset || nextOffset > bytes.length || nextOffset > end) throw new Error("drive_upload_range_invalid");

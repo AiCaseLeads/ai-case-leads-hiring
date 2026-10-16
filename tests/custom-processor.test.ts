@@ -6,7 +6,7 @@ import type {GoogleWorkspace} from "../lib/google/workspace";
 const manager={email:"manager@example.invalid",userId:"synthetic-manager",role:"admin" as const};
 const bucket={} as R2Bucket;
 async function application(store:ReturnType<typeof customDatabase>["store"],jobId:string){return store.acceptApplication({jobPostingId:jobId,submissionKey:crypto.randomUUID(),fieldSubmissions:[{path:"_systemfield_name",value:"Synthetic"},{path:"_systemfield_email",value:"synthetic@example.invalid"}]},"a".repeat(64));}
-function googleArchive(archive:(detail:Record<string,unknown>)=>Promise<unknown>){return {archiveApplication:async(detail:Record<string,unknown>)=>({...await archive(detail) as Record<string,unknown>,archiveFormat:"pdf-v1",legacyJsonFileIds:[]}),async profile(){return{email:"recruiting@example.invalid",historyId:"1"};},async mailHistory(){return{historyId:"1",messages:[]};},async threadMessages(){return[];},async reconcileMail(){return null;}} as unknown as GoogleWorkspace;}
+function googleArchive(archive:(detail:Record<string,unknown>)=>Promise<unknown>){return {archiveApplication:async(detail:Record<string,unknown>)=>({...await archive(detail) as Record<string,unknown>,archiveFormat:"pdf-v2",legacyJsonFileIds:[]}),async profile(){return{email:"recruiting@example.invalid",historyId:"1"};},async mailHistory(){return{historyId:"1",messages:[]};},async threadMessages(){return[];},async reconcileMail(){return null;}} as unknown as GoogleWorkspace;}
 test("archive tasks defer each R2 read to the individual file loader",async()=>{
   const {database,db,store}=customDatabase();try{
     const role=await openSyntheticRole(store),app=await application(store,role.id);
@@ -22,7 +22,7 @@ test("archive tasks defer each R2 read to the individual file loader",async()=>{
         assert.deepEqual(await source.load(),new Uint8Array([1,2,3]));
         assert.equal(reads.length,index+1);await checkpoint!.write(index+1);
       }
-      return {folderId:"synthetic-folder",folderUrl:"https://drive.google.com/drive/folders/synthetic-folder",archivedRevision:detail.revision,archiveFormat:"pdf-v1",legacyJsonFileIds:[]};
+      return {folderId:"synthetic-folder",folderUrl:"https://drive.google.com/drive/folders/synthetic-folder",archivedRevision:detail.revision,archiveFormat:"pdf-v2",legacyJsonFileIds:[]};
     };
     assert.equal((await processHubTasks(store,db,originals,google,1)).healthy,true);
     assert.equal(reads.length,2);

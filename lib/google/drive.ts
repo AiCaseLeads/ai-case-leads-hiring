@@ -1,4 +1,5 @@
-import { GoogleDriveArchive } from "../archive/drive";
+import { GoogleDriveArchive, type LegacyApplicationRef, type LegacyApplicationSnapshot } from "../archive/drive";
+import { ProviderError } from "../archive/http";
 import type { ItemState } from "../archive/contracts";
 import { GoogleError } from "./http";
 import { GoogleBudget } from "./budget";
@@ -16,8 +17,26 @@ export interface OriginalFile { id?: string; name: string; bytes: Uint8Array; mi
 /** The loader is called only while archiving this individual file, never for the whole set. */
 export interface OriginalFileSource { id: string; name: string; size: number; mimeType: string; load: () => Promise<Uint8Array> }
 export type ArchiveOriginal = OriginalFile | OriginalFileSource;
-export interface ArchiveContinuation { read: () => Promise<number>; write: (nextIndex: number) => Promise<void> }
-export interface ArchiveResult { folderId: string; folderUrl: string; archivedRevision: number; archiveFormat: "pdf-v1"; legacyJsonFileIds: string[] }
+export interface DriveArchiveProgress {
+  version: 1; applicationId: string; revision: number; contentFingerprint: string; rendererVersion: "readable-v2";
+  folderId?: string; currentPdf?: { id: string; hash: string };
+  legacy?: LegacyApplicationRef[]; legacyNext: number; legacyJsonFileIds: string[];
+  legacySource?: LegacyApplicationSnapshot & { sourceFingerprint: string };
+  pendingLegacy?: { fileId: string; revision: number; hash: string; pdfId: string; pdfHash: string; pdfIdentity?: string };
+}
+export interface ArchiveContinuation {
+  read: () => Promise<number>; write: (nextIndex: number) => Promise<void>;
+  readProgress?: () => Promise<DriveArchiveProgress | null>;
+  writeProgress?: (progress: DriveArchiveProgress) => Promise<void>;
+}
+export class DriveArchiveContinuation extends Error {
+  readonly code = "drive_archive_continuation";
+  constructor(readonly phase: string, readonly diagnostics?: Record<string, string | number>) { super("drive_archive_continuation"); }
+}
+export class DriveArchiveFailure extends GoogleError {
+  constructor(code: string, readonly phase: string, readonly diagnostics?: Record<string, string | number>) { super(code); }
+}
+export interface ArchiveResult { folderId: string; folderUrl: string; archivedRevision: number; archiveFormat: "pdf-v2"; legacyJsonFileIds: string[] }
 
 export class WorkspaceDrive {
   private archive?: GoogleDriveArchive;
@@ -49,57 +68,128 @@ export class WorkspaceDrive {
     if (new Set(matched.map((file) => file.id)).size !== matched.length || matched.length !== (detail.files?.length ?? 0)) throw new GoogleError("drive_original_file_set_mismatch");
     this.archive ??= new GoogleDriveArchive(this.config, this.config.archiveState, this.fetcher);
     this.archive.deadline = this.budget.deadline;
-    await this.archive.assertPrivateRoot(this.config.driveRootId);
-    const recruiting = await this.archive.folder("hub:recruiting:v1", "Recruiting", this.config.driveRootId);
-    // Legacy snapshots keep their existing parent and application identity forever.
-    // New submissions snapshot explicit job geography, never applicant nationality.
-    let job: string;
-    if (detail.archiveProject && detail.archiveCountry && detail.hiringRound) {
-      const projectKey = JSON.stringify([detail.archiveProject]);
-      const countryKey = JSON.stringify([detail.archiveProject, detail.archiveCountry]);
-      const project = await this.archive.folder(`hub:project:v2:${projectKey}`, detail.archiveProject, recruiting);
-      const country = await this.archive.folder(`hub:country:v2:${countryKey}`, detail.archiveCountry, project);
-      job = await this.archive.folder(`hub:round:v2:${detail.jobId}:${countryKey}`, `${detail.hiringRound}–${detail.jobId}`, country);
-    } else {
-      job = await this.archive.folder(`hub:job:${detail.jobId}`, detail.jobTitle, recruiting);
-    }
-    const folderId = await this.archive.folder(`hub:application:${detail.id}:job:${detail.jobId}`, `${detail.name}–${detail.id}`, job);
-    if (existingFolderId && existingFolderId !== folderId) throw new GoogleError("drive_application_folder_identity_mismatch");
-    // File download URLs and secure scheduling capabilities are not useful as archival data.
+    const startProgress = this.archive.progressVersion;
+    let phase = "folders", checkpointWrites = 0;
+    const durable = !!(continuation?.readProgress && continuation.writeProgress);
+    const bounded = durable && this.budget.deadline !== undefined;
     const clean = JSON.parse(JSON.stringify(detail));
-    // Drive delivery metadata is not hiring content and can change independently
-    // of the archived revision. Exclude it so a retry has the same bytes.
-    delete clean.driveFolderId;
-    delete clean.driveFolderUrl;
-    delete clean.updatedAt;
+    delete clean.driveFolderId; delete clean.driveFolderUrl; delete clean.updatedAt;
     for (const file of clean.files ?? []) delete file.url;
     if (clean.interview) delete clean.interview.bookingUrl;
     if (clean.assessment) delete clean.assessment.assessmentUrl;
     for (const interview of clean.interviews ?? []) delete interview.bookingUrl;
     for (const assessment of clean.assessments ?? []) delete assessment.assessmentUrl;
-    const snapshot = await applicationPdf(clean);
-    // A worker whose lease expires may finish after a newer worker. Distinct,
-    // immutable revision identities keep that old upload away from newer data.
-    await this.archive.file(`hub:application:${detail.id}:pdf:v1:revision:${detail.revision}`, `Application-r${detail.revision}.pdf`, "application/pdf", folderId, snapshot);
-    const nextIndex=continuation?await continuation.read():0;
-    if(!Number.isSafeInteger(nextIndex)||nextIndex<0||nextIndex>matched.length)throw new GoogleError("drive_checkpoint_invalid");
-    for (let index=nextIndex;index<matched.length;index++) {
-      const file=matched[index];
+    const contentFingerprint = await sha256(JSON.stringify(clean));
+    const saved = durable ? await continuation!.readProgress!() : null;
+    if (saved && (saved.version !== 1 || saved.applicationId !== detail.id || saved.revision !== detail.revision)) throw new GoogleError("drive_checkpoint_identity_mismatch");
+    let progress: DriveArchiveProgress = saved ? {...saved,contentFingerprint,rendererVersion:"readable-v2"} : {
+      version: 1, applicationId: detail.id, revision: detail.revision, contentFingerprint, rendererVersion:"readable-v2", legacyNext: 0, legacyJsonFileIds: [],
+    };
+    if (saved && (saved.contentFingerprint !== contentFingerprint || saved.rendererVersion !== "readable-v2")) delete progress.currentPdf;
+    if (saved && saved.rendererVersion !== "readable-v2") delete progress.pendingLegacy;
+    let lastSaved = saved ? JSON.stringify(saved) : "";
+    const checkpoint = async () => {
+      const serialized = JSON.stringify(progress);
+      if (durable && serialized !== lastSaved) { await continuation!.writeProgress!(progress); checkpointWrites++; lastSaved = serialized; }
+    };
+    const deferBefore = (minimumRemaining: number) => {
+      if (bounded && this.budget.deadline! - Date.now() < minimumRemaining) {
+        if (checkpointWrites > 0 || this.archive!.progressVersion > startProgress) throw new DriveArchiveContinuation(phase, {reason: "time_slice"});
+        throw new DriveArchiveFailure("archive_budget_insufficient",phase,{reason:"no_progress",phase});
+      }
       this.budget.check();
-      const bytes = "bytes" in file ? file.bytes : await file.load();
-      if (bytes.length !== file.descriptor.size) throw new GoogleError("drive_original_file_metadata_mismatch");
-      await this.archive.file(`hub:application:${detail.id}:original:${file.id}`, file.name, file.mimeType, folderId, bytes);
-      if(continuation)await continuation.write(index+1);
+    };
+    try {
+      await this.archive.assertPrivateRoot(this.config.driveRootId);
+      const parts = [{identity:"hub:recruiting:v1",title:"Recruiting"}];
+      if (detail.archiveProject && detail.archiveCountry && detail.hiringRound) {
+        const projectKey = JSON.stringify([detail.archiveProject]), countryKey = JSON.stringify([detail.archiveProject, detail.archiveCountry]);
+        parts.push({identity:`hub:project:v2:${projectKey}`,title:detail.archiveProject},{identity:`hub:country:v2:${countryKey}`,title:detail.archiveCountry},{identity:`hub:round:v2:${detail.jobId}:${countryKey}`,title:`${detail.hiringRound}–${detail.jobId}`});
+      } else parts.push({identity:`hub:job:${detail.jobId}`,title:detail.jobTitle});
+      parts.push({identity:`hub:application:${detail.id}:job:${detail.jobId}`,title:`${detail.name}–${detail.id}`});
+      const folderId = await this.archive.folderPath(this.config.driveRootId, parts);
+      if ((existingFolderId && existingFolderId !== folderId) || (progress.folderId && progress.folderId !== folderId)) throw new GoogleError("drive_application_folder_identity_mismatch");
+      progress.folderId = folderId; await checkpoint();
+      phase = "current_pdf";
+      const currentIdentity = `hub:application:${detail.id}:pdf:v1:revision:${detail.revision}`;
+      if (!progress.currentPdf || !await this.archive.confirmFile(currentIdentity,folderId,progress.currentPdf.id,progress.currentPdf.hash)) {
+        deferBefore(10_000);
+        const snapshot = await applicationPdf(clean);
+        const id = await this.archive.file(currentIdentity,`Application-r${detail.revision}.pdf`,"application/pdf",folderId,snapshot);
+        progress.currentPdf = {id,hash:await sha256(snapshot)}; await checkpoint();
+      }
+      phase = "originals";
+      const nextIndex=continuation?await continuation.read():0;
+      if(!Number.isSafeInteger(nextIndex)||nextIndex<0||nextIndex>matched.length)throw new GoogleError("drive_checkpoint_invalid");
+      for (let index=nextIndex;index<matched.length;index++) {
+        deferBefore(8_000);
+        const file=matched[index], bytes="bytes" in file ? file.bytes : await file.load();
+        if (bytes.length !== file.descriptor.size) throw new GoogleError("drive_original_file_metadata_mismatch");
+        await this.archive.file(`hub:application:${detail.id}:original:${file.id}`,file.name,file.mimeType,folderId,bytes);
+        if(continuation) { await continuation.write(index+1); checkpointWrites++; }
+      }
+      phase = "legacy_list";
+      if (!progress.legacy) {
+        deferBefore(5_000);
+        progress.legacy = await this.archive.listLegacyApplicationSnapshots(detail.id,folderId); await checkpoint();
+      }
+      if(!Number.isSafeInteger(progress.legacyNext)||progress.legacyNext<0||progress.legacyNext>progress.legacy.length)throw new GoogleError("drive_checkpoint_invalid");
+      let converted = 0;
+      while (progress.legacyNext < progress.legacy.length) {
+        const reference = progress.legacy[progress.legacyNext];
+        if (!progress.pendingLegacy) {
+          phase = "legacy_read";
+          if (!progress.legacySource) {
+            deferBefore(8_000);
+            const legacy = await this.archive.readLegacyApplicationSnapshot(detail.id,folderId,reference);
+            if (!legacy) { progress.legacyNext++; await checkpoint(); continue; }
+            progress.legacySource = {...legacy,sourceFingerprint:await sha256(JSON.stringify(legacy.application))}; await checkpoint();
+          }
+          const legacy = progress.legacySource;
+          if (legacy.fileId !== reference.fileId || legacy.revision !== reference.revision || legacy.application.id !== detail.id || legacy.application.revision !== reference.revision || legacy.application.jobId !== detail.jobId || typeof legacy.application.name !== "string" || typeof legacy.application.jobTitle !== "string" || legacy.sourceFingerprint !== await sha256(JSON.stringify(legacy.application))) throw new GoogleError("drive_legacy_snapshot_identity_mismatch");
+          phase = "legacy_pdf"; deferBefore(10_000);
+          const legacyPdf = await applicationPdf(legacy.application as unknown as ReadableApplication);
+          const pdfHash = await sha256(legacyPdf);
+          // Derived AI/job exposure can change without an application revision.
+          // Preserve a differing historical JSON rendering beside the current PDF.
+          const distinct = legacy.revision === detail.revision && pdfHash !== progress.currentPdf?.hash;
+          const pdfIdentity = `hub:application:${detail.id}:pdf:${distinct ? "historical-json:v1" : "v1"}:revision:${legacy.revision}`;
+          const pdfId = await this.archive.file(pdfIdentity,`Application-r${legacy.revision}${distinct ? "-previous-record" : ""}.pdf`,"application/pdf",folderId,legacyPdf);
+          progress.pendingLegacy = {fileId:legacy.fileId,revision:legacy.revision,hash:legacy.hash,pdfId,pdfHash,pdfIdentity}; await checkpoint();
+        }
+        const pending = progress.pendingLegacy;
+        if (pending.fileId !== reference.fileId || pending.revision !== reference.revision) throw new GoogleError("drive_checkpoint_identity_mismatch");
+        phase = "legacy_retirement"; deferBefore(6_000);
+        await this.archive.retireLegacyApplicationSnapshot(detail.id,pending,folderId,pending.pdfId,pending.pdfHash,pending.pdfIdentity);
+        if (!progress.legacyJsonFileIds.includes(pending.fileId)) progress.legacyJsonFileIds.push(pending.fileId);
+        progress.legacyNext++; delete progress.legacySource; delete progress.pendingLegacy; await checkpoint(); converted++;
+        if (bounded && converted >= 1 && progress.legacyNext < progress.legacy.length) throw new DriveArchiveContinuation("legacy_next", {reason:"one_revision_per_cycle"});
+      }
+      // A late old worker can add a JSON after the original list was snapshotted.
+      phase = "legacy_verify"; deferBefore(5_000);
+      const remaining = await this.archive.listLegacyApplicationSnapshots(detail.id,folderId);
+      if (remaining.length) {
+        progress.legacy.push(...remaining); await checkpoint();
+        if (bounded) throw new DriveArchiveContinuation("legacy_next", {reason:"late_revision"});
+        // No deadline is used by synchronous compatibility callers; finish via a durable local continuation.
+        return this.application(detail,files,existingFolderId,{...continuation,read:continuation?.read || (async()=>matched.length),write:continuation?.write || (async()=>undefined),readProgress:async()=>progress,writeProgress:async(next)=>{progress=next;}});
+      }
+      return {folderId,folderUrl:`https://drive.google.com/drive/folders/${folderId}`,archivedRevision:detail.revision,archiveFormat:"pdf-v2",legacyJsonFileIds:progress.legacyJsonFileIds};
+    } catch (error) {
+      if (error instanceof DriveArchiveContinuation || error instanceof DriveArchiveFailure) throw error;
+      const diagnostics: Record<string,string|number> = {phase};
+      if (error instanceof ProviderError) {
+        diagnostics.provider = error.provider; diagnostics.providerStatus = error.retryStatus || error.status;
+        if (error.code) diagnostics.providerCode = error.code;
+        // Natural time exhaustion may follow a persisted upload session. Genuine
+        // quota/backoff or repeated no-progress failures still consume retries.
+        if (bounded && error.code === "deadline_exceeded" && !error.retryStatus && (checkpointWrites > 0 || this.archive.progressVersion > startProgress)) throw new DriveArchiveContinuation(phase,diagnostics);
+        throw new DriveArchiveFailure(error.code || `${error.provider}_${error.status}`,phase,diagnostics);
+      }
+      const suppliedCode = error && typeof error === "object" && "code" in error ? error.code : undefined;
+      const code = typeof suppliedCode === "string" && /^[a-z0-9_]{1,100}$/.test(suppliedCode) ? suppliedCode : error instanceof Error && /^[a-z0-9_]{1,100}$/.test(error.message) ? error.message : "drive_archive_failed";
+      if (bounded && code === "processor_deadline_exceeded" && (checkpointWrites > 0 || this.archive.progressVersion > startProgress)) throw new DriveArchiveContinuation(phase,diagnostics);
+      throw new DriveArchiveFailure(code,phase,diagnostics);
     }
-    const legacyJsonFileIds: string[] = [];
-    for await (const legacy of this.archive.legacyApplicationSnapshots(detail.id, folderId)) {
-      this.budget.check();
-      if (legacy.application.jobId !== detail.jobId || typeof legacy.application.name !== "string" || typeof legacy.application.jobTitle !== "string") throw new GoogleError("drive_legacy_snapshot_identity_mismatch");
-      const legacyPdf = await applicationPdf(legacy.application as unknown as ReadableApplication);
-      const pdfId = await this.archive.file(`hub:application:${detail.id}:pdf:v1:revision:${legacy.revision}`, `Application-r${legacy.revision}.pdf`, "application/pdf", folderId, legacyPdf);
-      await this.archive.retireLegacyApplicationSnapshot(detail.id, legacy, folderId, pdfId, await sha256(legacyPdf));
-      legacyJsonFileIds.push(legacy.fileId);
-    }
-    return { folderId, folderUrl: `https://drive.google.com/drive/folders/${folderId}`, archivedRevision: detail.revision, archiveFormat: "pdf-v1", legacyJsonFileIds };
   }
 }

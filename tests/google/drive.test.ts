@@ -88,7 +88,7 @@ test("Drive archives answers, original bytes, assessments and history in stable 
   const snapshot = await readablePdf(f.bytes.get(snapshotFile.id as string)!);
   assert.ok(snapshot.text.includes("https://portfolio.example")); assert.ok(snapshot.text.includes("Completed")); assert.ok(snapshot.text.includes("Screening"));
   assert.ok(!snapshot.text.includes("/private/secret"));
-  assert.equal(first.archiveFormat,"pdf-v1"); assert.deepEqual(first.legacyJsonFileIds,[]);
+  assert.equal(first.archiveFormat,"pdf-v2"); assert.deepEqual(first.legacyJsonFileIds,[]);
   const archivedResume = [...f.files.values()].find((file) => file.name === "resume.pdf")!;
   assert.deepEqual(f.bytes.get(archivedResume.id as string), original.bytes);
   const sessions = f.sessions.size;
@@ -214,7 +214,7 @@ test("a saved original checkpoint resumes without rereading earlier files", asyn
     return original.bytes;
   } }));
   const continuation = { async read() { return nextIndex; }, async write(index: number) { nextIndex = index; } };
-  await assert.rejects(() => f.workspace.archiveApplication({ ...detail, files: descriptors }, sources, undefined, continuation), /synthetic storage interruption/);
+  await assert.rejects(() => f.workspace.archiveApplication({ ...detail, files: descriptors }, sources, undefined, continuation), {code:"drive_archive_failed",phase:"originals"});
   assert.equal(nextIndex, 1);
   const recreated = new GoogleWorkspace({ ...baseConfig, archiveState: f.state }, f.fetcher);
   await recreated.archiveApplication({ ...detail, files: descriptors }, sources, undefined, continuation);
@@ -264,7 +264,7 @@ test("legacy JSON revisions become readable PDFs before recoverable cleanup; unr
  const legacyId=await archive.file(`hub:application:${detail.id}:snapshot:revision:2`,'application-r2.json','application/json',first.folderId,legacyBytes);
  const unrelated=await archive.file('unrelated-json','application-r3.json','application/json',first.folderId,new TextEncoder().encode('{"internal":"unrelated"}'));
  const migrated=await f.workspace.archiveApplication({...detail,revision:3},[original],first.folderId);
- assert.equal(migrated.archiveFormat,'pdf-v1');assert.deepEqual(migrated.legacyJsonFileIds,[legacyId]);
+ assert.equal(migrated.archiveFormat,'pdf-v2');assert.deepEqual(migrated.legacyJsonFileIds,[legacyId]);
  assert.equal(f.files.get(legacyId)?.trashed,true);assert.equal(f.files.get(unrelated)?.trashed,undefined);assert.deepEqual(f.bytes.get(legacyId),legacyBytes,'JSON is still recoverable in Drive Trash');
  assert.ok([...f.rows.values()].some(row=>row.drive_id===legacyId&&row.content_hash),'original internal identity and checksum remain retained');
  const replacement=[...f.files.values()].find(file=>file.name==='Application-r2.pdf')!;

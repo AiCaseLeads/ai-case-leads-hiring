@@ -159,7 +159,7 @@ test("cancellation contacts the original calendar despite a changed global defau
   await f.db.prepare("INSERT INTO hub_interviews(id,application_id,status,calendar_id,provider_id,revision,created_at,updated_at) VALUES(?,?,'cancel_pending','old-calendar',?,2,?,?)").bind(id,f.app.id,providerId,Date.now(),Date.now()).run();
   await f.store.taskStatement("cancel-old",f.app.id,"calendar",{operation:"cancel",interviewId:id,id:providerId,revision:2},Date.now()).run();
   const google=new GoogleWorkspace({clientId:"synthetic",clientSecret:"synthetic",refreshToken:"synthetic",sender,calendarId:"new-calendar"},async(input,init={})=>{const url=new URL(String(input));paths.push(url.pathname);if(url.hostname==="oauth2.googleapis.com")return response({access_token:"synthetic",token_type:"Bearer",expires_in:3600});assert.ok(url.pathname.includes("/old-calendar/"));return init.method==="DELETE"?new Response(null,{status:204}):response({id:providerId,etag:"etag",status:"confirmed",extendedProperties:{private:{aclInterviewId:providerId}}});});
-  google.archiveApplication=async()=>({folderId:"synthetic",folderUrl:"https://drive.google.com/synthetic",archivedRevision:1,archiveFormat:"pdf-v1",legacyJsonFileIds:[]});
+  google.archiveApplication=async()=>({folderId:"synthetic",folderUrl:"https://drive.google.com/synthetic",archivedRevision:1,archiveFormat:"pdf-v2",legacyJsonFileIds:[]});
   await processHubTasks(f.store,f.db,{} as R2Bucket,google,1);assert.equal(f.database.prepare("SELECT status FROM hub_interviews").get()!.status,"cancelled");assert.equal(paths.filter(path=>path.includes("/old-calendar/")).length,2);assert.ok(!paths.some(path=>path.includes("/new-calendar/")));
  }finally{f.database.close();}
 });

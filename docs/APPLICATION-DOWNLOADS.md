@@ -36,10 +36,21 @@ Original Drive IDs and checksums remain in the private `archive_items` table;
 successful task results include the IDs moved during that attempt.
 
 Conversion failure retains the JSON and leaves the task retryable. The worker
-must only record `archiveFormat: pdf-v1` after conversion completes. The separate
+must only record `archiveFormat: pdf-v2` after conversion completes. The separate
 backfill queue converts older completed archives without sending emails or
 changing candidate decisions. Company Drive consent and a private root folder
 remain required.
+
+Archival checkpoints retain the current PDF, the original-file cursor, the
+historical source being converted, and the verified PDF awaiting JSON retirement.
+Each background invocation handles at most one historical revision and continues
+as pending work after 30 seconds. Normal progress does not consume failure retries.
+Unchanged provider failures, quota errors, and no-progress budget failures remain
+visible with a safe phase/provider/status diagnostic and a bounded retry policy.
+New applications and ordinary integrations take priority over legacy backfill.
+`readable-v2` invalidates old renderer checkpoints without creating new current
+PDF identities. A historical JSON that differs from the authoritative PDF of the
+same revision is retained as `Application-rN-previous-record.pdf`, preserving both.
 
 The licensed Noto Sans fonts are packaged with the Railway Docker image. Latin,
 Greek and Cyrillic text render normally. Other unsupported characters are shown

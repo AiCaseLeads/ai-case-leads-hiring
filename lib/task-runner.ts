@@ -11,6 +11,7 @@ import { cleanupExpiredUploads } from "./hiring/upload-cleanup";
 import { withinDeadline } from "./hiring/deadline";
 import { syncHiringReplies } from "./mail-sync";
 import { enqueueReviewReminders, reviewReminderMail } from "./review-reminders/service";
+import { DriveArchiveContinuation, DriveArchiveFailure, type DriveArchiveProgress } from "./google/drive";
 
 export type CandidateMailResolver=(account:string)=>Promise<GoogleWorkspace|null>;
 async function candidateTransport(store:HubStore,account:string|undefined,resolver?:CandidateMailResolver){
@@ -140,6 +141,8 @@ async function taskEffect(task:Task,store:HubStore,db:D1Database,bucket:R2Bucket
       return saved?.nextIndex??0;
     },
     write:async(nextIndex:number)=>{await store.setSetting(key,{fingerprint,nextIndex});},
+    readProgress:async()=>await store.setting<DriveArchiveProgress|null>(`drive_pdf_checkpoint:${detail.id}:${detail.revision}`,null),
+    writeProgress:async(progress:DriveArchiveProgress)=>{await store.setSetting(`drive_pdf_checkpoint:${detail.id}:${detail.revision}`,progress);},
   };
   return {...await google.archiveApplication(detail,files,existing?.drive_folder_id||undefined,continuation),archivedRevision:detail.revision};
 }
@@ -161,7 +164,7 @@ export async function processHubTasks(store:HubStore,db:D1Database,bucket:R2Buck
     reconciled=await reconcileUncertain(db,store,google,Math.min(max,5),deadline,candidateResolver);
     for(let index=0;index<Math.max(1,Math.min(max,10));index++){
       if(Date.now()>=deadline-1000)break;
-      const task=await store.claimTask(Date.now());if(!task)break;
+      const task=await store.claimTask(Date.now(),deadline-Date.now()<30_000);if(!task)break;
       if(!task.leaseToken)throw new Error("task_lease_missing");
       let providerCompleted=false;
       try{
@@ -169,11 +172,15 @@ export async function processHubTasks(store:HubStore,db:D1Database,bucket:R2Buck
         providerCompleted=true;
         await store.finishTask(task.id,task.leaseToken,{status:"done",result});processed++;
       }catch(error){
+        if(task.kind==="drive"&&error instanceof DriveArchiveContinuation){
+          await store.finishTask(task.id,task.leaseToken,{status:"pending",error:error.code,runAfter:Date.now()+30_000,continuation:true,result:{continuation:true,phase:error.phase,...(error.diagnostics?{diagnostics:error.diagnostics}:{})}});
+          continue;
+        }
         const ambiguous=["gmail","calendar"].includes(task.kind)&&(providerCompleted||!!(error&&typeof error==="object"&&"uncertain"in error&&error.uncertain));
         const status=ambiguous?"uncertain":"failed";
         const code=safeCode(error),setupHold=task.kind==="gmail"&&!ambiguous&&isMailSetupError(code);
         const delay=Math.min(6*60*60*1000,5000*2**Math.min(task.attempts,12));
-        await store.finishTask(task.id,task.leaseToken,{status,error:code,runAfter:setupHold?Number.MAX_SAFE_INTEGER:Date.now()+delay,setupHold,...(setupHold?{result:{setupRequired:true,retryRequiresReview:true,instructions:"Connect the correct recruiting Gmail and verify its sender. Review this queued message before explicitly retrying; connecting Gmail alone will not send it."}}:{})});
+        await store.finishTask(task.id,task.leaseToken,{status,error:code,runAfter:setupHold?Number.MAX_SAFE_INTEGER:Date.now()+delay,setupHold,...(error instanceof DriveArchiveFailure?{result:{phase:error.phase,diagnostics:error.diagnostics}}:{}),...(setupHold?{result:{setupRequired:true,retryRequiresReview:true,instructions:"Connect the correct recruiting Gmail and verify its sender. Review this queued message before explicitly retrying; connecting Gmail alone will not send it."}}:{})});
         if(ambiguous)uncertain++;else failed++;
       }
     }
