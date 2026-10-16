@@ -1,3 +1,4 @@
+import { MATCH_PROVIDER_PAUSE_KEY } from './provider-errors';
 import { matchDiagnostics } from './match-diagnostics';
 import { z } from 'zod';
 import type { HubMember } from '../hub/auth-core';
@@ -33,6 +34,7 @@ export async function handleAiMatch(request:Request,member:HubMember|null,deps:M
   const budget=await deps.store.stmt("INSERT INTO hiring_rate_limits(key_hash,window,attempts) VALUES(?,?,1) ON CONFLICT(key_hash,window) DO NOTHING RETURNING attempts",`ai-match-retry:${job.id}`,Math.floor(Date.now()/60000)).first();
   if(!budget)throw new HiringError('ai_retry_limited',429,'Wait a minute before requesting another retry.');
   await deps.store.db.batch([
+   deps.store.stmt("DELETE FROM hub_settings WHERE key=? AND json_extract(value,'$.reason') IN ('ai_provider_unauthorized','ai_provider_credit_required')",MATCH_PROVIDER_PAUSE_KEY),
    deps.store.stmt("UPDATE hub_ai_criteria SET status='pending',attempts=0,run_after=0,error=NULL WHERE job_id=? AND form_version=? AND status IN ('failed','needs_review')",job.id,job.formVersion),
    deps.store.stmt("UPDATE hub_ai_matches SET status='pending',attempts=0,run_after=0,error=NULL WHERE job_id=? AND form_version=? AND status IN ('failed','needs_review')",job.id,job.formVersion)
   ]);

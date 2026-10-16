@@ -1,3 +1,5 @@
+import { MATCH_PROVIDER_PAUSE_KEY } from "./provider-errors";
+import { matchHourlyLimit,MIN_MATCH_HOURLY_LIMIT,MAX_MATCH_HOURLY_LIMIT } from "./capacity";
 import { hourlyRateWindow } from "../hiring/rate-window";
 import { z } from "zod";
 import { HubStore } from "../hub/store";
@@ -13,8 +15,8 @@ import { MODEL,criteriaLines,generateReview,reviewInput,reviewNote,validateRevie
 import { readResumeText } from "../pdf/http";
 
 const CONFIG = "ai_openrouter_config_v1";
-type Configuration = {enabled:boolean;sealedKey?:string;updatedBy?:string;updatedAt?:number};
-const configInput=z.object({apiKey:z.string().trim().regex(/^sk-or-[A-Za-z0-9_-]{16,250}$/).optional(),enabled:z.boolean()}).strict();
+type Configuration = {enabled:boolean;sealedKey?:string;updatedBy?:string;updatedAt?:number;hourlyLimit?:number};
+const configInput=z.object({apiKey:z.string().trim().regex(/^sk-or-[A-Za-z0-9_-]{16,250}$/).optional(),enabled:z.boolean(),hourlyLimit:z.number().int().min(MIN_MATCH_HOURLY_LIMIT).max(MAX_MATCH_HOURLY_LIMIT).optional()}).strict();
 export type AiDependencies={store:HubStore;encryptionKey?:string;fetcher?:typeof fetch;bucket?:R2Bucket};
 async function json(request:Request){
   const bytes=await boundedBytes(request,256*1024);
@@ -23,25 +25,29 @@ async function json(request:Request){
 function requireMember(member:HubMember|null):asserts member is HubMember{
   if(!member || !["admin","recruiter"].includes(member.role))throw new HiringError("staff_access_required",403,"Sign in with an authorized hiring team account.");
 }
-function configStatus(config:Configuration,key?:string){
+function configStatus(config:Configuration,key?:string,member?:HubMember){
   const configured=!!config.sealedKey&&!!key;
-  return {configured,enabled:configured&&config.enabled,model:MODEL,provider:"OpenRouter / OpenAI",reviewOnly:true};
+  return {configured,enabled:configured&&config.enabled,model:MODEL,provider:"OpenRouter / OpenAI",reviewOnly:true,hourlyLimit:matchHourlyLimit(config),processingConcurrency:3,canManageConnection:!!member?.isOwner,canChangeCapacity:member?.role==="admin"};
 }
 export async function handleAiConfig(request:Request,member:HubMember|null,deps:AiDependencies):Promise<Response>{
   try{
     requireMember(member);
     const config=await deps.store.setting<Configuration>(CONFIG,{enabled:false});
-    if(request.method==="GET")return jsonResponse({data:configStatus(config,deps.encryptionKey)});
+    if(request.method==="GET")return jsonResponse({data:configStatus(config,deps.encryptionKey,member)});
     if(request.method!=="PATCH")throw new HiringError("method_not_allowed",405,"Use the configuration form to update AI settings.");
     assertSameOrigin(request);
-    if(!member.isOwner)throw new HiringError("owner_access_required",403,"Only the account owner can configure AI review.");
     const input=parse(configInput,await json(request));
+    if(!member.isOwner&&(member.role!=="admin"||input.apiKey!==undefined||input.enabled!==config.enabled||input.hourlyLimit===undefined))throw new HiringError("owner_access_required",403,"Only the account owner can configure the AI connection. Administrators can adjust processing capacity.");
     if(!deps.encryptionKey)throw new HiringError("encryption_unavailable",503,"Server credential encryption must be configured before saving an API key.");
     const sealedKey=input.apiKey?await sealToken(input.apiKey,deps.encryptionKey):config.sealedKey;
     if(input.enabled&&!sealedKey)throw new HiringError("ai_key_required",422,"Add an OpenRouter API key before enabling AI review.");
-    const updated={enabled:input.enabled,sealedKey,updatedBy:member.email,updatedAt:Date.now()};
-    await deps.store.setSetting(CONFIG,updated);
-    return jsonResponse({data:configStatus(updated,deps.encryptionKey)});
+    const updated={enabled:input.enabled,sealedKey,hourlyLimit:input.hourlyLimit??matchHourlyLimit(config),updatedBy:member.email,updatedAt:Date.now()};
+    await deps.store.db.batch([
+      deps.store.settingStatement(CONFIG,updated),
+      ...(input.apiKey?[deps.store.stmt("DELETE FROM hub_settings WHERE key=?",MATCH_PROVIDER_PAUSE_KEY)]:[]),
+      ...(updated.hourlyLimit>matchHourlyLimit(config)?[deps.store.stmt("UPDATE hub_ai_matches SET run_after=0,error=NULL WHERE status='pending' AND error='ai_hourly_capacity'")]:[]),
+    ]);
+    return jsonResponse({data:configStatus(updated,deps.encryptionKey,member)});
   }catch(error){return errorResponse(error);}
 }
 type Cache={status:"pending"|"complete"|"failed";review?:Review};

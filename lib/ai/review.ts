@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { providerFailure } from "./provider-errors";
 import { HiringError } from "../hiring/errors";
 import { boundedBytes } from "../hiring/files";
 
@@ -96,7 +97,7 @@ export async function generateReview(key:string,sources:Sources,criteria:string[
       method:"POST",redirect:"error",signal:AbortSignal.timeout(90000),headers:{Authorization:`Bearer ${key}`,"Content-Type":"application/json"},
       body:JSON.stringify({model:MODEL,provider:{only:["OpenAI"],allow_fallbacks:false,data_collection:"deny",require_parameters:true},max_tokens:5000,reasoning:{effort:"low",exclude:true},response_format:{type:"json_schema",json_schema:{name:"hiring_evidence",strict:true,schema:referencedReviewSchema(criteria,spans)}},messages:[{role:"system",content:matching ? `${system} For this evidence-match review, evidence_found means the supplied evidence clearly satisfies the COMPLETE criterion, including any explicit minimum number, duration or required skill. Mere mention or related but insufficient experience is not sufficient. Use not_found if evidence is absent, below the stated minimum, ambiguous or does not establish the complete requirement. Do not infer proficiency from a title or inflate years. Do not count demographic, personal or contact facts. The application and resume remain unverified claims.` : system},{role:"system",content:"CITATION TRANSPORT: Do not write quote text or source names in citations. Cite only supplied sourceSpans IDs as {id}. Each ID resolves on the server to the exact original source substring. Select spans that actually support the complete criterion; do not cite unrelated spans. The full sources provide context; overlapping spans preserve boundary context. Never invent an ID. All earlier exact-quote rules apply to the referenced span."},{role:"user",content:JSON.stringify({criteria,sources,sourceSpans:spans})}]})
     });
-    if(!response.ok){await response.body?.cancel();throw new HiringError("ai_provider_unavailable",502,"AI review is unavailable. Check the OpenRouter key, balance, and model access. No review was saved.");}
+    if(!response.ok){await response.body?.cancel();throw providerFailure(response);}
     let body:unknown;
     const raw=new TextDecoder().decode(await boundedBytes({headers:response.headers,body:response.body} as Request,128*1024));
     try{body=JSON.parse(raw);}catch{throw new HiringError("ai_response_json_invalid",502,"The provider returned unreadable review data. No review was saved.");}

@@ -10,8 +10,8 @@ import tailwind from '@tailwindcss/postcss';
 const job={id:'job-test',title:'Test engineer',slug:'engineer',status:'open',location:'Remote',fields:[],rules:[]};
 const applicant={id:'app-test',name:'Synthetic Applicant',email:'applicant@example.invalid',jobId:job.id,jobTitle:job.title,stage:'Application Review',qualification:'review',createdAt:1,revision:1};
 async function setup(t,{mode='candidate',data={status:'ready',score:80,criteria:[]},failWrite=false,width=390,clock=false}={}){
- const view=mode==='candidate'?'<CandidateMatch applicationId="app-test"/>':mode==='setup'?'<JobMatchSetup jobId="job-test" changed={()=>{}}/>':`<Candidates jobs={${JSON.stringify([job])}} refresh={0} changed={()=>{}} reviewerEmail="reviewer@example.invalid" initialJobId="job-test"/>`;
- const {outputFiles}=await build({stdin:{contents:`import React from 'react';import{createRoot}from'react-dom/client';import{CandidateMatch,JobMatchSetup}from'./components/hub/ai-match';import{Candidates}from'./components/hub/candidates';createRoot(document.getElementById('root')).render(${view});`,loader:'tsx',resolveDir:process.cwd()},bundle:true,write:false,format:'iife',jsx:'automatic'});
+ const view=mode==='config'?'<AiReviewSettings/>':mode==='candidate'?'<CandidateMatch applicationId="app-test"/>':mode==='setup'?'<JobMatchSetup jobId="job-test" changed={()=>{}}/>':`<Candidates jobs={${JSON.stringify([job])}} refresh={0} changed={()=>{}} reviewerEmail="reviewer@example.invalid" initialJobId="job-test"/>`;
+ const {outputFiles}=await build({stdin:{contents:`import React from 'react';import{createRoot}from'react-dom/client';import{AiReviewSettings}from'./components/hub/ai-review';import{CandidateMatch,JobMatchSetup}from'./components/hub/ai-match';import{Candidates}from'./components/hub/candidates';createRoot(document.getElementById('root')).render(${view});`,loader:'tsx',resolveDir:process.cwd()},bundle:true,write:false,format:'iife',jsx:'automatic'});
  // Keep application CSS, excluding build-only Tailwind directives.
  const css=(await postcss([tailwind()]).process(readFileSync('app/globals.css','utf8'),{from:'app/globals.css'})).css+'\n'+readFileSync('components/hub/hub.css','utf8');
  const server=createServer((req,res)=>{res.setHeader('Content-Type',req.url==='/bundle.js'?'text/javascript':'text/html');res.end(req.url==='/bundle.js'?outputFiles[0].text:`<meta name="viewport" content="width=device-width, initial-scale=1"><style>${css}</style><main class="hub-main"><div id="root"></div></main><script src="/bundle.js"></script>`);});
@@ -28,6 +28,7 @@ async function setup(t,{mode='candidate',data={status:'ready',score:80,criteria:
   }
   return route.fulfill({json:{data:current}});
  });
+ await page.route('**/api/ai/config',async route=>{if(route.request().method()!=='GET'){const input=route.request().postDataJSON();writes.push({method:route.request().method(),...input});current={...current,...input};}return route.fulfill({json:{data:current}});});
  await page.route('**/api/hub/applications*',route=>{queries.push(new URL(route.request().url()).searchParams);return route.fulfill({json:{data:{items:[{...applicant,aiMatch:{status:'ready',score:80}},{...applicant,id:'app-pending',name:'Pending applicant',aiMatch:{status:'pending',score:null}}],total:2,page:1,pageSize:50}}});});
  if(clock)await page.clock.install();
  await page.goto(`http://127.0.0.1:${server.address().port}`);
@@ -105,4 +106,19 @@ test('candidate AI validation errors explain the evidence problem without a nume
  for (const [error,copy] of Object.entries({ai_response_truncated:'output limit',ai_response_refused:'declined to complete',ai_response_incomplete:'incomplete review',ai_response_json_invalid:'could not be read',ai_request_timeout:'timed out',ai_response_schema_invalid:'required review format',ai_response_criteria_mismatch:'this job’s requirements',ai_response_citation_policy:'evidence citation requirements',ai_response_quote_unverified:'submitted source text'})) {
   const {page}=await setup(t,{data:{status:'failed',score:null,error}});await page.getByRole('alert').filter({hasText:copy}).waitFor();assert.equal(await page.getByText('80 / 100',{exact:true}).count(),0);
  }
+});
+
+
+test('candidate distinguishes running, retry pause, capacity pause and queue ahead without misleading scores',async t=>{
+ for(const [state,copy] of [['running','Attempt 1 of 5 is in progress'],['retry_scheduled','scheduled after'],['capacity_paused','hourly processing limit'],['queued','6 eligible reviews ahead'],['provider_paused','provider has paused']]){
+  const {page,writes,errors}=await setup(t,{data:{status:state==='running'?'running':state==='retry_scheduled'?'failed':'pending',score:null,progress:{state,attempts:1,readyAhead:6,nextRetryAt:state==='queued'?null:1800000000000,hourlyLimit:120,capacityRemaining:state==='capacity_paused'?0:96,capacityResetsAt:1800000000000,providerPauseReason:'ai_provider_rate_limited'}}});
+  await page.getByLabel('AI processing status').getByText(copy,{exact:false}).waitFor();assert.equal(writes.length,0);assert.deepEqual(errors,[]);assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth+1),true);
+ }
+});
+
+test('processing capacity is collapsed, retains120default, and an explicit admin change carries the new bound',async t=>{
+ const {page,writes}=await setup(t,{mode:'config',data:{enabled:true,configured:true,model:'openai/gpt-5-mini',provider:'OpenRouter / OpenAI',reviewOnly:true,hourlyLimit:120}});
+ await page.getByRole('heading',{name:'AI connection'}).waitFor();assert.equal(await page.getByLabel('Maximum AI requests per hour').isVisible(),false);
+ await page.getByText('Processing capacity',{exact:true}).click();const limit=page.getByLabel('Maximum AI requests per hour');assert.equal(await limit.inputValue(),'120');assert.equal(writes.length,0);
+ await limit.fill('180');await page.getByRole('button',{name:'Save AI connection',exact:true}).click();await page.getByRole('status').filter({hasText:'AI review settings saved'}).waitFor();assert.deepEqual(writes,[{method:'PATCH',enabled:true,hourlyLimit:180}]);
 });
