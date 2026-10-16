@@ -61,7 +61,7 @@ export function JobTeamFields({ data, value, change, readOnly = false }: {
     </fieldset>
     <p className="hub-muted">Missing someone? Add them in Settings → Team.</p>
     {!value.members.length && <p className="hub-notice">No recruiters selected. This job will not send team alerts. Applications still appear in the dashboard.</p>}
-    <Field label="Recruiter who handles candidate replies" hint="Receives candidate replies when an owner sends a message. This recruiter needs to connect Gmail in My setup.">
+    <Field label="Recruiter who handles candidate replies" hint="Receives candidate replies when an owner sends a message. This recruiter needs to connect Gmail in My connections.">
       <select disabled={readOnly} value={value.replyTo || ""} onChange={event => change({...value,replyTo:event.target.value || null})}>
         <option value="">Choose a recruiter (or use the application assignee)</option>
         {value.members.filter(email=>active.has(email)&&email.toLowerCase()!=="sales@aicaseleads.com").map(email=><option key={email} value={email}>{email}</option>)}

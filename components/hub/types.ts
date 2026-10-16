@@ -22,6 +22,10 @@ export const stages = [
   "Rejected",
   "Withdrawn",
 ];
+/** Display names only. Stored stages and existing links keep their original values. */
+export function stageLabel(stage: string) {
+  return stage === "Application Review" ? "New" : stage === "Screening" ? "Shortlisted" : stage;
+}
 export type Rule = {
   fieldPath: string;
   operator: "equals" | "not_equals" | "contains" | "gte" | "lte";
