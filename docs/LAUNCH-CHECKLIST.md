@@ -57,7 +57,7 @@ If submission integrity is uncertain, set `APPLICATIONS_ENABLED=false` and close
 
 ## Recruiter-owned Gmail cutover
 
-- [ ] Verify SendGrid authenticated root domain, server key and signed delivery callback; receive a controlled message with no-reply-recruiting@aicaseleads.com From and no-reply@notify.aicaseleads.com Reply-To, confirm Null MX rejects replies and direct mail to the unassigned no-reply-recruiting From address bounces rather than reaching a catch-all inbox. Maria’s Gmail is separate for her conversations.
+- [x] Verify SendGrid authenticated root domain, server key and signed delivery callback; receive a controlled message with no-reply-recruiting@aicaseleads.com From and no-reply@notify.aicaseleads.com Reply-To, confirm Null MX rejects replies and direct mail to the unassigned no-reply-recruiting From address bounces rather than reaching a catch-all inbox. Maria’s Gmail is separate for her conversations.
 - [ ] Verify automatic mail uses SendGrid with no recruiter identity in received headers or body; no inbox or Google alias is required.
 - [ ] Verify a recruiter conversation sends from the acting recruiter and receives replies in that recruiter’s Gmail; separately verify any supported dashboard reply synchronization.
 - [ ] Confirm existing Drive archival and Calendar behavior still work after the mail cutover.
