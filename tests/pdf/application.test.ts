@@ -52,6 +52,6 @@ test('AI audit events are readable and preserve older evidence without dumping J
   {type:'ai_match',text:JSON.stringify(saved),createdAt:timestamp},
   {type:'note',text:'A plain recruiter note',createdAt:timestamp},
  ]}));
- for(const expected of ['AI review recorded.','Earlier creative requirement','Twelve earlier briefs.','Verify earlier campaign results.','See AI job match above','A plain recruiter note'])assert.ok(parsed.text.includes(expected),expected);
+ for(const expected of ['AI review recorded.','Earlier creative requirement','Twelve earlier briefs.','Verify earlier campaign results.','See AI job match above','A plain recruiter note'])assert.ok(parsed.text.replace(/\s+/g,' ').includes(expected),expected);
  assert.ok(!parsed.text.includes('{"model"'));assert.ok(!parsed.text.includes('"sourceWarnings":'));
 });
