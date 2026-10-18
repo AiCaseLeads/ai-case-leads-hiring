@@ -38,6 +38,7 @@ export type QualificationEvidence = {
   value: unknown;
 };
 export type ApplicationSummary = {
+  viewedAt?: number | null;
   trashed?: boolean;
   id: string;
   revision: number;
@@ -119,6 +120,7 @@ export type ApplicationDetail = ApplicationSummary & {
   fields: ApplicationField[];
   files: {
     id: string;
+    fieldPath?: string;
     filename: string;
     contentType: string;
     size: number;

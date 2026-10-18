@@ -83,6 +83,7 @@ export async function handleHubRequest(
   store: HubStore,
 ): Promise<Response> {
   try {
+    if (!member?.email) throw new HiringError("staff_access_required",403,"Sign in with an authorized hiring account.");
     if (request.method !== "GET") assertSameOrigin(request);
     const [section, id, operation] = path;
     let data: unknown;
@@ -122,7 +123,13 @@ export async function handleHubRequest(
     } else if(section === "application-counts" && request.method === "GET") {
       data=await store.applicationCounts();
     } else if (section === "applications" && request.method === "GET" && !id) {
-      data = await store.applications(applicationFilters(request));
+      data = await store.applications(applicationFilters(request),member.email);
+    } else if(section==='applications' && id && operation==='navigation' && request.method==='GET') {
+      data=await store.applicationNavigation(id,applicationFilters(request));
+    } else if(section==='applications' && id && operation==='viewed' && request.method==='POST') {
+      const input=await json(request);
+      if(!input||typeof input!=='object'||Array.isArray(input)||Object.keys(input).length)throw new HiringError('invalid_request',422,'Send an empty view acknowledgement.');
+      data=await store.markApplicationViewed(id,member.email);
     } else if (section === "applications-export" && request.method === "GET" && !id) {
       if(new URL(request.url).searchParams.has("format")) {
         const format=new URL(request.url).searchParams.get("format");
@@ -137,7 +144,7 @@ export async function handleHubRequest(
       request.method === "GET" &&
       !operation
     )
-      data = await store.getApplication(id);
+      data = await store.getApplication(id,member.email);
     else if(section==='applications' && id && operation==='lifecycle' && request.method==='POST') {
       const input=await json(request) as {action?:unknown;expectedRevision?:unknown};
       if(!input || !['trash','restore'].includes(String(input.action)) || !Number.isSafeInteger(input.expectedRevision)) throw new HiringError('invalid_application_action',422,'Choose Delete or Restore and refresh the application.');

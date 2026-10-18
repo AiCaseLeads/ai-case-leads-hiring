@@ -821,7 +821,7 @@ export class HubStore {
     const order = filters.sort === "ai_match_desc" ? `CASE WHEN a.stage NOT IN ('Rejected','Withdrawn','Hired') AND ${matchReady} THEN 0 WHEN a.stage NOT IN ('Rejected','Withdrawn','Hired') THEN 1 ELSE 2 END,CASE WHEN ${matchReady} THEN match_result.score ELSE NULL END DESC,a.created_at DESC,a.id` : filters.sort === "grade_desc" ? "CASE WHEN a.stage NOT IN ('Rejected','Withdrawn','Hired') AND g.average_score IS NOT NULL THEN 0 WHEN a.stage NOT IN ('Rejected','Withdrawn','Hired') THEN 1 ELSE 2 END,g.average_score DESC,a.created_at DESC,a.id" : "a.created_at DESC,a.id";
     return {cte,join,clause,order,values:graded?[filters.jobId!,...values]:values};
   }
-  private async summaries(rows:ApplicationRow[]):Promise<ApplicationSummary[]> {
+  private async summaries(rows:ApplicationRow[],viewerEmail?:string):Promise<ApplicationSummary[]> {
     const cards = new Map<string,{id:string;actor:string;score:number;criteria:string;text:string;createdAt:number}[]>();
     // D1 accepts at most 100 bound parameters per statement.
     for(let offset=0;offset<rows.length;offset+=100) {
@@ -838,13 +838,19 @@ export class HubStore {
       const selected=await this.rows<{id:string;enabled:number;version:number;status:string|null;criteria_status:string|null;score:number|null;updated_at:number|null;lease_until:number|null;attempts:number|null;criteria_attempts:number|null}>(`SELECT a.id,j.ai_match_enabled AS enabled,j.form_version AS version,m.status,c.status AS criteria_status,m.score,m.updated_at,m.lease_until,m.attempts,c.attempts AS criteria_attempts FROM hub_applications a JOIN hub_jobs j ON j.id=a.job_id LEFT JOIN hub_ai_matches m ON m.application_id=a.id AND m.form_version=j.form_version LEFT JOIN hub_ai_criteria c ON c.job_id=j.id AND c.form_version=j.form_version WHERE a.id IN (${ids.map(()=>"?").join(",")})`,...ids);
       for(const m of selected)matches.set(m.id,{status:!m.enabled?'disabled':m.status==='ready'?'ready':!aiAvailable?'setup_required':m.criteria_status==='failed'?'failed':m.status==='needs_review'?'needs_review':m.status==='failed'?'failed':m.status==='running'&&(m.lease_until||0)>Date.now()?'running':m.criteria_status!=='ready'?'preparing':'pending',score:m.enabled&&m.status==='ready'?m.score:null,version:m.version,updatedAt:m.updated_at,retryPending:!!m.enabled&&aiAvailable&&!['ready','needs_review'].includes(m.status||'')&&(m.criteria_status==='failed'?(m.criteria_attempts||0)<5:m.status==='failed'&&(m.attempts||0)<5)});
     }
-    return rows.map((row)=>({...summary(row),grade:gradeForScorecards(cards.get(row.id)||[]),aiMatch:matches.get(row.id)}));
+    const views=new Map<string,number>();
+    if(viewerEmail)for(let offset=0;offset<rows.length;offset+=99){
+      const ids=rows.slice(offset,offset+99).map(row=>row.id);
+      const found=await this.rows<{application_id:string;viewed_at:number}>(`SELECT application_id,viewed_at FROM hub_application_views WHERE viewer_email=? AND application_id IN (${ids.map(()=>'?').join(',')})`,viewerEmail.trim().toLowerCase(),...ids);
+      for(const view of found)views.set(view.application_id,view.viewed_at);
+    }
+    return rows.map((row)=>({...summary(row),...(viewerEmail?{viewedAt:views.get(row.id)??null}:{}),grade:gradeForScorecards(cards.get(row.id)||[]),aiMatch:matches.get(row.id)}));
   }
-  async applications(filters:ApplicationFilters={}) {
+  async applications(filters:ApplicationFilters={},viewerEmail?:string) {
     const selected=this.applicationSelection(filters), page=Math.max(1,Math.min(100000,filters.page||1)),pageSize=30;
     const count=await this.stmt(`${selected.cte}SELECT COUNT(*) AS total FROM hub_applications a${selected.join}${selected.clause}`,...selected.values).first<{total:number}>();
     const rows=await this.rows<ApplicationRow>(`${selected.cte}SELECT ${SUMMARY_COLUMNS.split(",").map((column)=>`a.${column}`).join(",")},(SELECT COUNT(*) FROM hub_applications d WHERE d.email=a.email) AS duplicate_application_count FROM hub_applications a${selected.join}${selected.clause} ORDER BY ${selected.order} LIMIT ? OFFSET ?`,...selected.values,pageSize,(page-1)*pageSize);
-    return {items:(await this.summaries(filters.top ? rows.slice(0,Math.max(0,10-(page-1)*pageSize)) : rows)).map(item=>({...item,trashed:!!filters.trash})),total:filters.top?Math.min(10,count?.total||0):count?.total||0,page,pageSize};
+    return {items:(await this.summaries(filters.top ? rows.slice(0,Math.max(0,10-(page-1)*pageSize)) : rows,viewerEmail)).map(item=>({...item,trashed:!!filters.trash})),total:filters.top?Math.min(10,count?.total||0):count?.total||0,page,pageSize};
   }
   async exportApplications(filters:ApplicationFilters={}) {
     const selected=this.applicationSelection(filters),limit=filters.top?10:10000;
@@ -876,10 +882,26 @@ export class HubStore {
     const files=await this.rows<{id:string;filename:string;object_key:string;size:number}>("SELECT id,filename,object_key,size FROM hub_files WHERE application_id=? AND uploaded_at>0 ORDER BY id",id);
     return {...summary,answers:decode(app.answers_json,[]),questions:decode(app.fields_json,[]),files};
   }
-  async getApplication(id: string): Promise<ApplicationDetail> {
+  async applicationNavigation(id:string,filters:ApplicationFilters={}) {
+    const selected=this.applicationSelection(filters);
+    const rows=await this.rows<{id:string}>(`${selected.cte}SELECT a.id FROM hub_applications a${selected.join}${selected.clause} ORDER BY ${selected.order} LIMIT ${filters.top?10:10001}`,...selected.values);
+    if(rows.length>10000)throw new HiringError("navigation_too_large",422,"Narrow the filters to at most 10,000 applicants before browsing.");
+    const position=rows.findIndex(row=>row.id===id);
+    if(position<0)throw new HiringError("application_not_in_view",404,"This applicant no longer matches the current filters. Return to the applicant list.");
+    return {previousId:rows[position-1]?.id??null,nextId:rows[position+1]?.id??null,position:position+1,total:rows.length};
+  }
+  async markApplicationViewed(id:string,viewerEmail:string) {
+    await this.applicationRow(id);
+    const email=viewerEmail.trim().toLowerCase();
+    if(!email)throw new HiringError("staff_access_required",403,"Sign in with an authorized hiring account.");
+    await this.stmt("INSERT INTO hub_application_views(application_id,viewer_email,viewed_at) VALUES(?,?,?) ON CONFLICT(application_id,viewer_email) DO NOTHING",id,email,Date.now()).run();
+    const view=await this.stmt("SELECT viewed_at FROM hub_application_views WHERE application_id=? AND viewer_email=?",id,email).first<{viewed_at:number}>();
+    return {viewedAt:view!.viewed_at};
+  }
+  async getApplication(id: string,viewerEmail?:string): Promise<ApplicationDetail> {
     const app = await this.applicationRow(id);
     const [files,history,communications,assessments,interviews,scorecards,links] = await Promise.all([
-      this.rows<{id:string;filename:string;content_type:string;size:number}>("SELECT id,filename,content_type,size FROM hub_files WHERE application_id=? ORDER BY filename",id),
+      this.rows<{id:string;field_path:string;filename:string;content_type:string;size:number}>("SELECT id,field_path,filename,content_type,size FROM hub_files WHERE application_id=? AND uploaded_at>0 ORDER BY filename",id),
       this.rows<{id:string;type:string;text:string;actor:string;created_at:number}>("SELECT * FROM hub_history WHERE application_id=? ORDER BY created_at,id",id),
       this.rows<{id:string;subject:string;body:string;status:string;created_at:number}>("SELECT * FROM hub_communications WHERE application_id=? ORDER BY created_at DESC,id",id),
       this.rows<{id:string;status:"invited"|"submitted";prompt:string;answer:string|null;submitted_at:number|null}>("SELECT * FROM hub_assessments WHERE application_id=? ORDER BY created_at DESC,id DESC",id),
@@ -897,10 +919,11 @@ export class HubStore {
     const allInterviews:Interview[] = interviews.map((item) => ({id:item.id,revision:item.revision,status:item.status as Interview["status"],...(item.start?{start:item.start}:{}),...(item.end?{end:item.end}:{}),...(item.time_zone?{timeZone:item.time_zone}:{}),...(item.calendar_id?{calendarId:item.calendar_id}:{}),...(item.meet_url?{meetUrl:item.meet_url}:{}),...(item.attended !== null?{attended:!!item.attended}:{}),...linkInfo("interview",item.id)}));
     const duplicateCount = await this.stmt("SELECT COUNT(*) AS count FROM hub_applications WHERE email=?",app.email).first<{count:number}>();
     const cards = scorecards.map((card) => ({id:card.id,actor:card.actor,score:card.score,criteria:card.criteria,text:card.text,createdAt:card.created_at}));
-    return {...summary(app),trashed:!!await applicationTrash(this,id),archiveProject:app.archive_project || undefined,archiveCountry:app.archive_country || undefined,hiringRound:app.hiring_round || undefined,revision:app.revision,formVersion:app.form_version,utmData:decode(app.utm_json,{}),
+    const view=viewerEmail?await this.stmt("SELECT viewed_at FROM hub_application_views WHERE application_id=? AND viewer_email=?",id,viewerEmail.trim().toLowerCase()).first<{viewed_at:number}>():null;
+    return {...summary(app),...(viewerEmail?{viewedAt:view?.viewed_at??null}:{}),trashed:!!await applicationTrash(this,id),archiveProject:app.archive_project || undefined,archiveCountry:app.archive_country || undefined,hiringRound:app.hiring_round || undefined,revision:app.revision,formVersion:app.form_version,utmData:decode(app.utm_json,{}),
       duplicateEmail:(duplicateCount?.count || 1)>1,duplicateApplicationCount:duplicateCount?.count || 1,grade:gradeForScorecards(cards),aiMatch:await matchDetail(this,id),
       answers:decode(app.answers_json,[]),fields:decode(app.fields_json,[]),qualificationEvidence:decode(app.qualification_json,[]),
-      files:files.map((file) => ({id:file.id,filename:file.filename,contentType:file.content_type,size:file.size,url:`/api/files/${encodeURIComponent(file.id)}`})),
+      files:files.map((file) => ({id:file.id,fieldPath:file.field_path,filename:file.filename,contentType:file.content_type,size:file.size,url:`/api/files/${encodeURIComponent(file.id)}`})),
       history:events,notes:events.filter((event) => event.type === "note"),
       communications:communications.map((item) => ({id:item.id,subject:item.subject,body:item.body,status:item.status,createdAt:item.created_at})),
       assessments:allAssessments,interviews:allInterviews,

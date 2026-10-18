@@ -305,3 +305,9 @@ export const recruitingHelp = sqliteTable("hub_recruiting_help", {
   email: text("email").notNull(), job: text("job").notNull(), kind: text("kind").notNull(), message: text("message").notNull(),
   status: text("status").notNull().default("open"), createdAt: integer("created_at").notNull(), updatedAt: integer("updated_at").notNull(), resolvedBy: text("resolved_by"),
 }, table => [index("hub_recruiting_help_queue").on(table.status,table.createdAt),index("hub_recruiting_help_retention").on(table.status,table.updatedAt),check("recruiting_help_status",sql`${table.status} in ('open','resolved')`)]);
+
+export const hubApplicationViews = sqliteTable("hub_application_views", {
+  applicationId:text("application_id").notNull().references(()=>hubApplications.id,{onDelete:"cascade"}),
+  viewerEmail:text("viewer_email").notNull(),
+  viewedAt:integer("viewed_at").notNull(),
+}, table => [primaryKey({columns:[table.applicationId,table.viewerEmail]})]);
