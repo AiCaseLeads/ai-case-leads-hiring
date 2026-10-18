@@ -1,0 +1,6 @@
+import {test} from 'node:test';
+import assert from 'node:assert/strict';
+import {countryCodes} from '../../lib/countries';
+import {countryRegions,regionSelection,toggleRegion} from '../../lib/country-regions';
+test('geographic groups cover all 249 countries and territories exactly once',()=>{const codes=countryRegions.flatMap(region=>region.codes);assert.equal(codes.length,249);assert.equal(new Set(codes).size,249);assert.deepEqual([...codes].sort(),[...countryCodes].sort());const region=(code:string)=>countryRegions.find(region=>region.codes.includes(code as never))?.name;for(const code of ['US','CA','MX','PA','PR','GL'])assert.equal(region(code),'North America');for(const code of ['TR','CY','TW','GE'])assert.equal(region(code),'Asia');assert.equal(region('RU'),'Europe');assert.equal(region('AQ'),'Antarctica');for(const code of ['CC','CX','HM'])assert.equal(region(code),'Oceania');});
+test('region toggling fills partial groups without duplicates and preserves outside selections',()=>{const europe=countryRegions[0].codes;let values=['ES','CO'];assert.equal(regionSelection(europe,values).partial,true);values=toggleRegion(europe,values,true);assert.equal(regionSelection(europe,values).all,true);assert.equal(new Set(values).size,values.length);assert.deepEqual(toggleRegion(europe,values,false),['CO']);});
