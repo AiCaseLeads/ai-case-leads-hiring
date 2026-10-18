@@ -1,3 +1,4 @@
+import { isCountryResidence } from "../countries";
 import { MATCH_PROVIDER_PAUSE_KEY } from "./provider-errors";
 import { matchHourlyLimit,MIN_MATCH_HOURLY_LIMIT,MAX_MATCH_HOURLY_LIMIT } from "./capacity";
 import { hourlyRateWindow } from "../hiring/rate-window";
@@ -69,7 +70,8 @@ export function answerSource(application:Awaited<ReturnType<HubStore["getApplica
   // remove job evidence such as "languages" or "project_management".
   const skip=/\b(?:name|email|phone|address|birth|birthday|birthdate|dob|age|gender|sex|religion|race|ethnicity|ethnic|disability|disabilities|disabled|health|marital|nationality|citizen|citizenship)\b/i;
   const label=(path:string,title:string)=>`${path} ${title}`.replace(/([a-z])([A-Z])/g,"$1 $2").replace(/[_\W]+/g," ");
-  const fields=application.fields.filter(f=>!f.path.startsWith("_systemfield_")&&!skip.test(label(f.path,f.title))&&!["File","Email","Phone","Url","SocialLink"].includes(f.type));
+  // Residence eligibility is a deterministic screening rule, not AI job-match evidence.
+  const fields=application.fields.filter(f=>!isCountryResidence(f)&&!f.path.startsWith("_systemfield_")&&!skip.test(label(f.path,f.title))&&!["File","Email","Phone","Url","SocialLink"].includes(f.type));
   return fields.map(f=>({question:f.title,answer:application.answers.find(a=>a.path===f.path)?.value??null})).map(x=>JSON.stringify(x)).join("\n").slice(0,20000);
 }
 export async function handleAiReview(request:Request,member:HubMember|null,deps:AiDependencies):Promise<Response>{

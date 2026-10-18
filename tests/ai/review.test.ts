@@ -1,7 +1,8 @@
+import { countryResidenceField, residencePath } from "../../lib/countries";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createStore,MANAGER,RECRUITER,jobInput,applicationInput } from "../hub/fixtures";
-import { handleAiConfig,handleAiReview,type AiDependencies } from "../../lib/ai/http";
+import { handleAiConfig,handleAiReview,answerSource,type AiDependencies } from "../../lib/ai/http";
 import { generateReview,validateReview,reviewNote,MODEL,type Review } from "../../lib/ai/review";
 const key="sk-or-"+"testsecret".repeat(4),encryptionKey="c".repeat(64);
 const origin="https://jobs.example.invalid";
@@ -222,4 +223,21 @@ test('manual review lease lasts beyond provider timeout and stale workers cannot
  assert.deepEqual(await f.store.setting(row!.key,null),{status:'pending',claimToken:'new-owner'});
  assert.equal((await f.store.getApplication(f.app.id)).notes.length,0);
  f.database.close();
+});
+
+
+test('country residence stays available to screening but is excluded from AI answer evidence',async()=>{
+ const f=createStore();try {
+  const job=await f.store.saveJob(jobInput());
+  const {id}=await f.store.acceptApplication(applicationInput(job.id));
+  const app=await f.store.getApplication(id);
+  app.fields.push(countryResidenceField(),{path:'regional_campaigns',title:'Campaigns managed across countries',type:'String',required:false});
+  app.answers.push({path:residencePath,value:'CO'},{path:'regional_campaigns',value:'Managed multilingual campaigns for three markets.'});
+  const source=answerSource(app);
+  assert.ok(!source.includes('Country of residence'));
+  assert.ok(!source.includes('"CO"'));
+  assert.ok(source.includes('Managed multilingual campaigns for three markets.'));
+  assert.ok(source.includes('Years of experience'));
+  assert.equal(app.answers.find(answer=>answer.path===residencePath)?.value,'CO');
+ }finally{f.database.close();}
 });
