@@ -51,7 +51,7 @@ test('numeric answers accept decimals while USD rejects fractional cents and str
  const answer=(value:unknown)=>({jobPostingId:'test',submissionKey:'test',fieldSubmissions:[{path:'amount',value}]}) as Parameters<typeof validateAnswers>[0];
  const field={path:'amount',title:'Salary',type:'Number' as const,required:true,numberFormat:'currency' as const,currency:'USD' as const};
  for(const value of [0,1234.56,50000])assert.doesNotThrow(()=>validateAnswers(answer(value),[field]));
- for(const value of [1.234,'1,234.56',NaN,Infinity,Number.MAX_SAFE_INTEGER])assert.throws(()=>validateAnswers(answer(value),[field]),{code:'invalid_application'});
+ for(const value of [1.234,0.000000001,1.000000001,'1,234.56',NaN,Infinity,Number.MAX_SAFE_INTEGER])assert.throws(()=>validateAnswers(answer(value),[field]),{code:'invalid_application'});
  assert.doesNotThrow(()=>validateAnswers(answer(2.5),[{...field,numberFormat:'number',currency:undefined}]));
  assert.throws(()=>validateJob({...jobInput(),fields:[{...field,type:'String'}]}),{code:'invalid_job'});
  assert.throws(()=>validateJob({...jobInput(),fields:[...jobInput().fields,field],rules:[{fieldPath:'amount',operator:'gte',value:1.234,enabled:true,reason:'Minimum pay'}]}),{code:'invalid_rule'});

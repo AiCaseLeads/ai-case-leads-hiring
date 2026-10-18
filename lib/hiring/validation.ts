@@ -67,5 +67,5 @@ export function validateAnswers(input: ApplicationInput, fields: ApplicationFiel
 }
 
 export function validNumericAnswer(value: unknown, currency = false): boolean {
-  return typeof value === "number" && Number.isFinite(value) && Math.abs(value) <= Number.MAX_SAFE_INTEGER && (!currency || (Math.abs(value) <= Number.MAX_SAFE_INTEGER / 100 && Math.abs(value * 100 - Math.round(value * 100)) < 0.000001));
+  return typeof value === "number" && Number.isFinite(value) && Math.abs(value) <= Number.MAX_SAFE_INTEGER && (!currency || (Math.abs(value) <= Number.MAX_SAFE_INTEGER / 100 && value === Number(value.toFixed(2))));
 }
