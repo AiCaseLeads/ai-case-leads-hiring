@@ -1702,3 +1702,6 @@ body:has(.hiring-hub .hub-draft-overlay) { overflow: hidden; }
 .hub-resume-preview .hub-muted { font-size:12px; margin:8px 0 0; }
 .hub-resume-canvas-window { max-height:340px; }
 @media(max-width:640px) { .hub-resume-canvas-window { max-height:280px; } }
+
+.hub-file-list .hub-resume-preview.is-expanded { max-width:900px; }
+.hub-resume-preview.is-expanded .hub-resume-canvas-window { max-height:min(70vh,700px); }

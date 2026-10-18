@@ -20,7 +20,7 @@ export function PdfPreview({url,filename}:{url:string;filename:string}){
     const bytes=new Uint8Array(await response.arrayBuffer());if(cancelled)return;
     loading=pdfjs.getDocument({data:bytes,standardFontDataUrl:assets+"standard_fonts/",cMapUrl:assets+"cmaps/",cMapPacked:true,wasmUrl:assets+"wasm/"});
     const next=await loading.promise;if(cancelled){await loading.destroy();return;}setDocument(next);
-   }catch{if(!cancelled)setError("Résumé preview could not be loaded. Use Download résumé to open the original file.");}
+   }catch{if(!cancelled)setError("Résumé preview could not be loaded. Use the Download link above to open the original file.");}
   })();
   return()=>{cancelled=true;controller.abort();void loading?.destroy();};
  },[url]);
@@ -36,7 +36,7 @@ export function PdfPreview({url,filename}:{url:string;filename:string}){
    const context=target.getContext("2d");if(!context)throw Error("Canvas unavailable");
    task=pdfPage.render({canvas:target,canvasContext:context,viewport,transform:ratio!==1?[ratio,0,0,ratio,0,0]:undefined});await task.promise;
    if(!cancelled)setRendered(true);
-  }catch{if(!cancelled)setError("This résumé page could not be displayed. Use Download résumé to open the original file.");}})();
+  }catch{if(!cancelled)setError("This résumé page could not be displayed. Use the Download link above to open the original file.");}})();
   return()=>{cancelled=true;task?.cancel();};
  },[document,page,width]);
  return <div ref={container} style={{minWidth:0,width:"100%"}}>
