@@ -1,3 +1,4 @@
+import "./prepare-pdf-preview.mjs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { rm } from "node:fs/promises";

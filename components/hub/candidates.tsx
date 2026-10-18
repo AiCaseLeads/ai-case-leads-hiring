@@ -1014,7 +1014,7 @@ export function CandidateDetail({
               </details>
               </div>
               <div role="tabpanel" id="candidate-panel-application" aria-labelledby="candidate-tab-application" hidden={section!=="application"}>
-              <ResumePreview detail={detail}/>
+              {section === "application" && <ResumePreview detail={detail}/>}
               <section className="hub-card">
                 <h3>Application answers</h3>
                 {detail.answers.length ? (

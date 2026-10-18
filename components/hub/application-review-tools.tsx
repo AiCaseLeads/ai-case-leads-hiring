@@ -1,5 +1,7 @@
 "use client";
+/* eslint-disable @next/next/no-img-element -- Authenticated résumé images must load directly without an image proxy. */
 import { useEffect, useRef, useState } from "react";
+import { PdfPreview } from "./pdf-preview";
 import { hubRequest, useHubResource } from "./api";
 import type { ApplicationDetail, HubJob } from "./types";
 export function ApplicantNavigation({detail,filter,jobs,open,viewed}:{detail:ApplicationDetail;filter:string;jobs:HubJob[];open:(id:string,filter:string)=>void;viewed:()=>void}) {
@@ -49,6 +51,6 @@ function FilePreview({file:resume}:{file:ApplicationDetail["files"][number]}) {
   useEffect(()=>{if(!previewable)return;const controller=new AbortController();void fetch(url,{method:"HEAD",credentials:"same-origin",signal:controller.signal}).then(response=>{if(!response.ok || !["application/pdf","image/png","image/jpeg","image/webp"].includes((response.headers.get("content-type") || "").split(";")[0].trim()))throw Error("preview unavailable");setReady(true);}).catch(()=>{if(!controller.signal.aborted)setError(true);});return()=>controller.abort();},[url,previewable]);
   return <section className="hub-card hub-resume-preview" aria-label="Résumé preview">
     <div className="hub-section-heading compact"><div><h3>Résumé</h3><p className="hub-muted" style={{overflowWrap:"anywhere"}}>{resume.filename}</p></div><a className="hub-button secondary" href={resume.url} target="_blank" rel="noopener noreferrer">Download résumé</a></div>
-    {previewable && ready ? <><iframe title={`Résumé preview: ${resume.filename}`} src={url} style={{display:"block",width:"100%",height:"min(65vh,700px)",minHeight:280,border:"1px solid #d7e3e1",borderRadius:8}}/><p className="hub-muted">If your browser cannot display this file, use Download résumé.</p></> : previewable ? <p role="status">{error?"Preview is unavailable. Use Download résumé or refresh to retry.":"Loading résumé preview…"}</p> : <p className="hub-muted">This file format cannot be previewed here. Download the original résumé to open it.</p>}
+    {previewable && ready && !error ? (resume.contentType==="application/pdf" ? <PdfPreview key={url} url={url} filename={resume.filename}/> : <img src={url} onError={()=>setError(true)} alt={`Résumé: ${resume.filename}`} style={{display:"block",maxWidth:"100%",maxHeight:"70vh",objectFit:"contain",margin:"0 auto"}}/>) : previewable ? <p role="status">{error?"Preview is unavailable. Use Download résumé or refresh to retry.":"Loading résumé preview…"}</p> : <p className="hub-muted">This file format cannot be previewed here. Download the original résumé to open it.</p>}
   </section>;
 }
