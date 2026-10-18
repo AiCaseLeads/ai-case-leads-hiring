@@ -11,7 +11,7 @@ export function CountryScreening({field,rules,change,requireAnswer,autoReject}:{
   const mode=existing?.enabled ? existing.operator : "any";
   const selected=Array.isArray(existing?.value)?existing.value:[];
   function update(operator:"in"|"not_in",value:string[]) {requireAnswer();change([...rules.filter(rule=>rule.fieldPath!==field.path),{fieldPath:field.path,operator,value,enabled:true,reason:"Country of residence does not meet this job’s location requirements."}]);}
-  return <section className="hub-screening-question" aria-label="Country of residence screening">
+  return <section className="hub-screening-question hub-country-screening" aria-label="Country of residence screening">
     <p>The full country list is included automatically. Applicants choose where they live, not their nationality.</p>
     <Field label="Eligible countries"><select value={mode} onChange={event=>{if(event.target.value==="any")change(rules.filter(rule=>rule.fieldPath!==field.path));else update(event.target.value as "in"|"not_in",selected);}}><option value="any">Any country — no country screening</option><option value="in">Only selected countries</option><option value="not_in">Exclude selected countries</option></select></Field>
     {mode!=="any" && <>

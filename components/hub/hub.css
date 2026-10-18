@@ -1730,3 +1730,6 @@ body:has(.hiring-hub .hub-draft-overlay) { overflow: hidden; }
 
 .hub-file-list .hub-resume-preview.is-expanded { max-width:900px; }
 .hub-resume-preview.is-expanded .hub-resume-canvas-window { max-height:min(70vh,700px); }
+
+/* Country selectors use compact rows while preserving touch targets. */
+.hub-country-screening .hub-checkbox { margin: 0; align-items: center; }
