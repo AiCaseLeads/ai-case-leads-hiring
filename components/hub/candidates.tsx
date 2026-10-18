@@ -681,6 +681,9 @@ export function CandidateDetail({
     window.addEventListener("beforeunload",beforeUnload);
     return()=>{if(window.__aiclDraftGuard===guard)window.__aiclDraftGuard=previous;window.removeEventListener("beforeunload",beforeUnload);};
   },[]);
+  const resumeTarget = useRef<HTMLLIElement>(null);
+  const [resumeRequest,setResumeRequest]=useState(0);
+  useEffect(()=>{if(!resumeRequest || section!=="application")return;resumeTarget.current?.scrollIntoView({block:"start",behavior:"instant"});resumeTarget.current?.focus({preventScroll:true});},[resumeRequest,section]);
   const recordTabs = useRef<HTMLDivElement>(null);
   const previousSection = useRef(section);
   useLayoutEffect(() => {
@@ -790,7 +793,7 @@ export function CandidateDetail({
             </div>
           </div>
           <div className="hub-candidate-quick-actions">
-            {resumeFile(detail) && <button type="button" className="hub-button secondary" onClick={()=>setSection("application")}>View résumé</button>}
+            {resumeFile(detail) && <button type="button" className="hub-button secondary" onClick={()=>{setSection("application");setResumeRequest(value=>value+1);}}>View résumé</button>}
             {!detail.trashed && detail.stage === "Application Review" && <button type="button" className="hub-button" disabled={mutation.busy} onClick={()=>void shortlist()}>Shortlist</button>}
             {!detail.trashed && !["Rejected", "Withdrawn", "Hired"].includes(detail.stage) && <button type="button" className="hub-button secondary" disabled={mutation.busy} onClick={()=>{setAction("interview");setActionOpen(true);mutation.clear();}}>Request interview</button>}
             {!detail.trashed && <button type="button" className="hub-text-button" onClick={()=>{setAction("note");setActionOpen(true);mutation.clear();}}>Add note</button>}
@@ -1014,7 +1017,6 @@ export function CandidateDetail({
               </details>
               </div>
               <div role="tabpanel" id="candidate-panel-application" aria-labelledby="candidate-tab-application" hidden={section!=="application"}>
-              {section === "application" && <ResumePreview detail={detail}/>}
               <section className="hub-card">
                 <h3>Application answers</h3>
                 {detail.answers.length ? (
@@ -1045,17 +1047,18 @@ export function CandidateDetail({
                 {detail.files.length ? (
                   <ul className="hub-file-list">
                     {detail.files.map((file) => (
-                      <li key={file.id}>
+                      <li key={file.id} ref={file.id===resumeFile(detail)?.id?resumeTarget:undefined} tabIndex={file.id===resumeFile(detail)?.id?-1:undefined} style={{scrollMarginTop:24}}>
                         <a
                           href={file.url}
                           target="_blank"
                           rel="noopener noreferrer"
                         >
-                          <Download size={16} /> {file.filename}
+                          <Download size={16} /> {file.filename} — Download
                         </a>
                         <span>
                           {Math.ceil(file.size / 1024)} KB · {file.contentType}
                         </span>
+                        {section === "application" && file.id===resumeFile(detail)?.id && <ResumePreview detail={detail}/>}
                       </li>
                     ))}
                   </ul>

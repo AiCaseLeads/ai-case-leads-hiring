@@ -43,7 +43,7 @@ export function PdfPreview({url,filename}:{url:string;filename:string}){
   {document && <div className="hub-button-row" style={{marginBottom:12}}><button type="button" className="hub-button secondary" disabled={page<=1} onClick={()=>setPage(value=>value-1)}>Previous résumé page</button><span>Page {page} of {document.numPages}</span><button type="button" className="hub-button secondary" disabled={page>=document.numPages} onClick={()=>setPage(value=>value+1)}>Next résumé page</button></div>}
   {error ? <p role="status">{error}</p> : <>
    {!rendered && <p role="status">Rendering résumé…</p>}
-   <div style={{maxHeight:"min(70vh,800px)",overflow:"auto",background:"#eef2f2",border:"1px solid #d7e3e1",borderRadius:8}}><canvas ref={canvas} role="img" aria-label={`Résumé ${filename}, page ${page}`} data-rendered={rendered?"true":"false"} style={{display:"block",maxWidth:"100%",margin:"0 auto"}}/></div>
+   <div className="hub-resume-canvas-window" style={{overflow:"auto",background:"#eef2f2",border:"1px solid #d7e3e1",borderRadius:8}}><canvas ref={canvas} role="img" aria-label={`Résumé ${filename}, page ${page}`} data-rendered={rendered?"true":"false"} style={{display:"block",maxWidth:"100%",margin:"0 auto"}}/></div>
    <p className="hub-muted">Résumé shown securely on this page. Download the original for searchable text or screen-reader access.</p>
   </>}
  </div>;

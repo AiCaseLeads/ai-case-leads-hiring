@@ -1695,3 +1695,10 @@ body:has(.hiring-hub .hub-draft-overlay) { overflow: hidden; }
 .hub-candidate-browser .hub-selection-banner { border:1px solid #b8dacf; border-radius:8px; background:#edf7f2; padding:14px 16px; color:#175448; overflow-wrap:anywhere; }
 @media(max-width:700px) { .hub-candidate-browser .hub-applicant-filters { grid-template-columns:repeat(2,minmax(0,1fr)); } }
 @media(max-width:440px) { .hub-candidate-browser .hub-applicant-filters { grid-template-columns:minmax(0,1fr); } .hub-candidate-browser .hub-applicant-filters > button { width:100%; } }
+
+.hub-file-list .hub-resume-preview { width:100%; max-width:640px; min-width:0; margin-top:12px; padding:12px; border:1px solid var(--hub-border,#d7e3e1); border-radius:8px; background:#f7faf9; box-sizing:border-box; }
+.hub-resume-preview .hub-button-row { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-top:8px; }
+.hub-resume-preview .hub-button { min-height:36px; padding:6px 10px; font-size:13px; }
+.hub-resume-preview .hub-muted { font-size:12px; margin:8px 0 0; }
+.hub-resume-canvas-window { max-height:340px; }
+@media(max-width:640px) { .hub-resume-canvas-window { max-height:280px; } }
