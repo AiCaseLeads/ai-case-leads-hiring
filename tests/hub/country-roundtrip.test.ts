@@ -16,7 +16,7 @@ test('private recovery preserves incomplete and complete country choices without
  const{store,database}=createStore();try{
  for(const [revision,values] of [[0,[]],[1,['ES','US']]] as const){
  const response=await handleJobDrafts(req('job-drafts','PUT',{key:'new:blank:',expectedRevision:revision,state:state([...values])}),MANAGER,store);assert.equal(response.status,200,await response.clone().text());
- const loaded=await handleJobDrafts(req('job-drafts?key=new%3Ablank%3A','GET'),MANAGER,store);const body=await loaded.json();assert.deepEqual(body.data.state.rules[0].value,values);assert.equal(body.data.state.fields[0].options.length,249);
+ const loaded=await handleJobDrafts(req('job-drafts?key=new%3Ablank%3A','GET'),MANAGER,store);const body=await loaded.json() as {data:{state:ReturnType<typeof state>}};assert.deepEqual(body.data.state.rules[0].value,values);assert.equal(body.data.state.fields[0].options?.length,249);
  }
  const invalid={...jobInput(),fields:[...jobInput().fields,countryResidenceField()],rules:[{...rule,value:[]}]};assert.throws(()=>validateJob(jobSchema.parse(invalid)));
  assert.equal((await store.listJobs()).length,0);
@@ -26,7 +26,7 @@ test('country rules and labels survive template HTTP creation and duplicate job 
  const{store,database}=createStore();try{
  const original=await store.saveJob({...jobInput(),fields:[...jobInput().fields,countryResidenceField()],rules:[rule],autoReject:true});
  const response=await handleJobSetup(req('job-setup','PATCH',{action:'template',expectedRevision:0,sourceJobId:original.id,name:'Country template'}),MANAGER,store);assert.equal(response.status,200,await response.clone().text());
- const catalog=(await response.json()).data as SetupCatalog;const template=catalog.templates[0].job;assert.equal(template.autoReject,false);assert.deepEqual(template.rules[0].value,['ES','US']);assert.equal(template.fields.find(f=>f.path===residencePath)?.options?.length,249);
+ const catalog=(await response.json() as {data:SetupCatalog}).data;const template=catalog.templates[0].job;assert.equal(template.autoReject,false);assert.deepEqual(template.rules[0].value,['ES','US']);assert.equal(template.fields.find(f=>f.path===residencePath)?.options?.length,249);
  const creationId=crypto.randomUUID();const saved=await handleJobSetup(req('job-setup','POST',{action:'save',creationId,job:{...template,slug:'country-copy'},location:{workModel:'remote',country:'International',city:''},expectedBinding:null,scorecard:null}),MANAGER,store);assert.equal(saved.status,200,await saved.clone().text());
  const copy=await store.getJob(creationId);assert.equal(copy.fields.find(f=>f.path===residencePath)?.options?.length,249);assert.deepEqual(copy.rules[0].value,['ES','US']);
  const input=applicationInput(original.id);input.fieldSubmissions.push({path:residencePath,value:'ES'});const app=await store.acceptApplication(input);const record=await store.exportRecord(app.id);assert.match(readableAnswers(record.answers,record.questions),/Country of residence: Spain/);const pdf=await readablePdf(await applicationPdf(await store.getApplication(app.id)));assert.match(pdf.text,/Spain/);assert.match(pdf.text,/Country of residence/);
