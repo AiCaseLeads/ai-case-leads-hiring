@@ -8,6 +8,7 @@ import type { SetupCatalog } from "@/lib/job-setup/model";
 import type { Catalog } from "@/lib/scorecards/model";
 import { JobWizard, JobStart } from "./job-wizard";
 import { JobActionMenu } from "./action-menu";
+import { sortHubJobs } from "./job-order";
 import { JobTeamPanel } from "./job-team";
 import type { JobLifecycleAction } from "@/lib/hub/job-lifecycle";
 const completedJobSessions = new Set<string>();
@@ -265,7 +266,7 @@ export function Jobs({
         onManageScorecards={onManageScorecards}
       />
     ) : null;
-  const filtered = data.filter(
+  const filtered = sortHubJobs(data).filter(
     (j) =>
       (j.lifecycle?.state || "active") === collection &&
       (status === "all" || j.status === status) &&
@@ -384,7 +385,7 @@ export function Jobs({
           }}
         />
         <nav className="hub-page-tabs" aria-label="Job lists">
-          {([['active', 'Active jobs'], ['archived', 'Archived'], ['deleted', 'Trash']] as const).map(([value, label]) => <button
+          {([['active', 'Current jobs'], ['archived', 'Archived'], ['deleted', 'Trash']] as const).map(([value, label]) => <button
             key={value} type="button" className={"hub-text-button " + (collection === value ? "active" : "")}
             aria-current={collection === value ? "page" : undefined}
             onClick={() => { setCollection(value); setStatus("all"); setDeleteJob(null); }}
@@ -402,7 +403,7 @@ export function Jobs({
           </Field>
           {collection === "active" && <Field label="Job status">
             <select value={status} onChange={(e) => setStatus(e.target.value)}>
-              <option value="all">All active jobs</option>
+              <option value="all">All current jobs</option>
               <option value="open">Open jobs</option>
               <option value="closed">Paused jobs</option>
               <option value="draft">Drafts</option>
@@ -439,9 +440,9 @@ export function Jobs({
                         Edit job
                       </button>
                     )}
-                    {admin && collection === "active" && j.status !== "draft" && <button className="hub-text-button" disabled={mutation.busy} onClick={() => void lifecycleAction(j, j.status === "open" ? "pause" : "resume")}>{j.status === "open" ? <><Pause size={15} /> Pause job</> : <><Play size={15} /> Resume job</>}</button>}
                     {admin && collection !== "active" && <button className="hub-text-button" disabled={mutation.busy} onClick={() => void lifecycleAction(j, "restore")}><ArchiveRestore size={15} /> Restore job</button>}
                     <JobActionMenu label={`Actions for ${j.title}`}>
+{admin && collection === "active" && j.status !== "draft" && <button className="hub-text-button" disabled={mutation.busy} onClick={() => void lifecycleAction(j, j.status === "open" ? "pause" : "resume")}>{j.status === "open" ? <><Pause size={15} /> Pause job</> : <><Play size={15} /> Resume job</>}</button>}
                         {collection === "active" && <button
                           className="hub-text-button"
                           disabled={mutation.busy}
@@ -480,7 +481,7 @@ export function Jobs({
               title={collection === "archived" ? "No archived jobs" : collection === "deleted" ? "Trash is empty" : data.length ? "No matching jobs" : "Create your first job"}
             >
               <p>
-                {collection !== "active" ? "Your active jobs are in the Active jobs tab." : data.length
+                {collection !== "active" ? "Your open, draft and paused jobs are in the Current jobs tab." : data.length
                   ? "Try another filter or search."
                   : "Start blank, duplicate an existing posting, use a saved template, or fill out a hiring request."}
               </p>

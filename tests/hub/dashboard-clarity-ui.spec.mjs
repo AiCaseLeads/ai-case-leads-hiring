@@ -17,7 +17,7 @@ async function setup(t,role='admin',overdue=0,query=''){
 test('home prioritizes applicant work, keeps connection status compact and starts guided job creation',async t=>{
  const page=await setup(t);assert.deepEqual(await page.getByRole('navigation',{name:'Hiring workspace'}).getByRole('button').allTextContents(),['Home','Applicants','Jobs','Reports','Settings']);
  await page.getByText('No overdue reviews in this queue.',{exact:true}).waitFor();assert.equal(await page.getByLabel('Review queue').inputValue(),'mine');assert.equal(await page.getByRole('heading',{name:'Platform status'}).count(),0);
- assert.match(await page.getByRole('button',{name:/New applicants/}).textContent(),/4/);
+ assert.match(await page.getByRole('button',{name:/In initial review/}).textContent(),/4/);
  await page.getByRole('button',{name:'Create job',exact:true}).click();await page.getByRole('heading',{name:'Create a job step by step'}).waitFor();assert.equal(new URL(page.url()).searchParams.get('view'),'jobs');await page.reload();await page.getByRole('heading',{name:'Job postings',exact:true}).waitFor();
  await page.getByRole('button',{name:'Manage scorecard templates',exact:true}).click();await page.getByRole('heading',{name:'Reusable scorecards',exact:true}).waitFor();assert.equal(await page.locator('#scorecard-settings').count(),1);assert.equal(await page.locator('#scorecard-settings').isVisible(),true);
 });
@@ -27,7 +27,7 @@ test('recruiters can review overdue work and see delivery activity without admin
 });
 
 test('review shortcut and validated job links retain exact filters after a refresh, while ordinary navigation clears them',async t=>{
- const page=await setup(t);await page.getByRole('button',{name:/New applicants/}).click();await page.getByText('Filter stage: Application Review',{exact:true}).waitFor();assert.equal(new URL(page.url()).searchParams.get('stage'),'Application Review');
+ const page=await setup(t);await page.getByRole('button',{name:/In initial review/}).click();await page.getByText('Filter stage: Application Review',{exact:true}).waitFor();assert.equal(new URL(page.url()).searchParams.get('stage'),'Application Review');
  await page.reload();await page.getByText('Filter stage: Application Review',{exact:true}).waitFor();await page.getByRole('navigation').getByRole('button',{name:'Applicants',exact:true}).click();await page.getByText('Filter stage: All stages',{exact:true}).waitFor();
  await page.goto(new URL('/?view=applications&jobId=job1',page.url()).href);await page.getByText('Filter job: job1',{exact:true}).waitFor();await page.getByRole('navigation').getByRole('button',{name:'Applicants',exact:true}).click();await page.getByText('Filter job: All jobs',{exact:true}).waitFor();assert.equal(new URL(page.url()).searchParams.has('jobId'),false);
  await page.goto(new URL('/?view=applications&jobId=unknown',page.url()).href);await page.getByText('Filter job: All jobs',{exact:true}).waitFor();

@@ -14,7 +14,8 @@ import {
   Settings2,
 } from "lucide-react";
 import { Brand } from "@/components/careers/chrome";
-import { useHubResource } from "./api";
+import { useHubResource, displayDate } from "./api";
+import { sortHubJobs } from "./job-order";
 import { CandidateDetail, Candidates } from "./candidates";
 import { Jobs } from "./jobs";
 import { Reports } from "./reports";
@@ -63,7 +64,7 @@ export function HiringDashboard({
     setInitialStage(next === "applications" && stages.includes(params.get("stage") || "") ? params.get("stage")! : "");
     setInitialJobId(next === "applications" ? params.get("jobId") || "" : "");
     const filters = new URLSearchParams();
-    for (const key of ["q", "jobId", "stage", "assignee", "qualification", "grade", "sort", "top", "duplicate", "trash"]) if (next === "applications" && params.has(key)) filters.set(key, params.get(key)!);
+    for (const key of ["q", "jobId", "stage", "assignee", "qualification", "grade", "sort", "top", "duplicate", "trash", "appliedFrom", "appliedTo", "timeZone"]) if (next === "applications" && params.has(key)) filters.set(key, params.get(key)!);
     setInitialFilter(filters.toString());
     const page = Number(params.get("page"));
     setInitialPage(Number.isFinite(page) ? Math.max(1, Math.min(10000, Math.floor(page))) : 1);
@@ -134,7 +135,7 @@ export function HiringDashboard({
   }
   function viewUrl(next: View) {
     const url = new URL(window.location.href);
-    for (const key of ["application", "candidateAction", "workspace", "reason", "jobId", "stage", "q", "assignee", "qualification", "grade", "sort", "top", "duplicate", "trash", "page", "section", "jobEditor", "jobStep", "jobStart", "jobSource", "jobSession"]) url.searchParams.delete(key);
+    for (const key of ["application", "candidateAction", "workspace", "reason", "jobId", "stage", "q", "assignee", "qualification", "grade", "sort", "top", "duplicate", "trash", "appliedFrom", "appliedTo", "timeZone", "page", "section", "jobEditor", "jobStep", "jobStart", "jobSource", "jobSession"]) url.searchParams.delete(key);
     url.searchParams.set("view", next === "overview" ? "home" : next);
     return url;
   }
@@ -235,7 +236,7 @@ export function HiringDashboard({
         <main id="hub-main" className="hub-main">
           {workspaceNotice && <p className="hub-notice" role="status">{workspaceNotice}</p>}
           {view === "applications" && <div hidden={!!detailId}><Candidates
-            key={`${initialFilter}:${initialPage}:${data?.jobs.some(job => job.id === initialJobId) ? initialJobId : ""}`}
+            key={data?.jobs.some(job => job.id === initialJobId) ? initialJobId : "job-index"}
             initialStage={initialStage}
             initialJobId={data?.jobs.some(job => job.id === initialJobId) ? initialJobId : ""}
             initialFilter={initialFilter}
@@ -258,23 +259,23 @@ export function HiringDashboard({
           ) : view === "overview" ? (
             <>
               <div className="hub-section-heading">
-                <div><h1>Hiring overview</h1><p>Your jobs, applicants, and next steps.</p></div>
+                <div><h1>Hiring overview</h1><p>Team totals by current stage, across all jobs. These are not counts since your last sign-in.</p></div>
                 <button className="hub-button" onClick={beginJob}>Create job</button>
               </div>
               <ResourceState loading={resource.loading} error={resource.error} retry={() => void resource.reload()} />
               {data && !resource.loading && <>
                 <div className="hub-overview-metrics" aria-label="Hiring snapshot">
-                  {[{stage:"Application Review",label:"New applicants"},{stage:"Screening",label:"Shortlisted"},{stage:"Interview",label:"Interviews"}].map(item => <button className="hub-overview-metric" key={item.stage} onClick={() => openStage(item.stage)}><span>{item.label}</span><strong>{(data.stageCounts.find(stage => stage.stage === item.stage)?.count || 0).toLocaleString()}</strong><small>View applicants</small></button>)}
-                  <button className="hub-overview-metric" onClick={() => changeView("jobs")}><span>Open jobs</span><strong>{data.jobs.filter(job => job.status === "open").length}</strong><small>Manage jobs</small></button>
+                  {[{stage:"Application Review",label:"In initial review"},{stage:"Screening",label:"Shortlisted"},{stage:"Interview",label:"Interviews"}].map(item => <button className="hub-overview-metric" key={item.stage} onClick={() => openStage(item.stage)}><span>{item.label}</span><strong>{(data.stageCounts.find(stage => stage.stage === item.stage)?.count || 0).toLocaleString()}</strong><small>Across all jobs · view applicants</small></button>)}
+                  <button className="hub-overview-metric" onClick={() => changeView("jobs")}><span>Open jobs</span><strong>{data.jobs.filter(job => job.status === "open" && (!job.lifecycle || job.lifecycle.state === "active")).length}</strong><small>Manage jobs</small></button>
                 </div>
                 <section className="hub-card hub-overview-jobs">
-                  <div className="hub-section-heading compact"><h2>Active jobs</h2><button className="hub-text-button" onClick={() => changeView("jobs")}>Manage jobs</button></div>
-                  {data.jobs.some(job => job.status !== "closed") ? <ul className="hub-home-job-list">{data.jobs.filter(job => job.status !== "closed").slice(0, 6).map(job => <li key={job.id}><div><button className="hub-object-link" onClick={() => openJobApplicants(job.id)}>{job.title}</button><p className="hub-muted">{job.location || "Location not set"}</p></div><Badge tone={job.status === "open" ? "success" : "neutral"}>{job.status === "open" ? "Published" : "Draft"}</Badge><button className="hub-button secondary" onClick={() => openJobApplicants(job.id)}>View applicants</button></li>)}</ul> : <EmptyState title="Create your first job"><p>Start with a blank job, a template, or a previous posting.</p><button className="hub-button" onClick={beginJob}>Create job</button></EmptyState>}
+                  <div className="hub-section-heading compact"><h2>Open jobs</h2><button className="hub-text-button" onClick={() => changeView("jobs")}>Manage jobs</button></div>
+                  {data.jobs.some(job => job.status === "open" && (!job.lifecycle || job.lifecycle.state === "active")) ? <ul className="hub-home-job-list">{sortHubJobs(data.jobs).filter(job => job.status === "open" && (!job.lifecycle || job.lifecycle.state === "active")).slice(0, 6).map(job => <li key={job.id}><div><button className="hub-object-link" onClick={() => openJobApplicants(job.id)}>{job.title}</button><p className="hub-muted">{job.location || "Location not set"}</p></div><Badge tone={job.status === "open" ? "success" : "neutral"}>{job.status === "open" ? "Published" : "Draft"}</Badge><button className="hub-button secondary" onClick={() => openJobApplicants(job.id)}>View applicants</button></li>)}</ul> : <EmptyState title="No open jobs"><p>Publish a draft or resume a paused job from Jobs, or create a new posting.</p><button className="hub-button" onClick={beginJob}>Create job</button></EmptyState>}
                 </section>
                 <div className="hub-overview-columns">
                   <section className="hub-card">
                     <div className="hub-section-heading compact"><h2>Latest applicants</h2><button className="hub-text-button" onClick={() => changeView("applications")}>All jobs</button></div>
-                    {data.recentApplications.length ? <ul className="hub-activity-list">{data.recentApplications.slice(0,5).map(application => <li key={application.id}><button className="hub-object-link" onClick={() => selectApplication(application.id)}>{application.name}</button><p>{application.jobTitle}</p><span className="hub-muted">{stageLabel(application.stage)}</span></li>)}</ul> : <p className="hub-muted">Applications will appear here once a published job receives them.</p>}
+                    {data.recentApplications.length ? <ul className="hub-activity-list">{data.recentApplications.slice(0,5).map(application => <li key={application.id}><button className="hub-object-link" onClick={() => selectApplication(application.id)}>{application.name}</button><p>{application.jobTitle}</p><span className="hub-muted">{stageLabel(application.stage)} · Applied {displayDate(application.createdAt)}</span></li>)}</ul> : <p className="hub-muted">Applications will appear here once a published job receives them.</p>}
                   </section>
                   <ReviewReminderQueue refresh={refresh} onSelect={selectApplication} compact />
                 </div>

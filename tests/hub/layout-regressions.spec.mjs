@@ -154,3 +154,25 @@ test('actual 130% and 200% browser zoom keeps draft dialog targets separated and
   await artifact(page,'dialog-actual-zoom-'+browserZoom);
  }
 });
+
+
+test('mixed job rows keep applicant, edit and Actions controls aligned with open newest jobs first',async t=>{
+ const {page,origin,errors}=await setup(t);
+ const mixed=jobs.map((job,i)=>({...job,status:i===1?'closed':i===2?'draft':'open',createdAt:i+1,title:job.title+(i===1?' with a longer multi-line role title and international locations':'')}));
+ await page.route('**/api/hub/jobs',route=>route.fulfill({json:{data:mixed}}));
+ for(const width of [320,390,768,1280,1728]){
+  await page.setViewportSize({width,height:900});await page.goto(origin+'/?view=jobs');
+  await page.locator('.hub-job-row').last().waitFor();
+  const rows=page.locator('.hub-job-row');
+  assert.match(await rows.first().locator('h3').innerText(),/Synthetic job 7/);
+  const links=await rows.getByRole('link',{name:/View applicants for/}).evaluateAll(es=>es.map(e=>e.getBoundingClientRect().toJSON()));
+  assert.ok(Math.max(...links.map(r=>r.x))-Math.min(...links.map(r=>r.x))<2,'View applicants uses one consistent column');
+  assert.ok(Math.max(...links.map(r=>r.width))-Math.min(...links.map(r=>r.width))<2,'Applicant buttons have equal width');
+  for(const row of await rows.all()){
+   const controls=await row.locator('.hub-job-actions > a,.hub-job-actions > button,.hub-job-menu > summary').evaluateAll(es=>es.map(e=>e.getBoundingClientRect().toJSON()));
+   for(let i=1;i<controls.length;i++)assert.ok(controls[i].left-controls[i-1].right>=7,'Actions retain separate targets');
+  }
+  await noOverflow(page);await artifact(page,'job-action-columns-'+width);
+ }
+ assert.deepEqual(errors,[]);
+});
