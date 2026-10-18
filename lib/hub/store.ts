@@ -45,8 +45,38 @@ export const DEFAULT_REJECTION =
 type Bind = string | number | null;
 export type ApplicationFilters = {
   q?:string;jobId?:string;stage?:string;assignee?:string;qualification?:"pass"|"review"|"fail";
+  appliedFrom?:string;appliedTo?:string;timeZone?:string;
   top?:10;grade?:"reviewed"|"ungraded";sort?:"grade_desc"|"ai_match_desc";duplicate?:boolean;page?:number;trash?:boolean;
 };
+/** Convert inclusive local calendar dates to a half-open UTC interval, including DST days. */
+export function applicationDateBounds(filters: Pick<ApplicationFilters,"appliedFrom"|"appliedTo"|"timeZone">): {from?:number;to?:number} {
+  const {appliedFrom,appliedTo,timeZone}=filters;
+  const invalid=()=>new HiringError("invalid_application_dates",422,"Choose valid applied dates, an end date on or after the start date, and a valid time zone.");
+  if(!appliedFrom&&!appliedTo&&!timeZone)return {};
+  if(!timeZone||timeZone.length>100)throw invalid();
+  let formatter:Intl.DateTimeFormat;
+  try {formatter=new Intl.DateTimeFormat("en",{timeZone,year:"numeric",month:"2-digit",day:"2-digit"});}catch{throw invalid();}
+  const validate=(value:string)=>{
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(value)||value<'1900-01-01'||value>'9998-12-31')throw invalid();
+    const date=new Date(value+'T00:00:00Z');
+    if(!Number.isFinite(date.getTime())||date.toISOString().slice(0,10)!==value)throw invalid();
+    return date.getTime();
+  };
+  if(appliedFrom)validate(appliedFrom);if(appliedTo)validate(appliedTo);
+  if(appliedFrom&&appliedTo&&appliedFrom>appliedTo)throw invalid();
+  // Find the first instant whose local date reaches the boundary. This also handles
+  // midnight DST transitions and skipped calendar days without assuming a 24-hour day.
+  const boundary=(date:string)=>{
+    const nominal=Date.parse(date+'T00:00:00Z');let low=nominal-48*3600000,high=nominal+48*3600000;
+    while(low<high){const mid=Math.floor((low+high)/2),parts=formatter.formatToParts(mid);
+      const part=(type:string)=>parts.find(p=>p.type===type)!.value;
+      const local=part('year').padStart(4,'0')+'-'+part('month')+'-'+part('day');
+      if(local<date)low=mid+1;else high=mid;
+    }
+    return low;
+  };
+  return {from:appliedFrom?boundary(appliedFrom):undefined,to:appliedTo?boundary(new Date(validate(appliedTo)+86400000).toISOString().slice(0,10)):undefined};
+}
 const SUMMARY_COLUMNS = "id,revision,name,email,job_id,job_title,stage,qualification,assignee,created_at,updated_at,source,drive_folder_url";
 export type HubOptions = {
   sessionHash?: string;
@@ -56,6 +86,8 @@ export type HubOptions = {
   googleFingerprint?: string;
 };
 type JobRow = {
+  created_at: number;
+  updated_at: number;
   lifecycle_json?: string | null;
   ai_match_enabled: number;
   id: string;
@@ -155,10 +187,12 @@ function decode<T>(json: string, fallback: T): T {
     return fallback;
   }
 }
-function job(row: JobRow): HubJob {
+function job(row: JobRow): HubJob & {createdAt:number;updatedAt:number} {
   const lifecycle = decode<JobLifecycle | undefined>(row.lifecycle_json || "", undefined);
   return {
     ...(lifecycle ? { lifecycle } : {}),
+    createdAt:row.created_at,
+    updatedAt:row.updated_at,
     id: row.id,
     slug: row.slug,
     title: row.title,
@@ -769,6 +803,9 @@ export class HubStore {
     if(filters.q) {where.push("(instr(lower(a.name),lower(?))>0 OR instr(lower(a.email),lower(?))>0)");values.push(filters.q,filters.q);}
     for(const [key,column] of [["jobId","job_id"],["stage","stage"],["assignee","assignee"],["qualification","qualification"]] as const)
       if(filters[key]) {where.push(`a.${column}=?`);values.push(filters[key]!);}
+    const dates=applicationDateBounds(filters);
+    if(dates.from!==undefined){where.push("a.created_at>=?");values.push(dates.from);}
+    if(dates.to!==undefined){where.push("a.created_at<?");values.push(dates.to);}
     if(filters.duplicate) where.push("EXISTS (SELECT 1 FROM hub_applications duplicate WHERE duplicate.email=a.email AND duplicate.id<>a.id)");
     const graded = !!filters.grade || filters.sort === "grade_desc";
     const cte = graded ? "WITH latest_scores AS (SELECT c.application_id,c.score,row_number() OVER (PARTITION BY c.application_id,lower(trim(c.actor)) ORDER BY c.created_at DESC,c.id DESC) AS n FROM hub_scorecards c JOIN hub_applications j ON j.id=c.application_id WHERE j.job_id=? AND c.score BETWEEN 1 AND 5 AND trim(c.actor)<>''), grades AS (SELECT application_id,AVG(score) AS average_score FROM latest_scores WHERE n=1 GROUP BY application_id) " : "";
@@ -810,8 +847,9 @@ export class HubStore {
     return {items:(await this.summaries(filters.top ? rows.slice(0,Math.max(0,10-(page-1)*pageSize)) : rows)).map(item=>({...item,trashed:!!filters.trash})),total:filters.top?Math.min(10,count?.total||0):count?.total||0,page,pageSize};
   }
   async exportApplications(filters:ApplicationFilters={}) {
-    const selected=this.applicationSelection(filters),limit=filters.top?10:1000;
+    const selected=this.applicationSelection(filters),limit=filters.top?10:10000;
     const count=await this.stmt(`${selected.cte}SELECT COUNT(*) AS total FROM hub_applications a${selected.join}${selected.clause}`,...selected.values).first<{total:number}>();
+    if(!filters.top&&(count?.total||0)>limit)throw new HiringError("export_too_large",422,"Narrow the filters to at most 10,000 applications per download.");
     const rows=await this.rows<ApplicationRow>(`${selected.cte}SELECT ${SUMMARY_COLUMNS.split(",").map((column)=>`a.${column}`).join(",")},(SELECT COUNT(*) FROM hub_applications d WHERE d.email=a.email) AS duplicate_application_count FROM hub_applications a${selected.join}${selected.clause} ORDER BY ${selected.order} LIMIT ?`,...selected.values,limit);
     return {items:await this.summaries(rows),total:filters.top?Math.min(10,count?.total||0):count?.total||0,truncated:!filters.top&&(count?.total||0)>limit,limit};
   }

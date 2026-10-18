@@ -3,7 +3,7 @@ import type { HubMember } from "./auth";
 import { HiringError } from "../hiring/errors";
 import { assertSameOrigin, errorResponse, jsonResponse } from "../hiring/http";
 import { boundedBytes } from "../hiring/files";
-import { HubStore } from "./store";
+import { HubStore, applicationDateBounds } from "./store";
 import { publicTaskProgress } from "./task-progress";
 import { changeApplicationTrash } from './application-lifecycle';
 import { changeJobLifecycle, jobLifecycleInput } from "./job-lifecycle";
@@ -58,7 +58,10 @@ function applicationFilters(request: Request) {
           (sort && !["grade_desc","ai_match_desc"].includes(sort)) || (duplicate && duplicate !== "true") ||
           ((grade || sort) && !jobId))
         throw new HiringError("invalid_filter", 422, "Choose one role before comparing reviewer grades, and check the application filters.");
+      const dates={appliedFrom:params.get('appliedFrom')||undefined,appliedTo:params.get('appliedTo')||undefined,timeZone:params.get('timeZone')||undefined};
+      applicationDateBounds(dates);
       return {
+        ...dates,
         q,
         top: params.get("top") === "10" ? 10 as const : undefined,
         jobId,

@@ -61,7 +61,7 @@ export async function downloadApplications(request:Request,store:HubStore,filter
   const params=new URL(request.url).searchParams,format=params.get('format');
   if(format!=='csv'&&format!=='zip'&&format!=='pdf')throw new HiringError('invalid_export_format',422,'Choose PDF, CSV or ZIP.');
   const rawIds=params.get('ids'),ids=rawIds===null?undefined:rawIds.split(',');
-  if(ids && (!ids.length||ids.length>1000||ids.some(id=>!id||id.length>160)||new Set(ids).size!==ids.length))throw new HiringError('invalid_export_selection',422,'Select between 1 and 1,000 unique applications.');
+  if(ids && (!ids.length||ids.length>10000||ids.some(id=>!id||id.length>160)||new Set(ids).size!==ids.length))throw new HiringError('invalid_export_selection',422,'Select between 1 and 10,000 unique applications.');
   const selected=await store.exportIds(filters,ids);
   if(format==='pdf' && selected.length!==1)throw new HiringError('single_application_required',422,'Select one application for a PDF, or download multiple applications as a ZIP.');
   if(format==='zip'&&!bucket)throw new HiringError('storage_unavailable',503,'File storage is unavailable. Try CSV or retry later.');
