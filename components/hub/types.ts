@@ -50,6 +50,7 @@ export type HubJob = Job & {
   assessmentPrompt?: string;
 };
 export type ApplicationSummary = {
+  viewedAt?: number | null;
   trashed?: boolean;
   id: string;
   revision: number;
@@ -112,6 +113,7 @@ export type ApplicationDetail = ApplicationSummary & {
     id: string;
     filename: string;
     contentType: string;
+    fieldPath?: string;
     size: number;
     url: string;
   }[];

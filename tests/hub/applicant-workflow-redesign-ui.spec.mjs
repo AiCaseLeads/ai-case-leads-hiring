@@ -29,6 +29,8 @@ async function setup(t,{mode='list',screening=false,mailReady=true,failShortlist
  const page=await browser.newPage({viewport:{width,height:900}});page.setDefaultTimeout(5000);const writes=[],errors=[],queries=[];let current=structuredClone(details);page.on('pageerror',error=>errors.push(error.message));
  await page.route('**/api/**',async route=>{
   const request=route.request(),url=new URL(request.url());if(url.pathname==='/api/hub/applications'&&request.method()==='GET')queries.push(url.searchParams);
+  if(url.pathname.endsWith('/viewed'))return route.fulfill({json:{data:{viewedAt:123}}});
+  if(url.pathname.endsWith('/navigation'))return route.fulfill({json:{data:{previousId:null,nextId:null,position:1,total:1}}});
   if(request.method()!=='GET'){
    const body=request.postDataJSON();writes.push({path:url.pathname,body});
    if(body.action==='stage'&&failShortlist)return route.fulfill({status:409,json:{error:{message:'This application changed. Refresh before trying again.'}}});

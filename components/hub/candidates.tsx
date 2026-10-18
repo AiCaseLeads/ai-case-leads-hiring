@@ -1,4 +1,6 @@
 "use client";
+import { ApplicantNavigation, ResumePreview, resumeFile } from "./application-review-tools";
+import { requestDraftNavigation } from "./draft-navigation";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { ArrowLeft, Download, ExternalLink, Search } from "lucide-react";
 import {
@@ -130,6 +132,7 @@ export function CandidateTable({
                   {item.name || "Unnamed applicant"}
                 </button>
                 <span className="hub-secondary-line">{item.email}</span>
+                <span title={item.viewedAt?`Viewed by you ${displayDate(item.viewedAt)}`:"No recorded view by you yet. This does not mean a new application."}><Badge tone={item.viewedAt?"neutral":"success"}>{item.viewedAt?"Viewed":"New to you"}</Badge></span>
                 {item.duplicateEmail && <Badge tone="warning">Shared email · {item.duplicateApplicationCount || 2} applications</Badge>}
               </td>
               {showRole && <td role="cell" data-label="Role">{item.jobTitle}</td>}
@@ -156,7 +159,7 @@ export function CandidateTable({
 type CandidatesProps = {
   jobs: HubJob[]; refresh: number; changed: () => void; reviewerEmail: string;
   initialStage?: string; initialJobId?: string; initialFilter?: string; initialPage?: number;
-  onSelect?: (id: string, action?: "interview") => void; onFilterChange?: (filter: string, page: number) => void;
+  onSelect?: (id: string, action?: "interview", filter?: string) => void; onFilterChange?: (filter: string, page: number) => void;
 };
 
 export function Candidates(props: CandidatesProps) {
@@ -216,7 +219,7 @@ function JobCandidates({
   initialJobId?: string;
   initialFilter?: string;
   initialPage?: number;
-  onSelect?: (id: string, action?: "interview") => void;
+  onSelect?: (id: string, action?: "interview", filter?: string) => void;
   onFilterChange?: (filter: string, page: number) => void;
 }) {
   const defaultSort = jobs.find(job => job.id === initialJobId)?.aiMatchEnabled ? "ai_match_desc" : "newest";
@@ -402,6 +405,9 @@ function JobCandidates({
         back={() => {setDetailId(null); setDetailAction("note");}}
         changed={changed}
         initialAction={detailAction}
+        navigationFilter={filter}
+        navigationJobs={jobs}
+        openApplicant={id=>setDetailId(id)}
       />
     );
   return (
@@ -478,8 +484,8 @@ function JobCandidates({
               screeningConfigured={selectedJob?.rules?.some(rule=>rule.enabled) ?? false}
               busy={mutation.busy}
               shortlist={item=>void shortlist(item)}
-              interview={item=>{if(onSelect)onSelect(item.id,"interview");else{setDetailAction("interview");setDetailId(item.id);}}}
-              select={onSelect || setDetailId}
+              interview={item=>{if(onSelect)onSelect(item.id,"interview",filter);else{setDetailAction("interview");setDetailId(item.id);}}}
+              select={id=>onSelect?onSelect(id,undefined,filter):setDetailId(id)}
               selected={allMatching ? resource.data.items.map(item=>item.id) : selected}
               togglePage={() => {const ids = resource.data?.items.map(item => item.id) || []; setSelected(allMatching || ids.every(id => selected.includes(id)) ? [] : ids); setAllMatching(false); setExportScope("selected");}}
               toggle={(id) => {
@@ -618,11 +624,17 @@ export function CandidateDetail({
   back,
   changed,
   initialAction = "note",
+  navigationFilter = "",
+  navigationJobs = [],
+  openApplicant,
 }: {
   id: string;
   back: () => void;
   changed: () => void;
   initialAction?: "note" | "interview";
+  navigationFilter?: string;
+  navigationJobs?: HubJob[];
+  openApplicant?: (id:string,filter:string)=>void;
 }) {
   const resource = useHubResource<ApplicationDetail>(
       "/api/hub/applications/" + encodeURIComponent(id),
@@ -649,6 +661,22 @@ export function CandidateDetail({
   const [deleteOpen,setDeleteOpen] = useState(false);
   const [pdfBusy,setPdfBusy] = useState(false);
   const [pdfError,setPdfError] = useState("");
+  const [leaveRequest,setLeaveRequest]=useState<(()=>void)|null>(null);
+  const leaveDialog=useRef<HTMLDivElement>(null);
+  const leaveOrigin=useRef<HTMLElement|null>(null);
+  useLayoutEffect(()=>{if(leaveRequest)leaveDialog.current?.focus();},[leaveRequest]);
+  const evidenceDraft = useEvidenceDraft();
+  const scorecardDraft = useScorecardDraft();
+  const dirty = !!(evidenceDraft.notes.trim() || scorecardDraft[0].ratings.length || text.trim() || subject.trim() || body.trim() || reason.trim() || score || criteria.trim() || assignee.trim() || renew || interviewerEmail || emailPending || (actionOpen && ((action==="stage" && stage!=="Screening") || (action==="attendance" && attendance!=="true"))));
+  const dirtyRef=useRef(dirty);useLayoutEffect(()=>{dirtyRef.current=dirty;},[dirty]);
+  useEffect(()=>{
+    const previous=window.__aiclDraftGuard;
+    const guard=(leave:()=>void)=>{if(!dirtyRef.current)return previous?.(leave) || false;leaveOrigin.current=document.activeElement as HTMLElement;setLeaveRequest(()=>leave);return true;};
+    window.__aiclDraftGuard=guard;
+    const beforeUnload=(event:BeforeUnloadEvent)=>{if(dirtyRef.current){event.preventDefault();event.returnValue="";}};
+    window.addEventListener("beforeunload",beforeUnload);
+    return()=>{if(window.__aiclDraftGuard===guard)window.__aiclDraftGuard=previous;window.removeEventListener("beforeunload",beforeUnload);};
+  },[]);
   const recordTabs = useRef<HTMLDivElement>(null);
   const previousSection = useRef(section);
   useLayoutEffect(() => {
@@ -657,8 +685,6 @@ export function CandidateDetail({
     // A shorter panel must not retain an old bottom-of-page scroll target.
     recordTabs.current?.scrollIntoView({block:"nearest",behavior:"instant"});
   }, [section]);
-  const evidenceDraft = useEvidenceDraft();
-  const scorecardDraft = useScorecardDraft();
   const emailRequest = useRef<{ action: string; subject: string; body: string; actionId: string; expectedRevision: number } | null>(null);
   async function exportPdf() {
     if(!resource.data||pdfBusy)return;
@@ -719,7 +745,7 @@ export function CandidateDetail({
       setText("");
       setApprove(false);
       setRenew(false);
-      setScore("");
+      setScore(""); setCriteria(""); setReason(""); setAssignee(""); setInterviewerEmail(""); setStage("Screening"); setAttendance("true");
       if (action === "email") { emailRequest.current = null; setEmailPending(false); setNewEmailApproved(false); setSubject(""); setBody(""); }
       await resource.reload();
       changed();
@@ -728,7 +754,8 @@ export function CandidateDetail({
   const detail = resource.data;
   return (
     <section aria-labelledby="candidate-title">
-      <button className="hub-text-button hub-back" onClick={back}>
+      {leaveRequest && <div className="hub-card" role="alertdialog" ref={leaveDialog} tabIndex={-1} aria-labelledby="leave-applicant-title"><h3 id="leave-applicant-title">Leave this applicant without saving?</h3><p>Your unsaved note or action will be discarded. Leaving does not send a new message. Check Activity for any email already pending.</p><div className="hub-button-row"><button type="button" className="hub-button" onClick={()=>{setLeaveRequest(null);leaveOrigin.current?.focus();}}>Keep editing</button><button type="button" className="hub-button secondary" onClick={()=>{const leave=leaveRequest;dirtyRef.current=false;setLeaveRequest(null);leave();}}>Discard changes and leave</button></div></div>}
+      <button className="hub-text-button hub-back" onClick={()=>requestDraftNavigation(back)}>
         <ArrowLeft size={16} /> Back to applications
       </button>
       <ResourceState
@@ -738,6 +765,7 @@ export function CandidateDetail({
       />
       {detail && !resource.loading && (
         <>
+          {openApplicant && <ApplicantNavigation detail={detail} filter={navigationFilter} jobs={navigationJobs} open={(id,filter)=>requestDraftNavigation(()=>openApplicant(id,filter))} viewed={changed}/>}
           <div className="hub-section-heading">
             <div>
               <p className="hub-kicker">{detail.jobTitle}</p>
@@ -758,6 +786,7 @@ export function CandidateDetail({
             </div>
           </div>
           <div className="hub-candidate-quick-actions">
+            {resumeFile(detail) && <button type="button" className="hub-button secondary" onClick={()=>setSection("application")}>View résumé</button>}
             {!detail.trashed && detail.stage === "Application Review" && <button type="button" className="hub-button" disabled={mutation.busy} onClick={()=>void shortlist()}>Shortlist</button>}
             {!detail.trashed && !["Rejected", "Withdrawn", "Hired"].includes(detail.stage) && <button type="button" className="hub-button secondary" disabled={mutation.busy} onClick={()=>{setAction("interview");setActionOpen(true);mutation.clear();}}>Request interview</button>}
             {!detail.trashed && <button type="button" className="hub-text-button" onClick={()=>{setAction("note");setActionOpen(true);mutation.clear();}}>Add note</button>}
@@ -981,6 +1010,7 @@ export function CandidateDetail({
               </details>
               </div>
               <div role="tabpanel" id="candidate-panel-application" aria-labelledby="candidate-tab-application" hidden={section!=="application"}>
+              <ResumePreview detail={detail}/>
               <section className="hub-card">
                 <h3>Application answers</h3>
                 {detail.answers.length ? (

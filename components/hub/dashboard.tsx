@@ -143,8 +143,9 @@ export function HiringDashboard({
   function openStage(stage: string) { const url = viewUrl("applications"); url.searchParams.set("stage", stage); navigate(url); }
   function openJobApplicants(jobId: string) { const url = viewUrl("applications"); url.searchParams.set("jobId", jobId); navigate(url); }
   function beginJob() { changeView("jobs"); setCreateJob(Date.now()); }
-  function selectApplication(id: string, action?: "interview") {
+  function selectApplication(id: string, action?: "interview", filter?: string) {
     const url = new URL(window.location.href); url.searchParams.set("application", id);
+    if(filter) new URLSearchParams(filter).forEach((value,key)=>url.searchParams.set(key,value));
     if(action) url.searchParams.set("candidateAction",action); else url.searchParams.delete("candidateAction");
     navigate(url, false, window.location.href);
   }
@@ -253,6 +254,9 @@ export function HiringDashboard({
               key={`${detailId}:${candidateAction}`}
               id={detailId}
               initialAction={candidateAction}
+              navigationFilter={initialFilter}
+              navigationJobs={data?.jobs || []}
+              openApplicant={(id,filter)=>selectApplication(id,undefined,filter)}
               back={closeApplication}
               changed={changed}
             />
