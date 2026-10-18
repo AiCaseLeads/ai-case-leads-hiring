@@ -1394,3 +1394,9 @@ nav a:hover {
 .application-form .form-field > label { margin-bottom: 6px; }
 .application-form .file-drop { padding: 16px 12px; }
 .application-form .form-field textarea { min-height: 96px; }
+
+/* Keep saving independent from moving through job editor sections. */
+[data-hiring-workspace] .hub-job-editor-heading { position:sticky; top:0; z-index:4; background:var(--hub-bg,#f3f7f6); padding-block:12px; border-bottom:1px solid #d7e3e1; }
+[data-hiring-workspace] .hub-job-editor-actions { display:flex; flex-wrap:wrap; gap:10px; align-items:center; justify-content:flex-end; }
+[data-hiring-workspace] .hub-job-section-navigation { display:flex; justify-content:space-between; align-items:center; gap:16px; margin-top:20px; padding-top:16px; border-top:1px solid #d7e3e1; }
+@media(max-width:640px) { [data-hiring-workspace] .hub-job-editor-heading { position:static; } [data-hiring-workspace] .hub-job-editor-actions { justify-content:flex-start; } [data-hiring-workspace] .hub-job-section-navigation .hub-button { flex:0 1 auto; min-width:96px; } }

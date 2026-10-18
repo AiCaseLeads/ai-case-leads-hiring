@@ -533,8 +533,6 @@ function Editor({
     (originalBinding &&
       !scorecards.archived.includes(originalBinding.templateId)) ||
     (job && originalBinding);
-  const canJumpBetweenSections = !!job && job.status !== "draft";
-  const highestValidatedStep = useRef(canJumpBetweenSections ? 3 : 0);
   const saveFeedback = useRef<HTMLDivElement>(null);
   const [step, setStep] = useState(0),
     [title, setTitle] = useState(source?.title || request?.title || ""),
@@ -640,7 +638,6 @@ function Editor({
       setDraftTeamRevision(draft.teamRevision);
       setExpectedBinding(draft.expectedBinding);
       setStep(draft.step);
-      highestValidatedStep.current = canJumpBetweenSections ? 3 : draft.step;
       setCreationId(draft.creationId);
       setPostingLabel(draft.postingLabel);
       setDraftFormVersion(draft.formVersion);
@@ -678,7 +675,7 @@ function Editor({
         const requested = Number(value);
         const next =
           Number.isSafeInteger(requested) && requested >= 0
-            ? Math.min(highestValidatedStep.current, requested)
+            ? Math.min(3, requested)
             : 0;
         setStep(next);
 
@@ -700,7 +697,6 @@ function Editor({
   }, []);
   function goToStep(next: number) {
     if (next === step) return;
-    highestValidatedStep.current = Math.max(highestValidatedStep.current, next);
     const url = new URL(window.location.href);
     url.searchParams.set("jobStep", String(next));
     window.history.pushState(
@@ -781,7 +777,7 @@ function Editor({
     return true;
   }
   function next() {
-    if(validateSection(step))goToStep(Math.min(3,step+1));
+    setError("");goToStep(Math.min(3,step+1));
   }
   function updateField(i: number, change: Partial<ApplicationField>) {
     setFields((v) => v.map((f, n) => (i === n ? { ...f, ...change } : f)));
@@ -790,12 +786,12 @@ function Editor({
   async function save(status: HubJob["status"]) {
     if(mutation.busy || !recovery.ready)return;
     setError("");
-    for(const section of (job?[0,1,2]:[])){if(!validateSection(section)){goToStep(section);return;}}
+    for(const section of (status!=="draft"?[0,1,2]:[])){if(!validateSection(section)){goToStep(section);return;}}
     if (description.length > 100000) {
       setError(
         "The job description exceeds 100,000 characters including formatting. Shorten it before saving; your text has been preserved.",
       );
-      setStep(0);
+      goToStep(0);
       return;
     }
     if (
@@ -805,22 +801,23 @@ function Editor({
       setError(
         "Finish the optional scorecard, or choose No manual scorecard to continue with AI review only.",
       );
+      goToStep(2);
       return;
     }
     if (!validateNumericScreening()) {
-      setStep(1);
+      goToStep(1);
       return;
     }
     if (autoReject && !rules.some((r) => r.enabled)) {
       setError(
         "Add an enabled qualifying answer, or turn off automatic rejection.",
       );
-      setStep(1);
+      goToStep(1);
       return;
     }
     if (status === "open" && !hasDescriptionText(description)) {
       setError("Add a job description before publishing.");
-      setStep(0);
+      goToStep(0);
       return;
     }
     const binding =
@@ -941,13 +938,19 @@ function Editor({
               [
                 "Job details",
                 "Application questions",
-                "Review setup",
-                "Publish",
+                "Review settings",
+                "Preview & publish",
               ][step]
             }
           </p>
         </div>
-        {job && <div className="hub-job-editor-actions"><button type="button" className="hub-button" disabled={mutation.busy || !recovery.ready} onClick={()=>void save(job.status)}>{mutation.busy?"Saving…":"Save changes"}</button></div>}
+        <div className="hub-job-editor-actions" role="group" aria-label="Job save actions">
+          <button type="button" className={"hub-button"+(step===3 && job?.status!=="open"?" secondary":"")} disabled={mutation.busy || !recovery.ready} onClick={()=>void save(job?.status||"draft")}>{mutation.busy?"Saving…":job?"Save changes":"Save draft job"}</button>
+          {step===3 && job?.status!=="open" && <button type="button" className="hub-button" disabled={mutation.busy || !recovery.ready} onClick={()=>void save("open")}>Publish job</button>}
+          {step===3 && job?.status==="open" && <button type="button" className="hub-text-button" disabled={mutation.busy || !recovery.ready} onClick={()=>void save("draft")}>Unpublish job</button>}
+          {step===3 && job && job.status!=="closed" && <button type="button" className="hub-text-button" disabled={mutation.busy || !recovery.ready} onClick={()=>void save("closed")}>Close job</button>}
+          <button type="button" className="hub-text-button" disabled={mutation.busy} onClick={leaveEditor}>Cancel</button>
+        </div>
       </div>
       {!job && source && (
         <p className="hub-notice">
@@ -959,12 +962,12 @@ function Editor({
         className="hub-wizard-steps"
         aria-label="Job setup progress"
       >
-        {["Job details", "Application questions", "Review setup", "Publish"].map((label, i) => (
+        {["Job details", "Application questions", "Review settings", "Preview & publish"].map((label, i) => (
           <li key={label} aria-current={i === step ? "step" : undefined}>
             <button
               type="button"
               className="hub-text-button"
-              disabled={(!canJumpBetweenSections && i > step) || mutation.busy}
+              disabled={mutation.busy || !recovery.ready}
               onClick={() => {
 
                 goToStep(i);
@@ -1659,79 +1662,10 @@ function Editor({
             </section>
           </>
         )}
-        <div className="hub-sticky-save">
-          {step > 0 && (
-            <button
-              type="button"
-              className="hub-button secondary"
-              disabled={step === 0}
-              onClick={() => {
-
-                setError("");
-                const previous = new URL(window.location.href);
-                previous.searchParams.set("jobStep", String(step - 1));
-                if (window.history.state?.jobStepFrom === previous.href)
-                  window.history.back();
-                else goToStep(step - 1);
-              }}
-            >
-              Back
-            </button>
-          )}
-
-          {job && <button type="button" className="hub-button" onClick={()=>void save(job.status)}>{mutation.busy?"Saving…":"Save changes"}</button>}
-          {!job && (
-            <button
-              type="button"
-              className="hub-button secondary"
-              disabled={!title.trim() || (!location && !job)}
-              onClick={() => void save("draft")}
-            >
-              Save draft job
-            </button>
-          )}
-          {job?.status === "open" && step === 3 && (
-            <button
-              type="button"
-              className="hub-text-button"
-              onClick={() => void save("draft")}
-            >
-              Unpublish job
-            </button>
-          )}
-          {step < 3 ? (
-            <button type="button" className={"hub-button"+(job?" secondary":"")} onClick={next}>
-              Continue
-            </button>
-          ) : (
-            <>
-              {job?.status !== "open" && <button
-                type="button"
-                className="hub-button"
-                disabled={!hasDescriptionText(description)}
-                onClick={() => void save("open")}
-              >
-                {mutation.busy ? "Saving…" : "Publish job"}
-              </button>}
-              {job && (
-                <button
-                  type="button"
-                  className="hub-text-button"
-                  onClick={() => void save("closed")}
-                >
-                  Close job
-                </button>
-              )}
-            </>
-          )}
-          <button
-            type="button"
-            className="hub-text-button"
-            onClick={leaveEditor}
-          >
-            Cancel
-          </button>
-        </div>
+        <nav className="hub-job-section-navigation" aria-label="Job section navigation">
+          <button type="button" className="hub-button secondary" disabled={step===0} onClick={()=>{setError("");goToStep(Math.max(0,step-1));}}>Back</button>
+          {step<3 && <button type="button" className="hub-button secondary" onClick={next}>Continue</button>}
+        </nav>
       </fieldset>
     </section>
   );
