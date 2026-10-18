@@ -20,7 +20,7 @@ async function setup(t,{width=1280,height=900,browserZoom=1}={}){
   postcss([tailwind()]).process(readFileSync('app/globals.css','utf8'),{from:'app/globals.css'})
  ]).then(([bundle,global])=>({js:bundle.outputFiles[0].text,css:global.css+'\n'+readFileSync('components/hub/hub.css','utf8')}));
  const assets=await compiled;
- const server=createServer((req,res)=>{res.setHeader('Content-Type',req.url==='/bundle.js'?'text/javascript':req.url==='/styles.css'?'text/css':'text/html');res.end(req.url==='/bundle.js'?assets.js:req.url==='/styles.css'?assets.css:'<meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/styles.css"><div id="root"></div><script src="/bundle.js"></script>');});
+ const server=createServer((req,res)=>{res.setHeader('Content-Type',req.url==='/bundle.js'?'text/javascript':req.url==='/styles.css'?'text/css':'text/html');res.end(req.url==='/bundle.js'?assets.js:req.url==='/styles.css'?assets.css:'<meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/styles.css"><div id="root" data-hiring-workspace></div><script src="/bundle.js"></script>');});
  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
  const chrome='/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
  const launch={headless:true,...(existsSync(chrome)?{executablePath:chrome}:{})};
@@ -197,6 +197,24 @@ test('job setup keeps its header compact and sections visible at desktop and mob
    assert.ok(geometry.steps.bottom-geometry.root.top<240,'Header does not consume the desktop form viewport');
   }else assert.ok(geometry.steps.height<140,'Mobile section tabs use two compact rows');
   await noOverflow(page);await artifact(page,'compact-wizard-'+width);
+ }
+ assert.deepEqual(errors,[]);
+});
+
+
+test('save toolbar and section navigation remain separate with compact screening summaries',async t=>{
+ const {page,origin,errors}=await setup(t);
+ const source=readFileSync('lib/country-regions.ts','utf8');const codes=[...source.matchAll(/name:"(?:Europe|North America)",codes:"([^"]+)"/g)].flatMap(m=>m[1].split(' '));
+ const job={...jobs[0],fields:[{path:'country_of_residence',title:'Country of residence',type:'ValueSelect',required:true,options:codes.map(value=>({value,label:value}))},{path:'budget',title:'Managed budget',type:'Number',required:true,numberFormat:'currency',currency:'USD'}],rules:[{fieldPath:'country_of_residence',operator:'in',value:codes,enabled:true,reason:'Eligible countries'},{fieldPath:'budget',operator:'gte',value:30000,enabled:true,reason:'Budget'}]};
+ await page.route('**/api/hub/jobs',r=>r.fulfill({json:{data:[job]}}));
+ for(const width of [320,390,1280]){
+  await page.setViewportSize({width,height:900});await page.goto(origin+'/?view=jobs');await page.getByRole('button',{name:'Edit job',exact:true}).click();
+  const steps=page.getByRole('list',{name:'Job setup progress'}),save=page.getByRole('group',{name:'Job save actions'}),nav=page.getByRole('navigation',{name:'Job section navigation'});
+  for(const label of ['Job details','Application questions','Review settings','Preview & publish']){
+   await steps.getByRole('button',{name:label,exact:true}).click();assert.equal(await save.getByRole('button',{name:'Save changes',exact:true}).count(),1);assert.equal(await nav.getByRole('button',{name:/Save|Publish|Cancel/}).count(),0);await noOverflow(page);
+  }
+  const summary=page.getByRole('region',{name:'Screening requirements',exact:true});await summary.getByText('Europe · North America',{exact:true}).waitFor();await summary.getByText('$30,000.00',{exact:true}).waitFor();assert.equal(await summary.locator('details').evaluate(e=>e.open),false);assert.ok((await summary.boundingBox()).height<360);await summary.locator('summary').click();await noOverflow(page);await summary.locator('summary').click();
+  await page.evaluate(()=>scrollTo(0,0));await artifact(page,'final-wizard-preview-'+width);assert.equal(await page.locator('.hub-job-editor-heading').evaluate(e=>getComputedStyle(e).position),width>640?'sticky':'static');
  }
  assert.deepEqual(errors,[]);
 });

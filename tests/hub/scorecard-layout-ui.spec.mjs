@@ -220,7 +220,7 @@ async function questions(page){await edit(page);await next(page);await page.getB
 const autoLabel='Automatically reject applicants who fail enabled requirements';
 const approvalLabel='I approve these requirements and the rejection email for automatic decisions.';
 async function enable(page,title){await page.getByRole('region',{name:`Screening for ${title}`,exact:true}).getByRole('checkbox',{name:'Set a qualifying answer'}).check();}
-async function save(page){await page.getByRole('button',{name:'Save draft job',exact:true}).click();}
+async function save(page){await page.getByRole('button',{name:'Save changes',exact:true}).click();}
 test('AI review is simple by default, preserves manual bindings and saves explicit opt-in',async t=>{
  const {page,writes}=await setup(t);await edit(page);await next(page);await next(page);
  await page.getByRole('heading',{name:'Find the strongest matches for this job'}).waitFor();

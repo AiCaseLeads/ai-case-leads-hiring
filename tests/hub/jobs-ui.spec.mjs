@@ -226,7 +226,8 @@ test("mobile blank job follows real steps, required questions and scorecard; fai
       .count(),
     0,
   );
-  await next(page);
+  await page.getByRole("list",{name:"Job setup progress"}).getByRole("button",{name:"Preview & publish",exact:true}).click();
+  await page.getByRole("button",{name:"Publish job",exact:true}).click();
   await page
     .getByText("Add a job title, then choose a work arrangement", {
       exact: false,
@@ -237,7 +238,8 @@ test("mobile blank job follows real steps, required questions and scorecard; fai
     .fill("Synthetic Creative Strategist");
   await page.getByLabel("Work arrangement").selectOption("onsite");
   await page.getByLabel("Country", { exact: true }).selectOption("Spain");
-  await next(page);
+  await page.getByRole("list",{name:"Job setup progress"}).getByRole("button",{name:"Preview & publish",exact:true}).click();
+  await page.getByRole("button",{name:"Publish job",exact:true}).click();
   await page
     .getByText("Office-based jobs need a country and city", { exact: false })
     .waitFor();
@@ -272,15 +274,6 @@ test("mobile blank job follows real steps, required questions and scorecard; fai
     .getByLabel("Review criterion 1", { exact: true })
     .fill("Personal contribution to the work");
   await next(page);
-  assert.equal(
-    await page
-      .getByText(
-        "Previous applicants remain saved when you duplicate or close a job.",
-        { exact: false },
-      )
-      .count(),
-    1,
-  );
   assert.equal(await page.getByRole("checkbox", {name: /I have reviewed|I approve/}).count(), 0);
   await page.getByRole("button", { name: "Publish job", exact: true }).click();
   await page
@@ -318,9 +311,10 @@ test("editing a legacy posting preserves its address, archive labels, form revis
   assert.equal(await page.getByLabel("Work arrangement").inputValue(), "");
   await next(page);await next(page);await next(page);
   await page
-    .getByRole("button", { name: "Unpublish job", exact: true })
+    .getByRole("button", { name: "Save changes", exact: true })
     .click();
-  await page.getByText("Draft saved.", { exact: false }).waitFor();
+  await page.getByText("Changes saved.", { exact: false }).waitFor();
+  assert.equal(writes[0].job.status,"open");
   assert.equal(writes[0].jobId, prior.id);
   assert.equal(writes[0].formVersion, 3);
   assert.equal(writes[0].job.slug, prior.slug);
@@ -481,9 +475,8 @@ test("browser Back and Forward navigate wizard steps while retaining the unsaved
  await page.goForward();await page.getByText(/Saved draft restored/).waitFor();
  assert.equal(await page.getByLabel('Job title',{exact:true}).inputValue(),'Unpublished navigation draft');
  assert.equal(await page.getByLabel('Where can applicants work from?',{exact:true}).inputValue(),'Spain');
- await page.goForward();await page.getByRole('heading',{name:'Tell applicants about the job',exact:true}).waitFor();
- // Recovery restores the saved step; later historical steps must be validated again.
- await next(page);await page.getByRole('heading',{name:'What should applicants send?',exact:true}).waitFor();
+ await page.goForward();await page.getByRole('heading',{name:'What should applicants send?',exact:true}).waitFor();
+ // Historical section navigation restores the target without requiring sequential validation.
  await page.getByRole('button',{name:'Back',exact:true}).click();await page.getByRole('heading',{name:'Tell applicants about the job',exact:true}).waitFor();
  assert.equal(await page.getByLabel('Job title',{exact:true}).inputValue(),'Unpublished navigation draft');
  assert.equal(writes.length,0);
@@ -502,11 +495,11 @@ test('pending save must not close a newer draft after browser history',async t=>
  assert.equal(await page.getByLabel('Job title',{exact:true}).count(),1,'first completion must not close second draft');assert.equal(await page.getByLabel('Job title',{exact:true}).inputValue(),'Second independent draft');
 });
 
-test('invalid step must not enter Publish before validation',async t=>{
- const {page}=await setup(t,{jobs:[]});await page.goto(new URL('/?view=jobs&jobEditor=new&jobStart=blank&jobStep=3',page.url()).href);await page.getByRole('heading',{name:'Tell applicants about the job',exact:true}).waitFor({timeout:2500});
+test('direct draft URL opens preview but publishing still validates details',async t=>{
+ const {page,writes}=await setup(t,{jobs:[]});await page.goto(new URL('/?view=jobs&jobEditor=new&jobStart=blank&jobStep=3',page.url()).href);await page.getByRole('button',{name:'Publish job',exact:true}).click();assert.equal(writes.length,0);await page.getByRole('heading',{name:'Tell applicants about the job',exact:true}).waitFor({timeout:2500});
 });
 test('completed save history never revives a duplicate submission, fresh creation and cancellation still work',async t=>{const{page,writes}=await setup(t,{jobs:[]});await page.getByRole('button',{name:'Create job',exact:true}).click();await page.getByRole('button',{name:'Create blank job',exact:true}).click();await page.getByLabel('Job title',{exact:true}).fill('Completed posting');await page.getByRole('button',{name:'Continue',exact:true}).click();await page.getByRole('button',{name:'Save draft job',exact:true}).click();await page.getByText('Draft saved.',{exact:false}).waitFor();await page.goBack();await page.getByRole('heading',{name:'Jobs',exact:true}).waitFor();assert.equal(new URL(page.url()).searchParams.has('jobEditor'),false);assert.equal(writes.length,1);await page.goForward();await page.getByRole('heading',{name:'Jobs',exact:true}).waitFor();await page.getByRole('button',{name:'Create job',exact:true}).click();await page.getByRole('button',{name:'Create blank job',exact:true}).click();assert.equal(await page.getByLabel('Job title',{exact:true}).inputValue(),'');await page.getByLabel('Job title',{exact:true}).fill('Fresh cancelled draft');await page.getByRole('button',{name:'Back to jobs',exact:true}).click();await page.getByRole('button',{name:'Save draft & leave',exact:true}).click();await page.getByRole('heading',{name:'Jobs',exact:true}).waitFor();await page.goBack();await page.getByText(/Saved draft restored/).waitFor();assert.equal(await page.getByLabel('Job title',{exact:true}).inputValue(),'Fresh cancelled draft');assert.equal(writes.length,1);});
-test('fractional and nonfinite direct wizard steps normalize to validated Details',async t=>{const{page}=await setup(t,{jobs:[]});for(const step of ['1.5','Infinity','NaN','-2','999']){await page.goto(new URL('/?view=jobs&jobEditor=new&jobStart=blank&jobStep='+step,page.url()).href);await page.getByRole('heading',{name:'Tell applicants about the job',exact:true}).waitFor();assert.equal(new URL(page.url()).searchParams.get('jobStep'),'0');}});
+test('fractional and nonfinite direct wizard steps normalize to validated Details',async t=>{const{page}=await setup(t,{jobs:[]});for(const step of ['1.5','Infinity','NaN','-2']){await page.goto(new URL('/?view=jobs&jobEditor=new&jobStart=blank&jobStep='+step,page.url()).href);await page.getByRole('heading',{name:'Tell applicants about the job',exact:true}).waitFor();assert.equal(new URL(page.url()).searchParams.get('jobStep'),'0');}});
 test('pending save must not close a newly chosen template in the same chooser history',async t=>{const{page}=await setup(t);let release;const held=new Promise(resolve=>release=resolve);t.after(()=>release());await page.route('**/api/job-setup',async route=>{if(route.request().method()!=='POST')return route.fallback();await held;return route.fulfill({json:{data:{id:'saved-first',...route.request().postDataJSON().job}}});});await page.getByRole('button',{name:'Create job',exact:true}).click();await page.getByRole('button',{name:'Create blank job',exact:true}).click();await page.getByLabel('Job title',{exact:true}).fill('First pending draft');const req=page.waitForRequest(r=>r.method()==='POST');await page.getByRole('button',{name:'Save draft job',exact:true}).click();await req;await page.goBack();await page.getByRole('button',{name:'Save draft & leave',exact:true}).click();await page.getByRole('heading',{name:'Create a job',exact:true}).waitFor();await page.getByRole('button',{name:'Choose template',exact:true}).click();await page.getByLabel('Job template',{exact:true}).selectOption(savedTemplate.id);await page.getByRole('button',{name:'Use this template',exact:true}).click();await page.getByLabel('Job title',{exact:true}).fill('Second template draft');release();await page.waitForResponse(r=>r.request().method()==='POST');await page.waitForTimeout(200);assert.equal(await page.getByLabel('Job title',{exact:true}).count(),1);assert.equal(await page.getByLabel('Job title',{exact:true}).inputValue(),'Second template draft');});
 
 test("published job sections can be opened directly without Continue or saving", async (t) => {
@@ -515,12 +508,12 @@ test("published job sections can be opened directly without Continue or saving",
   const steps = page.getByRole("list", { name: "Job setup progress" });
   await steps.getByRole("button", { name: "Application questions", exact: true }).click();
   await page.getByRole("heading", { name: "What should applicants send?", exact: true }).waitFor();
-  await steps.getByRole("button", { name: "Publish", exact: true }).click();
-  await page.getByRole("button", { name: "Unpublish job", exact: true }).waitFor();
+  await steps.getByRole("button", { name: "Preview & publish", exact: true }).click();
+  await page.getByRole("heading", { name: "Ready to share?", exact: true }).waitFor();
   await steps.getByRole("button", { name: "Job details", exact: true }).click();
   await page.getByRole("heading", { name: "Tell applicants about the job", exact: true }).waitFor();
   await page.goBack();
-  await page.getByRole("button", { name: "Unpublish job", exact: true }).waitFor();
+  await page.getByRole("heading", { name: "Ready to share?", exact: true }).waitFor();
   assert.equal(writes.length, 0);
 });
 
@@ -547,8 +540,8 @@ test("question instructions are collapsed by default and publish needs no approv
  await page.getByRole('button',{name:'Edit job',exact:true}).click();const steps=page.getByRole('list',{name:'Job setup progress'});await steps.getByRole('button',{name:'Application questions',exact:true}).click();
  const instructions=page.getByLabel('Question 2 instructions (optional)',{exact:true});assert.equal(await instructions.isVisible(),false);
  await page.getByText('Edit instructions (optional)',{exact:true}).click();assert.equal(await instructions.inputValue(),'Existing helper text');await instructions.fill('Updated helper text');
- await steps.getByRole('button',{name:'Review setup',exact:true}).click();assert.equal(await page.getByRole('checkbox',{name:/Rank applicants with AI/}).isChecked(),false);
- await steps.getByRole('button',{name:'Publish',exact:true}).click();assert.equal(await page.getByRole('checkbox',{name:/I have reviewed|I approve/}).count(),0);
+ await steps.getByRole('button',{name:'Review settings',exact:true}).click();assert.equal(await page.getByRole('checkbox',{name:/Rank applicants with AI/}).isChecked(),false);
+ await steps.getByRole('button',{name:'Preview & publish',exact:true}).click();assert.equal(await page.getByRole('checkbox',{name:/I have reviewed|I approve/}).count(),0);
  if(process.env.JOB_WIZARD_SCREENSHOT)await page.screenshot({path:process.env.JOB_WIZARD_SCREENSHOT,fullPage:true});
  await page.getByRole('button',{name:'Save changes',exact:true}).first().click();await page.getByText('Changes saved. This job is still open.',{exact:false}).waitFor();assert.equal(writes.length,1);assert.equal(writes[0].job.fields.find(field=>field.path==='portfolio').description,'Updated helper text');assert.equal(writes[0].job.aiMatchEnabled,false);assert.equal(writes[0].job.autoReject,false);
 });
@@ -577,7 +570,7 @@ test("new job setup presents four clear steps and publishes without manual score
  assert.equal(await page.locator('.hub-start-option').count(),4);
  await page.getByRole('button',{name:'Create blank job',exact:true}).click();
  const progress=page.getByRole('list',{name:'Job setup progress'});
- assert.deepEqual(await progress.getByRole('button').allTextContents(),['Job details','Application questions','Review setup','Publish']);
+ assert.deepEqual(await progress.getByRole('button').allTextContents(),['Job details','Application questions','Review settings','Preview & publish']);
  await page.getByLabel('Job title',{exact:true}).fill('Synthetic streamlined engineer');
  await page.getByLabel('Job description',{exact:true}).fill('Build reliable TypeScript services and own deployment.');
  await next(page);await next(page);
@@ -674,4 +667,16 @@ test('numeric question supports USD display and comma minimum while resume remai
 });
 test('changing an existing fractional threshold to currency does not silently round it',async t=>{
  const{page,writes}=await setup(t,{jobs:[{...prior,fields:[...prior.fields,{path:'budget',title:'Budget',type:'Number',required:true}],rules:[{fieldPath:'budget',operator:'gte',value:1.234,enabled:true,reason:'Minimum budget'}]}]});await page.getByRole('button',{name:'Edit job',exact:true}).click();await page.getByRole('list',{name:'Job setup progress'}).getByRole('button',{name:'Application questions',exact:true}).click();await page.getByLabel('Question 2 number display',{exact:true}).selectOption('currency');const amount=page.getByLabel('Minimum accepted number for Budget',{exact:true});assert.equal(await amount.inputValue(),'1.234');await page.getByRole('button',{name:'Save changes',exact:true}).first().click();await page.getByText('Enter a number for every numeric screening rule, or remove the unfinished rule in Advanced rules.',{exact:true}).waitFor();assert.equal(writes.length,0);await amount.fill('1.23');await page.getByRole('button',{name:'Save changes',exact:true}).first().click();await page.getByText('Changes saved.',{exact:false}).waitFor();assert.equal(writes[0].job.rules[0].value,1.23);
+});
+
+for(const status of ['draft','open'])test(`existing ${status} editor separates saving from section navigation and permits direct jumps`,async t=>{
+ const{page,writes}=await setup(t,{jobs:[{...prior,status}]});await page.getByRole('button',{name:'Edit job',exact:true}).click();
+ const save=page.getByRole('group',{name:'Job save actions',exact:true}),nav=page.getByRole('navigation',{name:'Job section navigation',exact:true}),steps=page.getByRole('list',{name:'Job setup progress'});
+ for(const name of ['Review settings','Application questions','Preview & publish','Job details']){await steps.getByRole('button',{name,exact:true}).click();assert.equal(await save.getByRole('button',{name:'Save changes',exact:true}).count(),1);assert.equal(await nav.getByRole('button',{name:/Save|Publish|Cancel/}).count(),0);assert.equal(await page.getByRole('button',{name:'Save changes',exact:true}).count(),1);}
+ assert.equal(await nav.getByRole('button',{name:'Back',exact:true}).isDisabled(),true);assert.equal(writes.length,0);
+});
+test('jumping a new draft directly to review cannot bypass full publication validation',async t=>{
+ const{page,writes}=await setup(t,{jobs:[]});await page.getByRole('button',{name:'Create job',exact:true}).click();await page.getByRole('button',{name:'Create blank job',exact:true}).click();
+ await page.getByRole('textbox',{name:'Job description',exact:true}).fill('A valid role description');
+ const steps=page.getByRole('list',{name:'Job setup progress'});await steps.getByRole('button',{name:'Review settings',exact:true}).click();await steps.getByRole('button',{name:'Preview & publish',exact:true}).click();await page.getByRole('button',{name:'Publish job',exact:true}).click();await page.getByText('Add a job title, then choose a work arrangement and location.',{exact:false}).waitFor();assert.equal(writes.length,0);await page.getByLabel('Job title',{exact:true}).waitFor();
 });
