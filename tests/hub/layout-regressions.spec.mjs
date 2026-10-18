@@ -176,3 +176,27 @@ test('mixed job rows keep applicant, edit and Actions controls aligned with open
  }
  assert.deepEqual(errors,[]);
 });
+
+
+test('job setup keeps its header compact and sections visible at desktop and mobile widths', async t=>{
+ const {page,origin,errors}=await setup(t);
+ for(const width of [320,390,640,1280,1728]){
+  await page.setViewportSize({width,height:900}); await page.goto(origin+'/?view=jobs');
+  await page.getByRole('button',{name:'Create job',exact:true}).click();
+  await page.getByRole('button',{name:'Create blank job',exact:true}).click();
+  await page.getByLabel('Job title',{exact:true}).waitFor();
+  const geometry=await page.locator('section[aria-labelledby="wizard-title"]').evaluate(section=>{
+   const rect=selector=>section.querySelector(selector).getBoundingClientRect().toJSON();
+   return {root:section.getBoundingClientRect().toJSON(),status:rect('.hub-draft-status'),back:rect('.hub-back'),heading:rect('.hub-section-heading'),steps:rect('.hub-wizard-steps'),buttons:[...section.querySelectorAll('.hub-wizard-steps button')].map(e=>e.getBoundingClientRect().toJSON()),active:getComputedStyle(section.querySelector('[aria-current="step"] button')).backgroundColor};
+  });
+  assert.ok(Math.abs(geometry.status.top-geometry.back.top)<2,'Draft status and back share the utility row '+JSON.stringify(geometry));
+  assert.ok(geometry.buttons.every(b=>b.height>=44),'Section controls retain 44px touch targets');
+  assert.notEqual(geometry.active,'rgba(0, 0, 0, 0)','Current section is visually distinct');
+  if(width>=1280){
+   assert.ok(Math.max(...geometry.buttons.map(b=>b.top))-Math.min(...geometry.buttons.map(b=>b.top))<2,'All four sections share a row');
+   assert.ok(geometry.steps.bottom-geometry.root.top<240,'Header does not consume the desktop form viewport');
+  }else assert.ok(geometry.steps.height<140,'Mobile section tabs use two compact rows');
+  await noOverflow(page);await artifact(page,'compact-wizard-'+width);
+ }
+ assert.deepEqual(errors,[]);
+});

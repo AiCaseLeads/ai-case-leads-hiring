@@ -1348,7 +1348,32 @@
 .hub-role-card > .hub-badge { margin-bottom: 12px; }
 .hub-editor-list > .hub-question + .hub-question { margin-top: 0; }
 .hub-form-grid > .hub-button { align-self: end; margin-bottom: 18px; }
-.hub-wizard-steps { margin-block: 20px; }
+/* Setup navigation is a row of sections, not an unstyled vertical list. */
+.hub-main .hub-wizard-steps { display: flex; flex-wrap: wrap; gap: 6px; list-style: none; padding: 0 0 12px; margin: 0 0 20px; border-bottom: 1px solid var(--hub-line); }
+.hub-wizard-steps > li { min-width: 0; margin: 0; }
+.hub-wizard-steps .hub-text-button { min-height: 44px; padding: 10px 14px; border-radius: 6px; text-align: center; line-height: 1.4; }
+.hub-wizard-steps > li[aria-current="step"] .hub-text-button { color: #185742; background: #e9f3ee; box-shadow: inset 0 -3px #287b63; }
+.hub-main section[aria-labelledby="wizard-title"] { display: grid; grid-template-columns: minmax(0,1fr) auto; column-gap: 16px; }
+.hub-main section[aria-labelledby="wizard-title"] > * { grid-column: 1 / -1; min-width: 0; }
+.hub-main section[aria-labelledby="wizard-title"] > .hub-draft-status { grid-column: 1; grid-row: 1; margin: 0; gap: 6px 12px; font-size: 12px; }
+.hub-main section[aria-labelledby="wizard-title"] > .hub-back { grid-column: 2; grid-row: 1; margin: 0; min-height: 44px; }
+.hub-main section[aria-labelledby="wizard-title"] > .hub-section-heading { margin: 10px 0 16px; }
+.hub-main section[aria-labelledby="wizard-title"] .hub-section-heading .hub-kicker { margin-top: 0; }
+.hub-job-editor-heading { align-items: center; flex-wrap: wrap; gap: 12px 24px; }
+.hub-job-editor-title { flex: 1 1 240px; min-width: 0; }
+.hub-job-editor-title h2 { overflow-wrap: anywhere; }
+.hub-job-editor-actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.hub-job-editor-actions .hub-button { min-height: 44px; }
+@media (max-width: 640px) {
+  .hub-main section[aria-labelledby="wizard-title"] { column-gap: 8px; }
+  .hub-main section[aria-labelledby="wizard-title"] > .hub-draft-status { gap: 2px; }
+  .hub-draft-status .hub-text-button { min-height: 44px; }
+  .hub-main .hub-wizard-steps { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 6px; }
+  .hub-wizard-steps .hub-text-button { width: 100%; padding-inline: 8px; font-size: 12px; }
+  .hub-job-editor-heading .hub-job-editor-actions { width: 100%; }
+  .hub-job-editor-actions .hub-button { flex: 1; }
+  .hub-main .hub-page-tabs > button, .hub-main .hub-company-tabs > button, .hub-main .hub-pipeline-tabs > button { min-height: 44px; }
+}
 .hub-text-button:disabled { opacity: 0.5; cursor: not-allowed; }
 
 /* Keep short requirement badges intact. Wizard actions stay below the form. */
