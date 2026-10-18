@@ -92,3 +92,15 @@ test('all matching selection spans 20 pages, checks visible boxes, survives refr
  await page.getByLabel('Screening',{exact:true}).selectOption('pass');await page.getByRole('button',{name:'Apply filters',exact:true}).click();
  await page.getByText('Page 1 of 20 · 500 matching applicants',{exact:true}).waitFor();assert.equal(await page.getByLabel('Select Synthetic Applicant',{exact:true}).isChecked(),false);assert.equal(await page.locator('.hub-selection-banner').count(),0);
 });
+
+
+test('switching away from AI order exits Top 10 before applying filters',async t=>{
+ const{page,requests}=await setup(t,{width:1280,initialJobId:'job-one',initialFilter:'jobId=job-one&sort=ai_match_desc&top=10'});
+ await page.getByRole('button',{name:'Synthetic Applicant',exact:true}).waitFor();
+ for(const sort of ['newest','grade_desc']){
+  await page.getByLabel('Order',{exact:true}).selectOption(sort);await page.getByRole('button',{name:'Apply filters',exact:true}).click();
+  await page.waitForFunction(()=>!document.querySelector('.hub-download-actions button').disabled);
+  const query=requests.filter(url=>url.pathname==='/api/hub/applications').at(-1).searchParams;assert.equal(query.get('sort'),sort);assert.equal(query.has('top'),false);
+  if(sort==='newest'){await page.getByRole('button',{name:'Top 10 AI matches',exact:true}).click();await page.getByRole('button',{name:'Show all applicants',exact:true}).waitFor();}
+ }
+});

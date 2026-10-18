@@ -285,7 +285,7 @@ function JobCandidates({
     }
     if (appliedFrom || appliedTo) search.set("timeZone", timeZone);
     if (duplicate) search.set("duplicate", "true");
-    if (isTopTen) search.set("top", "10");
+    if (isTopTen && sort === "ai_match_desc") search.set("top", "10");
     return search;
   }
   const draft = draftQuery();
