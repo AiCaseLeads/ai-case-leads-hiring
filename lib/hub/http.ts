@@ -55,8 +55,8 @@ function applicationFilters(request: Request) {
         );
       if ((qualification && !["pass", "review", "fail"].includes(qualification)) ||
           (grade && !["reviewed", "ungraded"].includes(grade)) ||
-          (sort && !["grade_desc","ai_match_desc"].includes(sort)) || (duplicate && duplicate !== "true") ||
-          ((grade || sort) && !jobId))
+          (sort && !["newest","grade_desc","ai_match_desc"].includes(sort)) || (duplicate && duplicate !== "true") ||
+          ((grade || (sort && sort !== "newest")) && !jobId))
         throw new HiringError("invalid_filter", 422, "Choose one role before comparing reviewer grades, and check the application filters.");
       const dates={appliedFrom:params.get('appliedFrom')||undefined,appliedTo:params.get('appliedTo')||undefined,timeZone:params.get('timeZone')||undefined};
       applicationDateBounds(dates);
@@ -70,7 +70,7 @@ function applicationFilters(request: Request) {
         page: Number(page),
         qualification: qualification as "pass" | "review" | "fail" | undefined,
         grade: grade as "reviewed" | "ungraded" | undefined,
-        sort: sort as "grade_desc" | "ai_match_desc" | undefined,
+        sort: sort as "newest" | "grade_desc" | "ai_match_desc" | undefined,
         duplicate: duplicate === "true" ? true : undefined,
         trash: params.get('trash')==='true',
       };

@@ -83,3 +83,22 @@ test('3,000 matching applications are available without a 1,000-record cutoff; l
   await assert.rejects(store.exportApplications({jobId:job.id}),{code:'export_too_large'});
  }finally{database.close();}
 });
+
+
+test('explicit newest order accepts date and qualification filters without a job',async()=>{
+ const {store,database}=createStore();try {
+  const job=await store.saveJob(jobInput());
+  const expected:string[]=[];
+  for(let n=0;n<3;n++){
+   const app=await store.acceptApplication(applicationInput(job.id));expected.unshift(app.id);
+   database.prepare("UPDATE hub_applications SET qualification='pass',created_at=? WHERE id=?").run(Date.parse('2026-10-15T06:00Z')+n,app.id);
+  }
+  const query='sort=newest&qualification=pass&appliedFrom=2026-10-15&appliedTo=2026-10-15&timeZone=America%2FBogota';
+  for(const route of ['applications','applications-export']){
+   const response=await handleHubRequest(new Request(`https://jobs.example.invalid/api/hub/${route}?${query}`),[route],MANAGER,store);
+   assert.equal(response.status,200);
+   const body=await response.json() as {data:{items:{id:string}[];total:number}};
+   assert.equal(body.data.total,3);assert.deepEqual(body.data.items.map(row=>row.id),expected);
+  }
+ }finally{database.close();}
+});

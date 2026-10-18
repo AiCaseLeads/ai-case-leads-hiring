@@ -46,7 +46,7 @@ type Bind = string | number | null;
 export type ApplicationFilters = {
   q?:string;jobId?:string;stage?:string;assignee?:string;qualification?:"pass"|"review"|"fail";
   appliedFrom?:string;appliedTo?:string;timeZone?:string;
-  top?:10;grade?:"reviewed"|"ungraded";sort?:"grade_desc"|"ai_match_desc";duplicate?:boolean;page?:number;trash?:boolean;
+  top?:10;grade?:"reviewed"|"ungraded";sort?:"newest"|"grade_desc"|"ai_match_desc";duplicate?:boolean;page?:number;trash?:boolean;
 };
 /** Convert inclusive local calendar dates to a half-open UTC interval, including DST days. */
 export function applicationDateBounds(filters: Pick<ApplicationFilters,"appliedFrom"|"appliedTo"|"timeZone">): {from?:number;to?:number} {
@@ -797,7 +797,7 @@ export class HubStore {
     return row;
   }
   private applicationSelection(filters:ApplicationFilters) {
-    if ((filters.grade || filters.sort) && !filters.jobId)
+    if ((filters.grade || (filters.sort && filters.sort !== "newest")) && !filters.jobId)
       throw new HiringError("job_required_for_grading",422,"Choose one role before filtering or sorting reviewer grades.");
     const where:string[] = [filters.trash?`NOT (${activeApplicationsSql('a')})`:activeApplicationsSql('a')], values:Bind[] = [];
     if(filters.q) {where.push("(instr(lower(a.name),lower(?))>0 OR instr(lower(a.email),lower(?))>0)");values.push(filters.q,filters.q);}
