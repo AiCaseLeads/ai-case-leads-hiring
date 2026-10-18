@@ -11,7 +11,8 @@ const draftField = jobInput.shape.fields.element.extend({
 });
 const draftRule = jobInput.shape.rules.element.extend({
   reason: z.string().max(500),
-  value: jobInput.shape.rules.element.shape.value.nullable(),
+  // Recovery saves unfinished choices; publishing still requires nonempty membership lists.
+  value: z.union([jobInput.shape.rules.element.shape.value, z.array(z.string().min(1).max(300)).max(300)]).nullable(),
 });
 export const draftStateSchema = z
   .object({
