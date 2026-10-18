@@ -22,7 +22,7 @@ async function setup(t,{failViewed=false,failPreview=false,word=false,width=1280
  else if(u.pathname.endsWith('/viewed')){writes.push(u.pathname);if(failViewed)return route.fulfill({status:503,json:{error:{message:'unavailable'}}});views.add(u.pathname.split('/')[4]);data={viewedAt:123};}
  else if(u.pathname==='/api/hub/applications')data={items:[{...record('app-1'),viewedAt:views.has('app-1')?123:null}],total:51,page:2,pageSize:25};
  else if(u.pathname.startsWith('/api/hub/applications/')){data={...record(u.pathname.split('/')[4]),viewedAt:views.has(u.pathname.split('/')[4])?123:null};if(word)data.files[1]={...data.files[1],filename:'resume.doc',contentType:'application/msword'};}
- else if(u.pathname.startsWith('/api/files/'))return route.fulfill({status:failPreview?403:200,contentType:failPreview?'application/json':word?'text/plain':'application/pdf',body:failPreview?'{}':word?'Synthetic Word experience\n<script>alert(1)</script>':pdfBytes});
+ else if(u.pathname.startsWith('/api/files/'))return route.fulfill({status:failPreview?403:200,headers:word?{'X-Preview-Truncated':'true'}:{},contentType:failPreview?'application/json':word?'text/plain':'application/pdf',body:failPreview?'{}':word?'Synthetic Word experience\n<script>alert(1)</script>':pdfBytes});
  else if(u.pathname==='/api/ai/match')data={enabled:false,status:'disabled',criteria:[]};
  else if(u.pathname==='/api/scorecards')data={template:null,revision:1};
  return route.fulfill({json:{data}});});
@@ -49,5 +49,5 @@ test('view and preview failures leave application usable with explicit retry/dow
 });
 
 test('Word resume text is embedded under its original file as inert readable text',async t=>{
- const{page}=await setup(t,{word:true,width:390});await page.getByRole('button',{name:'Applicant app-1',exact:true}).click();await page.getByRole('button',{name:'View résumé',exact:true}).click();const text=page.getByRole('region',{name:'Word résumé text',exact:true});await text.waitFor();assert.match(await text.textContent(),/Synthetic Word experience/);assert.match(await text.textContent(),/<script>alert/);assert.equal(await text.locator('script').count(),0);assert.ok((await text.boundingBox()).height<=282);await page.getByRole('link',{name:/resume\.(pdf|doc) — Download/}).waitFor();
+ const{page}=await setup(t,{word:true,width:390});await page.getByRole('button',{name:'Applicant app-1',exact:true}).click();await page.getByRole('button',{name:'View résumé',exact:true}).click();const text=page.getByRole('region',{name:'Word résumé text',exact:true});await text.waitFor();assert.match(await text.textContent(),/Synthetic Word experience/);await page.getByText('Preview shortened. Download the original for the full résumé.',{exact:true}).waitFor();assert.match(await text.textContent(),/<script>alert/);assert.equal(await text.locator('script').count(),0);assert.ok((await text.boundingBox()).height<=282);await page.getByRole('link',{name:/resume\.(pdf|doc) — Download/}).waitFor();
 });
