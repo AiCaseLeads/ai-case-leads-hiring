@@ -234,12 +234,17 @@ function JobCandidates({
     [sort, setSort] = useState(initial.get("sort") || defaultSort),
     [appliedFrom, setAppliedFrom] = useState(initial.get("appliedFrom") || ""),
     [appliedTo, setAppliedTo] = useState(initial.get("appliedTo") || ""),
-    [timeZone, setTimeZone] = useState(initial.get("timeZone") || Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC"),
+    [timeZone, setTimeZone] = useState(initial.get("timeZone") || "UTC"),
     [duplicate, setDuplicate] = useState(initial.get("duplicate") === "true"),
     [page, setPage] = useState(initialPage),
     [filter, setFilter] = useState(initial.toString()),
     [selected, setSelected] = useState<string[]>([]),
     [detailId, setDetailId] = useState<string | null>(null);
+  useEffect(() => {
+    if (!initial.get("timeZone")) queueMicrotask(() => setTimeZone(Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC"));
+    // Resolve browser time zone after hydration; server and first browser render use the same fallback.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [detailAction, setDetailAction] = useState<"note" | "interview">("note");
   const [exportMessage, setExportMessage] = useState("");
   const [exportError, setExportError] = useState("");
