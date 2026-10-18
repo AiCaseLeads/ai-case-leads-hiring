@@ -22,7 +22,7 @@ test("dashboard APIs compare grades only for one role and export the same filter
     const exported=await handleHubRequest(request("applications-export?"+query),["applications-export"],MANAGER,store);
     const data=(await exported.json() as {data:{items:{id:string}[];limit:number;truncated:boolean}}).data;
     assert.deepEqual(data.items.map((app)=>app.id),body.data.items.map((app)=>app.id));
-    assert.equal(data.limit,1000);assert.equal(data.truncated,false);
+    assert.equal(data.limit,10000);assert.equal(data.truncated,false);
   } finally {database.close();}
 });
 

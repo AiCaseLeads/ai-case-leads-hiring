@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { createStore, MANAGER, RECRUITER, jobInput } from "./fixtures";
+import { jobInput as editableJobInput } from "../../lib/hub/validation";
 import { handleJobSetup } from "../../lib/job-setup/http";
 import { defaultAnchors, type SetupCatalog } from "../../lib/job-setup/model";
 import type { Catalog } from "../../lib/scorecards/model";
@@ -183,6 +184,9 @@ test("saved job templates are immutable snapshots and copies disable automatic r
   const saved = ((await response.json()) as { data: SetupCatalog }).data;
   assert.equal(saved.templates[0].job.autoReject, false);
   assert.equal(saved.templates[0].job.status, "draft");
+  assert.equal("createdAt" in saved.templates[0].job,false);
+  assert.equal("updatedAt" in saved.templates[0].job,false);
+  assert.equal(editableJobInput.safeParse(saved.templates[0].job).success,true);
   await store.saveJob(
     fixtureJob({ slug: "source", descriptionHtml: "Edited source" }),
     prior.id,

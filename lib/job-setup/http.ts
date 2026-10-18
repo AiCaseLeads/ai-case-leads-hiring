@@ -71,10 +71,12 @@ export async function handleJobSetup(
             SCORE,
             structuredClone(emptyCatalog),
           );
-        const { id: _, formVersion: __, lifecycle: ___, ...definition } = job; // Snapshot: later edits to the source never alter a saved template.
+        const { id: _, formVersion: __, lifecycle: ___, createdAt: created, updatedAt: updated, ...definition } = job as typeof job & {createdAt?:number;updatedAt?:number}; // Snapshot: later edits to the source never alter a saved template.
         void _;
         void __;
         void ___;
+        void created;
+        void updated;
         setup.templates.push({
           id: crypto.randomUUID(),
           name: input.name,

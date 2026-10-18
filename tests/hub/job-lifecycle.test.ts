@@ -100,8 +100,8 @@ test("paused wizard drafts detect lifecycle changes even though AI form version 
   const { store, database } = createStore();
   const job = await store.saveJob(jobInput());
   await action(store, job.id, "pause");
-  const { lifecycle: _, id: __, formVersion: ___, ...definition } = await store.getJob(job.id);
-  void _; void __; void ___;
+  const { lifecycle: _, id: __, formVersion: ___, createdAt: created, updatedAt: updated, ...definition } = await store.getJob(job.id) as Awaited<ReturnType<typeof store.getJob>> & {createdAt:number;updatedAt:number};
+  void _; void __; void ___; void created; void updated;
   const command = { action: "save", creationId: crypto.randomUUID(), jobId: job.id, formVersion: job.formVersion, expectedLifecycleRevision: 0, job: { ...definition, status: "open" }, location: null, expectedBinding: null, scorecard: null };
   const stale = await handleJobSetup(request("/api/job-setup", "POST", command), RECRUITER, store);
   assert.equal(stale.status, 409);

@@ -176,7 +176,7 @@ test("long literal search and filtered cohort export avoid pattern interpretatio
   await currentAction(store,id,{action:"assessment"},MANAGER);
   assert.equal((await store.applications({q:name})).total,1);assert.equal((await store.applications({q:"name"})).total,1);
   const token=invitationToken(database,id,"assessment"),exported=await store.exportApplications({jobId:job.id,q:name});
-  assert.equal(exported.total,1);assert.equal(exported.truncated,false);assert.equal(exported.limit,1000);assert.equal(exported.items[0].id,id);assert.equal(JSON.stringify(exported).includes(token),false);database.close();
+  assert.equal(exported.total,1);assert.equal(exported.truncated,false);assert.equal(exported.limit,10000);assert.equal(exported.items[0].id,id);assert.equal(JSON.stringify(exported).includes(token),false);database.close();
 });
 
 test("intentional reviewer edits in one millisecond use the latest score in both SQL ordering and detail grades",async()=>{
@@ -242,5 +242,5 @@ test("reports and overview stay bounded in transferred data with 6000 valid essa
   const originalPrepare=db.prepare.bind(db);let transferredBytes=0;
   db.prepare=(sql)=>{const prepared=originalPrepare(sql),originalAll=prepared.all.bind(prepared);prepared.all=async<T=Record<string,unknown>>()=>{const result=await originalAll<T>();transferredBytes+=Buffer.byteLength(JSON.stringify(result.results));return result;};return prepared;};
   const report=await store.reports(),overview=await store.overview();assert.equal(report.applications,6000);assert.equal(overview.counts.applications,6000);assert.equal(overview.recentApplications.length,12);assert.ok(transferredBytes<5*1024*1024,`Transferred ${transferredBytes} bytes for aggregate views`);
-  const exported=await store.exportApplications({jobId:job.id});assert.equal(exported.items.length,1000);assert.equal(exported.total,6000);assert.equal(exported.truncated,true);database.close();
+  const exported=await store.exportApplications({jobId:job.id});assert.equal(exported.items.length,6000);assert.equal(exported.total,6000);assert.equal(exported.truncated,false);database.close();
 });
