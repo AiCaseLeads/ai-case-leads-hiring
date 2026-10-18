@@ -1,4 +1,6 @@
 "use client";
+import { countries, countryOptions, countryResidenceField, isCountryResidence, residencePath } from "@/lib/countries";
+import { CountryScreening } from "./country-screening";
 import { contactPaths, withRequiredContacts } from "@/lib/hiring/contact-fields";
 import { reorderApplicationQuestions } from "@/lib/job-setup/question-order";
 import { closestCenter, pointerWithin, DndContext, DragOverlay, KeyboardSensor, MouseSensor, TouchSensor, useSensor, useSensors, type CollisionDetection, type Modifier } from "@dnd-kit/core";
@@ -74,14 +76,6 @@ const formats: Partial<Record<FieldType, string>> = {
   Date: "Date",
   Score: "Rating",
 };
-const countryCodes =
-  "AD AE AF AG AI AL AM AO AQ AR AS AT AU AW AX AZ BA BB BD BE BF BG BH BI BJ BL BM BN BO BQ BR BS BT BV BW BY BZ CA CC CD CF CG CH CI CK CL CM CN CO CR CU CV CW CX CY CZ DE DJ DK DM DO DZ EC EE EG EH ER ES ET FI FJ FK FM FO FR GA GB GD GE GF GG GH GI GL GM GN GP GQ GR GS GT GU GW GY HK HM HN HR HT HU ID IE IL IM IN IO IQ IR IS IT JE JM JO JP KE KG KH KI KM KN KP KR KW KY KZ LA LB LC LI LK LR LS LT LU LV LY MA MC MD ME MF MG MH MK ML MM MN MO MP MQ MR MS MT MU MV MW MX MY MZ NA NC NE NF NG NI NL NO NP NR NU NZ OM PA PE PF PG PH PK PL PM PN PR PS PT PW PY QA RE RO RS RU RW SA SB SC SD SE SG SH SI SJ SK SL SM SN SO SR SS ST SV SX SY SZ TC TD TF TG TH TJ TK TL TM TN TO TR TT TV TW TZ UA UG UM US UY UZ VA VC VE VG VI VN VU WF WS YE YT ZA ZM ZW".split(
-    " ",
-  );
-const display = new Intl.DisplayNames(["en"], { type: "region" });
-const countries = countryCodes
-  .map((c) => display.of(c) || c)
-  .sort((a, b) => a.localeCompare(b));
 export function LocationFields({
   value,
   change,
@@ -1172,7 +1166,7 @@ function Editor({
                                   ((["Number", "Score"].includes(f.type) &&
                                     r.operator === "gte") ||
                                     (f.type === "Boolean" &&
-                                      r.operator === "equals")),
+                                      r.operator === "equals") || (isCountryResidence(f) && ["in","not_in"].includes(r.operator))),
                               )
                             }
                             onChange={(e) =>
@@ -1194,7 +1188,7 @@ function Editor({
                         <Field label={`Question ${i - contactPaths.length + 1} answer format`}>
                           <select
                             value={f.type}
-                            disabled={rules.some((r) => r.fieldPath === f.path)}
+                            disabled={isCountryResidence(f) || rules.some((r) => r.fieldPath === f.path)}
                             onChange={(e) =>
                               updateField(i, {
                                 type: e.target.value as FieldType,
@@ -1209,7 +1203,7 @@ function Editor({
                             ))}
                           </select>
                         </Field>
-                        {rules.some((r) => r.fieldPath === f.path) && (
+                        {isCountryResidence(f) ? <p className="hub-muted">This preset uses the complete country list. Choose eligible countries below; remove the question if you no longer need it.</p> : rules.some((r) => r.fieldPath === f.path) && (
                           <p className="hub-muted">
                             Remove this question’s screening rules in Advanced
                             rules before changing its answer format.
@@ -1230,6 +1224,7 @@ function Editor({
                         </Field>
                         </details>
                       </div>
+                      {isCountryResidence(f) && <CountryScreening field={f} rules={rules} change={setRules} requireAnswer={()=>updateField(i,{required:true})} autoReject={autoReject}/>}
                       <QuestionScreening
                         requireAnswer={() => updateField(i, { required: true })}
                         field={f}
@@ -1240,7 +1235,7 @@ function Editor({
 
                         }}
                       />
-                      {["ValueSelect", "MultiValueSelect"].includes(f.type) && (
+                      {["ValueSelect", "MultiValueSelect"].includes(f.type) && !isCountryResidence(f) && (
                         <ChoiceInput
                           key={f.path + f.type}
                           label={`Question ${i - contactPaths.length + 1} choices`}
@@ -1262,6 +1257,7 @@ function Editor({
               </div>}
             </DragOverlay>
             </DndContext>
+            <button type="button" className="hub-button secondary" style={{marginBlock:"16px"}} disabled={fields.length>=100 || fields.some(field=>field.path===residencePath)} onClick={()=>setFields([...fields,countryResidenceField()])}>Add country of residence question</button>
             <div className="hub-form-grid">
               <Field label="Add from the question library">
                 <select
@@ -1624,7 +1620,7 @@ function Editor({
                   .map((r, i) => (
                     <li key={i}>
                       {fields.find((f) => f.path === r.fieldPath)?.title}:{" "}
-                      {r.operator === "gte"
+                      {r.operator === "in" ? "must live in" : r.operator === "not_in" ? "must live outside" : r.operator === "gte"
                         ? "at least"
                         : r.operator === "lte"
                           ? "at most"
@@ -1637,7 +1633,7 @@ function Editor({
                         ? r.value
                           ? "Yes"
                           : "No"
-                        : String(r.value)}
+                        : Array.isArray(r.value) ? r.value.map(value=>countryOptions.find(option=>option.value===value)?.label || value).join(", ") : String(r.value)}
                     </li>
                   ))}
               </ul>
@@ -1886,6 +1882,7 @@ function AdvancedRules({
             <Field label={`Requirement ${i + 1} question`}>
               <select
                 value={r.fieldPath}
+                disabled={["in","not_in"].includes(r.operator)}
                 onChange={(e) => {
                   const f = fields.find((f) => f.path === e.target.value);
                   update(i, {
@@ -1911,10 +1908,12 @@ function AdvancedRules({
             <Field label={`Requirement ${i + 1} comparison`}>
               <select
                 value={r.operator}
+                disabled={["in","not_in"].includes(r.operator)}
                 onChange={(e) =>
                   update(i, { operator: e.target.value as Rule["operator"] })
                 }
               >
+                {["in","not_in"].includes(r.operator) && <option value={r.operator}>{r.operator === "in"?"Must be in allowed countries":"Must not be in excluded countries"}</option>}
                 <option value="equals">Must equal</option>
                 <option value="not_equals">Must not equal</option>
                 <option value="contains">Must contain</option>
@@ -1923,7 +1922,7 @@ function AdvancedRules({
               </select>
             </Field>
             <Field label={`Requirement ${i + 1} expected answer`}>
-              {typeof r.value === "boolean" ? (
+              {Array.isArray(r.value) ? <p>{r.value.length} selected countries. Edit the country list on its question above.</p> : typeof r.value === "boolean" ? (
                 <select
                   value={String(r.value)}
                   onChange={(e) =>

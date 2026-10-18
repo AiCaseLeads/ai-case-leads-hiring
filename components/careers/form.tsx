@@ -1,4 +1,6 @@
 "use client";
+import { isCountryResidence } from "@/lib/countries";
+import { CountryPicker } from "./country-picker";
 import { SecurityCheck } from "./security-check";
 import { captureAttribution } from "./attribution";
 import { useEffect, useRef, useState } from "react";
@@ -508,6 +510,8 @@ export function ApplicationForm({
                   No
                 </label>
               </RadioGroup>
+            ) : isCountryResidence(field) ? (
+              <CountryPicker field={field} value={String(values[field.path] ?? "")} onChange={value=>change(field.path,value)} error={errors[field.path]}/>
             ) : field.type === "ValueSelect" ? (
               <Select
                 value={String(values[field.path] ?? "")}

@@ -1,3 +1,4 @@
+import { countryOptions, isCountryResidence, residencePath } from "../countries";
 import { hasDescriptionText } from "../job-description";
 import { z } from "zod";
 import { HiringError } from "../hiring/errors";
@@ -32,7 +33,7 @@ const field = z
           })
           .strict(),
       )
-      .max(100)
+      .max(300)
       .optional(),
     description: z.string().max(2000).optional(),
   })
@@ -40,8 +41,8 @@ const field = z
 const rule = z
   .object({
     fieldPath: z.string().min(1).max(128),
-    operator: z.enum(["equals", "not_equals", "contains", "gte", "lte"]),
-    value: z.union([z.string().max(2000), z.number().finite(), z.boolean()]),
+    operator: z.enum(["equals", "not_equals", "contains", "gte", "lte", "in", "not_in"]),
+    value: z.union([z.string().max(2000), z.number().finite(), z.boolean(), z.array(z.string().min(1).max(300)).min(1).max(300)]),
     reason: z.string().trim().min(1).max(500),
     enabled: z.boolean(),
   })
@@ -196,6 +197,10 @@ export function validateJob(input: JobInput): void {
         422,
         "Select fields need unique answer options.",
       );
+  for (const field of input.fields) {
+    if (field.path === residencePath && (!isCountryResidence(field) || field.options?.length !== countryOptions.length || countryOptions.some(option => !field.options?.some(candidate=>candidate.value===option.value)))) throw new HiringError("invalid_job",422,"Country of residence must use the complete built-in country list.");
+    if (!isCountryResidence(field) && (field.options?.length || 0)>100) throw new HiringError("invalid_job",422,"Custom select fields support up to 100 options.");
+  }
   for (const rule of input.rules) {
     const field = input.fields.find((f) => f.path === rule.fieldPath);
     if (!field || field.type === "File")
@@ -204,6 +209,10 @@ export function validateJob(input: JobInput): void {
         422,
         "Screening rules must reference an existing answer field.",
       );
+    if (["in", "not_in"].includes(rule.operator)) {
+      if (!isCountryResidence(field) || (rule.enabled && !field.required) || !Array.isArray(rule.value) || !rule.value.length || new Set(rule.value).size!==rule.value.length || rule.value.some(value=>!countryOptions.some(option=>option.value===value))) throw new HiringError("invalid_rule",422,"Choose at least one valid allowed country of residence.");
+      continue;
+    }
     if (
       ["gte", "lte"].includes(rule.operator) &&
       (!["Number", "Score"].includes(field.type) ||
@@ -317,6 +326,12 @@ export function evaluateRequirements(
     let matched = false;
     if (!missing) {
       switch (rule.operator) {
+        case "not_in":
+          matched = typeof value === "string" && Array.isArray(rule.value) && countryOptions.some(option=>option.value===value) && !rule.value.includes(value);
+          break;
+        case "in":
+          matched = typeof value === "string" && Array.isArray(rule.value) && rule.value.includes(value);
+          break;
         case "equals":
           matched = Array.isArray(value)
             ? value.includes(rule.value)

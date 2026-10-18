@@ -28,8 +28,8 @@ export function stageLabel(stage: string) {
 }
 export type Rule = {
   fieldPath: string;
-  operator: "equals" | "not_equals" | "contains" | "gte" | "lte";
-  value: string | number | boolean;
+  operator: "equals" | "not_equals" | "contains" | "gte" | "lte" | "in" | "not_in";
+  value: string | number | boolean | string[];
   reason: string;
   enabled: boolean;
 };
