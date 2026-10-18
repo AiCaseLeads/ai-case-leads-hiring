@@ -1130,7 +1130,7 @@ function Editor({
                         <button type="button" className="hub-icon-button" title="Move question down" aria-label={`Move ${f.title || "new question"} down`} disabled={i === fields.length - 1} onClick={() => {
                           setFields(current => reorderApplicationQuestions(current, f.path, current[i + 1]?.path || ""));
                         }}><ArrowDown size={16} /></button>
-                        <button
+                        {f.path!==resumePath && <button
                           type="button"
                           className="hub-icon-button"
                           aria-label={`Remove ${f.title || "new question"}`}
@@ -1144,17 +1144,11 @@ function Editor({
                           }}
                         >
                           <Trash2 size={16} />
-                        </button>
+                        </button>}
                       </>
                       )}
                   </div>
-                  {contactPaths.includes(
-                    f.path,
-                  ) ? (
-                    <p className="hub-muted">
-                      Always required to identify and contact the applicant.
-                    </p>
-                  ) : (
+                  {f.path===resumePath ? <p className="hub-muted">Required résumé/CV upload for every applicant.</p> : contactPaths.includes(f.path) ? <p className="hub-muted">Required applicant contact information.</p> : (
                     <>
                       <div className="hub-form-grid hub-question-fields">
                         <Field label={`Question ${i - contactPaths.length + 1} label`}>
@@ -1223,8 +1217,7 @@ function Editor({
                         {f.path===resumePath && <p className="hub-muted">A résumé/CV is required for every application.</p>}
                         {isCountryResidence(f) ? <p className="hub-muted">This preset uses the complete country list. Choose eligible countries below; remove the question if you no longer need it.</p> : rules.some((r) => r.fieldPath === f.path) && (
                           <p className="hub-muted">
-                            Remove this question’s screening rules in Advanced
-                            rules before changing its answer format.
+                            Remove screening rules before changing the answer format.
                           </p>
                         )}
                         <details className="hub-question-instructions">
@@ -1801,11 +1794,6 @@ function QuestionScreening({
       </label>
       {rule?.enabled && (
         <>
-          <p className="hub-muted">
-            Qualifying questions are required when enabled so every applicant
-            supplies an answer. Turn off this requirement before making the
-            question optional.
-          </p>
           <Field
             label={
               numeric
@@ -1833,10 +1821,10 @@ function QuestionScreening({
           </Field>
           <p className="hub-muted">
             {autoReject
-              ? "Answers that do not qualify trigger automatic rejection when automatic rejection is turned on and saved."
-              : "Answers that do not qualify are flagged for recruiter review. Turn on automatic rejection below to reject them automatically."}{" "}
+              ? "Non-qualifying answers will trigger automatic rejection after saving."
+              : "Non-qualifying answers go to recruiter review."}{" "}
             {!field.required &&
-              "This question is optional: a missing answer goes to human review, not automatic rejection. Choose Required above to ensure everyone answers."}
+              "Missing optional answers go to review."}
           </p>
         </>
       )}
