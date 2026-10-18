@@ -16,6 +16,35 @@ function driveId(value: string): string {
 }
 function name(value: string): string { return value.replace(/[\u0000-\u001f/\\]/g, "_").slice(0, 180) || "Untitled"; }
 
+// Only documented machine codes are retained. Never persist Google's message,
+// file names, account addresses, URLs, or arbitrary response strings.
+const DRIVE_REASONS: Record<string,string> = {
+  insufficientFilePermissions:"insufficient_file_permissions", insufficientPermissions:"insufficient_permissions",
+  storageQuotaExceeded:"storage_quota_exceeded", dailyLimitExceeded:"daily_limit_exceeded",
+  userRateLimitExceeded:"user_rate_limit_exceeded", rateLimitExceeded:"rate_limit_exceeded",
+  teamDriveFileLimitExceeded:"shared_drive_file_limit_exceeded", activeItemCreationLimitExceeded:"active_item_creation_limit_exceeded",
+  domainPolicy:"domain_policy", appNotAuthorizedToFile:"app_not_authorized_to_file",
+  cannotModifyInheritedTeamDrivePermission:"cannot_modify_inherited_permission",
+  fileOwnerNotMemberOfTeamDrive:"file_owner_not_shared_drive_member",
+  PERMISSION_DENIED:"permission_denied", RESOURCE_EXHAUSTED:"resource_exhausted",
+};
+async function driveForbidden(response:Response,deadline?:number):Promise<ProviderError>{
+  const fallback=new ProviderError("google_drive",response.status);
+  const reader=response.body?.getReader();if(!reader)return fallback;
+  let timer:ReturnType<typeof setTimeout>|undefined;
+  try{
+    const parse=async()=>{let size=0;const chunks:Uint8Array[]=[];
+      while(true){const part=await reader.read();if(part.done)break;size+=part.value.byteLength;if(size>16384)return fallback;chunks.push(part.value);}
+      const bytes=new Uint8Array(size);let offset=0;for(const chunk of chunks){bytes.set(chunk,offset);offset+=chunk.length;}
+      const value=JSON.parse(new TextDecoder().decode(bytes));
+      const reasons=[...(Array.isArray(value?.error?.errors)?value.error.errors.map((item:{reason?:unknown})=>item?.reason):[]),value?.error?.status];
+      for(const reason of reasons)if(typeof reason==="string"&&Object.hasOwn(DRIVE_REASONS,reason))return new ProviderError("google_drive",response.status,"drive_"+DRIVE_REASONS[reason]);
+      return fallback;
+    };
+    return await Promise.race([parse(),new Promise<ProviderError>(resolve=>{timer=setTimeout(()=>resolve(fallback),Math.max(1,Math.min(2000,(deadline??Infinity)-Date.now())));})]);
+  }catch{return fallback;}finally{clearTimeout(timer);void reader.cancel().catch(()=>undefined);}
+}
+
 export class GoogleDriveArchive {
   deadline?: number;
   /** Increments only when a durable ID, upload session or provider creation advances. */
@@ -51,6 +80,7 @@ export class GoogleDriveArchive {
     if (parsed.origin !== "https://www.googleapis.com" || parsed.username || parsed.password) throw new Error("invalid_google_url");
     let response = await providerRequest(url, { ...init, headers: { ...Object.fromEntries(new Headers(init.headers)), Authorization: `Bearer ${await this.token()}` } }, "google_drive", this.fetcher, undefined, () => this.deadline);
     if (response.status === 401) response = await providerRequest(url, { ...init, headers: { ...Object.fromEntries(new Headers(init.headers)), Authorization: `Bearer ${await this.token(true)}` } }, "google_drive", this.fetcher, undefined, () => this.deadline);
+    if(response.status===403)throw await driveForbidden(response,this.deadline);
     return response;
   }
 
