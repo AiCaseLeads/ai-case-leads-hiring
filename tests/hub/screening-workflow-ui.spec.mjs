@@ -255,3 +255,18 @@ test('legacy optional screening can become required and a blank minimum blocks C
  await page.getByLabel('Minimum accepted number for Years of experience',{exact:true}).fill('');await next(page);await page.getByText('Enter a number for every numeric screening rule, or remove the unfinished rule in Advanced rules.',{exact:true}).waitFor();assert.equal(await page.getByRole('heading',{name:'What should applicants send?'}).isVisible(),true);assert.equal(await page.getByRole('heading',{name:'Find the strongest matches for this job'}).count(),0);assert.equal(writes.length,0);
  await page.getByLabel('Minimum accepted number for Years of experience',{exact:true}).fill('7');await next(page);await page.getByRole('heading',{name:'Find the strongest matches for this job'}).waitFor();
 });
+
+test('country preset creates full choices, saves selected eligibility, and reopens without manual option editing',async t=>{
+ const {page,writes}=await setup(t,{jobs:[structuredClone(prior)]});await questions(page);
+ await page.getByRole('button',{name:'Add country of residence question',exact:true}).click();
+ const country=page.locator('.hub-question').filter({has:page.getByRole('region',{name:'Country of residence screening',exact:true})});
+ assert.equal(await country.count(),1);assert.equal(await country.locator('textarea').count(),1); // optional instructions only; no manual choices editor
+ assert.equal(await page.getByRole('button',{name:'Add country of residence question',exact:true}).isDisabled(),true);
+ await page.getByLabel('Eligible countries',{exact:true}).selectOption('in');
+ await page.getByLabel('Find countries',{exact:true}).fill('Spain');await page.getByLabel('Spain',{exact:true}).check();
+ await page.getByLabel('Find countries',{exact:true}).fill('United States');await page.getByLabel('United States',{exact:true}).check();
+ await page.getByRole('checkbox',{name:autoLabel,exact:true}).check();await save(page);await page.getByText('Draft saved.',{exact:false}).waitFor();
+ const field=writes[0].job.fields.find(field=>field.path==='country_of_residence');assert.equal(field.type,'ValueSelect');assert.equal(field.options.length,249);assert.equal(field.required,true);assert.deepEqual(writes[0].job.rules.find(rule=>rule.fieldPath===field.path).value,['ES','US']);assert.equal(writes[0].job.autoReject,true);
+ await page.reload();await questions(page);assert.equal(await page.getByLabel('Eligible countries',{exact:true}).inputValue(),'in');await page.getByLabel('Find countries',{exact:true}).fill('Spain');assert.equal(await page.getByLabel('Spain',{exact:true}).isChecked(),true);
+ await page.getByLabel('Eligible countries',{exact:true}).selectOption('not_in');await save(page);await page.getByText('Draft saved.',{exact:false}).waitFor();assert.equal(writes[1].job.rules.find(rule=>rule.fieldPath===field.path).operator,'not_in');assert.equal(writes[1].job.fields.find(item=>item.path===field.path).options.length,249);
+});
