@@ -1,6 +1,7 @@
 "use client";
-import { countries, countryOptions, countryResidenceField, isCountryResidence, residencePath } from "@/lib/countries";
+import { countries, countryResidenceField, isCountryResidence, residencePath } from "@/lib/countries";
 import { CountryScreening } from "./country-screening";
+import { ScreeningSummary } from "./screening-summary";
 import { contactPaths, withRequiredContacts } from "@/lib/hiring/contact-fields";
 import { reorderApplicationQuestions } from "@/lib/job-setup/question-order";
 import { closestCenter, pointerWithin, DndContext, DragOverlay, KeyboardSensor, MouseSensor, TouchSensor, useSensor, useSensors, type CollisionDetection, type Modifier } from "@dnd-kit/core";
@@ -947,8 +948,6 @@ function Editor({
         <div className="hub-job-editor-actions" role="group" aria-label="Job save actions">
           <button type="button" className={"hub-button"+(step===3 && job?.status!=="open"?" secondary":"")} disabled={mutation.busy || !recovery.ready} onClick={()=>void save(job?.status||"draft")}>{mutation.busy?"Saving…":job?"Save changes":"Save draft job"}</button>
           {step===3 && job?.status!=="open" && <button type="button" className="hub-button" disabled={mutation.busy || !recovery.ready} onClick={()=>void save("open")}>Publish job</button>}
-          {step===3 && job?.status==="open" && <button type="button" className="hub-text-button" disabled={mutation.busy || !recovery.ready} onClick={()=>void save("draft")}>Unpublish job</button>}
-          {step===3 && job && job.status!=="closed" && <button type="button" className="hub-text-button" disabled={mutation.busy || !recovery.ready} onClick={()=>void save("closed")}>Close job</button>}
           <button type="button" className="hub-text-button" disabled={mutation.busy} onClick={leaveEditor}>Cancel</button>
         </div>
       </div>
@@ -1626,32 +1625,7 @@ function Editor({
                   ? "On — complete answers below your minimums receive the rejection email. Missing screening answers stay in the recruiter queue."
                   : "Off — applicants enter your New queue for the team to review."}
               </p>
-              <details>
-              <summary>View screening requirements ({rules.filter((r) => r.enabled).length})</summary>
-              <ul>
-                {rules
-                  .filter((r) => r.enabled)
-                  .map((r, i) => (
-                    <li key={i}>
-                      {fields.find((f) => f.path === r.fieldPath)?.title}:{" "}
-                      {r.operator === "in" ? "must live in" : r.operator === "not_in" ? "must live outside" : r.operator === "gte"
-                        ? "at least"
-                        : r.operator === "lte"
-                          ? "at most"
-                          : r.operator === "equals"
-                            ? "must equal"
-                            : r.operator === "not_equals"
-                              ? "must not equal"
-                              : "must contain"}{" "}
-                      {typeof r.value === "boolean"
-                        ? r.value
-                          ? "Yes"
-                          : "No"
-                        : Array.isArray(r.value) ? r.value.map(value=>countryOptions.find(option=>option.value===value)?.label || value).join(", ") : String(r.value)}
-                    </li>
-                  ))}
-              </ul>
-              </details>
+              <ScreeningSummary rules={rules} fields={fields} />
               <button
                 type="button"
                 className="hub-text-button"

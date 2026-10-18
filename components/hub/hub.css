@@ -1751,3 +1751,23 @@ body:has(.hiring-hub .hub-draft-overlay) { overflow: hidden; }
   .hub-job-editor .hub-question-fields { grid-template-columns: minmax(0,1fr); }
   .hub-job-editor .hub-question .hub-field input, .hub-job-editor .hub-question .hub-field select { min-height: 44px; font-size: 16px; }
 }
+
+/* Compact screening requirements on the publishing preview. */
+.hub-screening-preview-summary { margin-block: 18px; min-width: 0; }
+.hub-screening-preview-summary h4 { display: flex; align-items: center; gap: 8px; margin: 0 0 10px; font-size: 14px; }
+.hub-screening-preview-count { display: inline-flex; align-items: center; justify-content: center; min-width: 24px; height: 24px; border-radius: 6px; background: #edf4f2; font-size: 12px; }
+.hub-screening-preview-rules { list-style: none; padding: 0; margin: 0; border: 1px solid #d7e3e1; border-radius: 8px; overflow: hidden; }
+.hub-screening-preview-rule { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); gap: 8px 24px; padding: 14px 16px; }
+.hub-screening-preview-rule + .hub-screening-preview-rule { border-top: 1px solid #e2eae8; }
+.hub-screening-preview-question { font-weight: 500; line-height: 1.5; overflow-wrap: anywhere; }
+.hub-screening-preview-answer { display: flex; flex-direction: column; gap: 3px; overflow-wrap: anywhere; }
+.hub-screening-preview-answer strong { font-weight: 600; }
+.hub-screening-preview-condition { color: #536f76; font-size: 12px; }
+.hub-screening-preview-countries { grid-column: 1 / -1; min-width: 0; font-size: 13px; }
+.hub-screening-preview-countries summary { padding-block: 8px; cursor: pointer; color: #276c60; }
+.hub-screening-preview-countryGroups { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: 16px; max-height: 280px; overflow: auto; padding: 12px; background: #f5f8f7; border-radius: 6px; }
+.hub-screening-preview-countryGroups h5 { margin: 0 0 8px; font-size: 13px; }
+.hub-screening-preview-countryGroups h5 span { font-weight: 400; }
+.hub-screening-preview-countryGroups ul { list-style: none; padding: 0; margin: 0; display: grid; gap: 4px; }
+.hub-screening-preview-countryGroups li { overflow-wrap: anywhere; }
+@media (max-width: 600px) { .hub-screening-preview-rule { grid-template-columns: minmax(0, 1fr); padding: 12px; } }
