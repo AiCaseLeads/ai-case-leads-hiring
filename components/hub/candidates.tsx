@@ -249,6 +249,7 @@ function JobCandidates({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const [detailAction, setDetailAction] = useState<"note" | "interview">("note");
+  const [detailSection,setDetailSection] = useState<"application"|"review"|"activity">("review");
   const [exportMessage, setExportMessage] = useState("");
   const [exportError, setExportError] = useState("");
   const [exporting, setExporting] = useState(false);
@@ -402,12 +403,13 @@ function JobCandidates({
       <CandidateDetail
         key={detailId}
         id={detailId}
-        back={() => {setDetailId(null); setDetailAction("note");}}
+        back={() => {setDetailId(null); setDetailAction("note");setDetailSection("review");}}
         changed={changed}
         initialAction={detailAction}
+        initialSection={detailSection}
         navigationFilter={filter}
         navigationJobs={jobs}
-        openApplicant={id=>setDetailId(id)}
+        openApplicant={(id,_filter,section)=>{setDetailSection(section || "review");setDetailId(id);}}
       />
     );
   return (
@@ -627,6 +629,7 @@ export function CandidateDetail({
   navigationFilter = "",
   navigationJobs = [],
   openApplicant,
+  initialSection = "review",
 }: {
   id: string;
   back: () => void;
@@ -634,13 +637,14 @@ export function CandidateDetail({
   initialAction?: "note" | "interview";
   navigationFilter?: string;
   navigationJobs?: HubJob[];
-  openApplicant?: (id:string,filter:string)=>void;
+  openApplicant?: (id:string,filter:string,section?:"application"|"review"|"activity")=>void;
+  initialSection?: "application"|"review"|"activity";
 }) {
   const resource = useHubResource<ApplicationDetail>(
       "/api/hub/applications/" + encodeURIComponent(id),
     ),
     mutation = useHubMutation();
-  const [section, setSection] = useState<"application" | "review" | "activity">("review");
+  const [section, setSection] = useState<"application" | "review" | "activity">(initialSection);
   const [action, setAction] = useState(initialAction as string),
     [stage, setStage] = useState("Screening"),
     [text, setText] = useState(""),
@@ -765,7 +769,7 @@ export function CandidateDetail({
       />
       {detail && !resource.loading && (
         <>
-          {openApplicant && <ApplicantNavigation detail={detail} filter={navigationFilter} jobs={navigationJobs} open={(id,filter)=>requestDraftNavigation(()=>openApplicant(id,filter))} viewed={changed}/>}
+          {openApplicant && <ApplicantNavigation detail={detail} filter={navigationFilter} jobs={navigationJobs} open={(id,filter)=>requestDraftNavigation(()=>openApplicant(id,filter,section))} viewed={changed}/>}
           <div className="hub-section-heading">
             <div>
               <p className="hub-kicker">{detail.jobTitle}</p>

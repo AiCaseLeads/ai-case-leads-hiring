@@ -44,6 +44,7 @@ export function HiringDashboard({
     [refresh, setRefresh] = useState(0),
     [detailId, setDetailId] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [candidateSection,setCandidateSection]=useState<"application"|"review"|"activity">("review");
   const [candidateAction, setCandidateAction] = useState<"note" | "interview">("note");
   const menuButton = useRef<HTMLButtonElement>(null);
   const [workspaceNotice, setWorkspaceNotice] = useState("");
@@ -60,6 +61,8 @@ export function HiringDashboard({
     const next = requested && allowed.includes(requested) ? (requested === "home" ? "overview" : requested as View) : params.has("application") ? "applications" : "overview";
     setView(next);
     setDetailId(params.get("application"));
+    const requestedSection=params.get("candidateSection");
+    setCandidateSection(requestedSection==="application" || requestedSection==="activity" ? requestedSection : "review");
     setCandidateAction(params.get("candidateAction") === "interview" ? "interview" : "note");
     setInitialStage(next === "applications" && stages.includes(params.get("stage") || "") ? params.get("stage")! : "");
     setInitialJobId(next === "applications" ? params.get("jobId") || "" : "");
@@ -135,7 +138,7 @@ export function HiringDashboard({
   }
   function viewUrl(next: View) {
     const url = new URL(window.location.href);
-    for (const key of ["application", "candidateAction", "workspace", "reason", "jobId", "stage", "q", "assignee", "qualification", "grade", "sort", "top", "duplicate", "trash", "appliedFrom", "appliedTo", "timeZone", "page", "section", "jobEditor", "jobStep", "jobStart", "jobSource", "jobSession"]) url.searchParams.delete(key);
+    for (const key of ["application", "candidateAction", "candidateSection", "workspace", "reason", "jobId", "stage", "q", "assignee", "qualification", "grade", "sort", "top", "duplicate", "trash", "appliedFrom", "appliedTo", "timeZone", "page", "section", "jobEditor", "jobStep", "jobStart", "jobSource", "jobSession"]) url.searchParams.delete(key);
     url.searchParams.set("view", next === "overview" ? "home" : next);
     return url;
   }
@@ -143,14 +146,15 @@ export function HiringDashboard({
   function openStage(stage: string) { const url = viewUrl("applications"); url.searchParams.set("stage", stage); navigate(url); }
   function openJobApplicants(jobId: string) { const url = viewUrl("applications"); url.searchParams.set("jobId", jobId); navigate(url); }
   function beginJob() { changeView("jobs"); setCreateJob(Date.now()); }
-  function selectApplication(id: string, action?: "interview", filter?: string) {
+  function selectApplication(id: string, action?: "interview", filter?: string, section?:"application"|"review"|"activity") {
     const url = new URL(window.location.href); url.searchParams.set("application", id);
+    if(section)url.searchParams.set("candidateSection",section);else url.searchParams.delete("candidateSection");
     if(filter) new URLSearchParams(filter).forEach((value,key)=>url.searchParams.set(key,value));
     if(action) url.searchParams.set("candidateAction",action); else url.searchParams.delete("candidateAction");
     navigate(url, false, window.location.href);
   }
   function closeApplication() {
-    const url = new URL(window.location.href); url.searchParams.delete("application"); url.searchParams.delete("candidateAction");
+    const url = new URL(window.location.href); url.searchParams.delete("application"); url.searchParams.delete("candidateAction"); url.searchParams.delete("candidateSection");
     // Only traverse a predecessor that this dashboard created. A direct link stays here.
     if (window.history.state?.aiclHub && window.history.state?.candidateFrom === url.href) window.history.back();
     else {if (!url.searchParams.has("view")) url.searchParams.set("view", "applications"); navigate(url, true);}
@@ -254,9 +258,10 @@ export function HiringDashboard({
               key={`${detailId}:${candidateAction}`}
               id={detailId}
               initialAction={candidateAction}
+              initialSection={candidateSection}
               navigationFilter={initialFilter}
               navigationJobs={data?.jobs || []}
-              openApplicant={(id,filter)=>selectApplication(id,undefined,filter)}
+              openApplicant={(id,filter,section)=>selectApplication(id,undefined,filter,section)}
               back={closeApplication}
               changed={changed}
             />
