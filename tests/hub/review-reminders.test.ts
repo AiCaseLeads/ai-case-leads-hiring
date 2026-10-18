@@ -164,3 +164,34 @@ test("a downgraded fallback manager receives only assigned applications, never a
   assert.equal(ownMail!.to,MANAGER.email);assert.ok(!ownMail!.body.includes("manager fallback"));
   f.database.close();
 });
+test("Trash and archived jobs leave both the overdue queue and already queued reminders; paused intake keeps active reviews",async()=>{
+  const f=await fixture();
+  try {
+    await enqueueReviewReminders(f.store,f.owners,now);
+    const task=(await f.store.tasks()).find(t=>t.payload.reviewReminder)!;
+    const app=await f.store.getApplication(f.app.id);
+    await f.store.setSetting('application_trash:'+app.id,{deletedAt:now});
+    assert.equal((await overdueQueue(f.store,f.config,now)).total,0);
+    assert.equal(await reviewReminderMail(task,f.store,f.owners,now),null);
+    f.database.prepare('DELETE FROM hub_settings WHERE key=?').run('application_trash:'+app.id);
+    for(const state of ['archived','deleted']) {
+      await f.store.setSetting('job_lifecycle_'+app.jobId,{state});
+      assert.equal((await overdueQueue(f.store,f.config,now)).total,0);
+      assert.equal(await reviewReminderMail(task,f.store,f.owners,now),null);
+    }
+    await f.store.setSetting('job_lifecycle_'+app.jobId,{state:'active'});
+    f.database.prepare("UPDATE hub_jobs SET status='closed' WHERE id=?").run(app.jobId);
+    assert.equal((await overdueQueue(f.store,f.config,now)).total,1);
+    assert.ok(await reviewReminderMail(task,f.store,f.owners,now));
+  } finally {f.database.close();}
+});
+test("personal overdue scope normalizes both assignee and requester and excludes unassigned applications",async()=>{
+  const f=await fixture();
+  try {
+    assert.equal((await overdueQueue(f.store,f.config,now,0,RECRUITER.email)).total,0);
+    f.database.prepare('UPDATE hub_applications SET assignee=?').run(' '+RECRUITER.email.toUpperCase()+' ');
+    assert.equal((await overdueQueue(f.store,f.config,now,0,' '+RECRUITER.email.toUpperCase()+' ')).total,1);
+    assert.equal((await overdueQueue(f.store,f.config,now,0,'')).total,0);
+    assert.equal((await overdueQueue(f.store,f.config,now,0,MANAGER.email)).total,0);
+  } finally {f.database.close();}
+});

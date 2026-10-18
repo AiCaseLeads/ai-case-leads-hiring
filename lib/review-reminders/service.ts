@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { activeApplicationsSql } from "../hub/application-lifecycle";
 import type { HubStore } from "../hub/store";
 import type { MailInput } from "../google/workspace";
 import type { Task } from "../hub/types";
@@ -20,11 +21,11 @@ export async function activeStaff(store:HubStore,owners:string[]=[]):Promise<Sta
   for(const owner of owners){const email=owner.trim().toLowerCase();if(z.string().email().safeParse(email).success)byEmail.set(email,{email,role:"admin"});}
   return [...byEmail.values()];
 }
-const dueSql="a.stage='Application Review' AND a.stage_entered_at<=? AND NOT EXISTS (SELECT 1 FROM hub_scorecards s WHERE s.application_id=a.id)";
+const dueSql=`${activeApplicationsSql("a")} AND NOT EXISTS (SELECT 1 FROM hub_settings job_lifecycle WHERE job_lifecycle.key='job_lifecycle_'||a.job_id AND json_extract(job_lifecycle.value,'$.state') IN ('archived','deleted')) AND a.stage='Application Review' AND a.stage_entered_at<=? AND NOT EXISTS (SELECT 1 FROM hub_scorecards s WHERE s.application_id=a.id)`;
 export async function overdueQueue(store:HubStore,config:ReminderConfig,now=Date.now(),offset=0,assignee?:string){
   const cutoff=now-config.dueHours*3600000;
   const filter=assignee===undefined?"":" AND lower(trim(COALESCE(a.assignee,'')))=?";
-  const values=assignee===undefined?[cutoff]:[cutoff,assignee];
+  const values=assignee===undefined?[cutoff]:[cutoff,assignee.trim().toLowerCase()];
   const total=await store.stmt(`SELECT COUNT(*) AS count FROM hub_applications a WHERE ${dueSql}${filter}`,...values).first<{count:number}>();
   const applications=await store.rows<OverdueApplication>(`SELECT a.id,a.name,a.job_title AS jobTitle,a.assignee,a.stage_entered_at AS stageEnteredAt FROM hub_applications a WHERE ${dueSql}${filter} ORDER BY a.stage_entered_at,a.id LIMIT 50 OFFSET ?`,...values,offset);
   return {applications,total:total?.count||0,offset,limit:50};

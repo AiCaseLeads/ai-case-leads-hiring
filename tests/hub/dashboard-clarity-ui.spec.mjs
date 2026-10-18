@@ -16,7 +16,7 @@ async function setup(t,role='admin',overdue=0,query=''){
 }
 test('home prioritizes applicant work, keeps connection status compact and starts guided job creation',async t=>{
  const page=await setup(t);assert.deepEqual(await page.getByRole('navigation',{name:'Hiring workspace'}).getByRole('button').allTextContents(),['Home','Applicants','Jobs','Reports','Settings']);
- await page.getByText('Nothing overdue',{exact:true}).waitFor();assert.equal(await page.getByLabel('Show overdue applications').count(),0);assert.equal(await page.getByRole('heading',{name:'Platform status'}).count(),0);
+ await page.getByText('No overdue reviews in this queue.',{exact:true}).waitFor();assert.equal(await page.getByLabel('Review queue').inputValue(),'mine');assert.equal(await page.getByRole('heading',{name:'Platform status'}).count(),0);
  assert.match(await page.getByRole('button',{name:/New applicants/}).textContent(),/4/);
  await page.getByRole('button',{name:'Create job',exact:true}).click();await page.getByRole('heading',{name:'Create a job step by step'}).waitFor();assert.equal(new URL(page.url()).searchParams.get('view'),'jobs');await page.reload();await page.getByRole('heading',{name:'Job postings',exact:true}).waitFor();
  await page.getByRole('button',{name:'Manage scorecard templates',exact:true}).click();await page.getByRole('heading',{name:'Reusable scorecards',exact:true}).waitFor();assert.equal(await page.locator('#scorecard-settings').count(),1);assert.equal(await page.locator('#scorecard-settings').isVisible(),true);
@@ -59,4 +59,17 @@ test('interview shortcut keeps applicant intent in history and returns to its jo
  await page.goForward();await page.getByText('Initial action: interview',{exact:true}).waitFor();
  await page.getByRole('button',{name:'Back to applicants'}).click();await page.getByText('Filter job: job1',{exact:true}).waitFor();
  assert.equal(new URL(page.url()).searchParams.has('candidateAction'),false);
+});
+
+test('overview overdue scope is explicit, defaults to me, and switches to the team without ambiguity',async t=>{
+ const page=await setup(t,'admin',1);
+ await page.getByRole('heading',{name:'My overdue reviews',exact:true}).waitFor();
+ assert.equal(await page.getByLabel('Review queue').inputValue(),'mine');
+ await page.getByText('Assigned to you only',{exact:false}).waitFor();
+ const request=page.waitForRequest(r=>r.url().includes('/api/review-reminders?')&&new URL(r.url()).searchParams.get('scope')==='all');
+ await page.getByLabel('Review queue').selectOption('all');await request;
+ await page.getByRole('heading',{name:'Team overdue reviews',exact:true}).waitFor();
+ await page.getByText('Across the whole team',{exact:false}).waitFor();
+ await page.getByLabel('Review queue').selectOption('unassigned');
+ await page.getByRole('heading',{name:'Unassigned overdue reviews',exact:true}).waitFor();
 });
