@@ -1,3 +1,4 @@
+import { withRequiredApplicationFields } from "../../lib/hiring/contact-fields";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createStore, jobInput, applicationInput, MANAGER } from "../hub/fixtures";
@@ -73,7 +74,7 @@ for (const api of ["hub PATCH", "wizard POST"] as const) {
       let response = await edit(f, api, f.job, { fields: reordered });
       assert.equal(response.status, 200, JSON.stringify(await response.clone().json()));
       let current = await f.store.getJob(f.job.id);
-      assert.equal(current.formVersion, 2); assert.deepEqual(current.fields, reordered);
+      assert.equal(current.formVersion, 2); assert.deepEqual(current.fields, withRequiredApplicationFields(reordered));
       assert.deepEqual(await evidence(f), before);
       response = await edit(f, api, current, { location: "Remote · Spain" });
       assert.equal(response.status, 200, JSON.stringify(await response.clone().json()));

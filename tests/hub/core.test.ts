@@ -1,3 +1,4 @@
+import { withRequiredApplicationFields } from "../../lib/hiring/contact-fields";
 import { currentAction, currentBulk } from "./fixtures";
 import assert from "node:assert/strict";
 import { test } from "node:test";
@@ -433,7 +434,7 @@ test("partial job edits preserve unchanged configuration and reject stale form v
   );
   const updated = await store.getJob(posting.id);
   assert.equal(updated.descriptionHtml, posting.descriptionHtml);
-  assert.deepEqual(updated.fields, posting.fields);
+  assert.deepEqual(updated.fields, withRequiredApplicationFields(posting.fields));
   assert.equal(updated.formVersion, posting.formVersion + 1);
   assert.equal(
     (

@@ -1,3 +1,4 @@
+import { withRequiredApplicationFields } from "../hiring/contact-fields";
 import { downloadApplications } from "./exports";
 import type { HubMember } from "./auth";
 import { HiringError } from "../hiring/errors";
@@ -92,7 +93,8 @@ export async function handleHubRequest(
     else if (section === "jobs" && request.method === "GET" && !id)
       data = await store.listJobs();
     else if (section === "jobs" && request.method === "POST" && !id) {
-      data = await store.saveJob(parse(jobInput, await json(request)));
+      const input = parse(jobInput, await json(request));
+      data = await store.saveJob({ ...input, fields: withRequiredApplicationFields(input.fields) });
     } else if (section === "jobs" && id && operation === "lifecycle" && request.method === "POST") {
       data = await changeJobLifecycle(store, id, parse(jobLifecycleInput, await json(request)), member);
     } else if (section === "jobs" && id && !operation && request.method === "PATCH") {
@@ -106,7 +108,6 @@ export async function handleHubRequest(
           descriptionHtml: existing.descriptionHtml,
           location: existing.location,
           status: existing.status,
-          fields: existing.fields,
           rules: existing.rules,
           autoReject: existing.autoReject,
           rejectionTemplate: existing.rejectionTemplate,
@@ -115,6 +116,7 @@ export async function handleHubRequest(
           archiveCountry: existing.archiveCountry,
           hiringRound: existing.hiringRound,
           ...patch,
+          fields: withRequiredApplicationFields(patch.fields ?? existing.fields),
         }),
         id,
         formVersion ?? existing.formVersion,

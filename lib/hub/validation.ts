@@ -1,3 +1,4 @@
+import { validNumericAnswer } from "../hiring/validation";
 import { countryOptions, isCountryResidence, residencePath } from "../countries";
 import { hasDescriptionText } from "../job-description";
 import { z } from "zod";
@@ -24,6 +25,8 @@ const field = z
       "Url",
     ]),
     required: z.boolean(),
+    numberFormat: z.enum(["number", "currency"]).optional(),
+    currency: z.literal("USD").optional(),
     options: z
       .array(
         z
@@ -198,6 +201,7 @@ export function validateJob(input: JobInput): void {
         "Select fields need unique answer options.",
       );
   for (const field of input.fields) {
+    if ((field.numberFormat || field.currency) && (field.type !== "Number" || (field.currency && field.numberFormat !== "currency") || (field.numberFormat === "currency" && field.currency !== "USD"))) throw new HiringError("invalid_job",422,"Currency fields must be numeric and use USD.");
     if (field.path === residencePath && (!isCountryResidence(field) || field.options?.length !== countryOptions.length || countryOptions.some(option => !field.options?.some(candidate=>candidate.value===option.value)))) throw new HiringError("invalid_job",422,"Country of residence must use the complete built-in country list.");
     if (!isCountryResidence(field) && (field.options?.length || 0)>100) throw new HiringError("invalid_job",422,"Custom select fields support up to 100 options.");
   }
@@ -209,6 +213,7 @@ export function validateJob(input: JobInput): void {
         422,
         "Screening rules must reference an existing answer field.",
       );
+    if (field.type === "Number" && !validNumericAnswer(rule.value, field.numberFormat === "currency")) throw new HiringError("invalid_rule",422,"Use a valid numeric screening value; USD amounts support up to two decimal places.");
     if (["in", "not_in"].includes(rule.operator)) {
       if (!isCountryResidence(field) || (rule.enabled && !field.required) || !Array.isArray(rule.value) || !rule.value.length || new Set(rule.value).size!==rule.value.length || rule.value.some(value=>!countryOptions.some(option=>option.value===value))) throw new HiringError("invalid_rule",422,"Choose at least one valid allowed country of residence.");
       continue;

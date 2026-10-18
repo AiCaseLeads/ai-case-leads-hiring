@@ -7,7 +7,7 @@ import { HiringError } from "../hiring/errors";
 import { validateAnswers, MAX_APPLICATION_FILE_BYTES } from "../hiring/validation";
 import { matchDetail } from "../ai/matching";
 import { unchangedJobMatchStatements } from "../ai/reuse";
-import { applicantDisplayName, withRequiredPhone } from "../hiring/contact-fields";
+import { applicantDisplayName, withRequiredApplicationFields } from "../hiring/contact-fields";
 import { applicationReceipt } from "../hiring/receipt-email";
 import { gradeForScorecards } from "./grading";
 import type {
@@ -346,7 +346,7 @@ export class HubStore {
         descriptionHtml: value.descriptionHtml,
         ...(value.location ? { location: value.location } : {}),
       },
-      fields: withRequiredPhone(value.fields),
+      fields: withRequiredApplicationFields(value.fields),
       formVersion: value.formVersion,
     };
   }
@@ -610,7 +610,7 @@ export class HubStore {
         422,
         "The application questions or requirements changed. Refresh the job before submitting.",
       );
-    if(publicApplication)posting.fields=withRequiredPhone(posting.fields);
+    if(publicApplication)posting.fields=withRequiredApplicationFields(posting.fields);
     validateAnswers(input, posting.fields);
     const now = Date.now();
     const fileEntries: { path: string; id: string }[] = [];

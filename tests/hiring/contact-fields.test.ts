@@ -20,7 +20,7 @@ test('phone requires international prefix and bounded digits, both client helper
 });
 
 test('public legacy job requires canonical international phone and saves its field with the application',async()=>{
- const {customDatabase,openSyntheticRole}=await import('../custom-fixture');
+ const {customDatabase,openSyntheticRole,uploadSyntheticResume}=await import('../custom-fixture');
  const {LocalHiringProvider,acceptLocalApplication}=await import('../../lib/hiring/local');
  const f=customDatabase();try{
   const job=await openSyntheticRole(f.store);
@@ -31,7 +31,8 @@ test('public legacy job requires canonical international phone and saves its fie
   await assert.rejects(()=>acceptLocalApplication(f.db,base,'a'.repeat(64),true,true),{code:'invalid_application'});
   for(const value of ['', '3055550123', '+123', '+01234567890'])await assert.rejects(()=>acceptLocalApplication(f.db,{...base,fieldSubmissions:[...base.fieldSubmissions,{path:'_systemfield_phone',value}]},'a'.repeat(64),true,true),{code:'invalid_application'});
   assert.equal(f.database.prepare('SELECT COUNT(*) AS n FROM hub_applications').get()!.n,0);
-  const input={...base,fieldSubmissions:[...base.fieldSubmissions,{path:'_systemfield_phone',value:'+57 301 234 5678'}]};
+  const handle=await uploadSyntheticResume(f.db,job.id,'a'.repeat(64));
+  const input={...base,fieldSubmissions:[...base.fieldSubmissions,{path:'_systemfield_phone',value:'+57 301 234 5678'},handle]};
   assert.equal((await acceptLocalApplication(f.db,input,'a'.repeat(64),true,true)).status,'accepted');
   assert.equal((await acceptLocalApplication(f.db,input,'a'.repeat(64),true,true)).status,'accepted');
   const row=f.database.prepare('SELECT fields_json,answers_json FROM hub_applications').get()!;

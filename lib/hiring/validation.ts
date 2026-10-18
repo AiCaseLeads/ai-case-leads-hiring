@@ -15,7 +15,7 @@ export const MAX_APPLICATION_FILE_BYTES = 25 * 1024 * 1024;
 function object(v: unknown): v is Record<string, unknown> { return v !== null && typeof v === "object" && !Array.isArray(v); }
 function badRequest(message = "Please check the application details and try again."): never { throw new HiringError("invalid_request", 400, message); }
 export function parseApplication(value: unknown): ApplicationInput {
-  if (!object(value) || typeof value.jobPostingId !== "string" || !UUID.test(value.jobPostingId) || typeof value.submissionKey !== "string" || !UUID.test(value.submissionKey) || !Array.isArray(value.fieldSubmissions) || value.fieldSubmissions.length > 100) badRequest();
+  if (!object(value) || typeof value.jobPostingId !== "string" || !UUID.test(value.jobPostingId) || typeof value.submissionKey !== "string" || !UUID.test(value.submissionKey) || !Array.isArray(value.fieldSubmissions) || value.fieldSubmissions.length > 102) badRequest();
   const fields = value.fieldSubmissions;
   if(value.formVersion!==undefined&&(typeof value.formVersion!=="number"||!Number.isSafeInteger(value.formVersion)||value.formVersion<1))badRequest("The application form version is invalid. Refresh this page.");
   if (fields.some(f => !object(f) || typeof f.path !== "string" || !f.path || f.path.length > 256 || !("value" in f)) || new Set(fields.map(f => f.path)).size !== fields.length) badRequest();
@@ -46,7 +46,7 @@ export function validateAnswers(input: ApplicationInput, fields: ApplicationFiel
     switch (field.type) {
       case "Boolean": valid = typeof v === "boolean"; break;
       case "Phone": valid = internationalPhoneError(v) === null; break;
-      case "Number": valid = typeof v === "number" && Number.isFinite(v) && Number.isSafeInteger(v); break;
+      case "Number": valid = validNumericAnswer(v, field.numberFormat === "currency"); break;
       case "Score": valid = object(v) && Number.isInteger(v.score) && Number(v.score) >= 1 && Number(v.score) <= 4 && Object.keys(v).every(k => k === "score"); break;
       case "MultiValueSelect": valid = Array.isArray(v) && v.length <= 100 && v.every(item => typeof item === "string" && field.options?.some(o => o.value === item)) && new Set(v).size === v.length; break;
       case "ValueSelect": valid = typeof v === "string" && !!field.options?.some(o => o.value === v); break;
@@ -64,4 +64,8 @@ export function validateAnswers(input: ApplicationInput, fields: ApplicationFiel
   }
   for (const field of fields) if (field.required && !answers.has(field.path)) fieldErrors[field.path] = `${field.title} is required.`;
   if (Object.keys(fieldErrors).length) throw new HiringError("invalid_application", 422, "Please check the highlighted answers.", fieldErrors);
+}
+
+export function validNumericAnswer(value: unknown, currency = false): boolean {
+  return typeof value === "number" && Number.isFinite(value) && Math.abs(value) <= Number.MAX_SAFE_INTEGER && (!currency || (Math.abs(value) <= Number.MAX_SAFE_INTEGER / 100 && Math.abs(value * 100 - Math.round(value * 100)) < 0.000001));
 }

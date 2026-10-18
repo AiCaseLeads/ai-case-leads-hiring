@@ -53,7 +53,17 @@ export async function acceptLocalApplication(db: D1Database, input: ApplicationI
   const receipt = privateToken(), receiptHash = await sha256(receipt), appId = await applicationIdForSubmissionKey(input.submissionKey), now = Date.now();
   const statements = [db.prepare("INSERT INTO hiring_submissions (key_hash,session_hash,fingerprint,job_posting_id,job_title,status,receipt_hash,submitted_form_instance_id,application_id,created_at,updated_at) VALUES (?,?,?,?,?,'accepted',?,?,?,?,?) ON CONFLICT(key_hash) DO NOTHING")
     .bind(keyHash,sessionHash,fingerprint,input.jobPostingId,definition.job.title,receiptHash,appId,appId,now,now)];
-  await hub.acceptApplication(input,sessionHash,statements,true);
+  try {
+    await hub.acceptApplication(input,sessionHash,statements,true);
+  } catch (error) {
+    // Another identical request can commit while this request validates its file.
+    // Its now-attached upload is no longer unclaimed, but the accepted receipt wins.
+    const winner = await tracker.find(keyHash);
+    if (!winner) throw error;
+    check(winner);
+    await tracker.addReceipt(keyHash,receiptHash);
+    return {status:"accepted",receipt};
+  }
   const accepted = await tracker.find(keyHash);
   if (!accepted) throw new HiringError("tracking_unavailable",503,"We could not confirm your application. Retry with the same submission.");
   check(accepted);

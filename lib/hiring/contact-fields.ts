@@ -27,3 +27,14 @@ export function withRequiredPhone(fields: ApplicationField[]): ApplicationField[
   const position=fields.findIndex(field=>field.path==="_systemfield_email");
   const result=[...fields];result.splice(position<0?0:position+1,0,phone);return result;
 }
+
+/** Fixed upload field for all new public applications, including legacy postings. */
+export const resumePath = "_systemfield_resume";
+export function withRequiredResume(fields: ApplicationField[]): ApplicationField[] {
+  const resume: ApplicationField = { path: resumePath, title: "Résumé / CV", type: "File", required: true };
+  if (fields.some(field => field.path === resumePath)) return fields.map(field => field.path === resumePath ? resume : field);
+  return [...fields, resume];
+}
+export function withRequiredApplicationFields(fields: ApplicationField[]): ApplicationField[] {
+  return withRequiredResume(withRequiredPhone(fields));
+}

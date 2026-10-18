@@ -1,3 +1,4 @@
+import { withRequiredApplicationFields } from "../hiring/contact-fields";
 import { jobTeam,teamKey,validateTeam } from "../job-team/service";
 import { unchangedJobMatchStatements } from "../ai/reuse";
 import type { HubMember } from "../hub/auth-core";
@@ -235,6 +236,7 @@ export async function handleJobSetup(
       );
     const job = {
       ...input.job,
+      fields: withRequiredApplicationFields(input.job.fields),
       rejectionTemplate,
       location: input.location
         ? publicLocation(input.location)
