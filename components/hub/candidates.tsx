@@ -1056,7 +1056,7 @@ export function CandidateDetail({
                           <Download size={16} /> {file.filename} — Download
                         </a>
                         <span>
-                          {Math.ceil(file.size / 1024)} KB · {file.contentType}
+                          {Math.ceil(file.size / 1024)} KB · {({"application/pdf":"PDF", "application/msword":"Word document", "application/vnd.openxmlformats-officedocument.wordprocessingml.document":"Word document", "image/png":"PNG image", "image/jpeg":"JPEG image", "image/webp":"WebP image"} as Record<string,string>)[file.contentType] || "Original file"}
                         </span>
                         {section === "application" && file.id===resumeFile(detail)?.id && <ResumePreview detail={detail}/>}
                       </li>
