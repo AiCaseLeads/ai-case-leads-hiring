@@ -44,13 +44,20 @@ export function ResumePreview({detail}:{detail:ApplicationDetail}){
   return <FilePreview file={resume}/>;
 }
 function FilePreview({file:resume}:{file:ApplicationDetail["files"][number]}) {
-  const previewable=resume.contentType==="application/pdf" || ["image/png","image/jpeg","image/webp"].includes(resume.contentType);
+  const word=["application/msword","application/vnd.openxmlformats-officedocument.wordprocessingml.document"].includes(resume.contentType) || /\.docx?$/i.test(resume.filename);
+  const previewable=word || resume.contentType==="application/pdf" || ["image/png","image/jpeg","image/webp"].includes(resume.contentType);
   const url=`/api/files/${encodeURIComponent(resume.id)}?preview=1`;
   const [ready,setReady]=useState(false);
   const [error,setError]=useState(false);
-  useEffect(()=>{if(!previewable)return;const controller=new AbortController();void fetch(url,{method:"HEAD",credentials:"same-origin",signal:controller.signal}).then(response=>{if(!response.ok || !["application/pdf","image/png","image/jpeg","image/webp"].includes((response.headers.get("content-type") || "").split(";")[0].trim()))throw Error("preview unavailable");setReady(true);}).catch(()=>{if(!controller.signal.aborted)setError(true);});return()=>controller.abort();},[url,previewable]);
+  useEffect(()=>{if(!previewable)return;const controller=new AbortController();void fetch(url,{method:"HEAD",credentials:"same-origin",signal:controller.signal}).then(response=>{if(!response.ok || !["application/pdf","image/png","image/jpeg","image/webp","text/plain"].includes((response.headers.get("content-type") || "").split(";")[0].trim()))throw Error("preview unavailable");setReady(true);}).catch(()=>{if(!controller.signal.aborted)setError(true);});return()=>controller.abort();},[url,previewable]);
   return <section className="hub-resume-preview" aria-label="Résumé preview">
     <a className="hub-text-button" href={resume.url} target="_blank" rel="noopener noreferrer">Download résumé</a>
-    {previewable && ready && !error ? (resume.contentType==="application/pdf" ? <PdfPreview key={url} url={url} filename={resume.filename}/> : <img src={url} onError={()=>setError(true)} alt={`Résumé: ${resume.filename}`} style={{display:"block",maxWidth:"100%",maxHeight:"280px",objectFit:"contain",margin:"0 auto"}}/>) : previewable ? <p role="status">{error?"Preview is unavailable. Use Download résumé or refresh to retry.":"Loading résumé preview…"}</p> : <p className="hub-muted">This file format cannot be previewed here. Download the original résumé to open it.</p>}
+    {previewable && ready && !error ? (word ? <WordPreview key={url} url={url}/> : resume.contentType==="application/pdf" ? <PdfPreview key={url} url={url} filename={resume.filename}/> : <img src={url} onError={()=>setError(true)} alt={`Résumé: ${resume.filename}`} style={{display:"block",maxWidth:"100%",maxHeight:"280px",objectFit:"contain",margin:"0 auto"}}/>) : previewable ? <p role="status">{error?"Preview is unavailable. Use Download résumé or refresh to retry.":"Loading résumé preview…"}</p> : <p className="hub-muted">This file format cannot be previewed here. Download the original résumé to open it.</p>}
   </section>;
+}
+
+function WordPreview({url}:{url:string}) {
+  const [text,setText]=useState<string|null>(null),[error,setError]=useState(false);
+  useEffect(()=>{const controller=new AbortController();void fetch(url,{credentials:"same-origin",cache:"no-store",signal:controller.signal}).then(async response=>{if(!response.ok || !(response.headers.get("content-type") || "").startsWith("text/plain"))throw Error("preview unavailable");const value=await response.text();if(!value.trim())throw Error("empty preview");if(!controller.signal.aborted)setText(value);}).catch(()=>{if(!controller.signal.aborted)setError(true);});return()=>controller.abort();},[url]);
+  return <div><h5>Word résumé · text preview</h5><p className="hub-muted">Formatting may differ. Download the original for the complete document.</p>{error?<p role="status">Preview is unavailable. Download the original résumé to open it.</p>:text===null?<p role="status">Loading résumé text…</p>:<div className="hub-resume-canvas-window" role="region" aria-label="Word résumé text" tabIndex={0} style={{overflow:"auto",whiteSpace:"pre-wrap",overflowWrap:"anywhere",padding:12,background:"white"}}>{text}</div>}</div>;
 }

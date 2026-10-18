@@ -9,7 +9,7 @@ import tailwind from '@tailwindcss/postcss';
 import {PDFDocument,StandardFonts} from 'pdf-lib';
 const job={id:'job-1',title:'Synthetic Engineer',slug:'engineer',status:'open',aiMatchEnabled:true,fields:[],rules:[]};
 const record=id=>({id,revision:1,name:`Applicant ${id}`,email:'synthetic@example.invalid',jobId:job.id,jobTitle:job.title,stage:'Application Review',qualification:'pass',createdAt:1,assignee:null,fields:[{path:'_systemfield_resume',type:'File',title:'Résumé',required:false},{path:'portfolio',type:'File',title:'Portfolio',required:false}],answers:[],files:[{id:'portfolio',fieldPath:'portfolio',filename:'portfolio.pdf',url:'/api/files/portfolio',contentType:'application/pdf',size:100},{id:'resume',fieldPath:'_systemfield_resume',filename:'resume.pdf',url:'/api/files/resume',contentType:'application/pdf',size:100}],history:[],notes:[],scorecards:[],communications:[],qualificationEvidence:[]});
-async function setup(t,{failViewed=false,failPreview=false,width=1280}={}){
+async function setup(t,{failViewed=false,failPreview=false,word=false,width=1280}={}){
  const pdf=await PDFDocument.create();const font=await pdf.embedFont(StandardFonts.Helvetica);for(const title of ['Synthetic résumé page one','Synthetic résumé page two']){const p=pdf.addPage([400,500]);p.drawText(title,{x:30,y:430,size:20,font});}const pdfBytes=Buffer.from(await pdf.save());
  const {outputFiles}=await build({stdin:{contents:`import React from'react';import{createRoot}from'react-dom/client';import{HiringDashboard}from'./components/hub/dashboard';createRoot(document.getElementById('root')).render(<HiringDashboard member={{email:'reviewer@example.invalid',role:'admin'}} signOutHref='/logout'/>);`,loader:'tsx',resolveDir:process.cwd()},bundle:true,write:false,format:'iife',jsx:'automatic'});
  const css=(await postcss([tailwind()]).process(readFileSync('app/globals.css','utf8'),{from:'app/globals.css'})).css+'\n'+readFileSync('components/hub/hub.css','utf8');
@@ -21,8 +21,8 @@ async function setup(t,{failViewed=false,failPreview=false,width=1280}={}){
  else if(u.pathname.endsWith('/navigation')){navigation.push(u);const id=u.pathname.split('/')[4];data={previousId:id==='app-1'?null:'app-1',nextId:id==='app-1'?'app-2':null,position:id==='app-1'?50:51,total:51};}
  else if(u.pathname.endsWith('/viewed')){writes.push(u.pathname);if(failViewed)return route.fulfill({status:503,json:{error:{message:'unavailable'}}});views.add(u.pathname.split('/')[4]);data={viewedAt:123};}
  else if(u.pathname==='/api/hub/applications')data={items:[{...record('app-1'),viewedAt:views.has('app-1')?123:null}],total:51,page:2,pageSize:25};
- else if(u.pathname.startsWith('/api/hub/applications/'))data={...record(u.pathname.split('/')[4]),viewedAt:views.has(u.pathname.split('/')[4])?123:null};
- else if(u.pathname.startsWith('/api/files/'))return route.fulfill({status:failPreview?403:200,contentType:failPreview?'application/json':'application/pdf',body:failPreview?'{}':pdfBytes});
+ else if(u.pathname.startsWith('/api/hub/applications/')){data={...record(u.pathname.split('/')[4]),viewedAt:views.has(u.pathname.split('/')[4])?123:null};if(word)data.files[1]={...data.files[1],filename:'resume.doc',contentType:'application/msword'};}
+ else if(u.pathname.startsWith('/api/files/'))return route.fulfill({status:failPreview?403:200,contentType:failPreview?'application/json':word?'text/plain':'application/pdf',body:failPreview?'{}':word?'Synthetic Word experience\n<script>alert(1)</script>':pdfBytes});
  else if(u.pathname==='/api/ai/match')data={enabled:false,status:'disabled',criteria:[]};
  else if(u.pathname==='/api/scorecards')data={template:null,revision:1};
  return route.fulfill({json:{data}});});
@@ -45,4 +45,8 @@ test('resume preview chooses resume field, stays bounded on mobile and never use
 });
 test('view and preview failures leave application usable with explicit retry/download',async t=>{
  const{page}=await setup(t,{failViewed:true,failPreview:true});await page.getByRole('button',{name:'Applicant app-1',exact:true}).click();await page.getByRole('button',{name:'Retry viewed status',exact:true}).waitFor();await page.getByRole('button',{name:'View résumé',exact:true}).click();await page.getByText('Preview is unavailable. Use Download résumé or refresh to retry.',{exact:true}).waitFor();assert.equal(await page.locator('iframe').count(),0);await page.getByRole('link',{name:'Download résumé',exact:true}).waitFor();await page.getByRole('button',{name:'Next applicant',exact:true}).click();await page.getByRole('heading',{name:'Applicant app-2',exact:true}).waitFor();
+});
+
+test('Word resume text is embedded under its original file as inert readable text',async t=>{
+ const{page}=await setup(t,{word:true,width:390});await page.getByRole('button',{name:'Applicant app-1',exact:true}).click();await page.getByRole('button',{name:'View résumé',exact:true}).click();const text=page.getByRole('region',{name:'Word résumé text',exact:true});await text.waitFor();assert.match(await text.textContent(),/Synthetic Word experience/);assert.match(await text.textContent(),/<script>alert/);assert.equal(await text.locator('script').count(),0);assert.ok((await text.boundingBox()).height<=282);await page.getByRole('link',{name:'Download résumé',exact:true}).waitFor();
 });
