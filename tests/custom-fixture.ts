@@ -20,3 +20,16 @@ export function customDatabase(){
 export async function openSyntheticRole(store:HubStore){
   return store.saveJob({title:"Synthetic Full-stack Engineer",slug:"synthetic-full-stack-engineer",department:"Test",descriptionHtml:"<p>Isolated synthetic test only.</p>",status:"open",fields:[{path:"_systemfield_name",title:"Name",type:"String",required:true},{path:"_systemfield_email",title:"Email",type:"Email",required:true}],rules:[],autoReject:false,rejectionTemplate:"Thank you, {{name}}. We are not moving forward with your application.",assessmentPrompt:"Describe an approach to a synthetic test problem."});
 }
+
+/** Real private upload validation with an isolated in-memory object sink. */
+export async function uploadSyntheticResume(db:D1Database,jobId:string,session:string){
+  const {LocalHiringProvider}=await import("../lib/hiring/local");
+  const {receiveUpload}=await import("../lib/hiring/files");
+  const {samplePdf}=await import("./document-fixture");
+  const origin="https://careers.invalid",bytes=samplePdf();
+  const upload=await new LocalHiringProvider(db,session,origin).createUpload({jobPostingId:jobId,fieldPath:"_systemfield_resume",filename:"synthetic-resume.pdf",contentType:"application/pdf",contentLength:Buffer.byteLength(bytes)});
+  const body=new FormData();body.append("file",new File([bytes],"synthetic-resume.pdf",{type:"application/pdf"}));
+  const result=await receiveUpload(new Request(origin+"/api/uploads/"+upload.handle,{method:"POST",headers:{Origin:origin,Cookie:"hiring_session="+session},body}),upload.handle,db,{async put(){}} as unknown as R2Bucket,true);
+  if(result.status!==204)throw new Error("synthetic_resume_upload_failed:"+result.status);
+  return {path:"_systemfield_resume",value:upload.handle};
+}
