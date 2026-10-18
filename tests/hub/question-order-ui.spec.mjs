@@ -67,7 +67,7 @@ test("mouse drag skips multiple positions and saves exact question identities, i
   assert.equal(await page.getByLabel("Question 2 label", { exact: true }).inputValue(), "Years of experience");
   await page.getByLabel("Question 3 label", { exact: true }).fill("Edited portfolio link");
   await page.getByRole("list", { name: "Job setup progress" }).getByRole("button", { name: "Publish", exact: true }).click();
-  await page.getByRole("button", { name: "Save published job", exact: true }).click();
+  await page.getByRole("button", { name: "Save changes", exact: true }).first().click();
   await page.getByText("Job published.", { exact: false }).waitFor();
   assert.equal(writes.length, 1);
   assert.equal(writes[0].expectedLifecycleRevision, 3, "saving must not overwrite a newer pause/archive decision");

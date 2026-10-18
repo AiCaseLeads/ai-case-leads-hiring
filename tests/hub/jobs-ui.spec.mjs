@@ -550,7 +550,7 @@ test("question instructions are collapsed by default and publish needs no approv
  await steps.getByRole('button',{name:'Review setup',exact:true}).click();assert.equal(await page.getByRole('checkbox',{name:/Rank applicants with AI/}).isChecked(),false);
  await steps.getByRole('button',{name:'Publish',exact:true}).click();assert.equal(await page.getByRole('checkbox',{name:/I have reviewed|I approve/}).count(),0);
  if(process.env.JOB_WIZARD_SCREENSHOT)await page.screenshot({path:process.env.JOB_WIZARD_SCREENSHOT,fullPage:true});
- await page.getByRole('button',{name:'Save published job',exact:true}).click();await page.getByText('Job published.',{exact:false}).waitFor();assert.equal(writes.length,1);assert.equal(writes[0].job.fields.find(field=>field.path==='portfolio').description,'Updated helper text');assert.equal(writes[0].job.aiMatchEnabled,false);assert.equal(writes[0].job.autoReject,false);
+ await page.getByRole('button',{name:'Save changes',exact:true}).first().click();await page.getByText('Changes saved. This job is still open.',{exact:false}).waitFor();assert.equal(writes.length,1);assert.equal(writes[0].job.fields.find(field=>field.path==='portfolio').description,'Updated helper text');assert.equal(writes[0].job.aiMatchEnabled,false);assert.equal(writes[0].job.autoReject,false);
 });
 
 test("jobs keep daily actions visible and move secondary tools into a compact menu", async t => {
@@ -658,4 +658,14 @@ test("a failed lifecycle action preserves the row and explains that it must be r
  assert.equal(await page.getByRole('button',{name:'Pause job',exact:true}).isVisible(),true);
  assert.equal(await page.getByRole('button',{name:'Resume job',exact:true}).count(),0);
  assert.equal(lifecycleWrites.length,1);
+});
+
+for(const status of ['open','closed','draft'])test(`existing ${status} job saves directly from details without changing availability`,async t=>{
+ const{page,writes}=await setup(t,{jobs:[{...prior,status}]});await page.getByRole('button',{name:'Edit job',exact:true}).click();await page.getByLabel('Job title',{exact:true}).fill('Updated directly');await page.getByRole('button',{name:'Save changes',exact:true}).first().click();await page.getByText(`Changes saved. This job is still ${status==='open'?'open':status==='closed'?'paused':'a draft'}.`,{exact:false}).waitFor();assert.equal(writes.length,1);assert.equal(writes[0].job.status,status);assert.equal(writes[0].job.title,'Updated directly');assert.equal(writes[0].formVersion,3);assert.equal(writes[0].job.autoReject,false);
+});
+test('direct save validates hidden sections and returns to the unfinished question',async t=>{
+ const{page,writes}=await setup(t,{jobs:[{...prior,fields:[...prior.fields,{path:'broken',type:'String',title:'',required:false}]}]});await page.getByRole('button',{name:'Edit job',exact:true}).click();await page.getByRole('button',{name:'Save changes',exact:true}).first().click();await page.getByText('Give each question a label and add choices to any choice question.',{exact:true}).waitFor();assert.equal(writes.length,0);assert.equal(new URL(page.url()).searchParams.get('jobStep'),'1');
+});
+test('country requirement saves directly from Questions without publishing or enabling automatic rejection',async t=>{
+ const{page,writes}=await setup(t,{jobs:[{...prior,status:'closed'}]});await page.getByRole('button',{name:'Edit job',exact:true}).click();await page.getByRole('list',{name:'Job setup progress'}).getByRole('button',{name:'Application questions',exact:true}).click();await page.getByRole('button',{name:'Add country of residence question',exact:true}).click();await page.getByLabel('Eligible countries',{exact:true}).selectOption('in');await page.getByLabel('Find countries',{exact:true}).fill('Spain');await page.getByLabel('Spain',{exact:true}).check();await page.getByRole('button',{name:'Save changes',exact:true}).first().click();await page.getByText('Changes saved. This job is still paused.',{exact:false}).waitFor();assert.equal(writes.length,1);assert.equal(writes[0].job.status,'closed');assert.equal(writes[0].job.autoReject,false);assert.equal(writes[0].job.fields.find(f=>f.path==='country_of_residence').options.length,249);assert.deepEqual(writes[0].job.rules.find(r=>r.fieldPath==='country_of_residence').value,['ES']);
 });

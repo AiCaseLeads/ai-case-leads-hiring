@@ -532,6 +532,7 @@ function Editor({
     (job && originalBinding);
   const canJumpBetweenSections = !!job && job.status !== "draft";
   const highestValidatedStep = useRef(canJumpBetweenSections ? 3 : 0);
+  const saveFeedback = useRef<HTMLDivElement>(null);
   const [step, setStep] = useState(0),
     [title, setTitle] = useState(source?.title || request?.title || ""),
     [description, setDescription] = useState(
@@ -720,10 +721,11 @@ function Editor({
       );
     return !incomplete;
   }
-  function next() {
+  useEffect(()=>{if(error || mutation.error){saveFeedback.current?.focus();saveFeedback.current?.scrollIntoView({block:"center",behavior:"instant"});}},[error,mutation.error]);
+  function validateSection(section: number) {
     setError("");
     if (
-      step === 0 &&
+      section === 0 &&
       (!title.trim() ||
         (!location && !job) ||
         (location && (!location.workModel || !location.country)) ||
@@ -736,10 +738,11 @@ function Editor({
       setError(
         "Add a job title, then choose a work arrangement and location. Office-based jobs need a country and city.",
       );
-      return;
+      return false;
     }
-    if (step === 1) {
-      if (!validateNumericScreening()) return;
+    if (section === 1) {
+      if(rules.some(rule=>rule.enabled && ["in","not_in"].includes(rule.operator) && (!Array.isArray(rule.value) || !rule.value.length))){setError("Select at least one country for each country screening rule, or choose Any country.");return false;}
+      if (!validateNumericScreening()) return false;
       const invalid = fields.find(
         (f) =>
           !f.title.trim() ||
@@ -750,17 +753,17 @@ function Editor({
         setError(
           "Give each question a label and add choices to any choice question.",
         );
-        return;
+        return false;
       }
       if (new Set(fields.map((f) => f.path)).size !== fields.length) {
         setError(
           "Two questions use the same identifier. Remove the duplicate question.",
         );
-        return;
+        return false;
       }
     }
     if (
-      step === 2 &&
+      section === 2 &&
       choice === "new" &&
       (!rubric.name.trim() ||
         rubric.criteria.some(
@@ -770,16 +773,21 @@ function Editor({
       setError(
         "Name your scorecard and add at least one review criterion. Keep or complete the standard rating descriptions.",
       );
-      return;
+      return false;
     }
-    goToStep(Math.min(3, step + 1));
+    return true;
+  }
+  function next() {
+    if(validateSection(step))goToStep(Math.min(3,step+1));
   }
   function updateField(i: number, change: Partial<ApplicationField>) {
     setFields((v) => v.map((f, n) => (i === n ? { ...f, ...change } : f)));
 
   }
   async function save(status: HubJob["status"]) {
+    if(mutation.busy || !recovery.ready)return;
     setError("");
+    for(const section of (job?[0,1,2]:[])){if(!validateSection(section)){goToStep(section);return;}}
     if (description.length > 100000) {
       setError(
         "The job description exceeds 100,000 characters including formatting. Shorten it before saving; your text has been preserved.",
@@ -871,7 +879,7 @@ function Editor({
       recovery.complete();
       const cleared = await recovery.clear();
       done(
-        (status === "open"
+        (job && status === job.status ? `Changes saved. This job is still ${status === "open" ? "open" : status === "closed" ? "paused" : "a draft"}.` : status === "open"
           ? "Job published. Its public page is ready for applicants when intake is enabled."
           : status === "closed"
             ? "Job closed. Previous applicants and files remain saved."
@@ -883,7 +891,7 @@ function Editor({
     }
   }
   return (
-    <section aria-labelledby="wizard-title">
+    <section className="hub-job-editor" aria-labelledby="wizard-title">
       {recovery.dialog}
       <div className="hub-draft-status" role="status">
         <span>{recovery.message}</span>
@@ -920,12 +928,12 @@ function Editor({
       >
         <ArrowLeft size={16} /> Back to jobs
       </button>
-      <div className="hub-section-heading">
-        <div>
+      <div className="hub-section-heading hub-job-editor-heading">
+        <div className="hub-job-editor-title">
           <p className="hub-kicker">{job ? "EDIT JOB" : "CREATE JOB"}</p>
           <h2 id="wizard-title">{job ? job.title : "Set up your job"}</h2>
           <p>
-            Step {step + 1} of 4 ·{" "}
+            {!job && <>Step {step + 1} of 4 · </>}
             {
               [
                 "Job details",
@@ -936,6 +944,7 @@ function Editor({
             }
           </p>
         </div>
+        {job && <div className="hub-job-editor-actions"><button type="button" className="hub-button" disabled={mutation.busy || !recovery.ready} onClick={()=>void save(job.status)}>{mutation.busy?"Saving…":"Save changes"}</button></div>}
       </div>
       {!job && source && (
         <p className="hub-notice">
@@ -963,7 +972,7 @@ function Editor({
           </li>
         ))}
       </ol>
-      <Feedback error={error || mutation.error} />
+      <div ref={saveFeedback} tabIndex={-1}><Feedback error={error || mutation.error} /></div>
       {job && mutation.error.includes("assigned scorecard changed") && (
         <button
           className="hub-button secondary"
@@ -1668,7 +1677,8 @@ function Editor({
             </button>
           )}
 
-          {job?.status !== "open" && (
+          {job && <button type="button" className="hub-button" onClick={()=>void save(job.status)}>{mutation.busy?"Saving…":"Save changes"}</button>}
+          {!job && (
             <button
               type="button"
               className="hub-button secondary"
@@ -1688,23 +1698,19 @@ function Editor({
             </button>
           )}
           {step < 3 ? (
-            <button type="button" className="hub-button" onClick={next}>
+            <button type="button" className={"hub-button"+(job?" secondary":"")} onClick={next}>
               Continue
             </button>
           ) : (
             <>
-              <button
+              {job?.status !== "open" && <button
                 type="button"
                 className="hub-button"
                 disabled={!hasDescriptionText(description)}
                 onClick={() => void save("open")}
               >
-                {mutation.busy
-                  ? "Saving…"
-                  : job?.status === "open"
-                    ? "Save published job"
-                    : "Publish job"}
-              </button>
+                {mutation.busy ? "Saving…" : "Publish job"}
+              </button>}
               {job && (
                 <button
                   type="button"
