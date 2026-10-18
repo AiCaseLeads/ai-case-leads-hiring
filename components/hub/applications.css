@@ -1,0 +1,13 @@
+/* Applicant filters and exports share a simple, responsive layout. */
+.hub-candidate-browser .hub-applicant-toolbar { display:block; }
+.hub-candidate-browser .hub-applicant-filters { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); align-items:end; gap:16px; }
+.hub-candidate-browser .hub-applicant-filters > *, .hub-candidate-browser .hub-filter-grid > * { min-width:0; margin-bottom:0; }
+.hub-candidate-browser .hub-applicant-filters > button { justify-self:start; }
+.hub-candidate-browser .hub-filter-hint { margin:12px 0; font-size:.875rem; }
+.hub-candidate-browser .hub-applicant-toolbar-actions { display:flex; flex-wrap:wrap; align-items:center; gap:12px; margin-top:16px; }
+.hub-candidate-browser .hub-application-downloads { width:100%; flex-basis:100%; margin-top:4px; }
+.hub-candidate-browser .hub-download-menu-body { position:static; width:100%; min-width:0; box-sizing:border-box; }
+.hub-candidate-browser .hub-filter-grid { align-items:start; }
+.hub-candidate-browser .hub-selection-banner { border:1px solid #b8dacf; border-radius:8px; background:#edf7f2; padding:14px 16px; color:#175448; overflow-wrap:anywhere; }
+@media(max-width:700px) { .hub-candidate-browser .hub-applicant-filters { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+@media(max-width:440px) { .hub-candidate-browser .hub-applicant-filters { grid-template-columns:minmax(0,1fr); } .hub-candidate-browser .hub-applicant-filters > button { width:100%; } }

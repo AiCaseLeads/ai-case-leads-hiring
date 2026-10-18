@@ -16,7 +16,7 @@ let assets;
 async function getAssets(){
  if(!assets)assets=(async()=>{
   const {outputFiles}=await build({stdin:{contents:`import React from 'react';import{createRoot}from'react-dom/client';import{Candidates,CandidateDetail}from'./components/hub/candidates';import{CandidateMatch}from'./components/hub/ai-match';const config=window.__fixture;createRoot(document.getElementById('root')).render(config.mode==='review'?<CandidateMatch applicationId="app-one"/>:config.mode==='detail'?<CandidateDetail id="app-one" back={()=>{}} changed={()=>{}}/>:<Candidates jobs={config.jobs} refresh={0} changed={()=>{}} reviewerEmail="owner@example.invalid" initialJobId="job-one" initialFilter="jobId=job-one"/>);`,loader:'tsx',resolveDir:process.cwd()},bundle:true,write:false,format:'iife',jsx:'automatic'});
-  const css=(await postcss([tailwind()]).process(readFileSync('app/globals.css','utf8'),{from:'app/globals.css'})).css+'\n'+readFileSync('components/hub/hub.css','utf8');
+  const css=(await postcss([tailwind()]).process(readFileSync('app/globals.css','utf8'),{from:'app/globals.css'})).css+'\n'+readFileSync('components/hub/hub.css','utf8')+'\n'+readFileSync('components/hub/applications.css','utf8');
   return{js:outputFiles[0].text,css};
  })();
  return assets;
@@ -89,12 +89,11 @@ test('AI overview prioritizes strengths and questions while exact quotes remain 
  await page.locator('.hub-match-source-evidence > summary').click();await page.getByText('Seven years shipping React applications.',{exact:true}).waitFor();await page.getByText('Source: resume:cv.pdf',{exact:true}).waitFor();assert.equal(writes.length,0);
 });
 
-test('compact toolbar and disclosed downloads fit mobile and desktop with compiled production CSS',async t=>{
- const{page,errors}=await setup(t);await page.getByRole('button',{name:'Synthetic Applicant',exact:true}).waitFor();assert.equal(await page.getByLabel('Download scope').isVisible(),false);
+test('visible downloads fit mobile and desktop with compiled production CSS',async t=>{
+ const{page,errors}=await setup(t);await page.getByRole('button',{name:'Synthetic Applicant',exact:true}).waitFor();assert.equal(await page.getByLabel('Download scope').isVisible(),true);
  for(const width of [320,390,768,1280,1728]){
   await page.setViewportSize({width,height:900});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),true,JSON.stringify(await page.evaluate(()=>[...document.querySelectorAll('*')].filter(e=>e.getBoundingClientRect().right>innerWidth+1).slice(0,8).map(e=>[e.tagName,e.className,e.getBoundingClientRect().right]))));
-  await page.locator('.hub-download-menu > summary').click();await page.getByLabel('Download scope').waitFor();assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),true,JSON.stringify(await page.evaluate(()=>[...document.querySelectorAll('*')].filter(e=>e.getBoundingClientRect().right>innerWidth+1).slice(0,8).map(e=>[e.tagName,e.className,e.getBoundingClientRect().right]))));
-  await page.locator('.hub-download-menu > summary').click();
+  await page.getByLabel('Download scope').waitFor();assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),true,JSON.stringify(await page.evaluate(()=>[...document.querySelectorAll('*')].filter(e=>e.getBoundingClientRect().right>innerWidth+1).slice(0,8).map(e=>[e.tagName,e.className,e.getBoundingClientRect().right]))));
  }
  assert.deepEqual(errors,[]);
 });
