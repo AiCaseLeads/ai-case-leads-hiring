@@ -6,6 +6,8 @@ export type ApplicationField = {
   required: boolean;
   options?: { value: string; label: string }[];
   description?: string;
+  numberFormat?: "number" | "currency";
+  currency?: "USD";
 };
 export type Job = { id: string; slug: string; title: string; department: string; descriptionHtml: string; location?: string };
 export type JobDefinition = { job: Job; fields: ApplicationField[]; formUnavailable?: string; formVersion?: number };

@@ -1,0 +1,12 @@
+"use client";
+import {useEffect,useRef,useState,type ComponentProps} from 'react';
+import {Input} from '@/components/ui/input';
+import {formatNumber,parseFormattedNumber} from '@/lib/hiring/number-format';
+type Props=Omit<ComponentProps<'input'>,'value'|'onChange'|'type'> & {value:number|string|undefined;onValueChange:(value:number|string)=>void;currency?:boolean};
+export function FormattedNumberInput({value,onValueChange,currency=false,onBlur,onFocus,...props}:Props){
+ const [text,setText]=useState(()=>formatNumber(value,currency));const focused=useRef(false);const input=useRef<HTMLInputElement>(null);
+ useEffect(()=>{if(!focused.current)setText(formatNumber(value,currency));},[value,currency]);
+ const invalid= text.trim()!=='' && typeof parseFormattedNumber(text,currency)!=='number';
+ useEffect(()=>{input.current?.setCustomValidity(invalid?`Enter a valid number${currency?' with up to 2 decimal places':''}, for example ${currency?'$30,000.50':'30,000'}.`:'');},[invalid,currency]);
+ return <Input {...props} ref={input} type="text" inputMode="decimal" value={text} aria-invalid={invalid || props['aria-invalid']} onFocus={event=>{focused.current=true;onFocus?.(event);}} onChange={event=>{setText(event.target.value);onValueChange(parseFormattedNumber(event.target.value,currency));}} onBlur={event=>{focused.current=false;const parsed=parseFormattedNumber(text,currency);if(typeof parsed==='number')setText(formatNumber(parsed,currency));onBlur?.(event);}}/>;
+}

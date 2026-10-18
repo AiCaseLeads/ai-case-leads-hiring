@@ -13,6 +13,8 @@ export type CareerField = {
   type: string;
   required: boolean;
   description?: string;
+  numberFormat?: "number" | "currency";
+  currency?: "USD";
   options?: { value: string; label: string }[];
 };
 export type JobsResponse = {

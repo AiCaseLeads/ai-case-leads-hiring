@@ -1,4 +1,5 @@
 "use client";
+import { FormattedNumberInput } from "@/components/forms/formatted-number-input";
 import { isCountryResidence } from "@/lib/countries";
 import { CountryPicker } from "./country-picker";
 import { SecurityCheck } from "./security-check";
@@ -171,6 +172,7 @@ export function ApplicationForm({
             (Array.isArray(value) && value.length === 0))
       )
         invalid[field.path] = "Please complete this field.";
+      if(field.type === "Number" && value !== undefined && value !== "" && (typeof value !== "number" || !Number.isFinite(value) || Math.abs(value)>Number.MAX_SAFE_INTEGER/(field.numberFormat === "currency"?100:1) || (field.numberFormat === "currency" && Math.abs(value*100-Math.round(value*100))>=0.000001))){invalid[field.path]=field.numberFormat === "currency"?"Enter a valid USD amount with up to 2 decimal places.":"Enter a valid number, for example 30,000.";}
       if (isWebsiteField(field) && value !== undefined && value !== "") {
         const linkError = websiteLinkError(value, field);
         if (linkError) invalid[field.path] = linkError;
@@ -613,6 +615,8 @@ export function ApplicationForm({
                   );
                 })}
               </div>
+            ) : field.type === "Number" ? (
+              <FormattedNumberInput id={field.path} value={values[field.path] as number|string|undefined} currency={field.numberFormat==="currency"} onValueChange={value=>change(field.path,value)} required={field.required} aria-invalid={!!errors[field.path]} aria-describedby={[field.description && `${field.path}-help`,errors[field.path] && `${field.path}-error`].filter(Boolean).join(" ")||undefined} placeholder={field.numberFormat==="currency"?"$30,000.00":"30,000"}/>
             ) : (
               <Input
                 id={field.path}

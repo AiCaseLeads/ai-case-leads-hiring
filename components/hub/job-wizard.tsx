@@ -15,6 +15,9 @@ import { SafeDescription } from "../careers/safe-description";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { ArrowLeft, ArrowUp, ArrowDown, Plus, Trash2, Copy, FileText, ClipboardList, GripVertical } from "lucide-react";
 import { hubRequest, useHubMutation } from "./api";
+import { parseFormattedNumber } from "@/lib/hiring/number-format";
+import { FormattedNumberInput } from "@/components/forms/formatted-number-input";
+import { withRequiredResume, resumePath } from "@/lib/hiring/contact-fields";
 import { Badge, Feedback, Field, ResourceState } from "./shared";
 import { JobTeamFields, useJobTeam } from "./job-team";
 import type { HubJob, Rule } from "./types";
@@ -52,7 +55,7 @@ const starter: ApplicationField[] = [
     path: "_systemfield_resume",
     title: "Resume",
     type: "File",
-    required: false,
+    required: true,
   },
   {
     path: "portfolio",
@@ -540,7 +543,7 @@ function Editor({
     ),
     [location, setLocation] = useState<WorkLocation | null>(sourceLocation),
     [fields, setFields] = useState<ApplicationField[]>(
-      withRequiredContacts(structuredClone(source?.fields.length ? source.fields : starter)),
+      withRequiredResume(withRequiredContacts(structuredClone(source?.fields.length ? source.fields : starter))),
     ),
     [department, setDepartment] = useState(source?.department || ""),
     [customSlug, setCustomSlug] = useState<string | null>(job?.slug || null),
@@ -623,7 +626,7 @@ function Editor({
       setTitle(draft.title);
       setDescription(draft.description);
       setLocation(draft.location);
-      setFields(withRequiredContacts(draft.fields));
+      setFields(withRequiredResume(withRequiredContacts(draft.fields)));
       setDepartment(draft.department);
       setCustomSlug(draft.customSlug);
       setAssessment(draft.assessment);
@@ -713,7 +716,7 @@ function Editor({
         ["Number", "Score"].includes(
           fields.find((f) => f.path === r.fieldPath)?.type || "",
         ) &&
-        (typeof r.value !== "number" || !Number.isFinite(r.value)),
+        (typeof r.value !== "number" || !Number.isFinite(r.value) || (fields.find(f=>f.path===r.fieldPath)?.numberFormat === "currency" && typeof parseFormattedNumber(String(r.value),true)!=="number")),
     );
     if (incomplete)
       setError(
@@ -1131,6 +1134,7 @@ function Editor({
                           type="button"
                           className="hub-icon-button"
                           aria-label={`Remove ${f.title || "new question"}`}
+                          disabled={f.path===resumePath}
                           onClick={() => {
                             setFields((v) => v.filter((_, n) => n !== i));
                             setRules((v) =>
@@ -1152,12 +1156,13 @@ function Editor({
                     </p>
                   ) : (
                     <>
-                      <div className="hub-form-grid">
+                      <div className="hub-form-grid hub-question-fields">
                         <Field label={`Question ${i - contactPaths.length + 1} label`}>
                           <input
                             required
                             maxLength={160}
                             value={f.title}
+                            disabled={f.path===resumePath}
                             onChange={(e) =>
                               updateField(i, { title: e.target.value })
                             }
@@ -1167,7 +1172,7 @@ function Editor({
                           <select
                             value={f.required ? "required" : "optional"}
                             disabled={
-                              f.required &&
+                              f.path === resumePath || f.required &&
                               rules.some(
                                 (r) =>
                                   r.fieldPath === f.path &&
@@ -1192,16 +1197,16 @@ function Editor({
                             </option>
                           </select>
                         </Field>
-                      </div>
-                      <div>
                         <Field label={`Question ${i - contactPaths.length + 1} answer format`}>
                           <select
                             value={f.type}
-                            disabled={isCountryResidence(f) || rules.some((r) => r.fieldPath === f.path)}
+                            disabled={f.path===resumePath || isCountryResidence(f) || rules.some((r) => r.fieldPath === f.path)}
                             onChange={(e) =>
                               updateField(i, {
                                 type: e.target.value as FieldType,
                                 options: undefined,
+                                numberFormat: undefined,
+                                currency: undefined,
                               })
                             }
                           >
@@ -1212,6 +1217,10 @@ function Editor({
                             ))}
                           </select>
                         </Field>
+                      </div>
+                      <div>
+                        {f.type === "Number" && <Field label={`Question ${i-contactPaths.length+1} number display`}><select value={f.numberFormat||"number"} onChange={event=>updateField(i,event.target.value==="currency"?{numberFormat:"currency",currency:"USD"}:{numberFormat:"number",currency:undefined})}><option value="number">Number — 30,000</option><option value="currency">Currency (USD) — $30,000.00</option></select></Field>}
+                        {f.path===resumePath && <p className="hub-muted">A résumé/CV is required for every application.</p>}
                         {isCountryResidence(f) ? <p className="hub-muted">This preset uses the complete country list. Choose eligible countries below; remove the question if you no longer need it.</p> : rules.some((r) => r.fieldPath === f.path) && (
                           <p className="hub-muted">
                             Remove this question’s screening rules in Advanced
@@ -1805,24 +1814,13 @@ function QuestionScreening({
             }
             hint={
               numeric
-                ? "Example: 7 accepts 7 or more; anything below 7 does not qualify."
+                ? "Enter the minimum, for example 7 or 30,000. Lower answers do not qualify."
                 : "Applicants must choose this answer to qualify."
             }
           >
             {numeric ? (
-              <input
-                type="number"
-                step="any"
-                value={String(rule.value)}
-                onChange={(e) =>
-                  update({
-                    value:
-                      e.target.value.trim() === ""
-                        ? ""
-                        : Number(e.target.value),
-                  })
-                }
-              />
+              <FormattedNumberInput data-field-control={true} value={rule.value as number|string} currency={field.numberFormat==="currency"} onValueChange={value=>update({value})}/>
+
             ) : (
               <select
                 value={String(rule.value)}
@@ -1938,15 +1936,9 @@ function AdvancedRules({
                   <option value="true">Yes</option>
                   <option value="false">No</option>
                 </select>
-              ) : (
+              ) : ["Number","Score"].includes(fields.find(f=>f.path===r.fieldPath)?.type||"") ? <FormattedNumberInput data-field-control={true} value={r.value as number|string} currency={fields.find(f=>f.path===r.fieldPath)?.numberFormat==="currency"} onValueChange={value=>update(i,{value})}/> : (
                 <input
-                  type={
-                    ["Number", "Score"].includes(
-                      fields.find((f) => f.path === r.fieldPath)?.type || "",
-                    )
-                      ? "number"
-                      : "text"
-                  }
+                  type="text"
                   value={String(r.value)}
                   onChange={(e) =>
                     update(i, {
