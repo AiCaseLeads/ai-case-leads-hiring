@@ -1,11 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { customDatabase,openSyntheticRole } from "./custom-fixture";
+import { customDatabase,openSyntheticRole,uploadSyntheticResume } from "./custom-fixture";
 import { acceptLocalApplication } from "../lib/hiring/local";
 import { syncHiringReplies } from "../lib/mail-sync";
 import type { GoogleWorkspace } from "../lib/google/workspace";
 async function outgoing(store:ReturnType<typeof customDatabase>["store"],db:D1Database,jobId:string,thread:string){
-  await acceptLocalApplication(db,{jobPostingId:jobId,submissionKey:crypto.randomUUID(),fieldSubmissions:[{path:"_systemfield_phone",value:"+1 305 555 0123"},{path:"_systemfield_name",value:"Synthetic"},{path:"_systemfield_email",value:"synthetic@example.invalid"}]},"a".repeat(64),true);
+  await acceptLocalApplication(db,{jobPostingId:jobId,submissionKey:crypto.randomUUID(),fieldSubmissions:[await uploadSyntheticResume(db,jobId,"a".repeat(64)),{path:"_systemfield_phone",value:"+1 305 555 0123"},{path:"_systemfield_name",value:"Synthetic"},{path:"_systemfield_email",value:"synthetic@example.invalid"}]},"a".repeat(64),true);
   const row=await db.prepare("SELECT c.task_id,c.application_id,t.payload_json FROM hub_communications c JOIN hub_tasks t ON t.id=c.task_id WHERE c.thread_id IS NULL ORDER BY c.created_at DESC LIMIT 1").first<{task_id:string;application_id:string;payload_json:string}>();
   await db.prepare("UPDATE hub_communications SET status='sent',thread_id=?,provider_id=? WHERE task_id=?").bind(thread,`out-${thread}`,row!.task_id).run();
   await db.prepare("UPDATE hub_tasks SET payload_json=json_set(payload_json,'$.deliveryAccount','recruiting@example.invalid') WHERE id=?").bind(row!.task_id).run();

@@ -13,7 +13,7 @@ test("a four-byte pretend DOCX is rejected before storage; a real OOXML resume i
  }finally{database.close();}
 });
 import assert from "node:assert/strict";
-import { customDatabase,openSyntheticRole } from "./custom-fixture";
+import { customDatabase,openSyntheticRole,uploadSyntheticResume } from "./custom-fixture";
 import { LocalHiringProvider,acceptLocalApplication } from "../lib/hiring/local";
 import { receiveUpload } from "../lib/hiring/files";
 import { sha256 } from "../lib/hiring/crypto";
@@ -27,7 +27,7 @@ test("private uploads verify bytes and ownership; repeated concurrent posts cann
     assert.equal((await receiveUpload(request(samplePdf(),"b".repeat(64)),upload.handle,db,bucket,true)).status,410);
     const responses=await Promise.all([receiveUpload(request(),upload.handle,db,bucket,true),receiveUpload(request(),upload.handle,db,bucket,true)]);
     assert.deepEqual(responses.map(r=>r.status).sort(),[204,409]);assert.equal(puts,1);
-    const result=await acceptLocalApplication(db,{jobPostingId:job.id,submissionKey:crypto.randomUUID(),fieldSubmissions:[{path:"_systemfield_phone",value:"+1 305 555 0123"},{path:"_systemfield_name",value:"Synthetic"},{path:"_systemfield_email",value:"synthetic@example.invalid"},{path:"resume",value:upload.handle}]},session,true);
+    const result=await acceptLocalApplication(db,{jobPostingId:job.id,submissionKey:crypto.randomUUID(),fieldSubmissions:[await uploadSyntheticResume(db,job.id,session),{path:"_systemfield_phone",value:"+1 305 555 0123"},{path:"_systemfield_name",value:"Synthetic"},{path:"_systemfield_email",value:"synthetic@example.invalid"},{path:"resume",value:upload.handle}]},session,true);
     assert.equal(result.status,"accepted");
     const row=await db.prepare("SELECT id,application_id FROM hub_files WHERE id=?").bind(await sha256(upload.handle)).first<{id:string;application_id:string}>();assert.ok(row?.application_id);
     assert.equal((await receiveUpload(request(),upload.handle,db,bucket,true)).status,410);

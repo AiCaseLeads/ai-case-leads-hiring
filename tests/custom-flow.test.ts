@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { customDatabase,openSyntheticRole } from "./custom-fixture";
+import { customDatabase,openSyntheticRole,uploadSyntheticResume } from "./custom-fixture";
 import { acceptLocalApplication } from "../lib/hiring/local";
 import { sha256 } from "../lib/hiring/crypto";
 import type { ApplicationInput } from "../lib/hiring/types";
@@ -9,6 +9,7 @@ function input(jobId:string):ApplicationInput{return{jobPostingId:jobId,submissi
 test("local acceptance, receipt and Google tasks commit together without network access",async()=>{
   const {database,db,store}=customDatabase();try{
     const role=await openSyntheticRole(store),application=input(role.id);
+    application.fieldSubmissions.push(await uploadSyntheticResume(db,role.id,session));
     const result=await acceptLocalApplication(db,application,session,true);
     assert.equal(result.status,"accepted");assert.ok(result.receipt);
     const tracker=database.prepare("SELECT * FROM hiring_submissions WHERE key_hash=?").get(await sha256(application.submissionKey));
@@ -28,7 +29,8 @@ test("failed transactional tracking leaves no candidate or external task",async(
   const {database,db,store}=customDatabase();try{
     const role=await openSyntheticRole(store);
     database.exec("CREATE TRIGGER test_tracking_failure BEFORE INSERT ON hiring_submissions BEGIN SELECT RAISE(ABORT,'synthetic tracking failure'); END");
-    await assert.rejects(()=>acceptLocalApplication(db,input(role.id),session,true));
+    const application=input(role.id);application.fieldSubmissions.push(await uploadSyntheticResume(db,role.id,session));
+    await assert.rejects(()=>acceptLocalApplication(db,application,session,true),/job, upload, or submission changed/);
     assert.equal(database.prepare("SELECT COUNT(*) AS n FROM hub_applications").get()?.n,0);
     assert.equal(database.prepare("SELECT COUNT(*) AS n FROM hub_tasks").get()?.n,0);
     assert.equal(database.prepare("SELECT COUNT(*) AS n FROM hub_history").get()?.n,0);
@@ -47,6 +49,7 @@ test("production acceptance requires the displayed form version and retains acce
   const {database,db,store}=customDatabase();try{
     const role=await openSyntheticRole(store),application={...input(role.id),formVersion:role.formVersion};
     await assert.rejects(()=>acceptLocalApplication(db,input(role.id),session,true,true),/questions changed/);
+    application.fieldSubmissions.push(await uploadSyntheticResume(db,role.id,session));
     const saved=await acceptLocalApplication(db,application,session,true,true);
     assert.equal(saved.status,"accepted");
     await store.saveJob({...role,descriptionHtml:"<p>Changed synthetic description.</p>"},role.id);
