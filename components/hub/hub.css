@@ -1733,3 +1733,21 @@ body:has(.hiring-hub .hub-draft-overlay) { overflow: hidden; }
 
 /* Country selectors use compact rows while preserving touch targets. */
 .hub-country-screening .hub-checkbox { margin: 0; align-items: center; }
+
+/* Job questions are compact editing rows, not oversized nested panels. */
+.hub-job-editor .hub-editor-list { gap: 12px; }
+.hub-job-editor .hub-question { padding: 14px 16px; }
+.hub-job-editor .hub-question-heading { margin-bottom: 10px; gap: 10px; }
+.hub-job-editor .hub-question .hub-field { gap: 5px; margin-bottom: 10px; }
+.hub-job-editor .hub-question .hub-form-grid { gap: 12px; }
+.hub-job-editor .hub-question-fields { display: grid; grid-template-columns: minmax(0,2fr) minmax(0,1fr) minmax(0,1fr); gap: 12px; align-items: start; }
+.hub-job-editor .hub-question p { margin-block: 8px; font-size: 12px; line-height: 1.5; }
+.hub-job-editor .hub-screening-question { margin-top: 10px; padding: 10px 12px; }
+.hub-job-editor .hub-screening-question > .hub-field { margin-top: 8px; }
+.hub-job-editor .hub-question details[open] > summary { margin-bottom: 8px; }
+@media (max-width: 900px) { .hub-job-editor .hub-question-fields { grid-template-columns: minmax(0,1fr) minmax(0,1fr); } .hub-job-editor .hub-question-fields > :first-child { grid-column: 1 / -1; } }
+@media (max-width: 640px) {
+  .hub-job-editor .hub-question { padding: 12px; }
+  .hub-job-editor .hub-question-fields { grid-template-columns: minmax(0,1fr); }
+  .hub-job-editor .hub-question .hub-field input, .hub-job-editor .hub-question .hub-field select { min-height: 44px; font-size: 16px; }
+}

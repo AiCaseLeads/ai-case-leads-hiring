@@ -1388,3 +1388,9 @@ nav a:hover {
 .hub-application-downloads h3, .hub-application-downloads p { margin:0; }
 .hub-application-downloads .hub-button-row { align-items:flex-end; }
 @media (max-width:600px) { .hub-application-downloads .hub-button-row { align-items:stretch; } .hub-application-downloads .hub-button-row > * { width:100%; } }
+
+/* Compact applicant inputs without shrinking mobile tap targets. */
+.application-form .form-fields { gap: 16px; }
+.application-form .form-field > label { margin-bottom: 6px; }
+.application-form .file-drop { padding: 16px 12px; }
+.application-form .form-field textarea { min-height: 96px; }
