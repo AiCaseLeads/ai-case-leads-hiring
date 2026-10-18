@@ -172,7 +172,7 @@ export function ApplicationForm({
             (Array.isArray(value) && value.length === 0))
       )
         invalid[field.path] = "Please complete this field.";
-      if(field.type === "Number" && value !== undefined && value !== "" && (typeof value !== "number" || !Number.isFinite(value) || Math.abs(value)>Number.MAX_SAFE_INTEGER/(field.numberFormat === "currency"?100:1) || (field.numberFormat === "currency" && Math.abs(value*100-Math.round(value*100))>=0.000001))){invalid[field.path]=field.numberFormat === "currency"?"Enter a valid USD amount with up to 2 decimal places.":"Enter a valid number, for example 30,000.";}
+      if(field.type === "Number" && value !== undefined && value !== "" && (typeof value !== "number" || !Number.isFinite(value) || Math.abs(value)>Number.MAX_SAFE_INTEGER/(field.numberFormat === "currency"?100:1) || (field.numberFormat === "currency" && value!==Number(value.toFixed(2))))){invalid[field.path]=field.numberFormat === "currency"?"Enter a valid USD amount with up to 2 decimal places.":"Enter a valid number, for example 30,000.";}
       if (isWebsiteField(field) && value !== undefined && value !== "") {
         const linkError = websiteLinkError(value, field);
         if (linkError) invalid[field.path] = linkError;
