@@ -1771,3 +1771,16 @@ body:has(.hiring-hub .hub-draft-overlay) { overflow: hidden; }
 .hub-screening-preview-countryGroups ul { list-style: none; padding: 0; margin: 0; display: grid; gap: 4px; }
 .hub-screening-preview-countryGroups li { overflow-wrap: anywhere; }
 @media (max-width: 600px) { .hub-screening-preview-rule { grid-template-columns: minmax(0, 1fr); padding: 12px; } }
+
+/* A short, labeled posting overview instead of a stack of unrelated paragraphs. */
+.hub-main .hub-publish-overview > h4 { font-size:16px; font-weight:600; margin:12px 0 4px; }
+.hub-main .hub-publish-url { font-size:12px; margin:0; overflow-wrap:anywhere; }
+.hub-publish-facts { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px 24px; margin:18px 0; }
+.hub-publish-facts > div { min-width:0; }
+.hub-publish-facts dt { font-size:12px; color:#536f76; margin-bottom:4px; }
+.hub-publish-facts dd { margin:0; overflow-wrap:anywhere; font-weight:500; }
+.hub-main .hub-publish-details { border-top:1px solid #e2eae8; margin:0; }
+.hub-publish-question-list { list-style:none; padding:0; margin:0 0 12px; }
+.hub-publish-question-list li { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; padding:8px 0; }
+.hub-publish-question-list li > span:first-child { overflow-wrap:anywhere; min-width:0; }
+@media(max-width:400px) { .hub-publish-facts { gap:12px; } }

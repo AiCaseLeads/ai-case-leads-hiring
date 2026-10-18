@@ -1574,32 +1574,20 @@ function Editor({
         )}
         {step === 3 && (
           <>
-            <section className="hub-card">
+            <section className="hub-card hub-publish-overview">
               <h3>Ready to share?</h3>
-              <h4>{title}</h4>
-              <p>
-                {location
-                  ? publicLocation(location)
-                  : job?.location || job?.archiveCountry}
-              </p>
-              <p className="hub-muted">Public page: /jobs/{slug}</p>
-              <p>
-                Hiring team:{" "}
-                {hiringTeam.draft?.members.length
-                  ? hiringTeam.draft.members.join(", ")
-                  : "No team selected"}
-              </p>
-              <p>
-                {fields.filter((f) => f.required).length} required fields ·{" "}
-                {fields.filter((f) => !f.required).length} optional fields
-              </p>
-              <details>
+              <h4>{title || "Untitled job"}</h4>
+              <p className="hub-muted hub-publish-url">Public page: /jobs/{slug}</p>
+              <dl className="hub-publish-facts">
+                <div><dt>Location</dt><dd>{location ? publicLocation(location) : job?.location || job?.archiveCountry || "Not set"}</dd></div>
+                <div><dt>Hiring team</dt><dd>{hiringTeam.draft?.members.length ? hiringTeam.draft.members.join(", ") : "No team selected"}</dd></div>
+                <div><dt>Application questions</dt><dd>{fields.filter(f => f.required).length} required · {fields.filter(f => !f.required).length} optional</dd></div>
+                <div><dt>AI applicant matching</dt><dd>{aiMatchEnabled ? "Enabled after saving" : "Off"}</dd></div>
+              </dl>
+              <details className="hub-publish-details">
                 <summary>Preview application questions</summary>
-                <ul>{fields.map((f) => <li key={f.path}>{f.title} — {f.required ? "Required" : "Optional"}</li>)}</ul>
+                <ul className="hub-publish-question-list">{fields.map(f => <li key={f.path}><span>{f.title}</span><Badge>{f.required ? "Required" : "Optional"}</Badge></li>)}</ul>
               </details>
-              <p>
-                AI applicant matching: {aiMatchEnabled ? "Enabled after saving" : "Off"}
-              </p>
               <p hidden={choice === "none"}>
                 Optional reviewer scorecard:{" "}
                 {choice === "none"
@@ -1610,13 +1598,12 @@ function Editor({
                         (t) => `${t.id}:${t.version}` === choice,
                       )?.name}
               </p>
-              <details>
+              <details className="hub-publish-details">
                 <summary>Preview description</summary>
                 <SafeDescription
                   html={description || "Add a description before publishing."}
                 />
               </details>
-              <p className="hub-muted">Previous applicants remain saved when you duplicate or close a job.</p>
             </section>
             <section className="hub-card">
               <h3>Automatic screening</h3>
