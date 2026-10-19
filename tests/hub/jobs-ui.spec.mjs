@@ -731,3 +731,17 @@ test('restored new private draft preserves an explicitly disabled rejection pref
 test('English preset saves a B2 minimum while keeping a paused job and automatic rejection unchanged',async t=>{
  const{page,writes}=await setup(t,{jobs:[{...prior,status:'closed'}]});await page.getByRole('button',{name:'Edit job',exact:true}).click();await page.getByRole('list',{name:'Job setup progress'}).getByRole('button',{name:'Application questions',exact:true}).click();await addQuestion(page,"english");const minimum=page.getByLabel('Minimum English level',{exact:true});await minimum.waitFor();assert.equal(await minimum.inputValue(),'');await minimum.selectOption('B2');await page.getByRole('button',{name:'Save changes',exact:true}).click();await page.getByText('Changes saved. This job is still paused.',{exact:false}).waitFor();assert.equal(writes.length,1);const job=writes[0].job;assert.equal(job.status,'closed');assert.equal(job.autoReject,false);const field=job.fields.find(f=>f.path==='english_proficiency_cefr');assert.equal(field.required,true);assert.equal(field.type,'ValueSelect');assert.deepEqual(field.options.map(o=>o.value),['A1','A2','B1','B2','C1','C2']);assert.deepEqual(job.rules.find(r=>r.fieldPath===field.path).value,['B2','C1','C2']);
 });
+
+test('LinkedIn is a fixed required question on existing jobs and absent from the optional library',async t=>{
+ const {page,writes}=await setup(t,{jobs:[prior]});
+ await page.getByRole('button',{name:'Edit job',exact:true}).click();
+ await page.getByRole('list',{name:'Job setup progress'}).getByRole('button',{name:'Application questions',exact:true}).click();
+ assert.equal(await page.getByRole('button',{name:'Remove LinkedIn profile',exact:true}).count(),0);
+ assert.equal(await page.getByRole('button',{name:'Edit LinkedIn profile',exact:true}).count(),0);
+ assert.equal(await page.getByLabel('Add a question',{exact:true}).locator('option[value="linkedin_profile"]').count(),0);
+ assert.match(await page.locator('.hub-question').filter({hasText:'LinkedIn profile'}).innerText(),/Required/);
+ await page.getByRole('button',{name:'Save changes',exact:true}).first().click();
+ await page.getByText('Changes saved.',{exact:false}).waitFor();
+ const field=writes[0].job.fields.find(field=>field.path==='linkedin_profile');
+ assert.equal(field.required,true);assert.equal(field.type,'SocialLink');
+});

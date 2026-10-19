@@ -36,5 +36,16 @@ export function withRequiredResume(fields: ApplicationField[]): ApplicationField
   return [...fields, resume];
 }
 export function withRequiredApplicationFields(fields: ApplicationField[]): ApplicationField[] {
-  return withRequiredResume(withRequiredPhone(fields));
+  return withRequiredLinkedIn(withRequiredResume(withRequiredPhone(fields)));
+}
+
+/** Keep existing LinkedIn URL paths stable so historical answers and rules stay linked. */
+export const linkedInPath = "linkedin_profile";
+export function isLinkedInProfile(field: ApplicationField): boolean {
+  return field.path === linkedInPath || ((field.type === "Url" || field.type === "SocialLink") && /linkedin/i.test(`${field.path} ${field.title}`));
+}
+export function withRequiredLinkedIn(fields: ApplicationField[]): ApplicationField[] {
+  const canonical = (path: string): ApplicationField => ({path, title:"LinkedIn profile",type:"SocialLink",required:true,description:"Enter your LinkedIn profile URL, for example https://www.linkedin.com/in/your-name."});
+  if (fields.some(isLinkedInProfile)) return fields.map(field => isLinkedInProfile(field) ? {...field,...canonical(field.path)} : field);
+  return [...fields, canonical(linkedInPath)];
 }

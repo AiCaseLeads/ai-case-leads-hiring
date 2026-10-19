@@ -24,13 +24,14 @@ test('legacy public intake requires a current owned uploaded resume and retries 
   const job=await openSyntheticRole(f.store),definition=await f.store.jobDefinition(job.id);
   assert.equal(definition.fields.find(v=>v.path===resumePath)?.required,true);
   assert.equal((await f.store.getJob(job.id)).fields.some(v=>v.path===resumePath),false,'Legacy stored job stays unchanged');
-  const input={jobPostingId:job.id,submissionKey:crypto.randomUUID(),formVersion:job.formVersion,fieldSubmissions:[{path:'_systemfield_name',value:'Synthetic Test'},{path:'_systemfield_email',value:'synthetic@example.invalid'},{path:'_systemfield_phone',value:'+13055550123'}]};
+  const input={jobPostingId:job.id,submissionKey:crypto.randomUUID(),formVersion:job.formVersion,fieldSubmissions:[{path:'_systemfield_name',value:'Synthetic Test'},{path:'_systemfield_email',value:'synthetic@example.invalid'},{path:'_systemfield_phone',value:'+13055550123'},{path:'linkedin_profile',value:'https://www.linkedin.com/in/synthetic'}]};
   await assert.rejects(()=>acceptLocalApplication(f.db,input,session,true,true),{code:'invalid_application'});
   for(const overrides of [{session:'b'.repeat(64)},{expired:true},{uploaded:false},{field:'portfolio'}]){
    const handle=await upload(f,job.id,overrides);
    await assert.rejects(()=>acceptLocalApplication(f.db,{...input,fieldSubmissions:[...input.fieldSubmissions,{path:resumePath,value:handle}]},session,true,true),{code:'invalid_upload'});
   }
   const handle=await upload(f,job.id),valid={...input,fieldSubmissions:[...input.fieldSubmissions,{path:resumePath,value:handle}]};
+  await assert.rejects(()=>acceptLocalApplication(f.db,{...valid,fieldSubmissions:valid.fieldSubmissions.filter(answer=>answer.path!=='linkedin_profile')},session,true,true),{code:'invalid_application'});
   assert.ok((await Promise.all(Array.from({length:20},()=>acceptLocalApplication(f.db,valid,session,true,true)))).every(result=>result.status==='accepted'));
   assert.equal((await acceptLocalApplication(f.db,valid,session,true,true)).status,'accepted');
   assert.equal(f.database.prepare('SELECT count(*) n FROM hub_applications').get()!.n,1);
@@ -57,8 +58,8 @@ test('numeric answers accept decimals while USD rejects fractional cents and str
  assert.throws(()=>validateJob({...jobInput(),fields:[...jobInput().fields,field],rules:[{fieldPath:'amount',operator:'gte',value:1.234,enabled:true,reason:'Minimum pay'}]}),{code:'invalid_rule'});
 });
 
-test('legacy 100-question forms have room for the fixed phone and resume answers',()=>{
- const input={jobPostingId:crypto.randomUUID(),submissionKey:crypto.randomUUID(),fieldSubmissions:Array.from({length:102},(_,i)=>({path:'field_'+i,value:'synthetic'}))};
- assert.equal(parseApplication(input).fieldSubmissions.length,102);
+test('legacy 100-question forms have room for the fixed phone, resume and LinkedIn answers',()=>{
+ const input={jobPostingId:crypto.randomUUID(),submissionKey:crypto.randomUUID(),fieldSubmissions:Array.from({length:103},(_,i)=>({path:'field_'+i,value:'synthetic'}))};
+ assert.equal(parseApplication(input).fieldSubmissions.length,103);
  assert.throws(()=>parseApplication({...input,fieldSubmissions:[...input.fieldSubmissions,{path:'extra',value:'synthetic'}]}),{code:'invalid_request'});
 });

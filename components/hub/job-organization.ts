@@ -24,7 +24,6 @@ export function availableJobSlug(title: string, location: string, batch: string,
 }
 
 export const experienceQuestions: ApplicationField[] = [
-  { path: "linkedin_profile", title: "LinkedIn profile (optional)", type: "Url", required: false, description: "Share your profile link if you have one. A LinkedIn account is not required." },
   { path: "experience_summary", title: "Relevant work experience", type: "LongText", required: false, description: "Describe your roles, employers, dates, and responsibilities in your own words. We may ask you to explain this work during an interview." },
   { path: "work_sample_contribution", title: "Your contribution to a work sample", type: "LongText", required: false, description: "If you shared a portfolio or work sample, explain what you personally did. Do not share confidential client information." },
   { path: "accuracy_confirmation", title: "I confirm that my experience and work samples accurately represent my work", type: "Boolean", required: true },

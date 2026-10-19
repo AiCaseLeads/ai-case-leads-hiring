@@ -15,7 +15,7 @@ export const MAX_APPLICATION_FILE_BYTES = 25 * 1024 * 1024;
 function object(v: unknown): v is Record<string, unknown> { return v !== null && typeof v === "object" && !Array.isArray(v); }
 function badRequest(message = "Please check the application details and try again."): never { throw new HiringError("invalid_request", 400, message); }
 export function parseApplication(value: unknown): ApplicationInput {
-  if (!object(value) || typeof value.jobPostingId !== "string" || !UUID.test(value.jobPostingId) || typeof value.submissionKey !== "string" || !UUID.test(value.submissionKey) || !Array.isArray(value.fieldSubmissions) || value.fieldSubmissions.length > 102) badRequest();
+  if (!object(value) || typeof value.jobPostingId !== "string" || !UUID.test(value.jobPostingId) || typeof value.submissionKey !== "string" || !UUID.test(value.submissionKey) || !Array.isArray(value.fieldSubmissions) || value.fieldSubmissions.length > 103) badRequest();
   const fields = value.fieldSubmissions;
   if(value.formVersion!==undefined&&(typeof value.formVersion!=="number"||!Number.isSafeInteger(value.formVersion)||value.formVersion<1))badRequest("The application form version is invalid. Refresh this page.");
   if (fields.some(f => !object(f) || typeof f.path !== "string" || !f.path || f.path.length > 256 || !("value" in f)) || new Set(fields.map(f => f.path)).size !== fields.length) badRequest();

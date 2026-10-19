@@ -22,7 +22,7 @@ import { ArrowLeft, ArrowUp, ArrowDown, Plus, Trash2, Copy, FileText, ClipboardL
 import { hubRequest, useHubMutation } from "./api";
 import { parseFormattedNumber } from "@/lib/hiring/number-format";
 import { FormattedNumberInput } from "@/components/forms/formatted-number-input";
-import { withRequiredResume, resumePath } from "@/lib/hiring/contact-fields";
+import { withRequiredResume, resumePath, withRequiredLinkedIn, isLinkedInProfile } from "@/lib/hiring/contact-fields";
 import { Badge, Feedback, Field, ResourceState } from "./shared";
 import { JobTeamFields, useJobTeam } from "./job-team";
 import type { HubJob, Rule } from "./types";
@@ -558,7 +558,7 @@ function Editor({
     ),
     [location, setLocation] = useState<WorkLocation | null>(sourceLocation),
     [fields, setFields] = useState<ApplicationField[]>(
-      withRequiredResume(withRequiredContacts(structuredClone(source?.fields.length ? source.fields : starter))),
+      withRequiredLinkedIn(withRequiredResume(withRequiredContacts(structuredClone(source?.fields.length ? source.fields : starter)))),
     ),
     [department, setDepartment] = useState(source?.department || ""),
     [customSlug, setCustomSlug] = useState<string | null>(job?.slug || null),
@@ -641,7 +641,7 @@ function Editor({
       setTitle(draft.title);
       setDescription(draft.description);
       setLocation(draft.location);
-      setFields(withRequiredResume(withRequiredContacts(draft.fields)));
+      setFields(withRequiredLinkedIn(withRequiredResume(withRequiredContacts(draft.fields))));
       setDepartment(draft.department);
       setCustomSlug(draft.customSlug);
       setAssessment(draft.assessment);
@@ -1140,14 +1140,14 @@ function Editor({
                   {(handle) => <>
                   <div className="hub-question-heading hub-question-row-heading">
                     {handle}
-                    {f.path===resumePath ? <div className="hub-question-row-title"><strong>{f.title}</strong><span className="hub-question-row-meta">File · Required</span></div> : <button type="button" className="hub-question-edit-toggle" aria-label={`${expandedQuestion===f.path?"Close":"Edit"} ${f.title||"new question"}`} aria-expanded={expandedQuestion===f.path} aria-controls={`question-editor-${f.path}`} onClick={()=>setExpandedQuestion(current=>current===f.path?null:f.path)}><span className="hub-question-row-title"><strong>{f.title||"New question"}</strong><span className="hub-question-row-meta">{formats[f.type]} · {f.required?"Required":"Optional"}{questionRuleSummary(f,rules) && ` · ${questionRuleSummary(f,rules)}`}</span></span><span className="hub-question-edit-label">{expandedQuestion===f.path?"Close":"Edit"}</span></button>}
-                    <div className="hub-question-row-actions" hidden={f.path!==resumePath && expandedQuestion!==f.path}>
+                    {(f.path===resumePath || isLinkedInProfile(f)) ? <div className="hub-question-row-title"><strong>{f.title}</strong><span className="hub-question-row-meta">{f.path===resumePath?"File":"LinkedIn profile"} · Required</span></div> : <button type="button" className="hub-question-edit-toggle" aria-label={`${expandedQuestion===f.path?"Close":"Edit"} ${f.title||"new question"}`} aria-expanded={expandedQuestion===f.path} aria-controls={`question-editor-${f.path}`} onClick={()=>setExpandedQuestion(current=>current===f.path?null:f.path)}><span className="hub-question-row-title"><strong>{f.title||"New question"}</strong><span className="hub-question-row-meta">{formats[f.type]} · {f.required?"Required":"Optional"}{questionRuleSummary(f,rules) && ` · ${questionRuleSummary(f,rules)}`}</span></span><span className="hub-question-edit-label">{expandedQuestion===f.path?"Close":"Edit"}</span></button>}
+                    <div className="hub-question-row-actions" hidden={!(f.path===resumePath || isLinkedInProfile(f)) && expandedQuestion!==f.path}>
                       <button type="button" className="hub-icon-button" aria-label={`Move ${f.title||"new question"} up`} disabled={i<=contactPaths.length} onClick={()=>setFields(current=>reorderApplicationQuestions(current,f.path,current[i-1]?.path||""))}><ArrowUp size={16}/></button>
                       <button type="button" className="hub-icon-button" aria-label={`Move ${f.title||"new question"} down`} disabled={i===fields.length-1} onClick={()=>setFields(current=>reorderApplicationQuestions(current,f.path,current[i+1]?.path||""))}><ArrowDown size={16}/></button>
-                      {f.path!==resumePath && <button type="button" className="hub-icon-button" aria-label={`Remove ${f.title||"new question"}`} onClick={()=>{setFields(current=>current.filter(field=>field.path!==f.path));setRules(current=>current.filter(rule=>rule.fieldPath!==f.path));setExpandedQuestion(null);}}><Trash2 size={16}/></button>}
+                      {!(f.path===resumePath || isLinkedInProfile(f)) && <button type="button" className="hub-icon-button" aria-label={`Remove ${f.title||"new question"}`} onClick={()=>{setFields(current=>current.filter(field=>field.path!==f.path));setRules(current=>current.filter(rule=>rule.fieldPath!==f.path));setExpandedQuestion(null);}}><Trash2 size={16}/></button>}
                     </div>
                   </div>
-                  {f.path!==resumePath && <div className="hub-question-editor" id={`question-editor-${f.path}`} hidden={expandedQuestion!==f.path}>
+                  {!(f.path===resumePath || isLinkedInProfile(f)) && <div className="hub-question-editor" id={`question-editor-${f.path}`} hidden={expandedQuestion!==f.path}>
                     <>
                       <div className="hub-form-grid hub-question-fields">
                         <Field label={`Question ${i - contactPaths.length + 1} label`}>
@@ -1155,7 +1155,7 @@ function Editor({
                             required
                             maxLength={160}
                             value={f.title}
-                            disabled={f.path===resumePath}
+                            disabled={(f.path===resumePath || isLinkedInProfile(f))}
                             onChange={(e) =>
                               updateField(i, { title: e.target.value })
                             }
@@ -1165,7 +1165,7 @@ function Editor({
                           <select
                             value={f.required ? "required" : "optional"}
                             disabled={
-                              f.path === resumePath || isEnglishProficiency(f) || f.required &&
+                              f.path === resumePath || isLinkedInProfile(f) || isEnglishProficiency(f) || f.required &&
                               rules.some(
                                 (r) =>
                                   r.fieldPath === f.path &&
@@ -1193,7 +1193,7 @@ function Editor({
                         <Field label={`Question ${i - contactPaths.length + 1} answer format`}>
                           <select
                             value={f.type}
-                            disabled={f.path===resumePath || isCountryResidence(f) || isEnglishProficiency(f) || rules.some((r) => r.fieldPath === f.path)}
+                            disabled={(f.path===resumePath || isLinkedInProfile(f)) || isCountryResidence(f) || isEnglishProficiency(f) || rules.some((r) => r.fieldPath === f.path)}
                             onChange={(e) =>
                               updateField(i, {
                                 type: e.target.value as FieldType,

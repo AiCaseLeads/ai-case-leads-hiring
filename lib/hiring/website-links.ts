@@ -17,6 +17,7 @@ export function websiteLinkError(value: unknown, field: Pick<ApplicationField, "
       labels.some(label => !/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/i.test(label)) ||
       !/^(?:[a-z]{2,63}|xn--[a-z0-9-]+)$/i.test(labels.at(-1)!)) return message;
     if (linkedIn && url.hostname !== "linkedin.com" && !url.hostname.endsWith(".linkedin.com")) return message;
+    if (linkedIn && !/^\/(?:in|pub)\/[^/?#]+(?:\/|$)/i.test(url.pathname)) return message;
     return null;
   } catch { return message; }
 }
