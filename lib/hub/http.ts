@@ -1,3 +1,4 @@
+import { APPLICATION_SORTS, type ApplicationFilters } from "./store";
 import { withRequiredApplicationFields } from "../hiring/contact-fields";
 import { downloadApplications } from "./exports";
 import type { HubMember } from "./auth";
@@ -56,8 +57,8 @@ function applicationFilters(request: Request) {
         );
       if ((qualification && !["pass", "review", "fail"].includes(qualification)) ||
           (grade && !["reviewed", "ungraded"].includes(grade)) ||
-          (sort && !["newest","grade_desc","ai_match_desc"].includes(sort)) || (duplicate && duplicate !== "true") ||
-          ((grade || (sort && sort !== "newest")) && !jobId))
+          (sort && !APPLICATION_SORTS.includes(sort as typeof APPLICATION_SORTS[number])) || (duplicate && duplicate !== "true") ||
+          ((grade || (sort && ["grade_desc","ai_match_desc","ai_match_asc"].includes(sort))) && !jobId))
         throw new HiringError("invalid_filter", 422, "Choose one role before comparing reviewer grades, and check the application filters.");
       const dates={appliedFrom:params.get('appliedFrom')||undefined,appliedTo:params.get('appliedTo')||undefined,timeZone:params.get('timeZone')||undefined};
       applicationDateBounds(dates);
@@ -71,7 +72,7 @@ function applicationFilters(request: Request) {
         page: Number(page),
         qualification: qualification as "pass" | "review" | "fail" | undefined,
         grade: grade as "reviewed" | "ungraded" | undefined,
-        sort: sort as "newest" | "grade_desc" | "ai_match_desc" | undefined,
+        sort: sort as ApplicationFilters["sort"],
         duplicate: duplicate === "true" ? true : undefined,
         trash: params.get('trash')==='true',
       };

@@ -44,10 +44,11 @@ import { DEFAULT_REJECTION } from "../hiring/email-templates";
 export { DEFAULT_REJECTION } from "../hiring/email-templates";
 
 type Bind = string | number | null;
+export const APPLICATION_SORTS = ["newest","oldest","screening_newest","screening_asc","screening_desc","owner_asc","owner_desc","ai_match_asc","ai_match_desc","grade_desc"] as const;
 export type ApplicationFilters = {
   q?:string;jobId?:string;stage?:string;assignee?:string;qualification?:"pass"|"review"|"fail";
   appliedFrom?:string;appliedTo?:string;timeZone?:string;
-  top?:10;grade?:"reviewed"|"ungraded";sort?:"newest"|"grade_desc"|"ai_match_desc";duplicate?:boolean;page?:number;trash?:boolean;
+  top?:10;grade?:"reviewed"|"ungraded";sort?:typeof APPLICATION_SORTS[number];duplicate?:boolean;page?:number;trash?:boolean;
 };
 /** Convert inclusive local calendar dates to a half-open UTC interval, including DST days. */
 export function applicationDateBounds(filters: Pick<ApplicationFilters,"appliedFrom"|"appliedTo"|"timeZone">): {from?:number;to?:number} {
@@ -798,7 +799,7 @@ export class HubStore {
     return row;
   }
   private applicationSelection(filters:ApplicationFilters) {
-    if ((filters.grade || (filters.sort && filters.sort !== "newest")) && !filters.jobId)
+    if ((filters.grade || (filters.sort && ["grade_desc","ai_match_desc","ai_match_asc"].includes(filters.sort))) && !filters.jobId)
       throw new HiringError("job_required_for_grading",422,"Choose one role before filtering or sorting reviewer grades.");
     const where:string[] = [filters.trash?`NOT (${activeApplicationsSql('a')})`:activeApplicationsSql('a')], values:Bind[] = [];
     if(filters.q) {where.push("(instr(lower(a.name),lower(?))>0 OR instr(lower(a.email),lower(?))>0)");values.push(filters.q,filters.q);}
@@ -819,7 +820,16 @@ export class HubStore {
     const clause = where.length ? ` WHERE ${where.join(" AND ")}` : "";
     join += " LEFT JOIN hub_jobs match_job ON match_job.id=a.job_id LEFT JOIN hub_ai_matches match_result ON match_result.application_id=a.id AND match_result.form_version=match_job.form_version AND match_job.ai_match_enabled=1";
     const matchReady = "match_result.status='ready' AND match_result.score IS NOT NULL";
-    const order = filters.sort === "ai_match_desc" ? `CASE WHEN a.stage NOT IN ('Rejected','Withdrawn','Hired') AND ${matchReady} THEN 0 WHEN a.stage NOT IN ('Rejected','Withdrawn','Hired') THEN 1 ELSE 2 END,CASE WHEN ${matchReady} THEN match_result.score ELSE NULL END DESC,a.created_at DESC,a.id` : filters.sort === "grade_desc" ? "CASE WHEN a.stage NOT IN ('Rejected','Withdrawn','Hired') AND g.average_score IS NOT NULL THEN 0 WHEN a.stage NOT IN ('Rejected','Withdrawn','Hired') THEN 1 ELSE 2 END,g.average_score DESC,a.created_at DESC,a.id" : "a.created_at DESC,a.id";
+    const screening = "CASE a.qualification WHEN 'pass' THEN 0 WHEN 'review' THEN 1 WHEN 'fail' THEN 2 ELSE 3 END";
+    const newest = "a.created_at DESC,a.id";
+    let order = newest;
+    if (filters.sort === "ai_match_desc" || filters.sort === "ai_match_asc") {
+      const direction = filters.sort === "ai_match_asc" ? "ASC" : "DESC";
+      order = `CASE WHEN a.stage NOT IN ('Rejected','Withdrawn','Hired') AND ${matchReady} THEN 0 WHEN a.stage NOT IN ('Rejected','Withdrawn','Hired') THEN 1 ELSE 2 END,CASE WHEN ${matchReady} THEN match_result.score ELSE NULL END ${direction},${newest}`;
+    } else if (filters.sort === "grade_desc") order = `CASE WHEN a.stage NOT IN ('Rejected','Withdrawn','Hired') AND g.average_score IS NOT NULL THEN 0 WHEN a.stage NOT IN ('Rejected','Withdrawn','Hired') THEN 1 ELSE 2 END,g.average_score DESC,${newest}`;
+    else if (filters.sort === "oldest") order = "a.created_at ASC,a.id";
+    else if (filters.sort === "screening_newest" || filters.sort === "screening_asc" || filters.sort === "screening_desc") order = `${screening} ${filters.sort === "screening_desc" ? "DESC" : "ASC"},${newest}`;
+    else if (filters.sort === "owner_asc" || filters.sort === "owner_desc") order = `CASE WHEN a.assignee IS NULL OR trim(a.assignee)='' THEN 1 ELSE 0 END,lower(trim(a.assignee)) ${filters.sort === "owner_desc" ? "DESC" : "ASC"},${newest}`;
     return {cte,join,clause,order,values:graded?[filters.jobId!,...values]:values};
   }
   private async summaries(rows:ApplicationRow[],viewerEmail?:string):Promise<ApplicationSummary[]> {
