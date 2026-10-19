@@ -1287,7 +1287,7 @@
   .hub-detail-main { order: 0; }
   .hub-action-panel { order: 1; }
 }
-@media (max-width: 680px) {
+@media (max-width: 960px) {
   /* The same table becomes labeled cards, retaining its table semantics and controls. */
   .hub-table-wrap:has(.hub-applications-table) { background: transparent; border: 0; overflow: visible; }
   .hub-applications-table { display: block; min-width: 0; }
@@ -1902,3 +1902,13 @@ body:has(.hiring-hub .hub-draft-overlay) { overflow: hidden; }
 .hub-applicant-profile .hub-compact-answers > .hub-answer-long { grid-column:1/-1; }
 .hub-application-answers a { text-decoration:underline; text-underline-offset:2px; overflow-wrap:anywhere; }
 @media(max-width:640px) { .hub-contact-strip { grid-template-columns:minmax(0,1fr); gap:8px; } .hub-contact-strip > div { display:grid; grid-template-columns:50px minmax(0,1fr); gap:8px; } .hub-applicant-profile .hub-compact-answers { grid-template-columns:minmax(0,1fr); } }
+
+/* Mobile form controls avoid Safari focus zoom and retain usable touch targets. */
+@media(max-width:960px) {
+ .hiring-hub .hub-main input:not([type=checkbox]):not([type=radio]),
+ .hiring-hub .hub-main select,.hiring-hub .hub-main textarea,
+ .hiring-hub .hub-main [contenteditable=true] { font-size:16px; }
+ .hiring-hub .hub-job-menu > summary,.hiring-hub .hub-download-menu > summary { min-height:44px!important; }
+ .hiring-hub .hub-main .hub-pipeline-tabs > button { min-height:44px; }
+ .hiring-hub .hub-main .hub-column-filter input,.hiring-hub .hub-main .hub-column-filter select { min-height:44px; }
+}

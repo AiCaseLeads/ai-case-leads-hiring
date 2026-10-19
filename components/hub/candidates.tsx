@@ -654,6 +654,15 @@ export function CandidateDetail({
     ),
     mutation = useHubMutation();
   const [section, setSection] = useState<"application" | "review" | "activity">(initialSection);
+  const profileTop = useRef<HTMLElement>(null);
+  const openedProfile = useRef<string|null>(null);
+  useLayoutEffect(() => {
+    if (resource.loading || !resource.data || resource.data.id !== id || openedProfile.current === id) return;
+    openedProfile.current = id;
+    // A new record starts at its identity, once. Refreshes and delayed previews must not move the reader.
+    profileTop.current?.scrollIntoView({block:"start",behavior:"instant"});
+    profileTop.current?.querySelector<HTMLElement>("#candidate-title")?.focus({preventScroll:true});
+  }, [id, resource.loading, resource.data]);
   const [action, setAction] = useState(initialAction as string),
     [stage, setStage] = useState("Screening"),
     [text, setText] = useState(""),
@@ -769,7 +778,7 @@ export function CandidateDetail({
   }
   const detail = resource.data;
   return (
-    <section className="hub-applicant-profile" aria-labelledby="candidate-title">
+    <section ref={profileTop} className="hub-applicant-profile" aria-labelledby="candidate-title">
       {leaveRequest && <div className="hub-card" role="alertdialog" ref={leaveDialog} tabIndex={-1} aria-labelledby="leave-applicant-title"><h3 id="leave-applicant-title">Leave this applicant without saving?</h3><p>Your unsaved note or action will be discarded. Leaving does not send a new message. Check Activity for any email already pending.</p><div className="hub-button-row"><button type="button" className="hub-button" onClick={()=>{setLeaveRequest(null);leaveOrigin.current?.focus();}}>Keep editing</button><button type="button" className="hub-button secondary" onClick={()=>{const leave=leaveRequest;dirtyRef.current=false;setLeaveRequest(null);leave();}}>Discard changes and leave</button></div></div>}
       <div className="hub-profile-topbar">
         <button className="hub-text-button hub-back" onClick={()=>requestDraftNavigation(back)}><ArrowLeft size={16}/> Back to applications</button>
@@ -784,7 +793,7 @@ export function CandidateDetail({
         <>
           <header className="hub-profile-header">
             <div className="hub-profile-identity">
-              <div className="hub-profile-name-row"><h2 id="candidate-title">{answerContactName(detail)}</h2><div className="hub-status-line"><Badge>{detail.trashed?"In Trash":stageLabel(detail.stage)}</Badge><Badge tone={qualificationTone(detail.qualification)}>{qualificationLabel(detail.qualification,detail.qualificationEvidence.length>0)}</Badge>{detail.duplicateEmail && <Badge tone="warning">{detail.duplicateApplicationCount} applications share this email</Badge>}</div></div>
+              <div className="hub-profile-name-row"><h2 id="candidate-title" tabIndex={-1}>{answerContactName(detail)}</h2><div className="hub-status-line"><Badge>{detail.trashed?"In Trash":stageLabel(detail.stage)}</Badge><Badge tone={qualificationTone(detail.qualification)}>{qualificationLabel(detail.qualification,detail.qualificationEvidence.length>0)}</Badge>{detail.duplicateEmail && <Badge tone="warning">{detail.duplicateApplicationCount} applications share this email</Badge>}</div></div>
               <p className="hub-profile-job">{detail.jobTitle}</p>
               <p className="hub-profile-contact"><a href={"mailto:"+detail.email}>{detail.email}</a><span>Applied {displayDate(detail.createdAt)}</span><span>Assigned to {detail.assignee||"no recruiter"}</span></p>
             </div>
