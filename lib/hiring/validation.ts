@@ -1,5 +1,5 @@
 import { HiringError } from "./errors";
-import { internationalPhoneError } from "./contact-fields";
+import { internationalPhoneError, isLinkedInProfile } from "./contact-fields";
 import { isWebsiteField, websiteLinkError } from "./website-links";
 import type { ApplicationField, ApplicationInput, UploadInput } from "./types";
 
@@ -63,7 +63,13 @@ export function validateAnswers(input: ApplicationInput, fields: ApplicationFiel
     if (!valid && field.type === "Phone") fieldErrors[field.path] = internationalPhoneError(v)!;
   }
   for (const field of fields) if (field.required && !answers.has(field.path)) fieldErrors[field.path] = `${field.title} is required.`;
-  if (Object.keys(fieldErrors).length) throw new HiringError("invalid_application", 422, "Please check the highlighted answers.", fieldErrors);
+  if (Object.keys(fieldErrors).length) {
+    const missingLinkedIn = fields.some(field => field.required && isLinkedInProfile(field) && !answers.has(field.path));
+    const message = missingLinkedIn
+      ? "A LinkedIn profile is now required. If that field is not visible, copy your entered answers before refreshing this page, then complete the updated form and reattach your résumé. Your application has not been submitted."
+      : "Please check the highlighted answers.";
+    throw new HiringError("invalid_application", 422, message, fieldErrors);
+  }
 }
 
 export function validNumericAnswer(value: unknown, currency = false): boolean {

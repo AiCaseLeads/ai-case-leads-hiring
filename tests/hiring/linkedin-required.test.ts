@@ -1,3 +1,5 @@
+import {HiringError} from '../../lib/hiring/errors';
+import {validateAnswers} from '../../lib/hiring/validation';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {withRequiredApplicationFields,withRequiredLinkedIn,linkedInPath} from '../../lib/hiring/contact-fields';
@@ -16,3 +18,14 @@ test('LinkedIn accepts personal profiles only, including country hosts and legac
 test('existing job public definition immediately requires LinkedIn without rewriting stored configuration',async()=>{
  const f=customDatabase();try{const job=await openSyntheticRole(f.store);const before=await f.store.getJob(job.id);const definition=await f.store.jobDefinition(job.id);assert.equal(definition.fields.find(v=>v.path===linkedInPath)?.required,true);assert.deepEqual((await f.store.getJob(job.id)).fields,before.fields);}finally{f.database.close();}
 });
+
+ test('a stale form with no LinkedIn answer receives actionable refresh instructions without claiming saved answers',()=>{
+  const fields=withRequiredLinkedIn([]);
+  assert.throws(()=>validateAnswers({jobPostingId:crypto.randomUUID(),submissionKey:crypto.randomUUID(),fieldSubmissions:[]},fields),error=>{
+   assert.ok(error instanceof HiringError);
+   assert.equal(error.code,'invalid_application');assert.equal(error.status,422);
+   assert.match(error.message,/copy your entered answers before refreshing/);
+   assert.match(error.message,/reattach your résumé/);
+   assert.equal(error.fieldErrors?.[linkedInPath],'LinkedIn profile is required.');return true;
+  });
+ });
