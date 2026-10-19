@@ -15,6 +15,8 @@ test('current-only Drive migration is bounded, idempotent, and never replays mai
  const before=database.prepare('SELECT id,stage,revision FROM hub_applications ORDER BY id').all();
  assert.equal(await reconcileLegacyPdfArchives(db,store),10);
  assert.equal(await reconcileLegacyPdfArchives(db,store),0,'Do not grow migration backlog while a batch remains pending');
+ database.exec("UPDATE hub_tasks SET status='failed',attempts=1,run_after=9999999999999 WHERE id LIKE 'drive:%:pdf-current-v3:%'");
+ assert.equal(await reconcileLegacyPdfArchives(db,store),0,'Quota backoff must not grow the backlog');
  database.exec("UPDATE hub_tasks SET status='done',result_json='{\"archiveFormat\":\"pdf-current-v3\",\"archivedRevision\":1}' WHERE id LIKE 'drive:%:pdf-current-v3:%'");
  assert.equal(await reconcileLegacyPdfArchives(db,store),2);
  assert.equal(await reconcileLegacyPdfArchives(db,store),0);

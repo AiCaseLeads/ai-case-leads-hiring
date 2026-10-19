@@ -38,7 +38,7 @@ async function reconcileArchives(db:D1Database,store:HubStore){
   if(result.results.length)await db.batch(result.results.map(app=>store.taskStatement(`drive:${app.id}:reconcile:${app.revision}`,app.id,"drive",{applicationId:app.id},now)));
 }
 export async function reconcileLegacyPdfArchives(db:D1Database,store:HubStore){
-  const outstanding=await db.prepare("SELECT COUNT(*) AS count FROM hub_tasks WHERE kind='drive' AND status IN ('pending','running') AND id LIKE 'drive:%:pdf-current-v3:%'").first<{count:number}>();
+  const outstanding=await db.prepare("SELECT COUNT(*) AS count FROM hub_tasks WHERE kind='drive' AND (status IN ('pending','running') OR (status='failed' AND attempts<8)) AND id LIKE 'drive:%:pdf-current-v3:%'").first<{count:number}>();
   if(Number(outstanding?.count||0)>0)return 0;
   // Upgrade completed archives to one current PDF. Small batches protect new intake
   // and Drive quotas; candidate decisions and emails are never replayed.
