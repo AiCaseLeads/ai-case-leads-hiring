@@ -1,52 +1,38 @@
 "use client";
-import {useEffect,useRef,useState} from "react";
-import {ChevronLeft,ChevronRight} from "lucide-react";
+import {useEffect,useLayoutEffect,useRef,useState} from "react";
+import {Minus,Plus} from "lucide-react";
 import type {PDFDocumentProxy,RenderTask} from "pdfjs-dist";
-export function PdfPreview({url,filename,expanded=false}:{url:string;filename:string;expanded?:boolean}){
- const [fit,setFit]=useState<"page"|"width">("page");
- const canvas=useRef<HTMLCanvasElement>(null),container=useRef<HTMLDivElement>(null);
- const [document,setDocument]=useState<PDFDocumentProxy|null>(null),[page,setPage]=useState(1),[width,setWidth]=useState(600),[error,setError]=useState(""),[rendered,setRendered]=useState(false);
+function PdfPage({document,index,width,height,fit,zoom,filename,root}:{document:PDFDocumentProxy;index:number;width:number;height:number;fit:"page"|"width";zoom:number;filename:string;root:React.RefObject<HTMLDivElement|null>}) {
+ const holder=useRef<HTMLDivElement>(null),canvas=useRef<HTMLCanvasElement>(null);
+ const [visible,setVisible]=useState(index===1),[size,setSize]=useState({width:612,height:792}),[rendered,setRendered]=useState(false),[error,setError]=useState(false);
+ const scale=Math.min(Math.max(1,width-24)/size.width,fit==="page"?Math.max(1,height-24)/size.height:2)*zoom;
+ useEffect(()=>{const element=holder.current;if(!element)return;const observer=new IntersectionObserver(entries=>setVisible(entries[0].isIntersecting),{root:root.current,rootMargin:"180px"});observer.observe(element);return()=>observer.disconnect();},[root]);
  useEffect(()=>{
-  const element=container.current;if(!element)return;
-  const observer=new ResizeObserver(entries=>setWidth(Math.max(1,Math.min(1100,Math.floor(entries[0].contentRect.width)))));observer.observe(element);return()=>observer.disconnect();
- },[]);
- useEffect(()=>{
-  const controller=new AbortController();let cancelled=false;let loading:ReturnType<typeof import("pdfjs-dist")["getDocument"]>|undefined;
-  void(async()=>{
-   try{
-    const pdfjs=await import("pdfjs-dist");if(cancelled)return;
-    const assets=`/vendor/pdfjs/${pdfjs.version}/`;
-    pdfjs.GlobalWorkerOptions.workerSrc=assets+"pdf.worker.min.mjs";
-    const response=await fetch(url,{credentials:"same-origin",cache:"no-store",signal:controller.signal});
-    if(!response.ok || !(response.headers.get("content-type") || "").startsWith("application/pdf"))throw Error("Unable to load this résumé securely.");
-    const bytes=new Uint8Array(await response.arrayBuffer());if(cancelled)return;
-    loading=pdfjs.getDocument({data:bytes,standardFontDataUrl:assets+"standard_fonts/",cMapUrl:assets+"cmaps/",cMapPacked:true,wasmUrl:assets+"wasm/"});
-    const next=await loading.promise;if(cancelled){await loading.destroy();return;}setDocument(next);
-   }catch{if(!cancelled)setError("Résumé preview could not be loaded. Use the Download link above to open the original file.");}
-  })();
-  return()=>{cancelled=true;controller.abort();void loading?.destroy();};
- },[url]);
- useEffect(()=>{
-  if(!document || !canvas.current)return;
-  let cancelled=false,task:RenderTask|undefined;
-  const target=canvas.current;
-  void(async()=>{try{
-   setRendered(false);const pdfPage=await document.getPage(page);if(cancelled)return;
-   const natural=pdfPage.getViewport({scale:1});const scale=Math.min(Math.max(1,width-18)/natural.width,fit==="page"?(expanded?640:width<400?240:420)/natural.height:2);const viewport=pdfPage.getViewport({scale});
-   const ratio=Math.min(window.devicePixelRatio || 1,2,Math.sqrt(4000000/(viewport.width*viewport.height)));
-   target.width=Math.floor(viewport.width*ratio);target.height=Math.floor(viewport.height*ratio);target.style.width=`${viewport.width}px`;target.style.height=`${viewport.height}px`;
-   const context=target.getContext("2d");if(!context)throw Error("Canvas unavailable");
-   task=pdfPage.render({canvas:target,canvasContext:context,viewport,transform:ratio!==1?[ratio,0,0,ratio,0,0]:undefined});await task.promise;
-   if(!cancelled)setRendered(true);
-  }catch{if(!cancelled)setError("This résumé page could not be displayed. Use the Download link above to open the original file.");}})();
-  return()=>{cancelled=true;task?.cancel();};
- },[document,page,width,fit,expanded]);
+  if(!visible||!canvas.current)return;
+  let cancelled=false,task:RenderTask|undefined;const target=canvas.current;let page:Awaited<ReturnType<PDFDocumentProxy["getPage"]>>|undefined;
+  void(async()=>{try{setRendered(false);setError(false);page=await document.getPage(index);if(cancelled)return;const natural=page.getViewport({scale:1});setSize(current=>current.width===natural.width&&current.height===natural.height?current:{width:natural.width,height:natural.height});const viewport=page.getViewport({scale:Math.min(Math.max(1,width-24)/natural.width,fit==="page"?Math.max(1,height-24)/natural.height:2)*zoom});const ratio=Math.min(window.devicePixelRatio||1,2,Math.sqrt(3000000/(viewport.width*viewport.height)));target.width=Math.max(1,Math.floor(viewport.width*ratio));target.height=Math.max(1,Math.floor(viewport.height*ratio));const context=target.getContext("2d");if(!context)throw Error("Canvas unavailable");task=page.render({canvas:target,canvasContext:context,viewport,transform:ratio!==1?[ratio,0,0,ratio,0,0]:undefined});await task.promise;if(!cancelled)setRendered(true);}catch{if(!cancelled)setError(true);}})();
+  return()=>{cancelled=true;task?.cancel();target.width=0;target.height=0;void task?.promise.catch(()=>{}).finally(()=>page?.cleanup());};
+ },[document,index,width,height,fit,zoom,visible]);
+ return <div ref={holder} className="hub-pdf-page" style={{width:Math.max(1,size.width*scale),height:Math.max(1,size.height*scale)}} aria-label={`Page ${index}`}>
+  {visible&&<canvas ref={canvas} role="img" aria-label={`Résumé ${filename}, page ${index}`} data-rendered={rendered?"true":"false"} style={{display:"block",width:"100%",height:"100%"}}/>}
+  {visible&&!rendered&&<span className="hub-pdf-page-status">{error?`Page ${index} unavailable. Download the original.`:`Rendering page ${index}…`}</span>}
+ </div>;
+}
+export function PdfPreview({url,filename,expanded=false}:{url:string;filename:string;expanded?:boolean}) {
+ const container=useRef<HTMLDivElement>(null),stage=useRef<HTMLDivElement>(null);
+ const [document,setDocument]=useState<PDFDocumentProxy|null>(null),[width,setWidth]=useState(600),[height,setHeight]=useState(440),[error,setError]=useState("");
+ const [fit,setFit]=useState<"page"|"width">("page"),[zoom,setZoom]=useState(1);
+ const zoomRef=useRef(zoom);useLayoutEffect(()=>{zoomRef.current=zoom;},[zoom]);
+ const anchor=useRef<{x:number;y:number;rx:number;ry:number}|null>(null);
+ function zoomAt(value:number,x?:number,y?:number){const element=stage.current;if(!element)return;const bounds=element.getBoundingClientRect();const px=x===undefined?element.clientWidth/2:x-bounds.left,py=y===undefined?element.clientHeight/2:y-bounds.top;anchor.current={x:px,y:py,rx:(element.scrollLeft+px)/Math.max(1,element.scrollWidth),ry:(element.scrollTop+py)/Math.max(1,element.scrollHeight)};setZoom(Math.min(3,Math.max(.5,value)));}
+ useLayoutEffect(()=>{const element=stage.current,point=anchor.current;if(element&&point){element.scrollLeft=point.rx*element.scrollWidth-point.x;element.scrollTop=point.ry*element.scrollHeight-point.y;anchor.current=null;}},[zoom]);
+ useEffect(()=>{const element=container.current;if(!element)return;const observer=new ResizeObserver(entries=>setWidth(Math.max(1,Math.min(1100,Math.floor(entries[0].contentRect.width)))));observer.observe(element);return()=>observer.disconnect();},[]);
+ useEffect(()=>{const element=stage.current;if(!element)return;const observer=new ResizeObserver(entries=>setHeight(entries[0].contentRect.height));observer.observe(element);return()=>observer.disconnect();},[document]);
+ useEffect(()=>{const element=stage.current;if(!element)return;let base=1;const wheel=(event:WheelEvent)=>{if(!event.ctrlKey)return;event.preventDefault();zoomAt(zoomRef.current*Math.exp(-event.deltaY*.008),event.clientX,event.clientY);};const start=(event:Event)=>{event.preventDefault();base=zoomRef.current;};const change=(event:Event)=>{event.preventDefault();const scale=(event as Event&{scale?:number}).scale;if(scale&&Number.isFinite(scale))zoomAt(base*scale);};element.addEventListener("wheel",wheel,{passive:false});element.addEventListener("gesturestart",start,{passive:false});element.addEventListener("gesturechange",change,{passive:false});return()=>{element.removeEventListener("wheel",wheel);element.removeEventListener("gesturestart",start);element.removeEventListener("gesturechange",change);};},[document]);
+ useEffect(()=>{const controller=new AbortController();let cancelled=false;let loading:ReturnType<typeof import("pdfjs-dist")["getDocument"]>|undefined;queueMicrotask(()=>{if(!cancelled){setDocument(null);setError("");setZoom(1);setFit("page");}});void(async()=>{try{const pdfjs=await import("pdfjs-dist");if(cancelled)return;const assets=`/vendor/pdfjs/${pdfjs.version}/`;pdfjs.GlobalWorkerOptions.workerSrc=assets+"pdf.worker.min.mjs";const response=await fetch(url,{credentials:"same-origin",cache:"no-store",signal:controller.signal});if(!response.ok||!(response.headers.get("content-type")||"").startsWith("application/pdf"))throw Error("Invalid preview");const bytes=new Uint8Array(await response.arrayBuffer());if(cancelled)return;loading=pdfjs.getDocument({data:bytes,standardFontDataUrl:assets+"standard_fonts/",cMapUrl:assets+"cmaps/",cMapPacked:true,wasmUrl:assets+"wasm/"});const next=await loading.promise;if(cancelled){await loading.destroy();return;}setDocument(next);}catch{if(!cancelled)setError("Résumé preview could not be loaded. Use the Download link above to open the original file.");}})();return()=>{cancelled=true;controller.abort();void loading?.destroy();};},[url]);
  return <div ref={container} style={{minWidth:0,width:"100%"}}>
-  {document && <div className="hub-document-toolbar"><button type="button" className="hub-icon-button" aria-label="Previous résumé page" title="Previous page" disabled={page<=1} onClick={()=>setPage(value=>value-1)}><ChevronLeft size={16} aria-hidden="true"/></button><span className="hub-document-page-count" role="status">{page} / {document.numPages}</span><button type="button" className="hub-icon-button" aria-label="Next résumé page" title="Next page" disabled={page>=document.numPages} onClick={()=>setPage(value=>value+1)}><ChevronRight size={16} aria-hidden="true"/></button><select aria-label="Document zoom" value={fit} onChange={event=>setFit(event.target.value as "page"|"width")}><option value="page">Fit page</option><option value="width">Fit width</option></select></div>}
-  {error ? <p role="status">{error}</p> : <>
-   {!rendered && <p role="status">Rendering résumé…</p>}
-   <div className={"hub-resume-canvas-window hub-document-stage"+(fit==="page"?" is-fit-page":"")}><canvas ref={canvas} role="img" aria-label={`Résumé ${filename}, page ${page}`} data-rendered={rendered?"true":"false"} style={{display:"block",maxWidth:"100%",margin:"0 auto"}}/></div>
-   <p className="hub-document-caption">Download the original for selectable text and screen-reader access.</p>
-  </>}
+  {document&&<div className="hub-document-toolbar"><span className="hub-document-page-count">{document.numPages} pages · scroll to read</span><select aria-label="Document zoom" value={fit} onChange={event=>{setFit(event.target.value as "page"|"width");setZoom(1);}}><option value="page">Fit page</option><option value="width">Fit width</option></select><button className="hub-icon-button" type="button" aria-label="Zoom out résumé" disabled={zoom<=.5} onClick={()=>zoomAt(zoom-.25)}><Minus size={16}/></button><output aria-label="Résumé zoom">{Math.round(zoom*100)}%</output><button className="hub-icon-button" type="button" aria-label="Zoom in résumé" disabled={zoom>=3} onClick={()=>zoomAt(zoom+.25)}><Plus size={16}/></button></div>}
+  {error?<p role="status">{error}</p>:!document?<p role="status">Loading résumé…</p>:<div ref={stage} className="hub-pdf-scroll" role="region" aria-label="Scrollable résumé pages" tabIndex={0} style={{height:expanded?"min(70vh,700px)":width<400?280:440}}>{Array.from({length:document.numPages},(_,index)=><PdfPage key={index} document={document} index={index+1} width={width} height={height} fit={fit} zoom={zoom} filename={filename} root={stage}/>)}</div>}
+  <p className="hub-document-caption">Scroll through every page. Pinch inside the preview to zoom, or use the zoom buttons. Download the original for selectable text and screen-reader access.</p>
  </div>;
 }

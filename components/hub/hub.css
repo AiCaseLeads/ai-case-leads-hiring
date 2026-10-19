@@ -1948,3 +1948,6 @@ body:has(.hiring-hub .hub-draft-overlay) { overflow: hidden; }
 .hub-job-menu > .hub-job-menu-items > :is(button,a):disabled { opacity:.5; cursor:not-allowed; }
 
 .hub-drive-word-preview iframe { max-width:100%; } .hub-drive-word-preview > details { margin-top:8px; } .hub-drive-word-preview a { text-decoration:underline; } @media(max-width:640px) { .hub-resume-preview:not(.is-expanded) .hub-drive-word-preview iframe { height:280px!important; } }
+.hub-pdf-scroll { overflow:auto; overscroll-behavior:contain; width:100%; max-width:100%; background:#e9eeed; padding:10px; box-sizing:border-box; }
+.hub-pdf-page { position:relative; background:white; margin:0 auto 12px; flex-shrink:0; box-shadow:0 1px 4px #183c4320; }
+.hub-pdf-page-status { position:absolute; left:8px; top:8px; font-size:12px; }
