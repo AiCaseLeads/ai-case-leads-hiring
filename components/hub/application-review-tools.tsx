@@ -5,10 +5,10 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 import { PdfPreview } from "./pdf-preview";
 import { hubRequest, useHubResource } from "./api";
 import type { ApplicationDetail, HubJob } from "./types";
-export function ApplicantNavigation({detail,filter,jobs,open,viewed}:{detail:ApplicationDetail;filter:string;jobs:HubJob[];open:(id:string,filter:string)=>void;viewed:()=>void}) {
+export function ApplicantNavigation({detail,filter,open,viewed}:{detail:ApplicationDetail;filter:string;jobs:HubJob[];open:(id:string,filter:string)=>void;viewed:()=>void}) {
   const params=new URLSearchParams(filter);
   if(!params.has("jobId"))params.set("jobId",detail.jobId);
-  if(!params.has("sort"))params.set("sort",jobs.find(job=>job.id===detail.jobId)?.aiMatchEnabled?"ai_match_desc":"newest");
+  if(!params.has("sort"))params.set("sort","screening_newest");
   params.delete("page");
   const query=params.toString();
   const neighbors=useHubResource<{previousId:string|null;nextId:string|null;position:number;total:number}>(`/api/hub/applications/${encodeURIComponent(detail.id)}/navigation?${query}`);

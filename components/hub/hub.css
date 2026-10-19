@@ -1854,3 +1854,24 @@ body:has(.hiring-hub .hub-draft-overlay) { overflow: hidden; }
 @media(min-width:1100px) { .hub-applicant-profile .hub-profile-header { display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:center; gap:24px; } .hub-profile-identity { min-width:0; } .hub-applicant-profile .hub-candidate-quick-actions { margin:0; justify-content:flex-end; max-width:470px; } }
 
 .hub-applicant-profile { overflow-anchor:none; }
+
+/* Applicant browsing emphasizes results, with optional controls kept compact. */
+.hub-job-title-link { text-align:left; font-size:inherit; font-weight:650; line-height:1.4; padding:4px 0; min-height:44px; }
+.hub-application-job-row > .hub-job-menu { flex:0 0 auto; }
+.hub-candidate-browser .hub-applicant-toolbar { padding:12px; margin-bottom:12px; }
+.hub-candidate-browser .hub-applicant-filters { grid-template-columns:minmax(0,1.5fr) minmax(0,1fr) auto; gap:12px; }
+.hub-candidate-browser .hub-applicant-filters > :first-child { grid-column:auto; }
+.hub-candidate-browser .hub-advanced-filters { margin-top:8px; }
+.hub-candidate-browser .hub-advanced-filters > summary { min-height:44px; padding:10px 0; }
+.hub-candidate-browser .hub-applicant-toolbar-actions { margin-top:8px; gap:8px 12px; }
+.hub-candidate-browser .hub-application-downloads { width:auto; flex-basis:auto; margin:0; }
+.hub-candidate-browser .hub-application-downloads[open] { width:100%; flex-basis:100%; }
+.hub-table-sort { display:inline-flex; align-items:center; gap:6px; min-height:44px; padding:0; background:none; border:0; color:inherit; font:inherit; cursor:pointer; text-align:left; }
+.hub-table-sort:focus-visible { outline:2px solid #277960; outline-offset:3px; }
+.hub-applicant-profile .hub-answer-list { margin-top:8px; }
+.hub-applicant-profile .hub-answer-list > div { display:grid; grid-template-columns:minmax(150px,0.8fr) minmax(0,1.5fr); gap:8px 20px; padding:9px 0; }
+.hub-applicant-profile .hub-answer-list dt { margin:0; font-size:12px; line-height:1.5; }
+.hub-applicant-profile .hub-answer-list dd { font-size:13px; line-height:1.5; }
+@media(max-width:640px) { .hub-candidate-browser .hub-applicant-filters { grid-template-columns:minmax(0,1fr); } .hub-candidate-browser .hub-applicant-filters > button { width:100%; } .hub-applicant-profile .hub-answer-list > div { grid-template-columns:minmax(0,1fr); gap:3px; } }
+
+.hub-applications-table th > .hub-job-menu { display:inline-block; margin-left:4px; } .hub-applications-table th .hub-job-menu > summary { min-height:44px; padding:4px; font-size:11px; } .hub-column-filter { display:block; padding:10px; font-size:12px; font-weight:400; } .hub-column-filter input,.hub-column-filter select { width:100%; min-width:0; margin:6px 0; }

@@ -44,7 +44,7 @@ export function HiringDashboard({
     [refresh, setRefresh] = useState(0),
     [detailId, setDetailId] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
-  const [candidateSection,setCandidateSection]=useState<"application"|"review"|"activity">("review");
+  const [candidateSection,setCandidateSection]=useState<"application"|"review"|"activity">("application");
   const [candidateAction, setCandidateAction] = useState<"note" | "interview">("note");
   const menuButton = useRef<HTMLButtonElement>(null);
   const [workspaceNotice, setWorkspaceNotice] = useState("");
@@ -62,7 +62,7 @@ export function HiringDashboard({
     setView(next);
     setDetailId(params.get("application"));
     const requestedSection=params.get("candidateSection");
-    setCandidateSection(requestedSection==="application" || requestedSection==="activity" ? requestedSection : "review");
+    setCandidateSection(requestedSection==="review" || requestedSection==="activity" ? requestedSection : "application");
     setCandidateAction(params.get("candidateAction") === "interview" ? "interview" : "note");
     setInitialStage(next === "applications" && stages.includes(params.get("stage") || "") ? params.get("stage")! : "");
     setInitialJobId(next === "applications" ? params.get("jobId") || "" : "");
