@@ -1,4 +1,5 @@
 "use client";
+import {activitySummary, communicationSummary} from "./activity-summary";
 import { ApplicationAnswers, answerContactName } from "./application-answers";
 import { JobActionMenu } from "./action-menu";
 import { ApplicantNavigation, ResumePreview, resumeFile } from "./application-review-tools";
@@ -1237,10 +1238,11 @@ export function CandidateDetail({
                             message.status === "failed" ? "danger" : "neutral"
                           }
                         >
-                          {message.status}
+                          {communicationSummary(message.status).label}
                         </Badge>
                       </div>
-                      <p className="hub-preserve">{message.body}</p>
+                      <small>{communicationSummary(message.status).explanation}</small>
+                      <details><summary>View message</summary><p className="hub-preserve">{message.body}</p></details>
                       <small>{displayDate(message.createdAt)}</small>
                     </article>
                   ))
@@ -1255,15 +1257,16 @@ export function CandidateDetail({
                 <h3>Hiring history</h3>
                 {detail.history.length ? (
                   <ol className="hub-history-list">
-                    {detail.history.map((event) => (
+                    {detail.history.map((event) => {const summary=activitySummary(event);return (
                       <li key={event.id}>
-                        <strong>{event.type}</strong>
-                        <p>{event.text}</p>
+                        <strong>{summary.title}</strong>
+                        {summary.description && (event.type==="note" || summary.description.length>240 ? <details><summary>View details</summary><p className="hub-preserve">{summary.description}</p></details> : <p>{summary.description}</p>)}
+                        {summary.review && <button type="button" className="hub-text-button" onClick={()=>{setSection("review");document.getElementById("candidate-tab-review")?.focus({preventScroll:true});}}>View AI review</button>}
                         <small>
                           {event.actor} · {displayDate(event.createdAt)}
                         </small>
                       </li>
-                    ))}
+                    );})}
                   </ol>
                 ) : (
                   <p className="hub-muted">No hiring events recorded.</p>
