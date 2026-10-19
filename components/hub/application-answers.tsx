@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { contactPaths } from "@/lib/hiring/contact-fields";
+import { contactPaths, isLinkedInProfile } from "@/lib/hiring/contact-fields";
 import type { ApplicationDetail } from "./types";
 import { displayAnswer } from "./api";
 
@@ -28,9 +28,10 @@ export function ApplicationAnswers({detail}:{detail:ApplicationDetail}) {
  const read=(path:string)=>String(detail.answers.find(answer=>answer.path===path)?.value||"").trim();
  const email=read(contactPaths[2])||detail.email,phone=read(contactPaths[3]);
  const phoneHref=/^\+?[\d ()-]+$/.test(phone)?`tel:${phone.replace(/[ ()-]/g,"")}`:null;
- const answers=detail.answers.filter(answer=>!contactPaths.includes(answer.path)&&detail.fields.find(field=>field.path===answer.path)?.type!=="File");
+ const linkedIn=detail.answers.filter(answer=>detail.fields.some(field=>field.path===answer.path&&isLinkedInProfile(field)));
+ const answers=detail.answers.filter(answer=>!linkedIn.includes(answer)&&!contactPaths.includes(answer.path)&&detail.fields.find(field=>field.path===answer.path)?.type!=="File");
  return <div className="hub-application-answers">
-  <dl className="hub-contact-strip" aria-label="Applicant contact details"><div><dt>Name</dt><dd>{answerContactName(detail)}</dd></div><div><dt>Email</dt><dd>{email?<a href={`mailto:${encodeURIComponent(email)}`}>{email}</a>:"Not provided"}</dd></div><div><dt>Phone</dt><dd>{phoneHref?<a href={phoneHref}>{phone}</a>:phone||"Not provided"}</dd></div></dl>
+  <dl className="hub-contact-strip" aria-label="Applicant contact details"><div><dt>Name</dt><dd>{answerContactName(detail)}</dd></div><div><dt>Email</dt><dd>{email?<a href={`mailto:${encodeURIComponent(email)}`}>{email}</a>:"Not provided"}</dd></div><div><dt>Phone</dt><dd>{phoneHref?<a href={phoneHref}>{phone}</a>:phone||"Not provided"}</dd></div><div><dt>LinkedIn</dt><dd>{linkedIn.length?linkedIn.map(answer=><div key={answer.path}>{linkedText(displayAnswer(answer.value))}</div>):"Not provided"}</dd></div></dl>
   {answers.length?<dl className="hub-answer-list hub-compact-answers">{answers.map(answer=>{
    const field=detail.fields.find(field=>field.path===answer.path);
    const value=field?.type==="Number"&&typeof answer.value==="number"?new Intl.NumberFormat("en-US",field.numberFormat==="currency"?{style:"currency",currency:field.currency||"USD"}:{}).format(answer.value):field?.options?(Array.isArray(answer.value)?answer.value:[answer.value]).map(value=>field.options?.find(option=>option.value===value)?.label||displayAnswer(value)).join(", "):displayAnswer(answer.value);

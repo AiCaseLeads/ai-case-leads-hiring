@@ -7,7 +7,7 @@ import { EnglishScreening } from "./english-screening";
 import { CountryScreening } from "./country-screening";
 import { ScreeningSummary } from "./screening-summary";
 import { contactPaths, withRequiredContacts } from "@/lib/hiring/contact-fields";
-import { reorderApplicationQuestions } from "@/lib/job-setup/question-order";
+import { reorderApplicationQuestions, isFixedApplicationField } from "@/lib/job-setup/question-order";
 import { closestCenter, pointerWithin, DndContext, DragOverlay, KeyboardSensor, MouseSensor, TouchSensor, useSensor, useSensors, type CollisionDetection, type Modifier } from "@dnd-kit/core";
 import { SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
@@ -1108,7 +1108,7 @@ function Editor({
             <h3>What should applicants send?</h3>
             <div className="hub-required-contacts">
               <strong>Contact details included</strong>
-              <span>First name · Last name · Email · Phone number</span>
+              <span>First name · Last name · Email · Phone number · LinkedIn profile · Résumé / CV</span>
               <span className="hub-muted">Required on every application.</span>
             </div>
             {fields.some(field => field.type === "Phone" && !contactPaths.includes(field.path)) && <p className="hub-muted">This form also has an extra phone question. The required Phone number field already collects it; you can remove the extra question below if it is a duplicate. Existing application answers are kept.</p>}
@@ -1121,7 +1121,7 @@ function Editor({
                 screenReaderInstructions: { draggable: "To reorder a question, press Space or Enter. Use the up and down arrow keys to move it. Press Space or Enter to finish, or Escape to cancel." },
                 announcements: {
                   onDragStart: ({ active }) => `Picked up ${active.data.current?.label || "question"}.`,
-                  onDragOver: ({ active, over }) => over ? `${active.data.current?.label || "Question"} is at position ${over.data.current?.number} of ${fields.length - contactPaths.length}.` : undefined,
+                  onDragOver: ({ active, over }) => over ? `${active.data.current?.label || "Question"} is at position ${over.data.current?.number} of ${fields.filter(field=>!isFixedApplicationField(field)).length}.` : undefined,
                   onDragEnd: ({ active, over }) => over ? `${active.data.current?.label || "Question"} moved to position ${over.data.current?.number}.` : "Question order unchanged.",
                   onDragCancel: () => "Reordering cancelled. Question order unchanged.",
                 },
@@ -1133,24 +1133,24 @@ function Editor({
                 if (over) setFields(current => reorderApplicationQuestions(current, String(active.id), String(over.id)));
               }}
             >
-            <SortableContext items={fields.filter(field => !contactPaths.includes(field.path)).map(field => field.path)} strategy={verticalListSortingStrategy}>
+            <SortableContext items={fields.filter(field => !isFixedApplicationField(field)).map(field => field.path)} strategy={verticalListSortingStrategy}>
             <div className="hub-editor-list">
-              {fields.map((f, i) => contactPaths.includes(f.path) ? null : (
-                <SortableQuestion key={f.path} field={f} number={i - contactPaths.length + 1} disabled={mutation.busy || !recovery.ready}>
+              {fields.map((f, i) => isFixedApplicationField(f) ? null : (
+                <SortableQuestion key={f.path} field={f} number={fields.slice(0,i+1).filter(field=>!isFixedApplicationField(field)).length} disabled={mutation.busy || !recovery.ready}>
                   {(handle) => <>
                   <div className="hub-question-heading hub-question-row-heading">
                     {handle}
                     {(f.path===resumePath || isLinkedInProfile(f)) ? <div className="hub-question-row-title"><strong>{f.title}</strong><span className="hub-question-row-meta">{f.path===resumePath?"File":"LinkedIn profile"} · Required</span></div> : <button type="button" className="hub-question-edit-toggle" aria-label={`${expandedQuestion===f.path?"Close":"Edit"} ${f.title||"new question"}`} aria-expanded={expandedQuestion===f.path} aria-controls={`question-editor-${f.path}`} onClick={()=>setExpandedQuestion(current=>current===f.path?null:f.path)}><span className="hub-question-row-title"><strong>{f.title||"New question"}</strong><span className="hub-question-row-meta">{formats[f.type]} · {f.required?"Required":"Optional"}{questionRuleSummary(f,rules) && ` · ${questionRuleSummary(f,rules)}`}</span></span><span className="hub-question-edit-label">{expandedQuestion===f.path?"Close":"Edit"}</span></button>}
                     <div className="hub-question-row-actions" hidden={!(f.path===resumePath || isLinkedInProfile(f)) && expandedQuestion!==f.path}>
-                      <button type="button" className="hub-icon-button" aria-label={`Move ${f.title||"new question"} up`} disabled={i<=contactPaths.length} onClick={()=>setFields(current=>reorderApplicationQuestions(current,f.path,current[i-1]?.path||""))}><ArrowUp size={16}/></button>
-                      <button type="button" className="hub-icon-button" aria-label={`Move ${f.title||"new question"} down`} disabled={i===fields.length-1} onClick={()=>setFields(current=>reorderApplicationQuestions(current,f.path,current[i+1]?.path||""))}><ArrowDown size={16}/></button>
+                      <button type="button" className="hub-icon-button" aria-label={`Move ${f.title||"new question"} up`} disabled={!fields.slice(0,i).some(field=>!isFixedApplicationField(field))} onClick={()=>setFields(current=>reorderApplicationQuestions(current,f.path,current.slice(0,i).filter(field=>!isFixedApplicationField(field)).at(-1)?.path||""))}><ArrowUp size={16}/></button>
+                      <button type="button" className="hub-icon-button" aria-label={`Move ${f.title||"new question"} down`} disabled={!fields.slice(i+1).some(field=>!isFixedApplicationField(field))} onClick={()=>setFields(current=>reorderApplicationQuestions(current,f.path,current.slice(i+1).find(field=>!isFixedApplicationField(field))?.path||""))}><ArrowDown size={16}/></button>
                       {!(f.path===resumePath || isLinkedInProfile(f)) && <button type="button" className="hub-icon-button" aria-label={`Remove ${f.title||"new question"}`} onClick={()=>{setFields(current=>current.filter(field=>field.path!==f.path));setRules(current=>current.filter(rule=>rule.fieldPath!==f.path));setExpandedQuestion(null);}}><Trash2 size={16}/></button>}
                     </div>
                   </div>
                   {!(f.path===resumePath || isLinkedInProfile(f)) && <div className="hub-question-editor" id={`question-editor-${f.path}`} hidden={expandedQuestion!==f.path}>
                     <>
                       <div className="hub-form-grid hub-question-fields">
-                        <Field label={`Question ${i - contactPaths.length + 1} label`}>
+                        <Field label={`Question ${fields.slice(0,i+1).filter(field=>!isFixedApplicationField(field)).length} label`}>
                           <input
                             required
                             maxLength={160}
@@ -1161,7 +1161,7 @@ function Editor({
                             }
                           />
                         </Field>
-                        <Field label={`Question ${i - contactPaths.length + 1} requirement`}>
+                        <Field label={`Question ${fields.slice(0,i+1).filter(field=>!isFixedApplicationField(field)).length} requirement`}>
                           <select
                             value={f.required ? "required" : "optional"}
                             disabled={
@@ -1190,7 +1190,7 @@ function Editor({
                             </option>
                           </select>
                         </Field>
-                        <Field label={`Question ${i - contactPaths.length + 1} answer format`}>
+                        <Field label={`Question ${fields.slice(0,i+1).filter(field=>!isFixedApplicationField(field)).length} answer format`}>
                           <select
                             value={f.type}
                             disabled={(f.path===resumePath || isLinkedInProfile(f)) || isCountryResidence(f) || isEnglishProficiency(f) || rules.some((r) => r.fieldPath === f.path)}
@@ -1212,7 +1212,7 @@ function Editor({
                         </Field>
                       </div>
                       <div>
-                        {f.type === "Number" && <Field label={`Question ${i-contactPaths.length+1} number display`}><select value={f.numberFormat||"number"} onChange={event=>updateField(i,event.target.value==="currency"?{numberFormat:"currency",currency:"USD"}:{numberFormat:"number",currency:undefined})}><option value="number">Number</option><option value="currency">Currency (USD)</option></select></Field>}
+                        {f.type === "Number" && <Field label={`Question ${fields.slice(0,i+1).filter(field=>!isFixedApplicationField(field)).length} number display`}><select value={f.numberFormat||"number"} onChange={event=>updateField(i,event.target.value==="currency"?{numberFormat:"currency",currency:"USD"}:{numberFormat:"number",currency:undefined})}><option value="number">Number</option><option value="currency">Currency (USD)</option></select></Field>}
                         {f.path===resumePath && <p className="hub-muted">A résumé/CV is required for every application.</p>}
                         {isEnglishProficiency(f) ? <p className="hub-muted">CEFR levels A1–C2 are fixed; C2 is highest.</p> : isCountryResidence(f) ? <p className="hub-muted">This preset uses the complete country list. Choose eligible countries below; remove the question if you no longer need it.</p> : rules.some((r) => r.fieldPath === f.path) && (
                           <p className="hub-muted">
@@ -1222,7 +1222,7 @@ function Editor({
                         <details className="hub-question-instructions" open={invalidInstructions===f.path?true:undefined}>
                           <summary>{f.description ? "Edit instructions (optional)" : "Add instructions (optional)"}</summary>
                         <Field
-                          label={`Question ${i - contactPaths.length + 1} instructions (optional)`}
+                          label={`Question ${fields.slice(0,i+1).filter(field=>!isFixedApplicationField(field)).length} instructions (optional)`}
                         >
                           <textarea
                             rows={2}
@@ -1249,7 +1249,7 @@ function Editor({
                       {["ValueSelect", "MultiValueSelect"].includes(f.type) && !isCountryResidence(f) && !isEnglishProficiency(f) && (
                         <ChoiceInput
                           key={f.path + f.type}
-                          label={`Question ${i - contactPaths.length + 1} choices`}
+                          label={`Question ${fields.slice(0,i+1).filter(field=>!isFixedApplicationField(field)).length} choices`}
                           options={f.options || []}
                           change={(options) => updateField(i, { options })}
                         />
@@ -1273,7 +1273,7 @@ function Editor({
                 <option value="custom">Custom question</option>
                 {!fields.some(field=>field.path===englishProficiencyPath)&&<option value="english">English proficiency · CEFR</option>}
                 {!fields.some(field=>field.path===residencePath)&&<option value="country">Country of residence</option>}
-                <optgroup label="Question library">{experienceQuestions.filter(question=>!fields.some(field=>field.path===question.path)).map(question=><option key={question.path} value={question.path}>{question.title}</option>)}</optgroup>
+                <optgroup label="Question library">{experienceQuestions.filter(question=>!isFixedApplicationField(question)&&!fields.some(field=>field.path===question.path)).map(question=><option key={question.path} value={question.path}>{question.title}</option>)}</optgroup>
               </select></Field>
               <button type="button" className="hub-button secondary" disabled={fields.length>=100} onClick={()=>{
                 const selected=questionPreset==="english"?englishProficiencyField():questionPreset==="country"?countryResidenceField():questionPreset==="custom"?{path:"question_"+crypto.randomUUID().slice(0,8),title:"",type:"LongText" as const,required:true}:experienceQuestions.find(question=>question.path===questionPreset);
