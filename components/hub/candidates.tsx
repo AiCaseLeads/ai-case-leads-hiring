@@ -6,6 +6,7 @@ import { requestDraftNavigation } from "./draft-navigation";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { ArrowLeft, Download, ExternalLink, Search } from "lucide-react";
 import {
+  hubRequest,
   displayAnswer,
   displayDate,
   useHubMutation,
@@ -28,6 +29,11 @@ import {
   type ReviewerGrade,
 } from "./types";
 
+function reviewQueue(params:URLSearchParams) {
+  if(params.get("stage") || params.get("trash")==="true")params.delete("active");
+  else if(!params.has("active"))params.set("active","true");
+  return params;
+}
 function GradeSummary({ grade }: { grade?: ReviewerGrade }) {
   return grade?.reviewed && grade.averageScore !== null ? (
     <span><strong>{grade.averageScore.toFixed(2)} / 5</strong><span className="hub-secondary-line">{grade.reviewerCount} reviewer{grade.reviewerCount === 1 ? "" : "s"}</span></span>
@@ -234,6 +240,7 @@ function JobCandidates({
   if (initialStage) initial.set("stage", initialStage);
   if (initialJobId) initial.set("jobId", initialJobId);
   else {initial.delete("jobId"); initial.delete("grade"); initial.delete("sort");}
+  reviewQueue(initial);
   const [q, setQ] = useState(initial.get("q") || ""),
     [jobId] = useState(initialJobId),
     [stage, setStage] = useState(initial.get("stage") || ""),
@@ -296,6 +303,7 @@ function JobCandidates({
     if (appliedFrom || appliedTo) search.set("timeZone", timeZone);
     if (duplicate) search.set("duplicate", "true");
     if (isTopTen && sort === "ai_match_desc") search.set("top", "10");
+    if(!stage&&!inTrash)search.set("active",new URLSearchParams(filter).get("active")||"true");
     return search;
   }
   const draft = draftQuery();
@@ -332,7 +340,7 @@ function JobCandidates({
     applyView(draft.toString());
   }
   function applyView(value: string) {
-    const params = new URLSearchParams(value);
+    const params = reviewQueue(new URLSearchParams(value));
     if (!params.has("sort")) params.set("sort", defaultSort);
     syncFields(params);
     const next = params.toString();
@@ -414,6 +422,7 @@ function JobCandidates({
         initialSection={detailSection}
         navigationFilter={filter}
         navigationJobs={jobs}
+        onDecisionNotice={setExportMessage}
         openApplicant={(id,_filter,section)=>{setDetailSection(section || "application");setDetailId(id);}}
       />
     );
@@ -434,7 +443,7 @@ function JobCandidates({
       </div>
       <div className="hub-button-row hub-application-view-tabs"><button className="hub-pipeline-tab" type="button" aria-pressed={!inTrash} onClick={()=>applyView(new URLSearchParams({jobId}).toString())}>Applications</button><button className="hub-pipeline-tab" type="button" aria-pressed={inTrash} onClick={()=>applyView(new URLSearchParams({jobId,trash:"true"}).toString())}>Trash</button></div>
       {inTrash && <p className="hub-muted">Deleted applications stay here with their original files and history. Open an application to restore it. Cancelled emails and booking links are not sent again.</p>}
-      {!inTrash && <div className="hub-pipeline-tabs" role="group" aria-label="Hiring stages">{["", "Application Review", "Screening", "Interview", "Offer", "Hired", "Rejected"].map(value=><button key={value||"all"} className={"hub-pipeline-tab"+(stage===value?" active":"")} type="button" aria-pressed={stage===value} onClick={()=>{const params=new URLSearchParams(filter);if(value)params.set("stage",value);else params.delete("stage");applyView(params.toString());}}>{value?stageLabel(value):"All"}</button>)}</div>}
+      {!inTrash && <div className="hub-pipeline-tabs" role="group" aria-label="Hiring stages">{["active", "", "Application Review", "Screening", "Interview", "Offer", "Hired", "Rejected"].map(value=><button key={value||"all"} className={"hub-pipeline-tab"+((value==="active"?!stage&&new URLSearchParams(filter).get("active")==="true":stage===value&&(value!==""||new URLSearchParams(filter).get("active")==="false"))?" active":"")} type="button" aria-pressed={value==="active"?!stage&&new URLSearchParams(filter).get("active")==="true":stage===value&&(value!==""||new URLSearchParams(filter).get("active")==="false")} onClick={()=>{const params=new URLSearchParams(filter);if(value&&value!=="active"){params.set("stage",value);params.delete("active");}else{params.delete("stage");params.set("active",value==="active"?"true":"false");}applyView(params.toString());}}>{value==="active"?"Active":value?stageLabel(value):"All"}</button>)}</div>}
       <div className="hub-applicant-toolbar">
       <form className="hub-applicant-filter-form" onSubmit={filterSubmit}>
         <div className="hub-applicant-filters">
@@ -641,6 +650,7 @@ export function CandidateDetail({
   navigationJobs = [],
   openApplicant,
   initialSection = "application",
+  onDecisionNotice,
 }: {
   id: string;
   back: () => void;
@@ -650,6 +660,7 @@ export function CandidateDetail({
   navigationJobs?: HubJob[];
   openApplicant?: (id:string,filter:string,section?:"application"|"review"|"activity")=>void;
   initialSection?: "application"|"review"|"activity";
+  onDecisionNotice?: (message:string)=>void;
 }) {
   const resource = useHubResource<ApplicationDetail>(
       "/api/hub/applications/" + encodeURIComponent(id),
@@ -680,6 +691,10 @@ export function CandidateDetail({
     [emailPending, setEmailPending] = useState(false),
     [newEmailApproved, setNewEmailApproved] = useState(false),
     [approve, setApprove] = useState(false);
+  const [rejectBusy,setRejectBusy]=useState(false);
+  const rejectionInFlight=useRef(false);
+  const stillMounted=useRef(true);
+  useEffect(()=>{stillMounted.current=true;return()=>{stillMounted.current=false;};},[]);
   const [actionOpen, setActionOpen] = useState(initialAction === "interview");
   const [interviewReady, setInterviewReady] = useState(false);
   const [deleteOpen,setDeleteOpen] = useState(false);
@@ -728,8 +743,27 @@ export function CandidateDetail({
     const result = await mutation.run("/api/hub/applications/" + encodeURIComponent(id) + "/action", "POST", {action:"stage", stage:"Screening", expectedRevision:resource.data.revision}, "Added to the shortlist.");
     if (result !== undefined) {await resource.reload(); changed();}
   }
+  async function rejectAndContinue() {
+    if(!resource.data || mutation.busy || rejectionInFlight.current || dirty || ["Rejected","Withdrawn","Hired"].includes(resource.data.stage))return;
+    rejectionInFlight.current=true;setRejectBusy(true);
+    const params=reviewQueue(new URLSearchParams(navigationFilter));
+    params.set("jobId",resource.data.jobId);params.set("active","true");params.delete("page");
+    if(!params.has("sort"))params.set("sort","screening_newest");
+    let nextId:string|null=null;let navigationReady=false;
+    try {
+      try {const result=await hubRequest<{nextId:string|null}>(`/api/hub/applications/${encodeURIComponent(id)}/navigation?${params}`);nextId=result.nextId;navigationReady=true;}catch{/* A navigation outage must not invent a successor. */}
+      const result=await mutation.run(`/api/hub/applications/${encodeURIComponent(id)}/action`,"POST",{action:"reject",reason:"Not selected after recruiter review.",expectedRevision:resource.data.revision},"Applicant rejected. Rejection email queued; delivery status is in Activity.");
+      if(result!==undefined&&stillMounted.current){
+        const message="Applicant rejected. Rejection email queued; delivery status is in Activity.";
+        onDecisionNotice?.(message);changed();
+        if(navigationReady&&openApplicant){if(nextId)openApplicant(nextId,params.toString(),section);else back();}
+        else await resource.reload();
+      }
+    } finally {rejectionInFlight.current=false;if(stillMounted.current)setRejectBusy(false);}
+  }
   async function submit(e: React.FormEvent) {
     e.preventDefault();
+    if(rejectBusy)return;
     if (action === "reject" && !approve) return;
     if (action === "interview" && !interviewReady) return;
     if (!resource.data || (action === "scorecard" && (!score || !criteria.trim() || !text.trim()))) return;
@@ -783,8 +817,8 @@ export function CandidateDetail({
     <section ref={profileTop} className="hub-applicant-profile" aria-labelledby="candidate-title">
       {leaveRequest && <div className="hub-card" role="alertdialog" ref={leaveDialog} tabIndex={-1} aria-labelledby="leave-applicant-title"><h3 id="leave-applicant-title">Leave this applicant without saving?</h3><p>Your unsaved note or action will be discarded. Leaving does not send a new message. Check Activity for any email already pending.</p><div className="hub-button-row"><button type="button" className="hub-button" onClick={()=>{setLeaveRequest(null);leaveOrigin.current?.focus();}}>Keep editing</button><button type="button" className="hub-button secondary" onClick={()=>{const leave=leaveRequest;dirtyRef.current=false;setLeaveRequest(null);leave();}}>Discard changes and leave</button></div></div>}
       <div className="hub-profile-topbar">
-        <button className="hub-text-button hub-back" onClick={()=>requestDraftNavigation(back)}><ArrowLeft size={16}/> Back to applications</button>
-        {detail && !resource.loading && openApplicant && <ApplicantNavigation detail={detail} filter={navigationFilter} jobs={navigationJobs} open={(id,filter)=>requestDraftNavigation(()=>openApplicant(id,filter,section))} viewed={changed}/>}
+        <button className="hub-text-button hub-back" disabled={rejectBusy} onClick={()=>requestDraftNavigation(back)}><ArrowLeft size={16}/> Back to applications</button>
+        {detail && !resource.loading && openApplicant && <ApplicantNavigation disabled={rejectBusy} detail={detail} filter={navigationFilter} jobs={navigationJobs} open={(id,filter)=>requestDraftNavigation(()=>openApplicant(id,filter,section))} viewed={changed}/>}
       </div>
       <ResourceState
         loading={resource.loading}
@@ -800,21 +834,22 @@ export function CandidateDetail({
               <p className="hub-profile-contact"><a href={"mailto:"+detail.email}>{detail.email}</a><span>Applied {displayDate(detail.createdAt)}</span><span>Assigned to {detail.assignee||"no recruiter"}</span></p>
             </div>
             <div className="hub-candidate-quick-actions" aria-label="Applicant actions">
-              {!detail.trashed && detail.stage==="Application Review" && <button type="button" className="hub-button" disabled={mutation.busy} onClick={()=>void shortlist()}>Shortlist</button>}
-              {!detail.trashed && !["Rejected","Withdrawn","Hired"].includes(detail.stage) && <button type="button" className="hub-button secondary" disabled={mutation.busy} onClick={()=>{setAction("interview");setActionOpen(true);mutation.clear();}}>Request interview</button>}
+              {!detail.trashed && detail.stage==="Application Review" && <button type="button" className="hub-button" disabled={mutation.busy||rejectBusy} onClick={()=>void shortlist()}>Shortlist</button>}
+              {!detail.trashed && !["Rejected","Withdrawn","Hired"].includes(detail.stage) && <button type="button" className="hub-button secondary" disabled={mutation.busy||rejectBusy} onClick={()=>{setAction("interview");setActionOpen(true);mutation.clear();}}>Request interview</button>}
+              {!detail.trashed&&!['Rejected','Withdrawn','Hired'].includes(detail.stage)&&<button type="button" className="hub-button secondary" disabled={mutation.busy||rejectBusy||dirty} title={dirty?"Save or clear your unsaved note or action before rejecting.":"Reject and queue this job’s rejection email, then open the next active applicant."} onClick={()=>void rejectAndContinue()}>{rejectBusy?"Rejecting…":"Reject"}</button>}
               {resumeFile(detail) && <button type="button" className="hub-button secondary" onClick={()=>{setSection("application");setResumeRequest(value=>value+1);}}>View résumé</button>}
-              {detail.trashed && <button type="button" className="hub-button secondary" disabled={mutation.busy} onClick={()=>void lifecycle("restore")}>Restore application</button>}
+              {detail.trashed && <button type="button" className="hub-button secondary" disabled={mutation.busy||rejectBusy} onClick={()=>void lifecycle("restore")}>Restore application</button>}
               <JobActionMenu label="More applicant actions" triggerLabel="More">
                 {!detail.trashed && <button type="button" onClick={()=>{setAction("note");setActionOpen(true);mutation.clear();}}>Add note</button>}
                 <button type="button" disabled={pdfBusy} onClick={()=>void exportPdf()}><Download size={16}/>{pdfBusy?"Preparing PDF…":"Download application PDF"}</button>
                 <button type="button" onClick={()=>void resource.reload()}>Refresh application</button>
-                {!detail.trashed && <button type="button" disabled={mutation.busy} onClick={()=>setDeleteOpen(true)}>Delete application</button>}
+                {!detail.trashed && <button type="button" disabled={mutation.busy||rejectBusy} onClick={()=>setDeleteOpen(true)}>Delete application</button>}
               </JobActionMenu>
             </div>
           </header>
           <Feedback error={mutation.error||pdfError} success={mutation.success}/>
           {detail.trashed && <p className="hub-muted">This application is in Trash. Its files and history are retained. Restore it before taking recruiting actions.</p>}
-          {deleteOpen && <div className="hub-card" role="alertdialog" aria-labelledby="delete-application-title"><h3 id="delete-application-title">Move this application to Trash?</h3><p>It will leave your recruiting queues. Files and history stay saved, and you can restore it from this job’s Trash tab. Unsent emails and active booking links will be cancelled.</p><div className="hub-button-row"><button className="hub-button secondary" type="button" disabled={mutation.busy} onClick={()=>setDeleteOpen(false)}>Keep application</button><button className="hub-button" type="button" disabled={mutation.busy} onClick={()=>void lifecycle("trash")}>Move to Trash</button></div></div>}
+          {deleteOpen && <div className="hub-card" role="alertdialog" aria-labelledby="delete-application-title"><h3 id="delete-application-title">Move this application to Trash?</h3><p>It will leave your recruiting queues. Files and history stay saved, and you can restore it from this job’s Trash tab. Unsent emails and active booking links will be cancelled.</p><div className="hub-button-row"><button className="hub-button secondary" type="button" disabled={mutation.busy||rejectBusy} onClick={()=>setDeleteOpen(false)}>Keep application</button><button className="hub-button" type="button" disabled={mutation.busy||rejectBusy} onClick={()=>void lifecycle("trash")}>Move to Trash</button></div></div>}
           <div className="hub-detail-grid">
             {!detail.trashed && <aside className="hub-action-panel">
               <details className="hub-card hub-candidate-actions" open={actionOpen} onToggle={event=>setActionOpen(event.currentTarget.open)}>
