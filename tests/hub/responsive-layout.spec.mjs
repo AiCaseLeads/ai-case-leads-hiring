@@ -87,7 +87,8 @@ test('redesigned workspace stays usable across mobile, tablet and desktop widths
   if(width<=640)assert.ok(buttonBoxes[0].top>=scopeBox.y+scopeBox.height+8,'Mobile download controls stack');
   await downloadSummary.click();
   if(artifacts){await page.evaluate(()=>window.scrollTo(0,0));await page.screenshot({path:`${artifacts}/applications-${width}.png`,fullPage:true});}
-  if(width<=680){assert.equal(await page.locator('.hub-applications-table').evaluate(e=>e.scrollWidth<=e.clientWidth+1),true);await page.getByLabel('Select '+detail.name,{exact:true}).check();assert.equal(await page.getByLabel('Select '+detail.name,{exact:true}).isChecked(),true);}
+  const headerControls=page.locator('.hub-applications-table thead').locator('button,input,select,a[href]');if(width<=960)assert.equal(await headerControls.count(),0,'Card layout removes clipped keyboard controls');else assert.equal(await page.locator('.hub-applications-table thead .hub-table-sort').count(),4,'Desktop keeps all four sortable headers');
+  if(width<=960){assert.equal(await page.locator('.hub-applications-table').evaluate(e=>e.scrollWidth<=e.clientWidth+1),true);await page.getByLabel('Select '+detail.name,{exact:true}).check();assert.equal(await page.getByLabel('Select '+detail.name,{exact:true}).isChecked(),true);}
   await page.getByRole('button',{name:detail.name,exact:true}).click();await page.getByRole('heading',{name:detail.name,exact:true}).waitFor();await noOverflow(page);
   const actionsGap=await page.locator('[role="tablist"]').evaluate(tabs=>tabs.getBoundingClientRect().top-document.querySelector('.hub-candidate-quick-actions').getBoundingClientRect().bottom);assert.ok(actionsGap>=16,`Applicant quick actions must be separated from record tabs: ${actionsGap}px`);
   for(const tab of ['AI review & notes','Activity & messages','Application & files']){
