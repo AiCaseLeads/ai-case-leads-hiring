@@ -34,3 +34,14 @@ test("legacy fixed contacts remain in their original slots even when intersperse
   assert.deepEqual(next.filter(field => !contactPaths.includes(field.path)).map(field => field.path), ["briefs", "years", "portfolio"]);
   fields.forEach((field, index) => { if (contactPaths.includes(field.path)) assert.equal(next[index], field); });
 });
+
+test('hidden resume and legacy LinkedIn slots survive custom reordering unchanged',()=>{
+ const resume:ApplicationField={path:'_systemfield_resume',title:'Résumé',type:'File',required:true};
+ const linkedin:ApplicationField={path:'professional_linkedin',title:'LinkedIn profile',type:'SocialLink',required:true};
+ const fields=[questions[0],resume,questions[1],linkedin,questions[2]];
+ const next=reorderApplicationQuestions(fields,'briefs','years');
+ assert.equal(next[1],resume);assert.equal(next[3],linkedin);
+ assert.deepEqual(next.filter(f=>f!==resume&&f!==linkedin).map(f=>f.path),['briefs','years','portfolio']);
+ assert.equal(reorderApplicationQuestions(fields,resume.path,'years'),fields);
+ assert.equal(reorderApplicationQuestions(fields,'years',linkedin.path),fields);
+});

@@ -3,7 +3,7 @@ import {installDraftFixture} from "./draft-ui-fixture.mjs";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { createServer } from "node:http";
-import { existsSync } from "node:fs";
+import { existsSync, mkdirSync } from "node:fs";
 import { build } from "esbuild";
 import { chromium } from "playwright";
 const prior = {
@@ -249,17 +249,17 @@ test("mobile blank job follows real steps, required questions and scorecard; fai
     .getByLabel("Job description", { exact: true })
     .fill("Approved synthetic responsibilities");
   await next(page);
-  assert.equal(await page.getByLabel("Question 1 requirement").count(),0);
-  await addQuestion(page,"linkedin_profile");
+  assert.equal(await page.getByRole("button",{name:"Edit Résumé / CV",exact:true}).count(),0);
+  await openQuestion(page,"Portfolio or work samples");
   assert.equal(
-    await page.getByLabel("Question 3 requirement").inputValue(),
+    await page.getByLabel("Question 1 requirement").inputValue(),
     "optional",
   );
   await addQuestion(page,"custom");
   await page
-    .getByLabel("Question 4 label")
+    .getByLabel("Question 2 label")
     .fill("What did you personally contribute?");
-  await page.getByLabel("Question 4 requirement").selectOption("required");
+  await page.getByLabel("Question 2 requirement").selectOption("required");
   await next(page);
   await page.getByText("Optional: manual reviewer scorecard", {exact:true}).click();
   await page
@@ -299,7 +299,7 @@ test("mobile blank job follows real steps, required questions and scorecard; fai
   assert.ok(writes[0].job.fields.slice(0, 4).every(field => field.required));
   assert.equal(writes[0].job.fields[4].required, true);
   assert.equal(writes[0].job.fields[5].required, false);
-  assert.equal(writes[0].job.fields[6].required, false);
+  assert.equal(writes[0].job.fields.find(field=>field.path==="linkedin_profile").required, true);
   assert.equal(writes[0].job.fields[7].required, true);
   assert.doesNotMatch(writes[0].job.hiringRound, /Batch/);
 });
@@ -536,7 +536,7 @@ test("contact fields are fixed and remaining application questions can be reorde
 test("question instructions are collapsed by default and publish needs no approval checklist", async (t) => {
  const {page,writes}=await setup(t,{jobs:[{...prior,fields:[...prior.fields,{path:'portfolio',title:'Portfolio',type:'Url',required:false,description:'Existing helper text'}]}]});
  await page.getByRole('button',{name:'Edit job',exact:true}).click();const steps=page.getByRole('list',{name:'Job setup progress'});await steps.getByRole('button',{name:'Application questions',exact:true}).click();
- const instructions=page.getByLabel('Question 2 instructions (optional)',{exact:true});assert.equal(await instructions.isVisible(),false);
+ const instructions=page.getByLabel('Question 1 instructions (optional)',{exact:true});assert.equal(await instructions.isVisible(),false);
  await openQuestion(page,'Portfolio');await page.getByText('Edit instructions (optional)',{exact:true}).click();assert.equal(await instructions.inputValue(),'Existing helper text');await instructions.fill('Updated helper text');
  await steps.getByRole('button',{name:'Review settings',exact:true}).click();assert.equal(await page.getByRole('checkbox',{name:/Rank applicants with AI/}).isChecked(),false);
  await steps.getByRole('button',{name:'Preview & publish',exact:true}).click();assert.equal(await page.getByRole('checkbox',{name:/I have reviewed|I approve/}).count(),0);
@@ -661,10 +661,10 @@ test('country requirement saves directly from Questions without publishing or en
  const{page,writes}=await setup(t,{jobs:[{...prior,status:'closed'}]});await page.getByRole('button',{name:'Edit job',exact:true}).click();await page.getByRole('list',{name:'Job setup progress'}).getByRole('button',{name:'Application questions',exact:true}).click();await addQuestion(page,"country");await page.getByLabel('Eligible countries',{exact:true}).selectOption('in');await page.getByLabel('Find countries',{exact:true}).fill('Spain');await page.getByLabel('Spain',{exact:true}).check();await page.getByRole('button',{name:'Save changes',exact:true}).first().click();await page.getByText('Changes saved. This job is still paused.',{exact:false}).waitFor();assert.equal(writes.length,1);assert.equal(writes[0].job.status,'closed');assert.equal(writes[0].job.autoReject,false);assert.equal(writes[0].job.fields.find(f=>f.path==='country_of_residence').options.length,249);assert.deepEqual(writes[0].job.rules.find(r=>r.fieldPath==='country_of_residence').value,['ES']);
 });
 test('numeric question supports USD display and comma minimum while resume remains mandatory',async t=>{
- const{page,writes}=await setup(t,{jobs:[{...prior,fields:[...prior.fields,{path:'budget',title:'Managed monthly budget',type:'Number',required:false}]}]});await page.getByRole('button',{name:'Edit job',exact:true}).click();await page.getByRole('list',{name:'Job setup progress'}).getByRole('button',{name:'Application questions',exact:true}).click();assert.equal(await page.getByLabel('Question 1 requirement',{exact:true}).count(),0);assert.equal(await page.getByLabel('Question 1 answer format',{exact:true}).count(),0);assert.equal(await page.getByRole('button',{name:'Remove Résumé / CV',exact:true}).count(),0);assert.equal(await page.locator('.hub-question').first().innerText().then(text=>text.includes('Required')),true);await openQuestion(page,'Managed monthly budget');assert.deepEqual(await page.getByLabel('Question 2 number display',{exact:true}).locator('option').allTextContents(),['Number','Currency (USD)']);await page.getByLabel('Question 2 number display',{exact:true}).selectOption('currency');await page.getByRole('region',{name:'Screening for Managed monthly budget',exact:true}).getByRole('checkbox',{name:'Set a qualifying answer'}).check();const minimum=page.getByLabel('Minimum accepted number for Managed monthly budget',{exact:true});await minimum.fill('30,000');await page.getByRole('heading',{name:prior.title,exact:true}).click();assert.equal(await minimum.inputValue(),'$30,000.00');await page.getByRole('button',{name:'Save changes',exact:true}).first().click();await page.getByText('Changes saved.',{exact:false}).waitFor();const field=writes[0].job.fields.find(f=>f.path==='budget');assert.equal(field.numberFormat,'currency');assert.equal(field.currency,'USD');assert.equal(writes[0].job.rules.find(r=>r.fieldPath==='budget').value,30000);assert.equal(writes[0].job.fields.find(f=>f.path==='_systemfield_resume').required,true);
+ const{page,writes}=await setup(t,{jobs:[{...prior,fields:[...prior.fields,{path:'budget',title:'Managed monthly budget',type:'Number',required:false}]}]});await page.getByRole('button',{name:'Edit job',exact:true}).click();await page.getByRole('list',{name:'Job setup progress'}).getByRole('button',{name:'Application questions',exact:true}).click();assert.equal(await page.getByRole('button',{name:'Remove Résumé / CV',exact:true}).count(),0);assert.match(await page.locator('.hub-required-contacts').innerText(),/Résumé/);await openQuestion(page,'Managed monthly budget');assert.deepEqual(await page.getByLabel('Question 1 number display',{exact:true}).locator('option').allTextContents(),['Number','Currency (USD)']);await page.getByLabel('Question 1 number display',{exact:true}).selectOption('currency');await page.getByRole('region',{name:'Screening for Managed monthly budget',exact:true}).getByRole('checkbox',{name:'Set a qualifying answer'}).check();const minimum=page.getByLabel('Minimum accepted number for Managed monthly budget',{exact:true});await minimum.fill('30,000');await page.getByRole('heading',{name:prior.title,exact:true}).click();assert.equal(await minimum.inputValue(),'$30,000.00');await page.getByRole('button',{name:'Save changes',exact:true}).first().click();await page.getByText('Changes saved.',{exact:false}).waitFor();const field=writes[0].job.fields.find(f=>f.path==='budget');assert.equal(field.numberFormat,'currency');assert.equal(field.currency,'USD');assert.equal(writes[0].job.rules.find(r=>r.fieldPath==='budget').value,30000);assert.equal(writes[0].job.fields.find(f=>f.path==='_systemfield_resume').required,true);
 });
 test('changing an existing fractional threshold to currency does not silently round it',async t=>{
- const{page,writes}=await setup(t,{jobs:[{...prior,fields:[...prior.fields,{path:'budget',title:'Budget',type:'Number',required:true}],rules:[{fieldPath:'budget',operator:'gte',value:1.234,enabled:true,reason:'Minimum budget'}]}]});await page.getByRole('button',{name:'Edit job',exact:true}).click();await page.getByRole('list',{name:'Job setup progress'}).getByRole('button',{name:'Application questions',exact:true}).click();await openQuestion(page,'Budget');await page.getByLabel('Question 2 number display',{exact:true}).selectOption('currency');const amount=page.getByLabel('Minimum accepted number for Budget',{exact:true});assert.equal(await amount.inputValue(),'1.234');await page.getByRole('button',{name:'Save changes',exact:true}).first().click();await page.getByText('Enter a number for every numeric screening rule, or remove the unfinished rule in Advanced rules.',{exact:true}).waitFor();assert.equal(writes.length,0);await amount.fill('1.23');await page.getByRole('button',{name:'Save changes',exact:true}).first().click();await page.getByText('Changes saved.',{exact:false}).waitFor();assert.equal(writes[0].job.rules[0].value,1.23);
+ const{page,writes}=await setup(t,{jobs:[{...prior,fields:[...prior.fields,{path:'budget',title:'Budget',type:'Number',required:true}],rules:[{fieldPath:'budget',operator:'gte',value:1.234,enabled:true,reason:'Minimum budget'}]}]});await page.getByRole('button',{name:'Edit job',exact:true}).click();await page.getByRole('list',{name:'Job setup progress'}).getByRole('button',{name:'Application questions',exact:true}).click();await openQuestion(page,'Budget');await page.getByLabel('Question 1 number display',{exact:true}).selectOption('currency');const amount=page.getByLabel('Minimum accepted number for Budget',{exact:true});assert.equal(await amount.inputValue(),'1.234');await page.getByRole('button',{name:'Save changes',exact:true}).first().click();await page.getByText('Enter a number for every numeric screening rule, or remove the unfinished rule in Advanced rules.',{exact:true}).waitFor();assert.equal(writes.length,0);await amount.fill('1.23');await page.getByRole('button',{name:'Save changes',exact:true}).first().click();await page.getByText('Changes saved.',{exact:false}).waitFor();assert.equal(writes[0].job.rules[0].value,1.23);
 });
 
 for(const status of ['draft','open'])test(`existing ${status} editor separates saving from section navigation and permits direct jumps`,async t=>{
@@ -685,14 +685,14 @@ test('question rows start compact, keep one editor open and preserve edits acros
  const {page,writes}=await setup(t,{jobs:[{...prior,fields:[...prior.fields,{path:'years',title:'Years of experience',type:'Number',required:true},{path:'portfolio',title:'Portfolio link',type:'Url',required:false}]}]});
  await page.getByRole('button',{name:'Edit job',exact:true}).click();await page.getByRole('list',{name:'Job setup progress'}).getByRole('button',{name:'Application questions',exact:true}).click();
  assert.equal(await page.locator('.hub-question button[aria-expanded="true"]').count(),0);
- await openQuestion(page,'Years of experience');await page.getByLabel('Question 2 label',{exact:true}).fill('Relevant experience');await page.getByRole('region',{name:'Screening for Relevant experience',exact:true}).getByRole('checkbox',{name:'Set a qualifying answer'}).check();await page.getByLabel('Minimum accepted number for Relevant experience',{exact:true}).fill('7');
+ await openQuestion(page,'Years of experience');await page.getByLabel('Question 1 label',{exact:true}).fill('Relevant experience');await page.getByRole('region',{name:'Screening for Relevant experience',exact:true}).getByRole('checkbox',{name:'Set a qualifying answer'}).check();await page.getByLabel('Minimum accepted number for Relevant experience',{exact:true}).fill('7');
  await openQuestion(page,'Portfolio link');assert.equal(await page.locator('.hub-question button[aria-expanded="true"]').count(),1);assert.equal(await page.getByLabel('Minimum accepted number for Relevant experience',{exact:true}).evaluate(e=>e.closest('.hub-question-editor').hidden),true,await page.locator('.hub-question-row-heading').allTextContents());
  await openQuestion(page,'Relevant experience');assert.equal(await page.getByLabel('Minimum accepted number for Relevant experience',{exact:true}).inputValue(),'7');
- await page.getByRole('button',{name:'Move Relevant experience down',exact:true}).click();assert.equal(await page.getByLabel('Question 3 label',{exact:true}).inputValue(),'Relevant experience');assert.equal(await page.getByLabel('Minimum accepted number for Relevant experience',{exact:true}).inputValue(),'7');
- await page.getByRole('button',{name:'Save changes',exact:true}).click();await page.getByText('Changes saved.',{exact:false}).waitFor();assert.equal(writes[0].job.fields.filter(f=>!f.path.startsWith('_systemfield')).at(-1).path,'years');assert.equal(writes[0].job.rules.find(r=>r.fieldPath==='years').value,7);
+ await page.getByRole('button',{name:'Move Relevant experience down',exact:true}).click();assert.equal(await page.getByLabel('Question 2 label',{exact:true}).inputValue(),'Relevant experience');assert.equal(await page.getByLabel('Minimum accepted number for Relevant experience',{exact:true}).inputValue(),'7');
+ await page.getByRole('button',{name:'Save changes',exact:true}).click();await page.getByText('Changes saved.',{exact:false}).waitFor();assert.equal(writes[0].job.fields.filter(f=>['years','portfolio'].includes(f.path)).at(-1).path,'years');assert.equal(writes[0].job.rules.find(r=>r.fieldPath==='years').value,7);
 });
 test('adding a question opens its editor and hidden invalid questions are revealed on save',async t=>{
- const {page,writes}=await setup(t);await page.getByRole('button',{name:'Edit job',exact:true}).click();const steps=page.getByRole('list',{name:'Job setup progress'});await steps.getByRole('button',{name:'Application questions',exact:true}).click();await addQuestion(page,"custom");await page.getByLabel('Question 2 label',{exact:true}).waitFor();assert.equal(await page.locator('.hub-question button[aria-expanded="true"]').count(),1);const requirement=page.getByLabel('Question 2 requirement',{exact:true});assert.equal(await requirement.inputValue(),'required');await requirement.selectOption('optional');assert.equal(await requirement.inputValue(),'optional');await page.getByLabel('Question 2 label',{exact:true}).fill('');await page.locator('.hub-question button[aria-expanded="true"]').click();await steps.getByRole('button',{name:'Review settings',exact:true}).click();await page.getByRole('button',{name:'Save changes',exact:true}).click();await page.getByLabel('Question 2 label',{exact:true}).waitFor();assert.equal(await page.locator('.hub-question button[aria-expanded="true"]').count(),1);assert.equal(writes.length,0);
+ const {page,writes}=await setup(t);await page.getByRole('button',{name:'Edit job',exact:true}).click();const steps=page.getByRole('list',{name:'Job setup progress'});await steps.getByRole('button',{name:'Application questions',exact:true}).click();await addQuestion(page,"custom");await page.getByLabel('Question 1 label',{exact:true}).waitFor();assert.equal(await page.locator('.hub-question button[aria-expanded="true"]').count(),1);const requirement=page.getByLabel('Question 1 requirement',{exact:true});assert.equal(await requirement.inputValue(),'required');await requirement.selectOption('optional');assert.equal(await requirement.inputValue(),'optional');await page.getByLabel('Question 1 label',{exact:true}).fill('');await page.locator('.hub-question button[aria-expanded="true"]').click();await steps.getByRole('button',{name:'Review settings',exact:true}).click();await page.getByRole('button',{name:'Save changes',exact:true}).click();await page.getByLabel('Question 1 label',{exact:true}).waitFor();assert.equal(await page.locator('.hub-question button[aria-expanded="true"]').count(),1);assert.equal(writes.length,0);
 });
 
 for(const existing of [false,true])test(`inherited rejection default is visible without dirtying ${existing?'an existing':'a new'} job`,async t=>{
@@ -739,9 +739,9 @@ test('LinkedIn is a fixed required question on existing jobs and absent from the
  assert.equal(await page.getByRole('button',{name:'Remove LinkedIn profile',exact:true}).count(),0);
  assert.equal(await page.getByRole('button',{name:'Edit LinkedIn profile',exact:true}).count(),0);
  assert.equal(await page.getByLabel('Add a question',{exact:true}).locator('option[value="linkedin_profile"]').count(),0);
- assert.match(await page.locator('.hub-question').filter({hasText:'LinkedIn profile'}).innerText(),/Required/);
+ assert.equal(await page.locator('.hub-question').filter({hasText:'LinkedIn profile'}).count(),0);assert.match(await page.locator('.hub-required-contacts').innerText(),/LinkedIn profile/);assert.equal(await page.locator('.hub-question').filter({hasText:'Résumé / CV'}).count(),0);mkdirSync('/tmp/contact-timeline-audit',{recursive:true});await page.screenshot({path:'/tmp/contact-timeline-audit/editor-contacts.png'});
  await page.getByRole('button',{name:'Save changes',exact:true}).first().click();
  await page.getByText('Changes saved.',{exact:false}).waitFor();
  const field=writes[0].job.fields.find(field=>field.path==='linkedin_profile');
- assert.equal(field.required,true);assert.equal(field.type,'SocialLink');
+ assert.equal(field.required,true);assert.equal(field.type,'SocialLink');assert.equal(writes[0].job.fields.find(f=>f.path==='_systemfield_resume').required,true);assert.equal(writes[0].job.fields.find(f=>f.path==='_systemfield_phone').required,true);assert.equal(writes[0].job.autoReject,false);assert.deepEqual(writes[0].job.rules,prior.rules);
 });
