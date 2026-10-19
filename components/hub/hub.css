@@ -1850,3 +1850,7 @@ body:has(.hiring-hub .hub-draft-overlay) { overflow: hidden; }
 .hub-applicant-profile .hub-profile-tabs > button { flex:0 1 auto; min-height:44px; padding:8px 0; font-size:13px; border:0; border-bottom:2px solid transparent; border-radius:0; background:transparent; color:#536f76; box-shadow:none; }
 .hub-applicant-profile .hub-profile-tabs > button[aria-selected=true] { color:#173e44; border-bottom-color:#277960; }
 @media(max-width:640px) { .hub-applicant-profile .hub-profile-topbar { gap:0 8px; margin-bottom:8px; } .hub-applicant-profile .hub-profile-name-row h2 { font-size:22px; } .hub-applicant-profile .hub-profile-tabs { column-gap:12px; } .hub-applicant-profile .hub-profile-tabs > button { font-size:12px; } }
+
+@media(min-width:1100px) { .hub-applicant-profile .hub-profile-header { display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:center; gap:24px; } .hub-profile-identity { min-width:0; } .hub-applicant-profile .hub-candidate-quick-actions { margin:0; justify-content:flex-end; max-width:470px; } }
+
+.hub-applicant-profile { overflow-anchor:none; }
