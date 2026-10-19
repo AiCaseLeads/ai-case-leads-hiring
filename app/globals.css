@@ -1400,3 +1400,12 @@ nav a:hover {
 [data-hiring-workspace] .hub-job-editor-actions { display:flex; flex-wrap:wrap; gap:10px; align-items:center; justify-content:flex-end; }
 [data-hiring-workspace] .hub-job-section-navigation { display:flex; justify-content:space-between; align-items:center; gap:16px; margin-top:20px; padding-top:16px; border-top:1px solid #d7e3e1; }
 @media(max-width:640px) { [data-hiring-workspace] .hub-job-editor-heading { position:static; } [data-hiring-workspace] .hub-job-editor-actions { justify-content:flex-start; } [data-hiring-workspace] .hub-job-section-navigation .hub-button { flex:0 1 auto; min-width:96px; } }
+
+/* Mobile applicant navigation stays out of the form and safe-area controls. */
+.mobile-apply-bar { display:none; }
+@media(max-width:640px) {
+ .mobile-apply-bar { position:fixed; z-index:30; inset:auto 0 0; display:flex; padding:10px 16px calc(10px + env(safe-area-inset-bottom,0px)); background:#fff; border-top:1px solid #dce5e8; box-shadow:0 -4px 18px #18383f0d; }
+ .mobile-apply-bar .button { width:100%; min-height:48px; }
+ .detail-heading h1,.job-main h3,.job-description { overflow-wrap:anywhere; }
+ .application-form input:not([type=checkbox]):not([type=radio]),.application-form textarea,.application-form select { font-size:16px; }
+}

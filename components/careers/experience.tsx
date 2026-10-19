@@ -1,4 +1,5 @@
 "use client";
+import { MobileApply } from "./mobile-apply";
 import { SafeDescription } from "./safe-description";
 import { useCallback, useEffect, useState } from "react";
 import {
@@ -375,6 +376,7 @@ export function CareerDetail({ slug }: { slug: string }) {
         ) : (
           data && (
             <>
+              <MobileApply enabled={data.submissionEnabled} />
               <div className="detail-heading">
                 <p className="eyebrow dark">
                   {data.job.department || "AI CASE LEADS"}
