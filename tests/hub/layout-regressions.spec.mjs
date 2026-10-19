@@ -218,3 +218,15 @@ test('save toolbar and section navigation remain separate with compact screening
  }
  assert.deepEqual(errors,[]);
 });
+
+test('collapsed question rows stay compact and editors remain usable on phone and desktop',async t=>{
+ const {page,origin,errors}=await setup(t);
+ const fields=Array.from({length:12},(_,i)=>({path:'q'+i,title:i===0?'Relevant years of experience':'Application question '+(i+1),type:i===0?'Number':'String',required:true}));
+ await page.route('**/api/hub/jobs',r=>r.fulfill({json:{data:[{...jobs[0],fields,rules:[{fieldPath:'q0',operator:'gte',value:7,enabled:true,reason:'Minimum experience'}]}]}}));
+ for(const width of [320,390,1280]){
+  await page.setViewportSize({width,height:900});await page.goto(origin+'/?view=jobs');await page.getByRole('button',{name:'Edit job',exact:true}).click();await page.getByRole('list',{name:'Job setup progress'}).getByRole('button',{name:'Application questions',exact:true}).click();
+  const rows=page.locator('.hub-question').filter({has:page.locator('.hub-question-row-heading')});assert.equal(await rows.count(),13);assert.equal(await rows.locator('button[aria-expanded="true"]').count(),0);const heights=await rows.evaluateAll(elements=>elements.map(e=>e.getBoundingClientRect().height));assert.ok(Math.max(...heights)<(width<640?180:105),JSON.stringify({width,heights}));await noOverflow(page);await artifact(page,'compact-question-list-'+width);
+  const row=rows.filter({hasText:'Relevant years of experience'}).first();await row.locator('button[aria-expanded]').click();await page.getByLabel('Minimum accepted number for Relevant years of experience',{exact:true}).waitFor();await noOverflow(page);await artifact(page,'compact-question-edit-'+width);await row.locator('button[aria-expanded]').click();assert.equal(await rows.locator('button[aria-expanded="true"]').count(),0);
+ }
+ assert.deepEqual(errors,[]);
+});
