@@ -1,4 +1,5 @@
 "use client";
+import { ApplicationAnswers, answerContactName } from "./application-answers";
 import { JobActionMenu } from "./action-menu";
 import { ApplicantNavigation, ResumePreview, resumeFile } from "./application-review-tools";
 import { requestDraftNavigation } from "./draft-navigation";
@@ -783,7 +784,7 @@ export function CandidateDetail({
         <>
           <header className="hub-profile-header">
             <div className="hub-profile-identity">
-              <div className="hub-profile-name-row"><h2 id="candidate-title">{detail.name||"Unnamed applicant"}</h2><div className="hub-status-line"><Badge>{detail.trashed?"In Trash":stageLabel(detail.stage)}</Badge><Badge tone={qualificationTone(detail.qualification)}>{qualificationLabel(detail.qualification,detail.qualificationEvidence.length>0)}</Badge>{detail.duplicateEmail && <Badge tone="warning">{detail.duplicateApplicationCount} applications share this email</Badge>}</div></div>
+              <div className="hub-profile-name-row"><h2 id="candidate-title">{answerContactName(detail)}</h2><div className="hub-status-line"><Badge>{detail.trashed?"In Trash":stageLabel(detail.stage)}</Badge><Badge tone={qualificationTone(detail.qualification)}>{qualificationLabel(detail.qualification,detail.qualificationEvidence.length>0)}</Badge>{detail.duplicateEmail && <Badge tone="warning">{detail.duplicateApplicationCount} applications share this email</Badge>}</div></div>
               <p className="hub-profile-job">{detail.jobTitle}</p>
               <p className="hub-profile-contact"><a href={"mailto:"+detail.email}>{detail.email}</a><span>Applied {displayDate(detail.createdAt)}</span><span>Assigned to {detail.assignee||"no recruiter"}</span></p>
             </div>
@@ -1019,30 +1020,7 @@ export function CandidateDetail({
               <div role="tabpanel" id="candidate-panel-application" aria-labelledby="candidate-tab-application" hidden={section!=="application"}>
               <section className="hub-card">
                 <h3>Application answers</h3>
-                {detail.answers.length ? (
-                  <dl className="hub-answer-list">
-                    {detail.answers.map((answer) => (
-                      <div key={answer.path}>
-                        <dt>
-                          {detail.fields.find(
-                            (field) => field.path === answer.path,
-                          )?.title || answer.path}
-                        </dt>
-                        <dd>
-                          {detail.fields.find(
-                            (field) => field.path === answer.path,
-                          )?.type === "File"
-                            ? "See original files below."
-                            : (()=>{const field=detail.fields.find(field=>field.path===answer.path);if(field?.type==="Number"&&typeof answer.value==="number")return new Intl.NumberFormat("en-US",field.numberFormat==="currency"?{style:"currency",currency:field.currency||"USD"}:{}).format(answer.value);if(field?.options)return (Array.isArray(answer.value)?answer.value:[answer.value]).map(value=>field.options?.find(option=>option.value===value)?.label||displayAnswer(value)).join(", ");return displayAnswer(answer.value);})()}
-                        </dd>
-                      </div>
-                    ))}
-                  </dl>
-                ) : (
-                  <p className="hub-muted">
-                    No application answers were recorded.
-                  </p>
-                )}
+                <ApplicationAnswers detail={detail}/>
                 <h4>Original files</h4>
                 {detail.files.length ? (
                   <ul className="hub-file-list">

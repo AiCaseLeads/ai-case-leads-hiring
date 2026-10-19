@@ -1890,3 +1890,15 @@ body:has(.hiring-hub .hub-draft-overlay) { overflow: hidden; }
 .hub-job-editor .hub-rejection-template textarea { min-height:120px; }
 .hub-job-editor .hub-card > h3 { margin-top:0; }
 @media(max-width:480px) { .hub-job-editor .hub-question-add-row { grid-template-columns:minmax(0,1fr); gap:8px; } .hub-job-editor .hub-question-add-row button { justify-self:start; } }
+
+/* Contact facts and submitted answers form one compact, readable record. */
+.hub-contact-strip { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; margin:10px 0 14px; padding:10px 0 12px; border-bottom:1px solid #dce7e4; }
+.hub-contact-strip > div { min-width:0; }
+.hub-contact-strip dt { font-size:11px; color:#536f76; margin-bottom:3px; }
+.hub-contact-strip dd { margin:0; font-size:13px; line-height:1.5; overflow-wrap:anywhere; }
+.hub-applicant-profile .hub-compact-answers { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); column-gap:24px; }
+.hub-applicant-profile .hub-compact-answers > div { display:block; padding:9px 0; min-width:0; }
+.hub-applicant-profile .hub-compact-answers dt { margin-bottom:3px; font-weight:600; }
+.hub-applicant-profile .hub-compact-answers > .hub-answer-long { grid-column:1/-1; }
+.hub-application-answers a { text-decoration:underline; text-underline-offset:2px; overflow-wrap:anywhere; }
+@media(max-width:640px) { .hub-contact-strip { grid-template-columns:minmax(0,1fr); gap:8px; } .hub-contact-strip > div { display:grid; grid-template-columns:50px minmax(0,1fr); gap:8px; } .hub-applicant-profile .hub-compact-answers { grid-template-columns:minmax(0,1fr); } }
