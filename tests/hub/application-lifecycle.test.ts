@@ -73,8 +73,8 @@ test('legacy Drive PDF backfill queues once and skips current PDF archives or wo
   database.prepare("UPDATE hub_tasks SET status='done',result_json=? WHERE application_id=? AND kind='drive'").run(JSON.stringify({archivedRevision:1}),app.id);
   assert.equal(await reconcileLegacyPdfArchives(store.db,store),1);
   assert.equal(await reconcileLegacyPdfArchives(store.db,store),0,'No duplicate backfill or email tasks');
-  database.prepare("UPDATE hub_tasks SET status='done',result_json=? WHERE id=?").run(JSON.stringify({archivedRevision:1,archiveFormat:'pdf-v2'}),`drive:${app.id}:pdf-v2:1`);
+  database.prepare("UPDATE hub_tasks SET status='done',result_json=? WHERE id=?").run(JSON.stringify({archivedRevision:1,archiveFormat:'pdf-current-v3'}),`drive:${app.id}:pdf-current-v3:1`);
   assert.equal(await reconcileLegacyPdfArchives(store.db,store),0);
-  assert.equal(database.prepare("SELECT COUNT(*) n FROM hub_tasks WHERE application_id=? AND kind='drive' AND id LIKE '%:pdf-v2:%'").get(app.id)!.n,1);
+  assert.equal(database.prepare("SELECT COUNT(*) n FROM hub_tasks WHERE application_id=? AND kind='drive' AND id LIKE '%:pdf-current-v3:%'").get(app.id)!.n,1);
  }finally{database.close();}
 });
