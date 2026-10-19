@@ -1,4 +1,5 @@
 "use client";
+import { readableMatchExplanation } from "../../lib/hub/match-display";
 import { useEffect } from "react";
 import { useHubMutation, useHubResource } from "./api";
 import { Feedback, ResourceState } from "./shared";
@@ -101,14 +102,13 @@ export function CandidateMatch({applicationId}:{applicationId:string}) {
       {criteria.length>0 && <>
         <p className="hub-match-coverage"><strong>{strengths.length} of {criteria.length} requirements supported</strong>{questions.length>0 ? ` · ${questions.length} to clarify` : " · Supporting evidence found for every requirement"}</p>
         <div className="hub-match-summary-grid">
-          <section aria-labelledby="match-strengths"><h4 id="match-strengths">Relevant strengths</h4>{strengths.length ? <ul>{strengths.slice(0,3).map(criterion=><li key={criterion.criterion}><strong>{criterion.criterion}</strong><p>{criterion.explanation}</p></li>)}</ul> : <p>No supporting evidence was found in the submitted material.</p>}</section>
-          <section aria-labelledby="match-questions"><h4 id="match-questions">What to clarify</h4>{questions.length ? <ul>{questions.slice(0,3).map(criterion=><li key={criterion.criterion}><strong>{criterion.criterion}</strong><p>{criterion.explanation}</p></li>)}</ul> : <p>Confirm the candidate’s experience and contribution in the interview.</p>}</section>
+          <section aria-labelledby="match-strengths"><h4 id="match-strengths">Relevant strengths</h4>{strengths.length ? <ul>{strengths.map(criterion=><li key={criterion.criterion}><strong>{criterion.criterion}</strong><p>{readableMatchExplanation(criterion.explanation)}</p></li>)}</ul> : <p>No supporting evidence was found in the submitted material.</p>}</section>
+          <section aria-labelledby="match-questions"><h4 id="match-questions">What to clarify</h4>{questions.length ? <ul>{questions.map(criterion=><li key={criterion.criterion}><strong>{criterion.criterion}</strong><p>{readableMatchExplanation(criterion.explanation)}</p></li>)}</ul> : <p>Confirm the candidate’s experience and contribution in the interview.</p>}</section>
         </div>
-        <details className="hub-match-source-evidence"><summary>View source evidence · {criteria.length} requirements</summary><div>{criteria.map((criterion,index)=><article className="hub-history-item" key={index}><strong>{criterion.criterion}</strong><p>{criterion.status==="evidence_found"?"Evidence found":criterion.status==="needs_verification"?"Needs clarification":"Evidence not found"} — {criterion.explanation}</p>{criterion.citations.map((citation,i)=><blockquote key={i}><p>{citation.quote}</p><small>Source: {citation.source}</small></blockquote>)}</article>)}</div></details>
+
       </>}
-      {!!match.sourceWarnings?.length && <details className="hub-match-source-warnings"><summary>Source limitations · {match.sourceWarnings.length}</summary>{match.sourceWarnings.map(warning=><p className="hub-notice" key={warning}>{warning}</p>)}</details>}
-      <p className="hub-muted">AI match measures evidence against the job description. Missing evidence is not proof of missing ability. Your team makes the hiring decision.</p>
-      <details className="hub-match-review-details"><summary>Review details</summary><small>{match.model ? `Model: ${match.model}. ` : ""}{match.updatedAt ? `${match.status === "ready" ? "Reviewed" : "Updated"} ${new Date(match.updatedAt).toLocaleString()}.` : ""}</small></details>
+      {!!match.sourceWarnings?.length && <p className="hub-muted">Some source material could not be fully read. Check the original résumé before deciding.</p>}
+      <p className="hub-muted">AI comparison supports your review. Your team makes the hiring decision.</p>
     </>}
     <button type="button" className="hub-text-button" disabled={resource.loading} onClick={()=>void reload()}>Refresh AI review</button>
   </section>;
