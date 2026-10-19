@@ -230,3 +230,15 @@ test('collapsed question rows stay compact and editors remain usable on phone an
  }
  assert.deepEqual(errors,[]);
 });
+
+
+test('expanded country picker uses bounded columns and preserves search-hidden selections at all widths',async t=>{
+ const {page,origin,errors}=await setup(t);
+ for(const width of [320,390,1280]){
+  await page.setViewportSize({width,height:900});await page.goto(origin+'/?view=jobs');await page.getByRole('button',{name:'Edit job',exact:true}).first().click();await page.getByRole('list',{name:'Job setup progress'}).getByRole('button',{name:'Application questions',exact:true}).click();await page.getByRole('button',{name:'Add country of residence question',exact:true}).click();await page.getByLabel('Eligible countries',{exact:true}).selectOption('in');
+  const picker=page.getByRole('region',{name:'Country of residence screening',exact:true});await picker.getByRole('checkbox',{name:'Europe',exact:true}).check();await picker.getByRole('checkbox',{name:'North America',exact:true}).check();await picker.getByRole('status').getByText('92 selected · Must live in a selected country',{exact:true}).waitFor();
+  const list=picker.getByRole('group',{name:'Select countries',exact:true});const bounds=await list.evaluate(e=>({height:e.getBoundingClientRect().height,scroll:e.scrollHeight,overflow:getComputedStyle(e).overflowY}));assert.ok(bounds.height<=330,JSON.stringify(bounds));assert.ok(bounds.scroll>bounds.height);assert.equal(bounds.overflow,'auto');assert.equal(await picker.locator('.hub-country-options').first().evaluate(e=>getComputedStyle(e).gridTemplateColumns.split(' ').length),width<640?1:3);await noOverflow(page);await artifact(page,'expanded-country-picker-'+width);if(process.env.HUB_LAYOUT_ARTIFACTS){await picker.scrollIntoViewIfNeeded();await page.screenshot({path:process.env.HUB_LAYOUT_ARTIFACTS+'/expanded-country-viewport-'+width+'.png'});}
+  await picker.getByLabel('Find countries',{exact:true}).fill('Spain');assert.equal(await picker.getByLabel('Spain',{exact:true}).isChecked(),true);await picker.getByRole('status').getByText('92 selected · Must live in a selected country',{exact:true}).waitFor();await noOverflow(page);await picker.getByLabel('Find countries',{exact:true}).fill('');
+ }
+ assert.deepEqual(errors,[]);
+});
