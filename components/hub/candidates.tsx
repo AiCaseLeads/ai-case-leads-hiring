@@ -4,7 +4,7 @@ import { JobActionMenu } from "./action-menu";
 import { ApplicantNavigation, ResumePreview, resumeFile } from "./application-review-tools";
 import { requestDraftNavigation } from "./draft-navigation";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { ArrowLeft, Download, ExternalLink, Search } from "lucide-react";
+import { ArrowLeft, Download, ExternalLink, Search, StickyNote, Settings2, RefreshCw, Trash2, Users } from "lucide-react";
 import {
   hubRequest,
   displayAnswer,
@@ -205,7 +205,7 @@ export function Candidates(props: CandidatesProps) {
       return <article className="hub-application-job-row" key={job.id}>
         <div><h3><button type="button" className="hub-text-button hub-job-title-link" onClick={openJob}>{job.title}</button></h3><p className="hub-muted">{job.location || jobLocation(job)} · {job.lifecycle?.state === "archived" ? "Archived" : job.lifecycle?.state === "deleted" ? "In Trash" : job.status === "open" ? "Open" : job.status === "closed" ? "Paused" : "Draft"}</p></div>
         <div className="hub-job-applicant-count"><strong>{counts.data ? count?.total || 0 : counts.loading ? "…" : "—"}</strong><span>applicants</span></div>
-        <JobActionMenu label={`Manage applicants for ${job.title}`} triggerLabel="Manage"><button type="button" onClick={openJob}>View applications</button><button type="button" disabled={!!downloadBusy} onClick={()=>void downloadJob(job,"zip")}>{downloadBusy===job.id?"Preparing ZIP…":"Download all applications ZIP"}</button></JobActionMenu>
+        <JobActionMenu label={`Manage applicants for ${job.title}`} triggerLabel="Manage"><button type="button" onClick={openJob}><Users size={16} aria-hidden="true"/>View applications</button><button type="button" disabled={!!downloadBusy} onClick={()=>void downloadJob(job,"zip")}><Download size={16} aria-hidden="true"/>{downloadBusy===job.id?"Preparing ZIP…":"Download all applications ZIP"}</button></JobActionMenu>
       </article>;
     })}</div>
     {!jobs.length && <EmptyState title="No jobs found"><p>Try another search or create a posting from Jobs.</p></EmptyState>}
@@ -842,11 +842,11 @@ export function CandidateDetail({
               {resumeFile(detail) && <button type="button" className="hub-button secondary" onClick={()=>{setSection("application");setResumeRequest(value=>value+1);}}>View résumé</button>}
               {detail.trashed && <button type="button" className="hub-button secondary" disabled={mutation.busy||rejectBusy} onClick={()=>void lifecycle("restore")}>Restore application</button>}
               <JobActionMenu label="More applicant actions" triggerLabel="More">
-                {!detail.trashed && <button type="button" onClick={()=>{setAction("note");setActionOpen(true);mutation.clear();}}>Add note</button>}
-                {!detail.trashed && <button type="button" disabled={mutation.busy||rejectBusy} onClick={()=>{setAction("stage");setActionOpen(true);mutation.clear();}}>Other applicant actions</button>}
+                {!detail.trashed && <button type="button" onClick={()=>{setAction("note");setActionOpen(true);mutation.clear();}}><StickyNote size={16} aria-hidden="true"/>Add note</button>}
+                {!detail.trashed && <button type="button" disabled={mutation.busy||rejectBusy} onClick={()=>{setAction("stage");setActionOpen(true);mutation.clear();}}><Settings2 size={16} aria-hidden="true"/>Other applicant actions</button>}
                 <button type="button" disabled={pdfBusy} onClick={()=>void exportPdf()}><Download size={16}/>{pdfBusy?"Preparing PDF…":"Download application PDF"}</button>
-                <button type="button" onClick={()=>void resource.reload()}>Refresh application</button>
-                {!detail.trashed && <button type="button" disabled={mutation.busy||rejectBusy} onClick={()=>setDeleteOpen(true)}>Delete application</button>}
+                <button type="button" onClick={()=>void resource.reload()}><RefreshCw size={16} aria-hidden="true"/>Refresh application</button>
+                {!detail.trashed && <button type="button" disabled={mutation.busy||rejectBusy} onClick={()=>setDeleteOpen(true)}><Trash2 size={16} aria-hidden="true"/>Delete application</button>}
               </JobActionMenu>
             </div>
           </header>

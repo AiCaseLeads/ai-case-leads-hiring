@@ -1937,3 +1937,12 @@ body:has(.hiring-hub .hub-draft-overlay) { overflow: hidden; }
 .hub-applicant-profile .hub-job-menu-items > button:disabled { opacity:.5; cursor:not-allowed; }
 .hub-applicant-profile .hub-candidate-quick-actions { min-width:0; }
 @media(min-width:1100px) { .hub-applicant-profile .hub-profile-header { grid-template-columns:minmax(0,1fr) minmax(0,470px); } }
+
+/* Clear action rows across applicant More, job Actions, and Manage menus. */
+.hub-job-menu > .hub-job-menu-items { gap:0; padding:4px 8px; }
+.hub-job-menu > .hub-job-menu-items > :is(button,a) { display:flex; align-items:center; gap:10px; min-height:44px; width:100%; padding:11px 8px; margin:0; border:0; border-radius:0; background:transparent; color:var(--hub-ink); font:inherit; font-size:13px; line-height:1.5; text-align:left; text-decoration:none; cursor:pointer; }
+.hub-job-menu > .hub-job-menu-items > :is(button,a) + :is(button,a) { border-top:1px solid #dce7e4; }
+.hub-job-menu > .hub-job-menu-items > :is(button,a) > svg { flex:0 0 16px; width:16px; height:16px; align-self:center; }
+.hub-job-menu > .hub-job-menu-items > :is(button,a):hover:not(:disabled) { background:#edf4f1; }
+.hub-job-menu > .hub-job-menu-items > :is(button,a):focus-visible { outline:2px solid #277960; outline-offset:-2px; }
+.hub-job-menu > .hub-job-menu-items > :is(button,a):disabled { opacity:.5; cursor:not-allowed; }
