@@ -10,6 +10,11 @@ export class HubError extends Error {
     super(message);
   }
 }
+function unavailableMessage(status: number) {
+  return [502,503,504].includes(status)
+    ? `The hiring server is temporarily unavailable (${status}). Your entries are still here. Please try again shortly.`
+    : "This action could not be completed. Please try again.";
+}
 export async function hubRequest<T>(
   path: string,
   method = "GET",
@@ -33,19 +38,19 @@ export async function hubRequest<T>(
   }
   let result: { data?: T; error?: { message?: string; code?: string } };
   try {
-    result = await response.json();
+    const parsed: unknown = await response.json();
+    result = parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed as typeof result : {};
   } catch {
     throw new HubError(
-      "We couldn’t confirm the server response. Refresh the record before repeating an action.",
+      [502,503,504].includes(response.status) ? unavailableMessage(response.status) : "We couldn’t confirm the server response. Refresh the record before repeating an action.",
       response.status,
     );
   }
   if (!response.ok)
     throw new HubError(
-      result.error?.message ||
-        "This action could not be completed. Please try again.",
+      typeof result.error?.message === "string" ? result.error.message : unavailableMessage(response.status),
       response.status,
-      result.error?.code,
+      typeof result.error?.code === "string" ? result.error.code : undefined,
     );
   if (!Object.prototype.hasOwnProperty.call(result, "data"))
     throw new HubError(
@@ -53,6 +58,19 @@ export async function hubRequest<T>(
       response.status,
     );
   return result.data as T;
+}
+/** Only job saves have a server ledger keyed by creationId and the exact payload. */
+export async function jobSaveRequest<T>(body: unknown, onRetry: () => void): Promise<T> {
+  const snapshot = JSON.parse(JSON.stringify(body)) as {action?:unknown;creationId?:unknown};
+  if (snapshot.action !== "save" || typeof snapshot.creationId !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(snapshot.creationId))
+    throw new HubError("This save is missing its recovery ID. Reopen the job before saving.",400);
+  try { return await hubRequest<T>("/api/job-setup","POST",snapshot); }
+  catch (error) {
+    if (!(error instanceof HubError) || ![0,502,503,504].includes(error.status)) throw error;
+    onRetry();
+    await new Promise(resolve=>setTimeout(resolve,1000));
+    return hubRequest<T>("/api/job-setup","POST",snapshot);
+  }
 }
 export function useHubResource<T>(path: string, refresh = 0) {
   const [data, setData] = useState<T | null>(null),
@@ -93,21 +111,26 @@ export function useHubResource<T>(path: string, refresh = 0) {
 export function useHubMutation() {
   const [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
-    [success, setSuccess] = useState("");
+    [success, setSuccess] = useState(""),
+    [retrying, setRetrying] = useState(false);
   const active = useRef(false);
   async function run<T>(
     path: string,
     method: string,
     body?: unknown,
     message = "Saved.",
+    retryJobSave = false,
   ): Promise<T | undefined> {
     if (active.current) return undefined;
     active.current = true;
     setBusy(true);
     setError("");
     setSuccess("");
+    setRetrying(false);
     try {
-      const result = await hubRequest<T>(path, method, body);
+      const result = retryJobSave && path === "/api/job-setup" && method === "POST"
+        ? await jobSaveRequest<T>(body,()=>setRetrying(true))
+        : await hubRequest<T>(path, method, body);
       setSuccess(message);
       return result;
     } catch (e) {
@@ -116,10 +139,12 @@ export function useHubMutation() {
     } finally {
       active.current = false;
       setBusy(false);
+      setRetrying(false);
     }
   }
   return {
     busy,
+    retrying,
     error,
     success,
     run,

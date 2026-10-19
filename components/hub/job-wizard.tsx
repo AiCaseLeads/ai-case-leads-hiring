@@ -895,6 +895,7 @@ function Editor({
       "POST",
       payload,
       "",
+      true,
     );
     if (result) {
       recovery.complete();
@@ -997,6 +998,7 @@ function Editor({
           </li>
         ))}
       </ol>
+      {mutation.retrying && <p role="status" className="hub-notice">Connection interrupted. Retrying save…</p>}
       <div ref={saveFeedback} tabIndex={-1}><Feedback error={error || mutation.error} /></div>
       {job && mutation.error.includes("assigned scorecard changed") && (
         <button
