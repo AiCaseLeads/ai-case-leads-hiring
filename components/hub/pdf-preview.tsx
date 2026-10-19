@@ -6,7 +6,7 @@ function PdfPage({document,index,width,height,fit,zoom,filename,root}:{document:
  const holder=useRef<HTMLDivElement>(null),canvas=useRef<HTMLCanvasElement>(null);
  const [visible,setVisible]=useState(index===1),[size,setSize]=useState({width:612,height:792}),[rendered,setRendered]=useState(false),[error,setError]=useState(false);
  const scale=Math.min(Math.max(1,width-24)/size.width,fit==="page"?Math.max(1,height-24)/size.height:2)*zoom;
- useEffect(()=>{const element=holder.current;if(!element)return;const observer=new IntersectionObserver(entries=>setVisible(entries[0].isIntersecting),{root:root.current,rootMargin:"180px"});observer.observe(element);return()=>observer.disconnect();},[root]);
+ useEffect(()=>{const element=holder.current;if(!element)return;const observer=new IntersectionObserver(entries=>{const next=entries[0].isIntersecting;if(!next)setRendered(false);setVisible(next);},{root:root.current,rootMargin:"180px"});observer.observe(element);return()=>observer.disconnect();},[root]);
  useEffect(()=>{
   if(!visible||!canvas.current)return;
   let cancelled=false,task:RenderTask|undefined;const target=canvas.current;const buffer=window.document.createElement("canvas");let page:Awaited<ReturnType<PDFDocumentProxy["getPage"]>>|undefined;
