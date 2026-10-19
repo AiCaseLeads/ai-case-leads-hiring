@@ -52,11 +52,31 @@ function FilePreview({file:resume}:{file:ApplicationDetail["files"][number]}) {
   const [ready,setReady]=useState(false);
   const [expanded,setExpanded]=useState(false);
   const [error,setError]=useState(false);
-  useEffect(()=>{if(!previewable)return;const controller=new AbortController();void fetch(url,{method:"HEAD",credentials:"same-origin",signal:controller.signal}).then(response=>{if(!response.ok || !["application/pdf","image/png","image/jpeg","image/webp","text/plain"].includes((response.headers.get("content-type") || "").split(";")[0].trim()))throw Error("preview unavailable");setReady(true);}).catch(()=>{if(!controller.signal.aborted)setError(true);});return()=>controller.abort();},[url,previewable]);
+  useEffect(()=>{if(!previewable || word)return;const controller=new AbortController();void fetch(url,{method:"HEAD",credentials:"same-origin",signal:controller.signal}).then(response=>{if(!response.ok || !["application/pdf","image/png","image/jpeg","image/webp","text/plain"].includes((response.headers.get("content-type") || "").split(";")[0].trim()))throw Error("preview unavailable");setReady(true);}).catch(()=>{if(!controller.signal.aborted)setError(true);});return()=>controller.abort();},[url,previewable,word]);
   return <section className={"hub-resume-preview"+(expanded?" is-expanded":"")} aria-label="Résumé preview">
     {previewable && <button type="button" className="hub-text-button hub-document-expand" aria-expanded={expanded} onClick={()=>setExpanded(value=>!value)}>{expanded?"Compact preview":"Enlarge preview"}</button>}
-    {previewable && ready && !error ? (word ? <WordPreview key={url} url={url}/> : resume.contentType==="application/pdf" ? <PdfPreview key={url} url={url} filename={resume.filename} expanded={expanded}/> : <img src={url} onError={()=>setError(true)} alt={`Résumé: ${resume.filename}`} style={{display:"block",maxWidth:"100%",maxHeight:expanded?"min(70vh,700px)":"280px",objectFit:"contain",margin:"0 auto"}}/>) : previewable ? <p role="status">{error?"Preview is unavailable. Use the Download link above or refresh to retry.":"Loading résumé preview…"}</p> : <p className="hub-muted">This file format cannot be previewed here. Use the Download link above to open the original résumé.</p>}
+    {word ? <DriveWordPreview key={resume.id} fileId={resume.id} filename={resume.filename} textUrl={url} expanded={expanded}/> : previewable && ready && !error ? (resume.contentType==="application/pdf" ? <PdfPreview key={url} url={url} filename={resume.filename} expanded={expanded}/> : <img src={url} onError={()=>setError(true)} alt={`Résumé: ${resume.filename}`} style={{display:"block",maxWidth:"100%",maxHeight:expanded?"min(70vh,700px)":"280px",objectFit:"contain",margin:"0 auto"}}/>) : previewable ? <p role="status">{error?"Preview is unavailable. Use the Download link above or refresh to retry.":"Loading résumé preview…"}</p> : <p className="hub-muted">This file format cannot be previewed here. Use the Download link above to open the original résumé.</p>}
   </section>;
+}
+
+function DriveWordPreview({fileId,filename,textUrl,expanded}:{fileId:string;filename:string;textUrl:string;expanded:boolean}) {
+ const [drive,setDrive]=useState<{previewUrl:string;webViewUrl:string}|null>(null);
+ const [loaded,setLoaded]=useState(false);
+ const [showText,setShowText]=useState(false);
+ useEffect(()=>{const controller=new AbortController();void fetch(`/api/files/${encodeURIComponent(fileId)}/drive-preview`,{credentials:"same-origin",cache:"no-store",signal:controller.signal}).then(async response=>{
+  if(!response.ok)throw Error("archive unavailable");
+  const result=await response.json() as {previewUrl?:unknown;webViewUrl?:unknown};
+  for(const value of [result.previewUrl,result.webViewUrl]){if(typeof value!=="string")throw Error("invalid archive URL");const parsed=new URL(value);if(parsed.protocol!=="https:"||parsed.hostname!=="drive.google.com")throw Error("invalid archive URL");}
+  if(!controller.signal.aborted)setDrive({previewUrl:result.previewUrl as string,webViewUrl:result.webViewUrl as string});
+ }).catch(()=>{}).finally(()=>{if(!controller.signal.aborted)setLoaded(true);});return()=>controller.abort();},[fileId]);
+ return <div className="hub-drive-word-preview">
+  {!loaded?<p role="status">Loading original Word preview…</p>:drive?<>
+   <p className="hub-document-caption">Original Word document · Google Drive</p>
+   <iframe title={`Word résumé: ${filename}`} src={drive.previewUrl} referrerPolicy="no-referrer" style={{display:"block",width:"100%",height:expanded?"min(70vh,700px)":"340px",border:"1px solid #dce7e4",borderRadius:4}}/>
+   <p className="hub-document-caption"><a href={drive.webViewUrl} target="_blank" rel="noopener noreferrer">Open in Drive</a> · Use your authorized work Google account. If the embedded preview asks you to sign in or stays blank, open it in Drive.</p>
+  </>:<p className="hub-document-caption">Original preview is not available yet. Use the Download link above, or open the text preview below.</p>}
+  <details open={showText} onToggle={event=>setShowText(event.currentTarget.open)}><summary>Use text preview instead</summary>{showText&&<WordPreview url={textUrl}/>}</details>
+ </div>;
 }
 
 function WordPreview({url}:{url:string}) {

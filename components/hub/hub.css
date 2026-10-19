@@ -1946,3 +1946,5 @@ body:has(.hiring-hub .hub-draft-overlay) { overflow: hidden; }
 .hub-job-menu > .hub-job-menu-items > :is(button,a):hover:not(:disabled) { background:#edf4f1; }
 .hub-job-menu > .hub-job-menu-items > :is(button,a):focus-visible { outline:2px solid #277960; outline-offset:-2px; }
 .hub-job-menu > .hub-job-menu-items > :is(button,a):disabled { opacity:.5; cursor:not-allowed; }
+
+.hub-drive-word-preview iframe { max-width:100%; } .hub-drive-word-preview > details { margin-top:8px; } .hub-drive-word-preview a { text-decoration:underline; } @media(max-width:640px) { .hub-resume-preview:not(.is-expanded) .hub-drive-word-preview iframe { height:280px!important; } }
