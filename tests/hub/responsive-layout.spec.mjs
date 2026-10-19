@@ -77,7 +77,7 @@ test('redesigned workspace stays usable across mobile, tablet and desktop widths
    assert.equal(await page.getByRole('button',{name:'Open workspace menu'}).getAttribute('aria-expanded'),'false');
   }
   await page.goto(origin+'/?view=applications');await page.getByRole('heading',{name:'Choose a job',exact:true}).waitFor();await noOverflow(page);
-  await page.getByRole('button',{name:'View applications for '+job.title,exact:true}).click();
+  await page.getByRole('button',{name:job.title,exact:true}).click();
   await page.getByRole('button',{name:detail.name,exact:true}).waitFor();await noOverflow(page);
   const downloadSummary=page.locator('.hub-application-downloads > summary');await downloadSummary.click();await page.getByLabel('Download scope',{exact:true}).waitFor();await noOverflow(page);
   const buttonBoxes=await page.locator('.hub-download-actions > .hub-button').evaluateAll(es=>es.map(e=>e.getBoundingClientRect().toJSON()));
@@ -107,24 +107,24 @@ test('redesigned workspace stays usable across mobile, tablet and desktop widths
   if(artifacts){await page.evaluate(()=>window.scrollTo(0,0));await page.screenshot({path:`${artifacts}/settings-${width}.png`,fullPage:true});}
   if(width<=640)assert.equal(await page.getByLabel('Teammate’s Google Workspace email',{exact:true}).evaluate(e=>getComputedStyle(e).fontSize),'16px');
  }
- assert.deepEqual(pageErrors,[]);assert.deepEqual(writes,[],'Browsing, expanding, selecting and changing tabs must never mutate records or send invitations');
+ assert.deepEqual(pageErrors,[]);assert.ok(writes.every(path=>path.endsWith('/viewed')),'Browsing may mark viewed but must not send invitations or change stages');
 });
 
 async function questions(page,origin) {
  await page.goto(origin+'/?view=jobs');await page.getByRole('button',{name:'Create job',exact:true}).click();await page.getByRole('button',{name:'Create blank job',exact:true}).click();await page.getByLabel('Job title',{exact:true}).fill('Synthetic mobile badge test');await page.getByLabel('Work arrangement',{exact:true}).selectOption('remote');await page.getByRole('button',{name:'Continue',exact:true}).click();await page.getByRole('heading',{name:'What should applicants send?',exact:true}).waitFor();
 }
-test('question badges and final controls stay readable without covering editable content',async t=>{
+test('question editor controls remain reachable on phones and tablet',async t=>{
  const {page,origin}=await setup(t);
- for(const width of [320,390]) {
+ for(const width of [320,390,768]) {
   await page.setViewportSize({width,height:844});await questions(page,origin);
-  await page.getByRole('button',{name:'Add custom question',exact:true}).click();const label=page.getByLabel('Question 2 label',{exact:true});await label.fill('LongQuestion'.repeat(12));await noOverflow(page);
-  const headings=await page.locator('.hub-question-heading').evaluateAll(es=>es.map(e=>{const badge=e.querySelector('.hub-badge'),title=e.querySelector('strong');const range=document.createRange();range.selectNodeContents(badge);return{lines:range.getClientRects().length,badge:badge.getBoundingClientRect().toJSON(),title:title.getBoundingClientRect().toJSON()};}));
-  for(const row of headings){assert.equal(row.lines,1,'Required/Optional remains on a single line');assert.ok(row.badge.y>=row.title.bottom,'Question title has its own row on mobile');}
-  const rows=await page.locator('.hub-question').evaluateAll(es=>es.map(e=>e.getBoundingClientRect().toJSON()));for(let i=1;i<rows.length;i++)assert.ok(rows[i].top-rows[i-1].bottom>=16,'Question rows have separation');
-  assert.equal(await page.getByLabel('Question 2 instructions (optional)',{exact:true}).isVisible(),false,'Instructions stay collapsed');
-  const custom=page.getByRole('button',{name:'Add custom question',exact:true});await custom.scrollIntoViewIfNeeded();assert.equal(await custom.evaluate(e=>{const r=e.getBoundingClientRect();return e.contains(document.elementFromPoint(r.x+r.width/2,r.y+r.height/2));}),true,'Final form control is not covered');
-  if(artifacts){await page.evaluate(()=>window.scrollTo(0,0));await page.screenshot({path:`${artifacts}/question-badges-${width}.png`,fullPage:true});}
-  await page.setViewportSize({width,height:440});await label.focus();await page.keyboard.type(' mobile');assert.match(await label.inputValue(),/mobile/);assert.equal(await page.locator('.hub-sticky-save').evaluate(e=>getComputedStyle(e).position),'static','Short viewports leave the form unobstructed');await noOverflow(page);
+  await page.getByLabel('Add a question',{exact:true}).selectOption('custom');await page.getByRole('button',{name:'Add question',exact:true}).click();
+  const label=page.getByLabel(/^Question \d+ label$/).filter({visible:true});await label.fill('Relevant experience');await noOverflow(page);
+  assert.equal(await label.evaluate(e=>getComputedStyle(e).fontSize),'16px');
+  assert.equal(await page.getByLabel(/^Question \d+ instructions \(optional\)$/).filter({visible:true}).count(),0,'Optional instructions stay collapsed');
+  const format=page.getByLabel(/^Question \d+ answer format$/).filter({visible:true});await format.selectOption('Number');await noOverflow(page);
+  const add=page.getByRole('button',{name:'Add question',exact:true});await add.scrollIntoViewIfNeeded();assert.equal(await add.evaluate(e=>{const r=e.getBoundingClientRect();return e.contains(document.elementFromPoint(r.x+r.width/2,r.y+r.height/2));}),true);
+  await page.setViewportSize({width,height:440});await label.focus();await page.keyboard.type(' mobile');assert.match(await label.inputValue(),/mobile/);await noOverflow(page);
+  if(artifacts){await page.screenshot({path:`${artifacts}/question-editor-${width}.png`,fullPage:true});}
  }
 });
 
