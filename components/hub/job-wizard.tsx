@@ -577,7 +577,7 @@ function Editor({
       criteria: [{ label: "", weight: 1, anchors: [...defaultAnchors] }],
     }),
     [error, setError] = useState(""),
-    [questionPreset, setQuestionPreset] = useState("");
+    [questionPreset, setQuestionPreset] = useState("custom");
   const [creationId, setCreationId] = useState(() => crypto.randomUUID());
   const mutation = useHubMutation();
   const [draggedQuestion, setDraggedQuestion] = useState<string | null>(null);
@@ -1268,69 +1268,18 @@ function Editor({
               </div>}
             </DragOverlay>
             </DndContext>
-            <button type="button" className="hub-button secondary" style={{marginBlock:"16px",marginRight:"8px"}} disabled={fields.length>=100 || fields.some(field=>field.path===englishProficiencyPath)} onClick={()=>{setFields([...fields,englishProficiencyField()]);setExpandedQuestion(englishProficiencyPath);}}>Add English proficiency question</button>
-            <button type="button" className="hub-button secondary" style={{marginBlock:"16px"}} disabled={fields.length>=100 || fields.some(field=>field.path===residencePath)} onClick={()=>{setFields([...fields,countryResidenceField()]);setExpandedQuestion(residencePath);}}>Add country of residence question</button>
-            <div className="hub-form-grid">
-              <Field label="Add from the question library">
-                <select
-                  value={questionPreset}
-                  onChange={(e) => setQuestionPreset(e.target.value)}
-                >
-                  <option value="">Choose a question</option>
-                  {experienceQuestions
-                    .filter((q) => !fields.some((f) => f.path === q.path))
-                    .map((q) => (
-                      <option key={q.path} value={q.path}>
-                        {q.title}
-                      </option>
-                    ))}
-                </select>
-              </Field>
-              <button
-                type="button"
-                className="hub-button secondary"
-                disabled={!questionPreset || fields.length >= 100}
-                onClick={() => {
-                  const selected = experienceQuestions.find(
-                    (q) => q.path === questionPreset,
-                  );
-                  if (selected){
-                    setExpandedQuestion(selected.path);
-                    setFields((v) => [
-                      ...v,
-                      {
-                        ...structuredClone(selected),
-                        title: selected.title.replace(/ \(optional\)$/i, ""),
-                      },
-                    ]);
-                  }
-                  setQuestionPreset("");
-
-                }}
-              >
-                Add selected question
-              </button>
+            <div className="hub-question-add-row">
+              <Field label="Add a question"><select value={questionPreset} onChange={event=>setQuestionPreset(event.target.value)}>
+                <option value="custom">Custom question</option>
+                {!fields.some(field=>field.path===englishProficiencyPath)&&<option value="english">English proficiency · CEFR</option>}
+                {!fields.some(field=>field.path===residencePath)&&<option value="country">Country of residence</option>}
+                <optgroup label="Question library">{experienceQuestions.filter(question=>!fields.some(field=>field.path===question.path)).map(question=><option key={question.path} value={question.path}>{question.title}</option>)}</optgroup>
+              </select></Field>
+              <button type="button" className="hub-button secondary" disabled={fields.length>=100} onClick={()=>{
+                const selected=questionPreset==="english"?englishProficiencyField():questionPreset==="country"?countryResidenceField():questionPreset==="custom"?{path:"question_"+crypto.randomUUID().slice(0,8),title:"",type:"LongText" as const,required:true}:experienceQuestions.find(question=>question.path===questionPreset);
+                if(selected){setFields(current=>[...current,{...structuredClone(selected),title:selected.title.replace(/ \(optional\)$/i,"")}]);setExpandedQuestion(selected.path);setQuestionPreset("custom");}
+              }}><Plus size={16}/> Add question</button>
             </div>
-            <button
-              type="button"
-              className="hub-button secondary"
-              disabled={fields.length >= 100}
-              onClick={() => {
-                const path="question_" + crypto.randomUUID().slice(0,8);setExpandedQuestion(path);
-                setFields((v) => [
-                  ...v,
-                  {
-                    path,
-                    title: "",
-                    type: "LongText",
-                    required: true,
-                  },
-                ]);
-
-              }}
-            >
-              <Plus size={16} /> Add custom question
-            </button>
             <AdvancedRules
               reveal={showAdvancedRules}
               fields={fields}
@@ -1769,11 +1718,20 @@ function AdvancedRules({
   const [rejectionInput, setRejectionInput] = useState("");
   return (
     <section className="hub-card hub-screening-decisions">
-      <h3>What happens when an applicant does not qualify?</h3>
-      <p>
-        Automatic rejection runs only when you turn it on and save enabled requirements. AI does
-        not reject applicants.
-      </p>
+      <h3>Screening decisions</h3>
+      <p className="hub-muted">Applies after saving enabled requirements. AI never rejects applicants.</p>
+      <label className="hub-checkbox">
+        <input
+          type="checkbox"
+          checked={autoReject}
+          onChange={(e) => {
+            setAutoReject(e.target.checked);
+
+          }}
+        />{" "}
+        Automatically reject applicants who fail enabled requirements
+      </label>
+      {autoReject && !rules.some(rule => rule.enabled) && <p className="hub-muted">Inactive until you add and save an enabled screening requirement. No applicants are automatically rejected without requirements.</p>}
       <details open={reveal?true:undefined}>
         <summary>Advanced rules ({rules.length})</summary>
         {rules.map((r, i) => (
@@ -1895,6 +1853,7 @@ function AdvancedRules({
           Add qualification rule
         </button>
       </details>
+      <details className="hub-rejection-template"><summary>View / edit rejection template <span className="hub-muted">· {rejection.trim() && rejection!==defaultRejection?"Custom message":"Default message"}</span></summary>
       <Field
         label="Rejection email"
         hint="Ready to use. {{name}} and {{jobTitle}} are filled in automatically. Customize this job’s message if needed."
@@ -1912,18 +1871,7 @@ function AdvancedRules({
         />
       </Field>
       <button type="button" className="hub-text-button" disabled={!rejection.trim() || rejection === defaultRejection} onClick={() => { setRejection(""); setEditingRejection(false); }}>Use default rejection message</button>
-      <label className="hub-checkbox">
-        <input
-          type="checkbox"
-          checked={autoReject}
-          onChange={(e) => {
-            setAutoReject(e.target.checked);
-
-          }}
-        />{" "}
-        Automatically reject applicants who fail enabled requirements
-      </label>
-      {autoReject && !rules.some(rule => rule.enabled) && <p className="hub-muted">Inactive until you add and save an enabled screening requirement. No applicants are automatically rejected without requirements.</p>}
+      </details>
     </section>
   );
 }
