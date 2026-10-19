@@ -1214,7 +1214,7 @@ function Editor({
                         </Field>
                       </div>
                       <div>
-                        {f.type === "Number" && <Field label={`Question ${i-contactPaths.length+1} number display`}><select value={f.numberFormat||"number"} onChange={event=>updateField(i,event.target.value==="currency"?{numberFormat:"currency",currency:"USD"}:{numberFormat:"number",currency:undefined})}><option value="number">Number — 30,000</option><option value="currency">Currency (USD) — $30,000.00</option></select></Field>}
+                        {f.type === "Number" && <Field label={`Question ${i-contactPaths.length+1} number display`}><select value={f.numberFormat||"number"} onChange={event=>updateField(i,event.target.value==="currency"?{numberFormat:"currency",currency:"USD"}:{numberFormat:"number",currency:undefined})}><option value="number">Number</option><option value="currency">Currency (USD)</option></select></Field>}
                         {f.path===resumePath && <p className="hub-muted">A résumé/CV is required for every application.</p>}
                         {isCountryResidence(f) ? <p className="hub-muted">This preset uses the complete country list. Choose eligible countries below; remove the question if you no longer need it.</p> : rules.some((r) => r.fieldPath === f.path) && (
                           <p className="hub-muted">
@@ -1323,7 +1323,7 @@ function Editor({
                     path,
                     title: "",
                     type: "LongText",
-                    required: false,
+                    required: true,
                   },
                 ]);
 
