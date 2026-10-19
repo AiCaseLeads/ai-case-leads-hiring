@@ -17,7 +17,7 @@ async function setup(t,{mode='candidate',data={status:'ready',score:80,criteria:
  const server=createServer((req,res)=>{res.setHeader('Content-Type',req.url==='/bundle.js'?'text/javascript':'text/html');res.end(req.url==='/bundle.js'?outputFiles[0].text:`<meta name="viewport" content="width=device-width, initial-scale=1"><style>${css}</style><main class="hub-main"><div id="root"></div></main><script src="/bundle.js"></script>`);});
  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
  const chrome='/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';const browser=await chromium.launch({headless:true,...(existsSync(chrome)?{executablePath:chrome}:{})});
- t.after(async()=>{await browser.close();await new Promise(resolve=>server.close(resolve));});
+ t.after(async()=>{await browser.close();server.closeAllConnections();await new Promise(resolve=>server.close(resolve));});
  const page=await browser.newPage({viewport:{width,height:844}});page.setDefaultTimeout(5000);
  let current=structuredClone(data);const writes=[],queries=[],errors=[];page.on('pageerror',e=>errors.push(e.message));
  await page.route('**/api/ai/match*',route=>{
@@ -36,20 +36,16 @@ async function setup(t,{mode='candidate',data={status:'ready',score:80,criteria:
  return {page,writes,queries,errors};
 }
 
-test('completed AI match shows job evidence, citations and uncertainty without replacing reviewer decisions',async t=>{
- const {page,errors}=await setup(t,{data:{status:'ready',score:83.6,model:'openai/test',sourceWarnings:['Portfolio file was not readable.'],criteria:[{criterion:'React experience',status:'evidence_found',explanation:'Resume describes React delivery.',citations:[{source:'resume:cv.pdf',quote:'Built React interfaces for 3 years.'}]},{criterion:'Team leadership',status:'needs_verification',explanation:'Clarify team size in interview.',citations:[]}]}});
- await page.getByText('84 / 100',{exact:true}).waitFor();await page.locator('.hub-match-source-evidence > summary').click();await page.locator('.hub-match-source-warnings > summary').click();assert.equal(await page.getByText('Built React interfaces for 3 years.',{exact:true}).isVisible(),true);
- assert.equal(await page.getByText('Source: resume:cv.pdf',{exact:true}).isVisible(),true);
- assert.equal(await page.getByText(/Needs clarification — Clarify team size/).isVisible(),true);
- assert.equal(await page.getByText('Portfolio file was not readable.',{exact:true}).isVisible(),true);
- assert.equal(await page.getByText(/Missing evidence is not proof of missing ability/).isVisible(),true);
- assert.deepEqual(errors,[]);
+test('completed AI match displays every readable requirement without technical source panels',async t=>{
+ const criteria=Array.from({length:5},(_,i)=>({criterion:`Requirement ${i+1}`,status:'evidence_found',explanation:i===0?'Evidence: {\"question\":\"Years of experience?\",\"answer\":7}':'Relevant delivery evidence.',citations:[{source:'resume:cv.pdf',quote:'Original source.'}]}));criteria.push({criterion:'Leadership',status:'needs_verification',explanation:'Clarify team size.',citations:[]});
+ const{page,errors}=await setup(t,{data:{status:'ready',score:83.6,model:'openai/test',sourceWarnings:['Unreadable portfolio'],criteria}});
+ await page.getByText('84 / 100',{exact:true}).waitFor();await page.getByText('Requirement 5',{exact:true}).waitFor();await page.getByText('Evidence: Years of experience? Answer: 7',{exact:true}).waitFor();await page.getByText('Clarify team size.',{exact:true}).waitFor();await page.getByText('Some source material could not be fully read. Check the original résumé before deciding.',{exact:true}).waitFor();assert.equal(await page.locator('.hub-match-source-evidence,.hub-match-review-details').count(),0);assert.equal(await page.getByText('openai/test',{exact:false}).count(),0);assert.deepEqual(errors,[]);
 });
 
 test('pending, stale, failed and unreadable reviews never display misleading numeric scores',async t=>{
  for(const [status,label] of [['pending','Waiting for AI review'],['stale','Job changed · review needed'],['failed','AI review needs attention'],['needs_review','Needs manual review']]){
   const {page}=await setup(t,{data:{status,score:99,updatedAt:1,criteria:[],...(status==='failed'?{error:'Source extraction failed'}:{})}});
-  await page.getByText(label,{exact:true}).waitFor();await page.locator('.hub-match-review-details > summary').click();await page.getByText(/^Updated /).waitFor();assert.equal(await page.getByText('99 / 100',{exact:true}).count(),0);
+  await page.getByText(label,{exact:true}).waitFor();assert.equal(await page.locator('.hub-match-review-details').count(),0);assert.equal(await page.getByText('99 / 100',{exact:true}).count(),0);
   if(status==='failed'){assert.match(await page.getByRole('alert').textContent(),/administrator should inspect server logs/);assert.equal(await page.getByText('Source extraction failed',{exact:true}).count(),0);}
  }
 });
@@ -71,11 +67,11 @@ test('failed enable stays off and explains the error instead of claiming success
 
 test('AI sorting stays within its posting when filters are cleared',async t=>{
  const {page,queries}=await setup(t,{mode:'list',data:{jobId:job.id,version:1,enabled:false,status:'disabled',criteria:[]}});
- const order=page.getByLabel('Order',{exact:true});await order.waitFor();await order.selectOption('ai_match_desc');
+ await page.locator('.hub-advanced-filters > summary').click();const order=page.getByLabel('Order',{exact:true});await order.waitFor();await order.selectOption('ai_match_desc');
  await Promise.all([page.waitForResponse(r=>r.url().includes('sort=ai_match_desc')),page.getByRole('button',{name:'Apply filters',exact:true}).click()]);
  assert.equal(queries.at(-1).get('jobId'),job.id);assert.equal(queries.at(-1).get('sort'),'ai_match_desc');
  await page.getByText('80 / 100',{exact:true}).waitFor();
- await Promise.all([page.waitForResponse(r=>r.url().includes('/api/hub/applications?')&&!r.url().includes('sort=')),page.getByRole('button',{name:'Clear filters',exact:true}).click()]);assert.equal(queries.at(-1).has('sort'),false);assert.equal(queries.at(-1).get('jobId'),job.id);
+ await Promise.all([page.waitForResponse(r=>r.url().includes('/api/hub/applications?')&&r.url().includes('sort=screening_newest')),page.getByRole('button',{name:'Clear filters',exact:true}).click()]);assert.equal(queries.at(-1).get('sort'),'screening_newest');assert.equal(queries.at(-1).get('jobId'),job.id);
 });
 
 test('mobile AI evidence and consent remain within the viewport',async t=>{

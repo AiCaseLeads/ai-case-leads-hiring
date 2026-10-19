@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {createServer} from 'node:http';
-import {existsSync,readFileSync} from 'node:fs';
+import {existsSync,readFileSync,mkdirSync} from 'node:fs';
 import {build} from 'esbuild';
 import {chromium} from 'playwright';
 import postcss from 'postcss';
@@ -9,22 +9,22 @@ import tailwind from '@tailwindcss/postcss';
 
 const jobs=[{id:'job-one',title:'Engineer',slug:'engineer',status:'open',location:'Remote · USA',archiveProject:'Engineering',archiveCountry:'USA',hiringRound:'October',fields:[],rules:[]},{id:'job-two',title:'Creative Strategist',slug:'creative',status:'closed',location:'Remote · Spain',archiveProject:'Creative',archiveCountry:'Spain',hiringRound:'September',fields:[],rules:[]}];
 const applicant={id:'app-one',name:'Synthetic Applicant',email:'synthetic@example.invalid',jobId:'job-one',jobTitle:'Engineer',stage:'Application Review',qualification:'review',createdAt:1,revision:1,aiMatch:{status:'ready',score:90}};
-async function setup(t,{width=390,initialJobId='',initialFilter='',total=75,pageSize=50}={}){
+async function setup(t,{width=390,initialJobId='',initialFilter='',total=75,pageSize=50,expandControls=true}={}){
  const {outputFiles}=await build({stdin:{contents:`import React,{useState} from 'react';import{createRoot}from'react-dom/client';import{Candidates}from'./components/hub/candidates';function App(){const [query,setQuery]=useState(${JSON.stringify(initialFilter || (initialJobId?'jobId='+initialJobId:''))});const [page,setPage]=useState(1);const p=new URLSearchParams(query);return <Candidates key={p.get("jobId")||"jobs"} onFilterChange={(q,p)=>{setQuery(q);setPage(p)}} initialPage={page} jobs={${JSON.stringify(jobs)}} refresh={0} changed={()=>{}} reviewerEmail="reviewer@example.invalid" initialJobId={p.get("jobId")||""} initialFilter={query} />};createRoot(document.getElementById('root')).render(<App/>);`,loader:'tsx',resolveDir:process.cwd()},bundle:true,write:false,format:'iife',jsx:'automatic'});
  const css=(await postcss([tailwind()]).process(readFileSync('app/globals.css','utf8'),{from:'app/globals.css'})).css+'\n'+readFileSync('components/hub/hub.css','utf8')+'\n'+readFileSync('components/hub/applications.css','utf8');
  const server=createServer((req,res)=>{res.setHeader('Content-Type',req.url==='/bundle.js'?'text/javascript':'text/html');res.end(req.url==='/bundle.js'?outputFiles[0].text:`<meta name="viewport" content="width=device-width,initial-scale=1"><style>${css}</style><main class="hub-main"><div id="root"></div></main><script src="/bundle.js"></script>`);});await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
- const chrome='/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';const browser=await chromium.launch({headless:true,...(existsSync(chrome)?{executablePath:chrome}:{})});t.after(async()=>{await browser.close();await new Promise(resolve=>server.close(resolve));});
+ const chrome='/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';const browser=await chromium.launch({headless:true,...(existsSync(chrome)?{executablePath:chrome}:{})});t.after(async()=>{await browser.close();server.closeAllConnections();await new Promise(resolve=>server.close(resolve));});
  const page=await browser.newPage({viewport:{width,height:844}});page.setDefaultTimeout(5000);const requests=[],errors=[];page.on('pageerror',e=>errors.push(e.message));
  await page.route('**/api/**',route=>{const url=new URL(route.request().url());requests.push(url);let data={};if(url.pathname==='/api/hub/application-counts')data={items:[]};if(url.pathname==='/api/hub/applications')data={items:[{...applicant,id:Number(url.searchParams.get('page')||1)>1?'app-two':'app-one'}],total,page:Number(url.searchParams.get('page')||1),pageSize};if(url.pathname==='/api/ai/match')data={jobId:'job-one',enabled:false,available:true,status:'disabled',version:1,criteria:[]};return route.fulfill({json:{data}});});
- await page.goto(`http://127.0.0.1:${server.address().port}`);return{page,requests,errors};
+ await page.goto(`http://127.0.0.1:${server.address().port}`);if(initialJobId&&expandControls){await page.locator('.hub-download-menu > summary').click();await page.locator('.hub-advanced-filters > summary').click();}return{page,requests,errors};
 }
 
 test('Applications opens with jobs, not pooled candidates, and search includes closed postings',async t=>{
  const{page,requests,errors}=await setup(t);await page.getByRole('heading',{name:'Choose a job'}).waitFor();assert.equal(requests.filter(u=>u.pathname==='/api/hub/applications').length,0);assert.equal(await page.getByText(/Saved review queues/).count(),0);
- await page.getByLabel('Find a job').fill('Spain');assert.equal(await page.getByRole('button',{name:'View applications for Engineer'}).count(),0);await page.getByRole('button',{name:'View applications for Creative Strategist'}).waitFor();await page.getByLabel('Job status').selectOption('open');await page.getByText('No jobs found',{exact:true}).waitFor();assert.deepEqual(errors,[]);
+ await page.getByLabel('Find a job').fill('Spain');assert.equal(await page.getByRole('button',{name:'Engineer',exact:true}).count(),0);await page.getByRole('button',{name:'Creative Strategist',exact:true}).waitFor();await page.getByLabel('Job status').selectOption('open');await page.getByText('No jobs found',{exact:true}).waitFor();assert.deepEqual(errors,[]);
 });
 test('Top 10 stays within one job and returning to jobs removes candidate table',async t=>{
- const{page,requests}=await setup(t);await page.getByRole('button',{name:'View applications for Engineer'}).click();await page.getByRole('button',{name:'Synthetic Applicant',exact:true}).waitFor();
+ const{page,requests}=await setup(t);await page.getByRole('button',{name:'Engineer',exact:true}).click();await page.getByRole('button',{name:'Synthetic Applicant',exact:true}).waitFor();
  await page.getByRole('button',{name:'Top 10 AI matches',exact:true}).click();await page.getByRole('button',{name:'Show all applicants',exact:true}).waitFor();const query=requests.filter(u=>u.pathname==='/api/hub/applications').at(-1).searchParams;assert.equal(query.get('jobId'),'job-one');assert.equal(query.get('top'),'10');assert.equal(query.get('sort'),'ai_match_desc');
  await page.getByRole('button',{name:'All jobs',exact:true}).click();await page.getByRole('heading',{name:'Choose a job'}).waitFor();assert.equal(await page.getByRole('table',{name:'Applications',exact:true}).count(),0);
 });
@@ -35,15 +35,15 @@ test('downloads include full filtered scope, selected IDs or all-job scope witho
  await page.getByLabel('Download scope').selectOption('all');await page.getByRole('button',{name:'Download applications (ZIP)',exact:true}).click();await page.getByText('Application files download started. Check your browser’s downloads for completion and the included PDF export report for unavailable files.',{exact:true}).waitFor();assert.equal(exports[2].get('jobId'),'job-one');assert.equal(exports[2].has('top'),false);assert.equal(exports[2].has('ids'),false);
 });
 test('job chooser and applicant actions fit mobile and desktop',async t=>{
- for(const width of[320,390,768,1280,1728]){const{page}=await setup(t,{width});await page.getByRole('heading',{name:'Choose a job'}).waitFor();assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),true,JSON.stringify(await page.evaluate(()=>Array.from(document.querySelectorAll('*')).filter(e=>e.getBoundingClientRect().right>innerWidth+1).slice(0,10).map(e=>[e.tagName,e.className,e.getBoundingClientRect().width]))));await page.getByRole('button',{name:'View applications for Engineer'}).click();await page.getByRole('button',{name:'Synthetic Applicant',exact:true}).waitFor();assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),true,JSON.stringify(await page.evaluate(()=>Array.from(document.querySelectorAll('*')).filter(e=>e.getBoundingClientRect().right>innerWidth+1).slice(0,10).map(e=>[e.tagName,e.className,e.getBoundingClientRect().width]))));}
+ for(const width of[320,390,768,1280,1728]){const{page}=await setup(t,{width});await page.getByRole('heading',{name:'Choose a job'}).waitFor();assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),true,JSON.stringify(await page.evaluate(()=>Array.from(document.querySelectorAll('*')).filter(e=>e.getBoundingClientRect().right>innerWidth+1).slice(0,10).map(e=>[e.tagName,e.className,e.getBoundingClientRect().width]))));await page.getByRole('button',{name:'Engineer',exact:true}).click();await page.getByRole('button',{name:'Synthetic Applicant',exact:true}).waitFor();assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),true,JSON.stringify(await page.evaluate(()=>Array.from(document.querySelectorAll('*')).filter(e=>e.getBoundingClientRect().right>innerWidth+1).slice(0,10).map(e=>[e.tagName,e.className,e.getBoundingClientRect().width]))));}
 });
 
 test('job cards expose direct scoped downloads and page selection has an accessible checkbox',async t=>{
  const {page}=await setup(t,{width:1280});const exports=[];
  await page.route('**/api/hub/applications-export?*',route=>{const u=new URL(route.request().url());if(u.searchParams.has('check'))exports.push(u.searchParams);return route.fulfill(u.searchParams.has('check')?{json:{count:75}}:{headers:{'Content-Disposition':'attachment; filename=applications.zip'},body:'test'});});
- await page.getByRole('button',{name:'Download all applications ZIP for Engineer',exact:true}).click();await page.getByText(/Engineer: download started/).waitFor();assert.equal(exports[0].get('jobId'),'job-one');assert.equal(exports[0].get('format'),'zip');assert.equal(exports[0].has('page'),false);
- await page.getByRole('button',{name:'View applications for Engineer',exact:true}).click();await page.getByLabel('Select all applicants on this page',{exact:true}).check();assert.equal(await page.getByLabel('Select Synthetic Applicant',{exact:true}).isChecked(),true);
- await page.getByRole('button',{name:'Select all matching for download (75)',exact:true}).click();assert.equal(await page.getByLabel('Download scope').inputValue(),'filtered');assert.equal(await page.getByLabel('Select Synthetic Applicant',{exact:true}).isChecked(),true);await page.getByText(/75 matching applicants across all pages/).waitFor();
+ await page.getByLabel('Manage applicants for Engineer',{exact:true}).click();await page.locator('.hub-job-menu[open]').getByRole('button',{name:'Download all applications ZIP',exact:true}).click();await page.getByText(/Engineer: download started/).waitFor();assert.equal(exports[0].get('jobId'),'job-one');assert.equal(exports[0].get('format'),'zip');assert.equal(exports[0].has('page'),false);
+ await page.getByRole('button',{name:'Engineer',exact:true}).click();await page.getByLabel('Select all applicants on this page',{exact:true}).check();assert.equal(await page.getByLabel('Select Synthetic Applicant',{exact:true}).isChecked(),true);
+ await page.locator('.hub-download-menu > summary').click();await page.getByRole('button',{name:'Select all matching for download (75)',exact:true}).click();assert.equal(await page.getByLabel('Download scope').inputValue(),'filtered');assert.equal(await page.getByLabel('Select Synthetic Applicant',{exact:true}).isChecked(),true);await page.getByText(/75 matching applicants across all pages/).waitFor();
 });
 
 test('download controls align and wrap with production CSS at every supported width',async t=>{
@@ -103,4 +103,19 @@ test('switching away from AI order exits Top 10 before applying filters',async t
   const query=requests.filter(url=>url.pathname==='/api/hub/applications').at(-1).searchParams;assert.equal(query.get('sort'),sort);assert.equal(query.has('top'),false);
   if(sort==='newest'){await page.getByRole('button',{name:'Top 10 AI matches',exact:true}).click();await page.getByRole('button',{name:'Show all applicants',exact:true}).waitFor();}
  }
+});
+
+
+test('compact controls and sortable headings preserve all-page filter/export scope',async t=>{
+ const{page,requests}=await setup(t,{width:1280,initialJobId:'job-one',initialFilter:'jobId=job-one&qualification=pass&appliedFrom=2026-10-15&appliedTo=2026-10-18&timeZone=America%2FBogota',expandControls:false});
+ await page.getByRole('button',{name:'Synthetic Applicant',exact:true}).waitFor();assert.equal(await page.getByLabel('Download scope').isVisible(),false);assert.equal(await page.getByLabel('Applied from',{exact:true}).isVisible(),false);
+ for(const [column,sort] of [['Owner','owner_asc'],['Owner','owner_desc'],['Applied','newest'],['Applied','oldest'],['Screening','screening_asc'],['Screening','screening_desc'],['AI job match','ai_match_desc'],['AI job match','ai_match_asc']]){
+  const button=page.getByRole('columnheader').getByRole('button',{name:column,exact:true});await button.focus();await Promise.all([page.waitForResponse(r=>r.url().includes('/api/hub/applications?')&&new URL(r.url()).searchParams.get('sort')===sort),page.keyboard.press('Enter')]);
+  const q=requests.filter(u=>u.pathname==='/api/hub/applications').at(-1).searchParams;assert.equal(q.get('sort'),sort);assert.equal(q.get('qualification'),'pass');assert.equal(q.get('appliedFrom'),'2026-10-15');assert.equal(q.get('appliedTo'),'2026-10-18');assert.equal(q.get('timeZone'),'America/Bogota');assert.equal(q.get('page'),'1');
+ }
+ await page.locator('.hub-download-menu > summary').focus();await page.keyboard.press('Enter');assert.equal(await page.getByLabel('Download scope').isVisible(),true);assert.equal(await page.getByLabel('Download scope').inputValue(),'filtered');
+});
+
+for(const width of [320,390,1280])test(`column screening filter and compact list fit ${width}px`,async t=>{
+ const{page,requests}=await setup(t,{width,initialJobId:'job-one',expandControls:false});await page.getByRole('button',{name:'Synthetic Applicant',exact:true}).waitFor();if(width<768){await page.getByLabel('Screening',{exact:true}).selectOption('pass');await page.getByRole('button',{name:'Apply filters',exact:true}).click();assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),true);mkdirSync('/tmp/applicants-simplify-audit',{recursive:true});await page.screenshot({path:`/tmp/applicants-simplify-audit/list-${width}.png`});return;}const trigger=page.getByLabel('Filter Screening',{exact:true});await trigger.focus();await page.keyboard.press('Enter');const menu=page.locator('.hub-job-menu[open] .hub-job-menu-items');await menu.waitFor();const box=await menu.boundingBox();assert.ok(box.x>=0&&box.x+box.width<=width+1);await Promise.all([page.waitForResponse(r=>r.url().includes('/api/hub/applications?')&&new URL(r.url()).searchParams.get('qualification')==='pass'),page.getByLabel('Filter screening result',{exact:true}).selectOption('pass')]);assert.equal(requests.filter(u=>u.pathname==='/api/hub/applications').at(-1).searchParams.get('qualification'),'pass');await page.keyboard.press('Escape');assert.equal(await menu.isVisible(),false);assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),true);mkdirSync('/tmp/applicants-simplify-audit',{recursive:true});await page.screenshot({path:`/tmp/applicants-simplify-audit/list-${width}.png`});
 });
