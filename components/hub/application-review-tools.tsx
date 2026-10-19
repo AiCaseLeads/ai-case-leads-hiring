@@ -1,6 +1,7 @@
 "use client";
 /* eslint-disable @next/next/no-img-element -- Authenticated résumé images must load directly without an image proxy. */
 import { useEffect, useRef, useState } from "react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import { PdfPreview } from "./pdf-preview";
 import { hubRequest, useHubResource } from "./api";
 import type { ApplicationDetail, HubJob } from "./types";
@@ -22,11 +23,11 @@ export function ApplicantNavigation({detail,filter,jobs,open,viewed}:{detail:App
   }
   useEffect(()=>{if(started.current || detail.viewedAt)return;started.current=true;void markViewed();},[detail.id,detail.viewedAt]); // eslint-disable-line react-hooks/exhaustive-deps
   return <div className="hub-review-navigation">
-    <div className="hub-button-row" aria-label="Browse matching applicants">
-      <button type="button" className="hub-button secondary" disabled={neighbors.loading || !neighbors.data?.previousId} onClick={()=>neighbors.data?.previousId && open(neighbors.data.previousId,query)}>Previous applicant</button>
-      <span role="status">{neighbors.loading?"Finding applicant position…":neighbors.data?`Applicant ${neighbors.data.position} of ${neighbors.data.total} matching results`:"Applicant order unavailable"}</span>
-      <button type="button" className="hub-button secondary" disabled={neighbors.loading || !neighbors.data?.nextId} onClick={()=>neighbors.data?.nextId && open(neighbors.data.nextId,query)}>Next applicant</button>
-      <span className="hub-muted">{marked?"Viewed by you":"New to you"}</span>
+    <div className="hub-applicant-pager" aria-label="Browse matching applicants">
+      <button type="button" className="hub-icon-button" aria-label="Previous applicant" title="Previous applicant" disabled={neighbors.loading || !neighbors.data?.previousId} onClick={()=>neighbors.data?.previousId && open(neighbors.data.previousId,query)}><ChevronLeft size={18} aria-hidden="true"/></button>
+      <span role="status" className="hub-applicant-position" title="Position in your current filtered list">{neighbors.loading?"Loading…":neighbors.data?`${neighbors.data.position} of ${neighbors.data.total}`:"Order unavailable"}</span>
+      <button type="button" className="hub-icon-button" aria-label="Next applicant" title="Next applicant" disabled={neighbors.loading || !neighbors.data?.nextId} onClick={()=>neighbors.data?.nextId && open(neighbors.data.nextId,query)}><ChevronRight size={18} aria-hidden="true"/></button>
+      <span className="hub-applicant-viewed" title={marked?"Viewed by you":"No recorded view by you yet"}>{marked?"Viewed":"New to you"}</span>
     </div>
     {neighbors.error && <p className="hub-muted">The matching list may have changed. Return to applications to refresh your filters.</p>}
     {viewError && <p role="status">{viewError} <button type="button" className="hub-text-button" onClick={()=>void markViewed()}>Retry viewed status</button></p>}

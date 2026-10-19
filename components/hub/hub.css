@@ -1825,3 +1825,28 @@ body:has(.hiring-hub .hub-draft-overlay) { overflow: hidden; }
 @media(max-width:900px) { .hub-country-options { grid-template-columns:repeat(2,minmax(0,1fr)); } }
 @media(max-width:640px) { .hub-country-controls { grid-template-columns:minmax(0,1fr); gap:4px; } .hub-country-region-options { grid-template-columns:repeat(2,minmax(0,1fr)); } .hub-country-options { grid-template-columns:minmax(0,1fr); } .hub-country-screening .hub-country-list { max-height:240px; } }
 @media(max-width:640px), (pointer:coarse) { .hub-country-screening .hub-checkbox { min-height:44px; font-size:13px; } }
+
+/* Applicant identity and actions stay compact without changing record workflows. */
+.hub-applicant-profile .hub-profile-topbar { display:flex; justify-content:space-between; align-items:center; gap:8px 16px; flex-wrap:wrap; margin-bottom:12px; }
+.hub-applicant-profile .hub-profile-topbar > .hub-back { margin:0; min-height:44px; font-size:13px; }
+.hub-applicant-profile .hub-review-navigation { margin:0 0 0 auto; min-width:0; }
+.hub-applicant-pager { display:flex; align-items:center; justify-content:flex-end; flex-wrap:wrap; gap:4px; }
+.hub-applicant-pager .hub-icon-button { width:44px; height:44px; min-height:44px; padding:8px; }
+.hub-applicant-position { font-size:12px; font-variant-numeric:tabular-nums; white-space:nowrap; padding:0 4px; }
+.hub-applicant-viewed { color:#536f76; font-size:12px; padding-left:8px; }
+.hub-applicant-profile .hub-review-navigation > p { font-size:12px; margin:4px 0; max-width:420px; }
+.hub-applicant-profile .hub-profile-header { margin:0 0 16px; padding:0 0 12px; border-bottom:1px solid #dce7e4; }
+.hub-profile-name-row { display:flex; flex-wrap:wrap; align-items:center; gap:8px 14px; }
+.hub-applicant-profile .hub-profile-name-row h2 { margin:0; font-size:24px; line-height:1.25; overflow-wrap:anywhere; }
+.hub-profile-name-row .hub-status-line { gap:6px; justify-content:flex-start; }
+.hub-applicant-profile .hub-profile-job { font-size:13px; font-weight:500; margin:5px 0; color:#536f76; overflow-wrap:anywhere; }
+.hub-applicant-profile .hub-profile-contact { display:flex; flex-wrap:wrap; gap:4px 16px; font-size:12px; line-height:1.5; margin:0; color:#536f76; }
+.hub-profile-contact > * { min-width:0; overflow-wrap:anywhere; }
+.hub-applicant-profile .hub-candidate-quick-actions { margin:12px 0 0; gap:8px; }
+.hub-applicant-profile .hub-candidate-quick-actions > .hub-button { flex:0 1 auto; min-height:44px; padding:8px 12px; font-size:13px; }
+.hub-applicant-profile .hub-candidate-quick-actions > .hub-job-menu { flex:0 0 auto; margin:0; }
+.hub-applicant-profile .hub-job-menu > summary { min-height:44px; padding:8px 10px; }
+.hub-applicant-profile .hub-profile-tabs { display:flex; flex-wrap:wrap; align-items:center; gap:0 16px; border-bottom:1px solid #dce7e4; margin-bottom:14px; }
+.hub-applicant-profile .hub-profile-tabs > button { flex:0 1 auto; min-height:44px; padding:8px 0; font-size:13px; border:0; border-bottom:2px solid transparent; border-radius:0; background:transparent; color:#536f76; box-shadow:none; }
+.hub-applicant-profile .hub-profile-tabs > button[aria-selected=true] { color:#173e44; border-bottom-color:#277960; }
+@media(max-width:640px) { .hub-applicant-profile .hub-profile-topbar { gap:0 8px; margin-bottom:8px; } .hub-applicant-profile .hub-profile-name-row h2 { font-size:22px; } .hub-applicant-profile .hub-profile-tabs { column-gap:12px; } .hub-applicant-profile .hub-profile-tabs > button { font-size:12px; } }

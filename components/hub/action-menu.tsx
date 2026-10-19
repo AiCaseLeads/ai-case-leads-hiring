@@ -3,7 +3,7 @@ import { useEffect, useRef } from "react";
 import { ChevronDown } from "lucide-react";
 
 /** Keep row actions inside the viewport, including the final row on the page. */
-export function JobActionMenu({ label, children }: { label: string; children: React.ReactNode }) {
+export function JobActionMenu({ label, children, triggerLabel="Actions" }: { label: string; children: React.ReactNode; triggerLabel?:string }) {
   const details = useRef<HTMLDetailsElement>(null);
   function position() {
     const element = details.current;
@@ -51,7 +51,7 @@ export function JobActionMenu({ label, children }: { label: string; children: Re
       const element = details.current!;
       element.open = !element.open;
       position();
-    }}>Actions <ChevronDown size={14} /></summary>
+    }}>{triggerLabel} <ChevronDown size={14} /></summary>
     <div className="hub-job-menu-items" onClick={event => {
       // Every current item invokes one action; close it before navigation/dialogs.
       if ((event.target as Element).closest("button:not(:disabled),a")) details.current!.open = false;

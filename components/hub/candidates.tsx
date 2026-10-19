@@ -1,4 +1,5 @@
 "use client";
+import { JobActionMenu } from "./action-menu";
 import { ApplicantNavigation, ResumePreview, resumeFile } from "./application-review-tools";
 import { requestDraftNavigation } from "./draft-navigation";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
@@ -760,11 +761,12 @@ export function CandidateDetail({
   }
   const detail = resource.data;
   return (
-    <section aria-labelledby="candidate-title">
+    <section className="hub-applicant-profile" aria-labelledby="candidate-title">
       {leaveRequest && <div className="hub-card" role="alertdialog" ref={leaveDialog} tabIndex={-1} aria-labelledby="leave-applicant-title"><h3 id="leave-applicant-title">Leave this applicant without saving?</h3><p>Your unsaved note or action will be discarded. Leaving does not send a new message. Check Activity for any email already pending.</p><div className="hub-button-row"><button type="button" className="hub-button" onClick={()=>{setLeaveRequest(null);leaveOrigin.current?.focus();}}>Keep editing</button><button type="button" className="hub-button secondary" onClick={()=>{const leave=leaveRequest;dirtyRef.current=false;setLeaveRequest(null);leave();}}>Discard changes and leave</button></div></div>}
-      <button className="hub-text-button hub-back" onClick={()=>requestDraftNavigation(back)}>
-        <ArrowLeft size={16} /> Back to applications
-      </button>
+      <div className="hub-profile-topbar">
+        <button className="hub-text-button hub-back" onClick={()=>requestDraftNavigation(back)}><ArrowLeft size={16}/> Back to applications</button>
+        {detail && !resource.loading && openApplicant && <ApplicantNavigation detail={detail} filter={navigationFilter} jobs={navigationJobs} open={(id,filter)=>requestDraftNavigation(()=>openApplicant(id,filter,section))} viewed={changed}/>}
+      </div>
       <ResourceState
         loading={resource.loading}
         error={resource.error}
@@ -772,34 +774,25 @@ export function CandidateDetail({
       />
       {detail && !resource.loading && (
         <>
-          {openApplicant && <ApplicantNavigation detail={detail} filter={navigationFilter} jobs={navigationJobs} open={(id,filter)=>requestDraftNavigation(()=>openApplicant(id,filter,section))} viewed={changed}/>}
-          <div className="hub-section-heading">
-            <div>
-              <p className="hub-kicker">{detail.jobTitle}</p>
-              <h2 id="candidate-title">{detail.name || "Unnamed applicant"}</h2>
-              <p>
-                <a href={"mailto:" + detail.email}>{detail.email}</a> · Applied{" "}
-                {displayDate(detail.createdAt)}
-              </p>
+          <header className="hub-profile-header">
+            <div className="hub-profile-identity">
+              <div className="hub-profile-name-row"><h2 id="candidate-title">{detail.name||"Unnamed applicant"}</h2><div className="hub-status-line"><Badge>{detail.trashed?"In Trash":stageLabel(detail.stage)}</Badge><Badge tone={qualificationTone(detail.qualification)}>{qualificationLabel(detail.qualification,detail.qualificationEvidence.length>0)}</Badge>{detail.duplicateEmail && <Badge tone="warning">{detail.duplicateApplicationCount} applications share this email</Badge>}</div></div>
+              <p className="hub-profile-job">{detail.jobTitle}</p>
+              <p className="hub-profile-contact"><a href={"mailto:"+detail.email}>{detail.email}</a><span>Applied {displayDate(detail.createdAt)}</span><span>Assigned to {detail.assignee||"no recruiter"}</span></p>
             </div>
-            <div className="hub-status-line">
-              <button type="button" className="hub-button secondary" onClick={() => void resource.reload()}>Refresh application</button>
-              <button type="button" className="hub-button secondary" disabled={pdfBusy} onClick={() => void exportPdf()}><Download size={16} /> {pdfBusy?"Preparing PDF…":"Download application PDF"}</button>
-              <Badge>{detail.trashed?"In Trash":stageLabel(detail.stage)}</Badge>
-              <Badge tone={qualificationTone(detail.qualification)}>
-                {qualificationLabel(detail.qualification, detail.qualificationEvidence.length > 0)}
-              </Badge>
-              {detail.duplicateEmail && <Badge tone="warning">{detail.duplicateApplicationCount} applications share this email</Badge>}
+            <div className="hub-candidate-quick-actions" aria-label="Applicant actions">
+              {!detail.trashed && detail.stage==="Application Review" && <button type="button" className="hub-button" disabled={mutation.busy} onClick={()=>void shortlist()}>Shortlist</button>}
+              {!detail.trashed && !["Rejected","Withdrawn","Hired"].includes(detail.stage) && <button type="button" className="hub-button secondary" disabled={mutation.busy} onClick={()=>{setAction("interview");setActionOpen(true);mutation.clear();}}>Request interview</button>}
+              {resumeFile(detail) && <button type="button" className="hub-button secondary" onClick={()=>{setSection("application");setResumeRequest(value=>value+1);}}>View résumé</button>}
+              {detail.trashed && <button type="button" className="hub-button secondary" disabled={mutation.busy} onClick={()=>void lifecycle("restore")}>Restore application</button>}
+              <JobActionMenu label="More applicant actions" triggerLabel="More">
+                {!detail.trashed && <button type="button" onClick={()=>{setAction("note");setActionOpen(true);mutation.clear();}}>Add note</button>}
+                <button type="button" disabled={pdfBusy} onClick={()=>void exportPdf()}><Download size={16}/>{pdfBusy?"Preparing PDF…":"Download application PDF"}</button>
+                <button type="button" onClick={()=>void resource.reload()}>Refresh application</button>
+                {!detail.trashed && <button type="button" disabled={mutation.busy} onClick={()=>setDeleteOpen(true)}>Delete application</button>}
+              </JobActionMenu>
             </div>
-          </div>
-          <div className="hub-candidate-quick-actions">
-            {resumeFile(detail) && <button type="button" className="hub-button secondary" onClick={()=>{setSection("application");setResumeRequest(value=>value+1);}}>View résumé</button>}
-            {!detail.trashed && detail.stage === "Application Review" && <button type="button" className="hub-button" disabled={mutation.busy} onClick={()=>void shortlist()}>Shortlist</button>}
-            {!detail.trashed && !["Rejected", "Withdrawn", "Hired"].includes(detail.stage) && <button type="button" className="hub-button secondary" disabled={mutation.busy} onClick={()=>{setAction("interview");setActionOpen(true);mutation.clear();}}>Request interview</button>}
-            {!detail.trashed && <button type="button" className="hub-text-button" onClick={()=>{setAction("note");setActionOpen(true);mutation.clear();}}>Add note</button>}
-            {detail.trashed?<button type="button" className="hub-button secondary" disabled={mutation.busy} onClick={()=>void lifecycle("restore")}>Restore application</button>:<button type="button" className="hub-text-button" disabled={mutation.busy} onClick={()=>setDeleteOpen(true)}>Delete application</button>}
-            <span className="hub-muted">Assigned to {detail.assignee || "no recruiter"}</span>
-          </div>
+          </header>
           <Feedback error={mutation.error||pdfError} success={mutation.success}/>
           {detail.trashed && <p className="hub-muted">This application is in Trash. Its files and history are retained. Restore it before taking recruiting actions.</p>}
           {deleteOpen && <div className="hub-card" role="alertdialog" aria-labelledby="delete-application-title"><h3 id="delete-application-title">Move this application to Trash?</h3><p>It will leave your recruiting queues. Files and history stay saved, and you can restore it from this job’s Trash tab. Unsent emails and active booking links will be cancelled.</p><div className="hub-button-row"><button className="hub-button secondary" type="button" disabled={mutation.busy} onClick={()=>setDeleteOpen(false)}>Keep application</button><button className="hub-button" type="button" disabled={mutation.busy} onClick={()=>void lifecycle("trash")}>Move to Trash</button></div></div>}
@@ -998,7 +991,7 @@ export function CandidateDetail({
               </details>
             </aside>}
             <div className="hub-detail-main">
-              <div ref={recordTabs} className="hub-button-row" role="tablist" aria-label="Applicant record">{([{id:"application",label:"Application & files"},{id:"review",label:"AI review & notes"},{id:"activity",label:"Activity & messages"}] as const).map(tab=><button key={tab.id} type="button" role="tab" id={`candidate-tab-${tab.id}`} aria-selected={section===tab.id} tabIndex={section===tab.id?0:-1} onKeyDown={event=>{const ids=["application","review","activity"] as const;const index=ids.indexOf(section);const next=event.key==="ArrowRight"?ids[(index+1)%3]:event.key==="ArrowLeft"?ids[(index+2)%3]:event.key==="Home"?ids[0]:event.key==="End"?ids[2]:null;if(next){event.preventDefault();setSection(next);document.getElementById(`candidate-tab-${next}`)?.focus({preventScroll:true});}}} aria-controls={`candidate-panel-${tab.id}`} className={"hub-button " + (section===tab.id ? "" : "secondary")} onClick={()=>setSection(tab.id)}>{tab.label}</button>)}</div>
+              <div ref={recordTabs} className="hub-button-row hub-profile-tabs" role="tablist" aria-label="Applicant record">{([{id:"application",label:"Application & files"},{id:"review",label:"AI review & notes"},{id:"activity",label:"Activity & messages"}] as const).map(tab=><button key={tab.id} type="button" role="tab" id={`candidate-tab-${tab.id}`} aria-selected={section===tab.id} tabIndex={section===tab.id?0:-1} onKeyDown={event=>{const ids=["application","review","activity"] as const;const index=ids.indexOf(section);const next=event.key==="ArrowRight"?ids[(index+1)%3]:event.key==="ArrowLeft"?ids[(index+2)%3]:event.key==="Home"?ids[0]:event.key==="End"?ids[2]:null;if(next){event.preventDefault();setSection(next);document.getElementById(`candidate-tab-${next}`)?.focus({preventScroll:true});}}} aria-controls={`candidate-panel-${tab.id}`} className={"hub-button " + (section===tab.id ? "" : "secondary")} onClick={()=>setSection(tab.id)}>{tab.label}</button>)}</div>
               <div role="tabpanel" id="candidate-panel-review" aria-labelledby="candidate-tab-review" hidden={section!=="review"}>
               {section === "review" && <CandidateMatch applicationId={detail.id}/>}
               <section className="hub-card hub-candidate-notes"><div className="hub-section-heading compact"><h3>Recruiter notes</h3><button type="button" className="hub-text-button" onClick={()=>{setAction("note");setActionOpen(true);}}>Add note</button></div>{detail.notes.length ? detail.notes.slice(0,5).map(note=><article className="hub-history-item" key={note.id}><strong>{note.actor}</strong>{note.text.length>500 ? <details><summary>Read note · {displayDate(note.createdAt)}</summary><p className="hub-preserve">{note.text}</p></details> : <><p className="hub-preserve">{note.text}</p><small>{displayDate(note.createdAt)}</small></>}</article>) : <p className="hub-muted">No notes yet.</p>}</section>
