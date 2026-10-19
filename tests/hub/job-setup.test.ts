@@ -344,12 +344,12 @@ test("job setup exposes the effective rejection default only to authorized staff
   const { store } = createStore();
   const { DEFAULT_REJECTION } = await import("../../lib/hiring/email-templates");
   const get = () => handleJobSetup(request("GET"), RECRUITER, store);
-  assert.equal((await (await get()).json()).data.defaultRejectionTemplate, DEFAULT_REJECTION);
+  assert.equal(((await (await get()).json()) as { data: SetupCatalog }).data.defaultRejectionTemplate, DEFAULT_REJECTION);
   const custom = "Hello {{name}}, thank you for applying to {{jobTitle}}. We will not move forward.";
   await store.setSetting("rejection_template", custom);
-  assert.equal((await (await get()).json()).data.defaultRejectionTemplate, custom);
+  assert.equal(((await (await get()).json()) as { data: SetupCatalog }).data.defaultRejectionTemplate, custom);
   assert.equal((await handleJobSetup(request("GET"), null, store)).status, 403);
   await store.setSetting("rejection_template", "   ");
-  assert.equal((await (await get()).json()).data.defaultRejectionTemplate, DEFAULT_REJECTION);
+  assert.equal(((await (await get()).json()) as { data: SetupCatalog }).data.defaultRejectionTemplate, DEFAULT_REJECTION);
   assert.equal((await store.rows("SELECT * FROM hub_tasks")).length, 0);
 });
