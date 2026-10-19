@@ -1701,7 +1701,7 @@ function QuestionScreening({
             }
             hint={
               numeric
-                ? "Enter the minimum, for example 7 or 30,000. Lower answers do not qualify."
+                ? "Enter the minimum accepted value. Lower answers do not qualify."
                 : "Applicants must choose this answer to qualify."
             }
           >
