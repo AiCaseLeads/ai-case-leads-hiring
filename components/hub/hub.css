@@ -1784,3 +1784,20 @@ body:has(.hiring-hub .hub-draft-overlay) { overflow: hidden; }
 .hub-publish-question-list li { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; padding:8px 0; }
 .hub-publish-question-list li > span:first-child { overflow-wrap:anywhere; min-width:0; }
 @media(max-width:400px) { .hub-publish-facts { gap:12px; } }
+
+/* Compact question rows; editing one never unmounts another question's draft. */
+.hub-main .hub-editor-list > .hub-question { padding:8px 12px; }
+.hub-main .hub-question-row-heading { display:flex; align-items:center; gap:8px; margin:0; min-width:0; }
+.hub-question-edit-toggle { display:flex; align-items:center; justify-content:space-between; gap:12px; min-width:0; min-height:44px; flex:1; border:0; background:transparent; color:inherit; padding:0; text-align:left; cursor:pointer; }
+.hub-question-edit-toggle:focus-visible { outline:2px solid #27816e; outline-offset:4px; border-radius:4px; }
+.hub-question-row-title { display:flex; flex-direction:column; min-width:0; flex:1; gap:2px; }
+.hub-question-row-title strong { font-size:14px; font-weight:600; overflow-wrap:anywhere; line-height:1.35; }
+.hub-question-row-meta { font-size:12px; font-weight:400; color:#536f76; line-height:1.35; overflow-wrap:anywhere; }
+.hub-question-edit-label { font-size:13px; color:#236d5e; flex-shrink:0; }
+.hub-question-row-actions { display:flex; gap:4px; flex-shrink:0; }
+.hub-question-row-heading .hub-icon-button { width:44px; height:44px; min-height:44px; flex-shrink:0; }
+.hub-question-editor { padding-top:14px; border-top:1px solid #dce7e4; margin-top:8px; }
+.hub-question-editor[hidden], .hub-question-row-actions[hidden] { display:none !important; }
+.hub-main .hub-required-contacts { padding:10px 12px; display:flex; flex-wrap:wrap; align-items:center; gap:4px 12px; }
+.hub-main .hub-question-order-help { margin:10px 0; font-size:12px; }
+@media(max-width:600px) { .hub-question-row-heading { flex-wrap:wrap; } .hub-question-edit-toggle { flex-basis:calc(100% - 52px); } .hub-question-row-actions:not([hidden]) { margin-left:auto; } .hub-main .hub-editor-list > .hub-question { padding:8px; } }

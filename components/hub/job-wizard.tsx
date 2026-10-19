@@ -1,5 +1,6 @@
 "use client";
 import { countries, countryResidenceField, isCountryResidence, residencePath } from "@/lib/countries";
+import { screeningValue, summarizeCountries } from "@/lib/job-setup/screening-summary";
 import { CountryScreening } from "./country-screening";
 import { ScreeningSummary } from "./screening-summary";
 import { contactPaths, withRequiredContacts } from "@/lib/hiring/contact-fields";
@@ -441,6 +442,13 @@ export function JobWizard({
   );
 }
 
+function questionRuleSummary(field:ApplicationField,rules:Rule[]) {
+  const enabled=rules.filter(rule=>rule.fieldPath===field.path && rule.enabled);const rule=enabled[0];if(!rule)return "";
+  const value=Array.isArray(rule.value)?(isCountryResidence(field)?summarizeCountries(rule.value).label:rule.value.map(value=>screeningValue(value,field)).join(", ")):screeningValue(rule.value,field);
+  const labels:Record<string,string>={gte:"Minimum",lte:"Maximum",equals:"Must answer",not_equals:"Must not answer",contains:"Includes",in:"Only",not_in:"Excludes"};
+  return `${labels[rule.operator]||"Requirement"} ${value || "not set"}${enabled.length>1?` · +${enabled.length-1} rules`:""}`;
+}
+
 const questionCollision: CollisionDetection = args => args.pointerCoordinates ? pointerWithin(args) : closestCenter(args);
 // Keyboard coordinates include scroll compensation; only constrain pointer movement.
 const verticalQuestionDrag: Modifier = ({ transform, activatorEvent }) => activatorEvent?.type === "keydown" ? transform : ({ ...transform, x: 0 });
@@ -535,6 +543,9 @@ function Editor({
       !scorecards.archived.includes(originalBinding.templateId)) ||
     (job && originalBinding);
   const saveFeedback = useRef<HTMLDivElement>(null);
+  const [expandedQuestion,setExpandedQuestion]=useState<string|null>(null);
+  const [invalidInstructions,setInvalidInstructions]=useState<string|null>(null);
+  const [showAdvancedRules,setShowAdvancedRules]=useState(false);
   const [step, setStep] = useState(0),
     [title, setTitle] = useState(source?.title || request?.title || ""),
     [description, setDescription] = useState(
@@ -708,17 +719,19 @@ function Editor({
     setStep(next);
   }
   function validateNumericScreening() {
-    const incomplete = rules.some(
+    const incomplete = rules.find(
       (r) =>
         ["Number", "Score"].includes(
           fields.find((f) => f.path === r.fieldPath)?.type || "",
         ) &&
         (typeof r.value !== "number" || !Number.isFinite(r.value) || (fields.find(f=>f.path===r.fieldPath)?.numberFormat === "currency" && typeof parseFormattedNumber(String(r.value),true)!=="number")),
     );
-    if (incomplete)
+    if (incomplete){
+      setExpandedQuestion(incomplete.fieldPath);setShowAdvancedRules(true);
       setError(
         "Enter a number for every numeric screening rule, or remove the unfinished rule in Advanced rules.",
       );
+    }
     return !incomplete;
   }
   useEffect(()=>{if(error || mutation.error){saveFeedback.current?.focus();saveFeedback.current?.scrollIntoView({block:"center",behavior:"instant"});}},[error,mutation.error]);
@@ -741,7 +754,10 @@ function Editor({
       return false;
     }
     if (section === 1) {
-      if(rules.some(rule=>rule.enabled && ["in","not_in"].includes(rule.operator) && (!Array.isArray(rule.value) || !rule.value.length))){setError("Select at least one country for each country screening rule, or choose Any country.");return false;}
+      const invalidCountry=rules.find(rule=>rule.enabled && ["in","not_in"].includes(rule.operator) && (!Array.isArray(rule.value) || !rule.value.length));
+      if(invalidCountry){setExpandedQuestion(invalidCountry.fieldPath);setError("Select at least one country for each country screening rule, or choose Any country.");return false;}
+      const longInstructions=fields.find(field=>(field.description?.length||0)>2000);
+      if(longInstructions){setExpandedQuestion(longInstructions.path);setInvalidInstructions(longInstructions.path);setError("Keep question instructions within 2,000 characters.");return false;}
       if (!validateNumericScreening()) return false;
       const invalid = fields.find(
         (f) =>
@@ -750,12 +766,14 @@ function Editor({
             !f.options?.length),
       );
       if (invalid) {
+        setExpandedQuestion(invalid.path);
         setError(
           "Give each question a label and add choices to any choice question.",
         );
         return false;
       }
       if (new Set(fields.map((f) => f.path)).size !== fields.length) {
+        setExpandedQuestion(fields.find((field,index)=>fields.findIndex(item=>item.path===field.path)!==index)?.path||null);
         setError(
           "Two questions use the same identifier. Remove the duplicate question.",
         );
@@ -787,7 +805,7 @@ function Editor({
   async function save(status: HubJob["status"]) {
     if(mutation.busy || !recovery.ready)return;
     setError("");
-    for(const section of (status!=="draft"?[0,1,2]:[])){if(!validateSection(section)){goToStep(section);return;}}
+    for(const section of (status!=="draft"?[0,1,2]:[1])){if(!validateSection(section)){goToStep(section);return;}}
     if (description.length > 100000) {
       setError(
         "The job description exceeds 100,000 characters including formatting. Shorten it before saving; your text has been preserved.",
@@ -1094,7 +1112,7 @@ function Editor({
               <span className="hub-muted">Required on every application.</span>
             </div>
             {fields.some(field => field.type === "Phone" && !contactPaths.includes(field.path)) && <p className="hub-muted">This form also has an extra phone question. The required Phone number field already collects it; you can remove the extra question below if it is a duplicate. Existing application answers are kept.</p>}
-            <p className="hub-muted hub-question-order-help">Drag the dotted handle to change the order. With a keyboard, press Space on the handle, use the arrow keys, then press Space to finish.</p>
+            <p className="hub-muted hub-question-order-help">Drag to reorder. Select a question to edit.</p>
             <DndContext
               sensors={questionSensors}
               collisionDetection={questionCollision}
@@ -1120,37 +1138,16 @@ function Editor({
               {fields.map((f, i) => contactPaths.includes(f.path) ? null : (
                 <SortableQuestion key={f.path} field={f} number={i - contactPaths.length + 1} disabled={mutation.busy || !recovery.ready}>
                   {(handle) => <>
-                  <div className="hub-question-heading">
+                  <div className="hub-question-heading hub-question-row-heading">
                     {handle}
-                    <strong>{f.title || "New question"}</strong>
-                    <Badge>{f.required ? "Required" : "Optional"}</Badge>
-                    {!contactPaths.includes(f.path) && (
-                      <>
-                        <button type="button" className="hub-icon-button" title="Move question up" aria-label={`Move ${f.title || "new question"} up`} disabled={i <= contactPaths.length} onClick={() => {
-                          setFields(current => reorderApplicationQuestions(current, f.path, current[i - 1]?.path || ""));
-                        }}><ArrowUp size={16} /></button>
-                        <button type="button" className="hub-icon-button" title="Move question down" aria-label={`Move ${f.title || "new question"} down`} disabled={i === fields.length - 1} onClick={() => {
-                          setFields(current => reorderApplicationQuestions(current, f.path, current[i + 1]?.path || ""));
-                        }}><ArrowDown size={16} /></button>
-                        {f.path!==resumePath && <button
-                          type="button"
-                          className="hub-icon-button"
-                          aria-label={`Remove ${f.title || "new question"}`}
-                          disabled={f.path===resumePath}
-                          onClick={() => {
-                            setFields((v) => v.filter((_, n) => n !== i));
-                            setRules((v) =>
-                              v.filter((r) => r.fieldPath !== f.path),
-                            );
-
-                          }}
-                        >
-                          <Trash2 size={16} />
-                        </button>}
-                      </>
-                      )}
+                    {f.path===resumePath ? <div className="hub-question-row-title"><strong>{f.title}</strong><span className="hub-question-row-meta">File · Required</span></div> : <button type="button" className="hub-question-edit-toggle" aria-label={`${expandedQuestion===f.path?"Close":"Edit"} ${f.title||"new question"}`} aria-expanded={expandedQuestion===f.path} aria-controls={`question-editor-${f.path}`} onClick={()=>setExpandedQuestion(current=>current===f.path?null:f.path)}><span className="hub-question-row-title"><strong>{f.title||"New question"}</strong><span className="hub-question-row-meta">{formats[f.type]} · {f.required?"Required":"Optional"}{questionRuleSummary(f,rules) && ` · ${questionRuleSummary(f,rules)}`}</span></span><span className="hub-question-edit-label">{expandedQuestion===f.path?"Close":"Edit"}</span></button>}
+                    <div className="hub-question-row-actions" hidden={f.path!==resumePath && expandedQuestion!==f.path}>
+                      <button type="button" className="hub-icon-button" aria-label={`Move ${f.title||"new question"} up`} disabled={i<=contactPaths.length} onClick={()=>setFields(current=>reorderApplicationQuestions(current,f.path,current[i-1]?.path||""))}><ArrowUp size={16}/></button>
+                      <button type="button" className="hub-icon-button" aria-label={`Move ${f.title||"new question"} down`} disabled={i===fields.length-1} onClick={()=>setFields(current=>reorderApplicationQuestions(current,f.path,current[i+1]?.path||""))}><ArrowDown size={16}/></button>
+                      {f.path!==resumePath && <button type="button" className="hub-icon-button" aria-label={`Remove ${f.title||"new question"}`} onClick={()=>{setFields(current=>current.filter(field=>field.path!==f.path));setRules(current=>current.filter(rule=>rule.fieldPath!==f.path));setExpandedQuestion(null);}}><Trash2 size={16}/></button>}
+                    </div>
                   </div>
-                  {f.path===resumePath ? <p className="hub-muted">Required résumé/CV upload for every applicant.</p> : contactPaths.includes(f.path) ? <p className="hub-muted">Required applicant contact information.</p> : (
+                  {f.path!==resumePath && <div className="hub-question-editor" id={`question-editor-${f.path}`} hidden={expandedQuestion!==f.path}>
                     <>
                       <div className="hub-form-grid hub-question-fields">
                         <Field label={`Question ${i - contactPaths.length + 1} label`}>
@@ -1222,7 +1219,7 @@ function Editor({
                             Remove screening rules before changing the answer format.
                           </p>
                         )}
-                        <details className="hub-question-instructions">
+                        <details className="hub-question-instructions" open={invalidInstructions===f.path?true:undefined}>
                           <summary>{f.description ? "Edit instructions (optional)" : "Add instructions (optional)"}</summary>
                         <Field
                           label={`Question ${i - contactPaths.length + 1} instructions (optional)`}
@@ -1257,7 +1254,7 @@ function Editor({
                         />
                       )}
                     </>
-                  )}
+                  </div>}
                   </>}
                 </SortableQuestion>
               ))}
@@ -1270,7 +1267,7 @@ function Editor({
               </div>}
             </DragOverlay>
             </DndContext>
-            <button type="button" className="hub-button secondary" style={{marginBlock:"16px"}} disabled={fields.length>=100 || fields.some(field=>field.path===residencePath)} onClick={()=>setFields([...fields,countryResidenceField()])}>Add country of residence question</button>
+            <button type="button" className="hub-button secondary" style={{marginBlock:"16px"}} disabled={fields.length>=100 || fields.some(field=>field.path===residencePath)} onClick={()=>{setFields([...fields,countryResidenceField()]);setExpandedQuestion(residencePath);}}>Add country of residence question</button>
             <div className="hub-form-grid">
               <Field label="Add from the question library">
                 <select
@@ -1295,7 +1292,8 @@ function Editor({
                   const selected = experienceQuestions.find(
                     (q) => q.path === questionPreset,
                   );
-                  if (selected)
+                  if (selected){
+                    setExpandedQuestion(selected.path);
                     setFields((v) => [
                       ...v,
                       {
@@ -1303,6 +1301,7 @@ function Editor({
                         title: selected.title.replace(/ \(optional\)$/i, ""),
                       },
                     ]);
+                  }
                   setQuestionPreset("");
 
                 }}
@@ -1315,10 +1314,11 @@ function Editor({
               className="hub-button secondary"
               disabled={fields.length >= 100}
               onClick={() => {
+                const path="question_" + crypto.randomUUID().slice(0,8);setExpandedQuestion(path);
                 setFields((v) => [
                   ...v,
                   {
-                    path: "question_" + crypto.randomUUID().slice(0, 8),
+                    path,
                     title: "",
                     type: "LongText",
                     required: false,
@@ -1330,6 +1330,7 @@ function Editor({
               <Plus size={16} /> Add custom question
             </button>
             <AdvancedRules
+              reveal={showAdvancedRules}
               fields={fields}
               rules={rules}
               change={(value) => {
@@ -1735,6 +1736,7 @@ function QuestionScreening({
 }
 
 function AdvancedRules({
+  reveal=false,
   fields,
   rules,
   change,
@@ -1743,6 +1745,7 @@ function AdvancedRules({
   rejection,
   setRejection,
 }: {
+  reveal?:boolean;
   fields: ApplicationField[];
   rules: Rule[];
   change: (v: Rule[]) => void;
@@ -1762,7 +1765,7 @@ function AdvancedRules({
         Automatic rejection runs only when you turn it on and save enabled requirements. AI does
         not reject applicants.
       </p>
-      <details>
+      <details open={reveal?true:undefined}>
         <summary>Advanced rules ({rules.length})</summary>
         {rules.map((r, i) => (
           <article className="hub-question" key={i}>
