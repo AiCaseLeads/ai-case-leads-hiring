@@ -1951,3 +1951,12 @@ body:has(.hiring-hub .hub-draft-overlay) { overflow: hidden; }
 .hub-pdf-scroll { overflow:auto; overscroll-behavior:contain; width:100%; max-width:100%; background:#e9eeed; padding:10px; box-sizing:border-box; }
 .hub-pdf-page { position:relative; background:white; margin:0 auto 12px; flex-shrink:0; box-shadow:0 1px 4px #183c4320; }
 .hub-pdf-page-status { position:absolute; left:8px; top:8px; font-size:12px; }
+/* Keep PDF zoom controls readable in narrow applicant cards. */
+.hub-document-toolbar { flex-wrap:wrap; }
+.hub-document-toolbar select { flex:0 0 auto; min-width:112px; }
+.hub-document-toolbar output { flex:0 0 auto; min-width:42px; white-space:nowrap; text-align:center; font-variant-numeric:tabular-nums; }
+.hub-document-toolbar .hub-icon-button { flex-shrink:0; }
+@media(max-width:640px) {
+ .hub-document-toolbar .hub-document-page-count { flex-basis:100%; text-align:left; }
+ .hub-document-toolbar select { margin-left:0; }
+}
