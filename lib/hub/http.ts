@@ -49,7 +49,7 @@ function applicationFilters(request: Request) {
         sort = params.get("sort") || undefined,
         duplicate = params.get("duplicate") || undefined,
         jobId = params.get("jobId") || undefined;
-      if ((params.has('trash')&&params.get('trash')!=='true') || (q?.length || 0) > 200 || !/^\d{1,6}$/.test(page))
+      if ((params.has('active')&&!['true','false'].includes(params.get('active')||'')) || (params.has('trash')&&params.get('trash')!=='true') || (q?.length || 0) > 200 || !/^\d{1,6}$/.test(page))
         throw new HiringError(
           "invalid_filter",
           422,
@@ -75,6 +75,7 @@ function applicationFilters(request: Request) {
         sort: sort as ApplicationFilters["sort"],
         duplicate: duplicate === "true" ? true : undefined,
         trash: params.get('trash')==='true',
+        active: params.get('active')==='true',
       };
 }
 /** Route authentication must run before this dispatcher; tests supply an explicit authorized member. */

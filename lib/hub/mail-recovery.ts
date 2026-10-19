@@ -33,7 +33,7 @@ function kind(row: Row, payload: Record<string, unknown>): MailKind | null {
   if (row.id === prefix + "confirmation") return "Application receipt";
   if (row.id === prefix + "rejection") return "Automatic rejection";
   if (row.id.startsWith(prefix + "manual:") && payload.mailMode === "recruiter" && typeof payload.actor === "string") return "Recruiter message";
-  if (row.id.startsWith(prefix + "rejection:") && payload.mailMode === "recruiter") return "Recruiter rejection";
+  if (row.id.startsWith(prefix + "rejection:") && ["recruiter","automatic"].includes(String(payload.mailMode))) return "Recruiter rejection";
   if (row.id.startsWith(prefix + "assessment:") && payload.mailMode === "recruiter") return "Assessment invitation";
   if (row.id.startsWith(prefix + "interview:") && payload.mailMode === "recruiter") return "Interview invitation";
   if (payload.jobNotification === true) return "Team notification";

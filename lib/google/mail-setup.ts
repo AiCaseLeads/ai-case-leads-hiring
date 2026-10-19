@@ -19,6 +19,6 @@ export function isMailSetupError(code:string){return (MAIL_SETUP_ERRORS as reado
 
 /** Explicit automatic identities outrank routing fields left in older queued payloads. */
 export function candidateTaskMailMode(taskId: string, applicationId: string, payload: Record<string, unknown>): unknown {
-  if (taskId === `gmail:${applicationId}:confirmation` || taskId === `gmail:${applicationId}:rejection`) return undefined;
-  return payload.mailMode || (/:(manual|assessment|interview):/.test(taskId) || /:rejection:/.test(taskId) ? "recruiter" : undefined);
+  if (taskId === `gmail:${applicationId}:confirmation` || taskId === `gmail:${applicationId}:rejection` || taskId.startsWith(`gmail:${applicationId}:rejection:`)) return undefined;
+  return payload.mailMode || (/:(manual|assessment|interview):/.test(taskId) ? "recruiter" : undefined);
 }
