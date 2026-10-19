@@ -696,6 +696,8 @@ export function CandidateDetail({
   const stillMounted=useRef(true);
   useEffect(()=>{stillMounted.current=true;return()=>{stillMounted.current=false;};},[]);
   const [actionOpen, setActionOpen] = useState(initialAction === "interview");
+  const actionPanel=useRef<HTMLElement>(null);
+  useEffect(()=>{if(actionOpen)actionPanel.current?.scrollIntoView({block:"nearest",behavior:"instant"});},[actionOpen]);
   const [interviewReady, setInterviewReady] = useState(false);
   const [deleteOpen,setDeleteOpen] = useState(false);
   const [pdfBusy,setPdfBusy] = useState(false);
@@ -841,6 +843,7 @@ export function CandidateDetail({
               {detail.trashed && <button type="button" className="hub-button secondary" disabled={mutation.busy||rejectBusy} onClick={()=>void lifecycle("restore")}>Restore application</button>}
               <JobActionMenu label="More applicant actions" triggerLabel="More">
                 {!detail.trashed && <button type="button" onClick={()=>{setAction("note");setActionOpen(true);mutation.clear();}}>Add note</button>}
+                {!detail.trashed && <button type="button" disabled={mutation.busy||rejectBusy} onClick={()=>{setAction("stage");setActionOpen(true);mutation.clear();}}>Other applicant actions</button>}
                 <button type="button" disabled={pdfBusy} onClick={()=>void exportPdf()}><Download size={16}/>{pdfBusy?"Preparing PDF…":"Download application PDF"}</button>
                 <button type="button" onClick={()=>void resource.reload()}>Refresh application</button>
                 {!detail.trashed && <button type="button" disabled={mutation.busy||rejectBusy} onClick={()=>setDeleteOpen(true)}>Delete application</button>}
@@ -851,9 +854,9 @@ export function CandidateDetail({
           {detail.trashed && <p className="hub-muted">This application is in Trash. Its files and history are retained. Restore it before taking recruiting actions.</p>}
           {deleteOpen && <div className="hub-card" role="alertdialog" aria-labelledby="delete-application-title"><h3 id="delete-application-title">Move this application to Trash?</h3><p>It will leave your recruiting queues. Files and history stay saved, and you can restore it from this job’s Trash tab. Unsent emails and active booking links will be cancelled.</p><div className="hub-button-row"><button className="hub-button secondary" type="button" disabled={mutation.busy||rejectBusy} onClick={()=>setDeleteOpen(false)}>Keep application</button><button className="hub-button" type="button" disabled={mutation.busy||rejectBusy} onClick={()=>void lifecycle("trash")}>Move to Trash</button></div></div>}
           <div className="hub-detail-grid">
-            {!detail.trashed && <aside className="hub-action-panel">
-              <details className="hub-card hub-candidate-actions" open={actionOpen} onToggle={event=>setActionOpen(event.currentTarget.open)}>
-              <summary>{actionOpen ? action === "interview" ? "Request an interview" : "Applicant actions" : "More actions"}</summary>
+            {!detail.trashed && actionOpen && <aside ref={actionPanel} className="hub-action-panel">
+              <details className="hub-card hub-candidate-actions" open={actionOpen} onToggle={event=>{const open=event.currentTarget.open;setActionOpen(open);if(!open)profileTop.current?.querySelector<HTMLElement>('summary[aria-label="More applicant actions"]')?.focus({preventScroll:true});}}>
+              <summary>{action === "interview" ? "Request an interview" : "Applicant actions"}</summary>
               <p className="hub-muted">Choose an action below. Interview invitations are sent only when you click Send booking link.</p>
               <form onSubmit={submit}>
                 <fieldset disabled={mutation.busy||detail.trashed}>
