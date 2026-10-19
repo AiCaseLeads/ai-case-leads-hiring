@@ -38,6 +38,8 @@ async function reconcileArchives(db:D1Database,store:HubStore){
   if(result.results.length)await db.batch(result.results.map(app=>store.taskStatement(`drive:${app.id}:reconcile:${app.revision}`,app.id,"drive",{applicationId:app.id},now)));
 }
 export async function reconcileLegacyPdfArchives(db:D1Database,store:HubStore){
+  const outstanding=await db.prepare("SELECT COUNT(*) AS count FROM hub_tasks WHERE kind='drive' AND status IN ('pending','running') AND id LIKE 'drive:%:pdf-current-v3:%'").first<{count:number}>();
+  if(Number(outstanding?.count||0)>0)return 0;
   // Upgrade completed archives to one current PDF. Small batches protect new intake
   // and Drive quotas; candidate decisions and emails are never replayed.
   const result=await db.prepare("SELECT a.id,a.revision FROM hub_applications a WHERE EXISTS(SELECT 1 FROM hub_tasks old WHERE old.application_id=a.id AND old.kind='drive' AND old.status='done' AND CAST(json_extract(old.result_json,'$.archivedRevision') AS INTEGER)>=a.revision AND COALESCE(json_extract(old.result_json,'$.archiveFormat'),'')<>'pdf-current-v3') AND NOT EXISTS(SELECT 1 FROM hub_tasks t WHERE t.application_id=a.id AND t.kind='drive' AND (t.status IN ('pending','running') OR (t.status='done' AND json_extract(t.result_json,'$.archiveFormat')='pdf-current-v3' AND CAST(json_extract(t.result_json,'$.archivedRevision') AS INTEGER)>=a.revision))) AND NOT EXISTS(SELECT 1 FROM hub_tasks backfill WHERE backfill.id='drive:'||a.id||':pdf-current-v3:'||a.revision) ORDER BY a.updated_at DESC,a.id LIMIT 10").all<{id:string;revision:number}>();
