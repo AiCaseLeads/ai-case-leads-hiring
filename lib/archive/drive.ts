@@ -179,13 +179,72 @@ export class GoogleDriveArchive {
     return parent;
   }
 
+  private async inVerifiedHistory(file: DriveFile, key: string, parentId: string): Promise<boolean> {
+    const historyKey=file.appProperties?.aclHistoryKey;
+    if(file.trashed || file.mimeType!=="application/pdf" || file.appProperties?.aclArchiveKey!==key || file.appProperties?.aclHistoryFrom!==parentId || !historyKey)return false;
+    const saved=await this.state.get(historyKey);
+    if(!saved || !file.parents?.includes(saved.drive_id))return false;
+    const folder=await this.metadata(saved.drive_id);
+    return !!folder && !folder.trashed && folder.mimeType===FOLDER && folder.appProperties?.aclArchiveKey===historyKey && folder.parents?.includes(saved.parent_id)===true;
+  }
+
+  /** Move only provenance-verified generated revisions; original uploads are never selected. */
+  async organizeApplicationPdfs(applicationId:string,parentId:string,historyParentId:string,maximumMoves=25):Promise<boolean> {
+    const candidates:Array<{file:DriveFile;revision:number;historical:boolean;key:string}>=[];
+    let pageToken:string|undefined;
+    for(let page=0;page<100;page++){
+      const query=new URLSearchParams({q:`'${driveId(parentId)}' in parents and trashed = false and mimeType = 'application/pdf'`,fields:"files(id,name,mimeType,parents,trashed,appProperties,sha256Checksum),nextPageToken",pageSize:"100",supportsAllDrives:"true",includeItemsFromAllDrives:"true",...(pageToken?{pageToken}:{})});
+      const response=await this.request(`${API}/files?${query}`);if(!response.ok)throw new ProviderError("google_drive",response.status);
+      const data=await response.json() as {files:DriveFile[];nextPageToken?:string};
+      for(const file of data.files){
+        const match=/^Application-r([1-9]\d*)(-previous-record)?\.pdf$/.exec(file.name);
+        const revision=match?Number(match[1]):file.name==="Application.pdf"&&file.appProperties?.aclApplicationId===applicationId?Number(file.appProperties.aclApplicationRevision):0;
+        if(!Number.isSafeInteger(revision)||revision<1)continue;
+        const historical=!!match?.[2],key=await sha256(`hub:application:${applicationId}:pdf:${historical?"historical-json:v1":"v1"}:revision:${revision}`);
+        const saved=await this.state.get(key);
+        if(!saved || saved.drive_id!==file.id || saved.parent_id!==parentId || !saved.content_hash || saved.content_hash!==file.sha256Checksum || file.appProperties?.aclArchiveKey!==key || !file.parents?.includes(parentId))continue;
+        candidates.push({file,revision,historical,key});
+      }
+      if(!data.nextPageToken)break;if(data.nextPageToken===pageToken||page===99)throw new Error("drive_pdf_pagination_limit");pageToken=data.nextPageToken;
+    }
+    const current=candidates.filter(item=>!item.historical).sort((a,b)=>b.revision-a.revision)[0];
+    if(!current)throw new Error("drive_current_pdf_missing");
+    // Never upload into a shared current-file ID. A stale worker can only rename its
+    // immutable revision, and can only demote lower revisions, never the newer PDF.
+    const latest=await this.metadata(current.file.id);
+    if(!latest || latest.sha256Checksum!==current.file.sha256Checksum)throw new Error("drive_pdf_changed");
+    if(!latest.parents?.includes(parentId))return false; // A newer worker already retired this revision.
+    this.matches(latest,current.key,parentId);
+    if(latest.name!=="Application.pdf"){
+      const response=await this.request(`${API}/files/${driveId(latest.id)}?supportsAllDrives=true&fields=id`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({name:"Application.pdf",appProperties:{...latest.appProperties,aclApplicationId:applicationId,aclApplicationRevision:String(current.revision)}})});
+      if(!response.ok)throw new ProviderError("google_drive",response.status);this.progressVersion++;
+    }
+    const obsolete=candidates.filter(item=>item.file.id!==current.file.id&&(item.revision<current.revision||item.historical));
+    if(!obsolete.length)return true;
+    const historyIdentity=`hub:application:${applicationId}:pdf-history:v1`,historyKey=await sha256(historyIdentity);
+    const historyRoot=await this.folder(`hub:application-history:v1:${historyParentId}`,"Application history",historyParentId);
+    const historyId=await this.folder(historyIdentity,applicationId,historyRoot);
+    let moved=0;
+    for(const item of obsolete.slice(0,maximumMoves)){
+      const file=await this.metadata(item.file.id);if(!file || file.trashed)throw new Error("drive_pdf_changed");
+      if(await this.inVerifiedHistory(file,item.key,parentId))continue;
+      this.matches(file,item.key,parentId);if(file.sha256Checksum!==item.file.sha256Checksum)throw new Error("drive_pdf_changed");
+      const query=new URLSearchParams({supportsAllDrives:"true",addParents:historyId,removeParents:parentId,fields:"id,parents"});
+      const response=await this.request(`${API}/files/${driveId(file.id)}?${query}`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({name:`Application-r${item.revision}${item.historical?"-previous-record":""}.pdf`,appProperties:{...file.appProperties,aclHistoryFrom:parentId,aclHistoryKey:historyKey}})});
+      if(!response.ok)throw new ProviderError("google_drive",response.status);
+      const result=await response.json() as DriveFile;if(result.id!==file.id||!result.parents?.includes(historyId)||result.parents.includes(parentId))throw new Error("drive_pdf_move_unconfirmed");
+      moved++;this.progressVersion++;
+    }
+    return obsolete.length<=maximumMoves && moved<=maximumMoves;
+  }
+
   async confirmFile(identity: string, parentId: string, id: string, hash: string): Promise<boolean> {
     const key = await sha256(identity), saved = await this.state.get(key);
     if (!saved || saved.drive_id !== id || saved.parent_id !== parentId) throw new Error("drive_identity_mismatch");
     if (saved.content_hash !== hash) return false;
     const file = await this.metadata(id);
     if (!file || file.trashed) return false;
-    this.matches(file, key, parentId);
+    if(!await this.inVerifiedHistory(file,key,parentId))this.matches(file, key, parentId);
     return file.mimeType === "application/pdf" && file.sha256Checksum === hash;
   }
 
@@ -273,7 +332,7 @@ export class GoogleDriveArchive {
     this.matches(old, key, parentId);
     if (old.name !== `application-r${legacy.revision}.json` || old.mimeType !== "application/json" || old.sha256Checksum !== legacy.hash) throw new Error("drive_legacy_snapshot_changed");
     if (!replacement) throw new Error("drive_pdf_replacement_missing");
-    this.matches(replacement, replacementKey, parentId);
+    if(!await this.inVerifiedHistory(replacement,replacementKey,parentId))this.matches(replacement, replacementKey, parentId);
     if (replacement.mimeType !== "application/pdf" || replacement.sha256Checksum !== pdfHash) throw new Error("drive_pdf_replacement_unverified");
     const response = await this.request(`${API}/files/${driveId(legacy.fileId)}?supportsAllDrives=true&fields=id,trashed`, {
       method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ trashed: true }),
@@ -305,7 +364,9 @@ export class GoogleDriveArchive {
     const item = await this.item(key, parentId);
     const present = await this.metadata(item.drive_id);
     if (present) {
-      this.matches(present, key, parentId);
+      const historical=await this.inVerifiedHistory(present,key,parentId);
+      if(!historical)this.matches(present, key, parentId);
+      if(historical && present.sha256Checksum!==hash)throw new Error("drive_historical_pdf_changed");
       if (present.sha256Checksum === hash) {
         await this.persist(key, hash, null); return present.id;
       }

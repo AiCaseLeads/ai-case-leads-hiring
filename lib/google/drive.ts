@@ -36,7 +36,7 @@ export class DriveArchiveContinuation extends Error {
 export class DriveArchiveFailure extends GoogleError {
   constructor(code: string, readonly phase: string, readonly diagnostics?: Record<string, string | number>) { super(code); }
 }
-export interface ArchiveResult { folderId: string; folderUrl: string; archivedRevision: number; archiveFormat: "pdf-v2"; legacyJsonFileIds: string[] }
+export interface ArchiveResult { folderId: string; folderUrl: string; archivedRevision: number; archiveFormat: "pdf-v2" | "pdf-current-v3"; legacyJsonFileIds: string[] }
 
 export class WorkspaceDrive {
   private archive?: GoogleDriveArchive;
@@ -174,7 +174,10 @@ export class WorkspaceDrive {
         // No deadline is used by synchronous compatibility callers; finish via a durable local continuation.
         return this.application(detail,files,existingFolderId,{...continuation,read:continuation?.read || (async()=>matched.length),write:continuation?.write || (async()=>undefined),readProgress:async()=>progress,writeProgress:async(next)=>{progress=next;}});
       }
-      return {folderId,folderUrl:`https://drive.google.com/drive/folders/${folderId}`,archivedRevision:detail.revision,archiveFormat:"pdf-v2",legacyJsonFileIds:progress.legacyJsonFileIds};
+      phase="organize_pdfs"; deferBefore(10_000);
+      const historyParentId=this.config.driveRootId;
+      if(!await this.archive.organizeApplicationPdfs(detail.id,folderId,historyParentId,bounded?10:10000))throw new DriveArchiveContinuation("organize_pdfs",{reason:"remaining_revisions"});
+      return {folderId,folderUrl:`https://drive.google.com/drive/folders/${folderId}`,archivedRevision:detail.revision,archiveFormat:"pdf-current-v3",legacyJsonFileIds:progress.legacyJsonFileIds};
     } catch (error) {
       if (error instanceof DriveArchiveContinuation || error instanceof DriveArchiveFailure) throw error;
       const diagnostics: Record<string,string|number> = {phase};

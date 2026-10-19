@@ -33,7 +33,7 @@ function fakeDrive() {
     if (url.pathname.endsWith('/generateIds')) return json({ ids: ['synthetic-' + ++generated] });
     if (url.pathname === '/drive/v3/files' && method === 'GET') {
       const q = url.searchParams.get('q')!, parent = /^'([^']+)'/.exec(q)![1], key = /value='([a-f0-9]+)'/.exec(q)?.[1];
-      return json({ files: [...files.values()].filter(file => !file.trashed && file.parents?.includes(parent) && (key ? file.appProperties?.aclArchiveKey === key : file.mimeType === 'application/json')) });
+      return json({ files: [...files.values()].filter(file => !file.trashed && file.parents?.includes(parent) && (key ? file.appProperties?.aclArchiveKey === key : file.mimeType === (q.includes('application/pdf')?'application/pdf':'application/json'))) });
     }
     if (url.pathname === '/drive/v3/files' && method === 'POST') {
       const metadata = JSON.parse(String(init.body)) as Metadata;
@@ -44,7 +44,7 @@ function fakeDrive() {
     if (url.pathname.startsWith('/drive/v3/files/')) {
       const id = url.pathname.split('/').at(-1)!, metadata = files.get(id);
       if (!metadata) return json({}, 404);
-      if (method === 'PATCH') { Object.assign(metadata, JSON.parse(String(init.body))); if (retireDeadline !== null) { clock = Math.max(clock, retireDeadline - 1000); retireDeadline = null; } return json({ id, trashed: metadata.trashed }); }
+      if (method === 'PATCH') { Object.assign(metadata, JSON.parse(String(init.body))); if(url.searchParams.has('addParents'))metadata.parents=[url.searchParams.get('addParents')!]; if (retireDeadline !== null) { clock = Math.max(clock, retireDeadline - 1000); retireDeadline = null; } return json({ id, trashed: metadata.trashed, parents:metadata.parents }); }
       return url.searchParams.get('alt') === 'media' ? new Response(bytes.get(id)! as BodyInit) : json(metadata);
     }
     if (url.pathname.startsWith('/upload/drive/v3/files')) {
@@ -102,7 +102,7 @@ test('realistic API latency and worker restarts finish more than eight legacy st
     }
     assert.ok(completed, 'Durable migration must terminate.');
     assert.ok(yields > 8, 'Continuation remains viable after the ordinary failure-attempt limit.');
-    assert.equal(completed.archiveFormat, 'pdf-v2'); assert.equal(completed.archivedRevision, detail.revision);
+    assert.equal(completed.archiveFormat, 'pdf-current-v3'); assert.equal(completed.archivedRevision, detail.revision);
     assert.equal(completed.legacyJsonFileIds.length, 13, 'Final scan includes the late old-worker snapshot.');
     assert.equal(cp.index(), 1); assert.equal(originalLoads, 1, 'Original checkpoint survives every new workspace instance.');
     assert.equal([...f.sessions.values()].slice(beforeUploads).filter(session => session.metadata.mimeType === 'application/pdf').length, 13, 'Each legacy PDF uploads once; cached current PDF does not re-upload.');
@@ -154,7 +154,7 @@ test('real SQLite queue persists twelve continuations without exhausting retries
           await continuation.writeProgress!({ version: 1, applicationId: record.id, revision: record.revision, rendererVersion: 'readable-v2', contentFingerprint: 'a'.repeat(64), legacyNext: calls, legacyJsonFileIds: [] });
           throw new DriveArchiveContinuation('legacy_next', { reason: 'one_revision_per_cycle' });
         }
-        return { folderId: 'synthetic-folder', folderUrl: 'https://drive.google.com/drive/folders/synthetic-folder', archivedRevision: record.revision, archiveFormat: 'pdf-v2', legacyJsonFileIds: [] };
+        return { folderId: 'synthetic-folder', folderUrl: 'https://drive.google.com/drive/folders/synthetic-folder', archivedRevision: record.revision, archiveFormat: 'pdf-current-v3', legacyJsonFileIds: [] };
       },
     } as unknown as GoogleWorkspace;
     for (let cycle = 0; cycle < 12; cycle++) {
@@ -174,7 +174,7 @@ test('real SQLite queue persists twelve continuations without exhausting retries
     assert.equal(calls, 13);
     const finished = database.prepare("SELECT status,attempts,result_json FROM hub_tasks WHERE application_id=? AND kind='drive'").get(app.id)!;
     assert.equal(finished.status, 'done'); assert.equal(finished.attempts, 1);
-    assert.equal(JSON.parse(String(finished.result_json)).archiveFormat, 'pdf-v2');
+    assert.equal(JSON.parse(String(finished.result_json)).archiveFormat, 'pdf-current-v3');
     assert.equal(await reconcileLegacyPdfArchives(db, store), 0, 'The new complete format must suppress duplicate backfill.');
   } finally { Date.now = originalNow; database.close(); }
 });
@@ -200,7 +200,7 @@ test('provider failures consume retries and backfill priority lets fresh applica
 test('tampered cached historical source is rejected before uploading its PDF or retiring the JSON', async () => {
   const f = fakeDrive(), first = await f.workspace().archiveApplication(detail, [original]), legacyId = await legacy(f, first.folderId, 1);
   const archive = new GoogleDriveArchive(config, f.state, f.fetcher), snapshot = await archive.readLegacyApplicationSnapshot(detail.id, first.folderId, { fileId: legacyId, revision: 1 });
-  const currentPdf = [...f.files.values()].find(file => file.name === 'Application-r20.pdf')!;
+  const currentPdf = [...f.files.values()].find(file => (file.name === 'Application.pdf'||file.name === 'Application-r20.pdf'))!;
   const cp = checkpoint(), progress: DriveArchiveProgress = {
     version: 1, applicationId: detail.id, revision: detail.revision, rendererVersion: 'readable-v2', contentFingerprint: digest(new TextEncoder().encode(JSON.stringify(detail))),
     folderId: first.folderId, currentPdf: { id: currentPdf.id, hash: currentPdf.sha256Checksum! }, legacy: [{ fileId: legacyId, revision: 1 }], legacyNext: 0, legacyJsonFileIds: [],
@@ -217,7 +217,7 @@ test('tampered cached historical source is rejected before uploading its PDF or 
 
 test('a different historical snapshot of the current revision cannot overwrite its authoritative PDF or poison the next continuation', async () => {
   const f = fakeDrive(), current = { ...detail, aiMatch: { status: 'failed', error: 'synthetic_provider_outage' } }, first = await f.workspace().archiveApplication(current, [original]);
-  const currentFile = [...f.files.values()].find(file => file.name === 'Application-r20.pdf')!, currentBytes = f.bytes.get(currentFile.id)!.slice();
+  const currentFile = [...f.files.values()].find(file => (file.name === 'Application.pdf'||file.name === 'Application-r20.pdf'))!, currentBytes = f.bytes.get(currentFile.id)!.slice();
   const legacyId = await legacy(f, first.folderId, 20), cp = checkpoint(), originalNow = Date.now;
   f.slow(700); Date.now = f.now;
   try {
@@ -228,7 +228,7 @@ test('a different historical snapshot of the current revision cannot overwrite i
     assert.equal(f.files.get(legacyId)?.trashed, true, 'The first slice confirms the historical replacement before retirement.');
     const resumed = f.workspace(); resumed.setDeadline(f.now() + 40000);
     const completed = await resumed.archiveApplication(current, [original], first.folderId, cp.continuation);
-    assert.equal(completed.archiveFormat, 'pdf-v2');
+    assert.equal(completed.archiveFormat, 'pdf-current-v3');
     assert.deepEqual(f.bytes.get(currentFile.id), currentBytes, 'Current and historical content need separate file identities.');
     assert.equal([...f.files.values()].filter(file => file.mimeType === 'application/pdf').length, 3, 'Current PDF, historical PDF and original are all preserved.');
   } finally { Date.now = originalNow; }

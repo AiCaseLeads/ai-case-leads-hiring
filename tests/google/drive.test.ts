@@ -34,7 +34,7 @@ function fixture(options: { publicRoot?: boolean; interrupt?: boolean; createCon
     if (url.pathname.endsWith("/generateIds")) return response({ ids: [`generated-${++generated}`] });
     if (url.pathname === "/drive/v3/files" && method === "GET") {
       const q = url.searchParams.get("q")!;
-      if(q.includes("mimeType =")) { const parent = /^'([^']+)'/.exec(q)![1]; return response({files:[...files.values()].filter(file=>file.mimeType==="application/json"&&!file.trashed&&(file.parents as string[])?.includes(parent))}); }
+      if(q.includes("mimeType =")) { const parent = /^'([^']+)'/.exec(q)![1]; return response({files:[...files.values()].filter(file=>file.mimeType===(q.includes("application/pdf")?"application/pdf":"application/json")&&!file.trashed&&(file.parents as string[])?.includes(parent))}); }
       const key = /value='([a-f0-9]+)'/.exec(q)![1], parent = /^'([^']+)'/.exec(q)![1];
       return response({ files: [...files.values()].filter((file) => (file.appProperties as Record<string, string>)?.aclArchiveKey === key && (file.parents as string[]).includes(parent)) });
     }
@@ -48,7 +48,7 @@ function fixture(options: { publicRoot?: boolean; interrupt?: boolean; createCon
     }
     if (url.pathname.startsWith("/drive/v3/files/")) {
       const id=url.pathname.split("/").at(-1)!;
-      if(method==="PATCH") { if(!files.has(id))return response({},404);Object.assign(files.get(id)!,JSON.parse(String(init.body)));return response({id,trashed:files.get(id)!.trashed}); }
+      if(method==="PATCH") { if(!files.has(id))return response({},404);Object.assign(files.get(id)!,JSON.parse(String(init.body)));const target=files.get(id)!;if(url.searchParams.has("addParents"))target.parents=[url.searchParams.get("addParents")!];return response({id,trashed:target.trashed,parents:target.parents}); }
       if(url.searchParams.get("alt")==="media")return bytes.has(id)?new Response(bytes.get(id)! as BodyInit):response({},404);
       return files.has(id)?response(files.get(id)):response({},404);
     }
@@ -84,11 +84,11 @@ test("Drive archives answers, original bytes, assessments and history in stable 
   const first = await f.workspace.archiveApplication(detail, [original]);
   assert.equal(f.files.get(first.folderId)?.name, "Same Candidate–app-one");
   assert.equal(first.archivedRevision, detail.revision);
-  const snapshotFile = [...f.files.values()].find((file) => file.name === "Application-r1.pdf")!;
+  const snapshotFile = [...f.files.values()].find((file) => (file.name === "Application.pdf" || file.name === "Application-r1.pdf"))!;
   const snapshot = await readablePdf(f.bytes.get(snapshotFile.id as string)!);
   assert.ok(snapshot.text.includes("https://portfolio.example")); assert.ok(snapshot.text.includes("Completed")); assert.ok(snapshot.text.includes("Screening"));
   assert.ok(!snapshot.text.includes("/private/secret"));
-  assert.equal(first.archiveFormat,"pdf-v2"); assert.deepEqual(first.legacyJsonFileIds,[]);
+  assert.equal(first.archiveFormat,"pdf-current-v3"); assert.deepEqual(first.legacyJsonFileIds,[]);
   const archivedResume = [...f.files.values()].find((file) => file.name === "resume.pdf")!;
   assert.deepEqual(f.bytes.get(archivedResume.id as string), original.bytes);
   const sessions = f.sessions.size;
@@ -153,9 +153,9 @@ test("a late old worker cannot overwrite the newer application revision", async 
     const older = await old;
     assert.equal(older.archivedRevision, 1);
     assert.equal(older.folderId, newer.folderId);
-    const snapshots = [...f.files.values()].filter((file) => /^Application-r\d+\.pdf$/.test(String(file.name)));
+    const snapshots = [...f.files.values()].filter((file) => /^Application(?:-r\d+)?\.pdf$/.test(String(file.name)));
     assert.equal(snapshots.length, 2);
-    const latest = snapshots.find((file) => file.name === "Application-r2.pdf")!;
+    const latest = snapshots.find((file) => file.name === "Application.pdf")!;
     const saved = await readablePdf(f.bytes.get(latest.id as string)!);
     assert.match(saved.text,/Record revision\s+2/);
     assert.ok(saved.text.includes("Latest authoritative note"));
@@ -179,7 +179,7 @@ test("invalid snapshot revisions are rejected before Google requests and Drive m
   const sessions = f.sessions.size;
   await f.workspace.archiveApplication({ ...detail, updatedAt: 20, driveFolderUrl: first.folderUrl }, [original], first.folderId);
   assert.equal(f.sessions.size, sessions);
-  const snapshot = [...f.files.values()].find((file) => file.name === "Application-r1.pdf")!;
+  const snapshot = [...f.files.values()].find((file) => (file.name === "Application.pdf" || file.name === "Application-r1.pdf"))!;
   const saved = await readablePdf(f.bytes.get(snapshot.id as string)!);
   assert.ok(!saved.text.includes("https://drive.google.com/old"));
   assert.ok(!saved.text.includes(first.folderUrl));
@@ -232,7 +232,7 @@ test("archives all assessments and interviews while removing every private capab
     interviews: [{ id: "first", attended: false, bookingUrl: "/interview/secret-one" }, { id: "second", attended: true, bookingUrl: "/interview/secret-two" }],
   };
   await f.workspace.archiveApplication(history, [original]);
-  const snapshot = [...f.files.values()].find(file => file.name === "Application-r1.pdf")!;
+  const snapshot = [...f.files.values()].find(file => (file.name === "Application.pdf" || file.name === "Application-r1.pdf"))!;
   const text = (await readablePdf(f.bytes.get(String(snapshot.id))!)).text;
   assert.equal(text.includes("secret-one"), false); assert.equal(text.includes("secret-two"), false);
   assert.ok(text.includes("First answer"));assert.ok(text.includes("Second answer"));
@@ -264,7 +264,7 @@ test("legacy JSON revisions become readable PDFs before recoverable cleanup; unr
  const legacyId=await archive.file(`hub:application:${detail.id}:snapshot:revision:2`,'application-r2.json','application/json',first.folderId,legacyBytes);
  const unrelated=await archive.file('unrelated-json','application-r3.json','application/json',first.folderId,new TextEncoder().encode('{"internal":"unrelated"}'));
  const migrated=await f.workspace.archiveApplication({...detail,revision:3},[original],first.folderId);
- assert.equal(migrated.archiveFormat,'pdf-v2');assert.deepEqual(migrated.legacyJsonFileIds,[legacyId]);
+ assert.equal(migrated.archiveFormat,'pdf-current-v3');assert.deepEqual(migrated.legacyJsonFileIds,[legacyId]);
  assert.equal(f.files.get(legacyId)?.trashed,true);assert.equal(f.files.get(unrelated)?.trashed,undefined);assert.deepEqual(f.bytes.get(legacyId),legacyBytes,'JSON is still recoverable in Drive Trash');
  assert.ok([...f.rows.values()].some(row=>row.drive_id===legacyId&&row.content_hash),'original internal identity and checksum remain retained');
  const replacement=[...f.files.values()].find(file=>file.name==='Application-r2.pdf')!;
@@ -286,8 +286,39 @@ test("legacy conversion validates candidate/job identity and retains JSON on fai
  const failRetirement:typeof fetch=async(input,init={})=>{if(fail&&init.method==='PATCH'&&new URL(String(input)).pathname===`/drive/v3/files/${invalid}`){fail=false;return response({},400);}return f.fetcher(input,init);};
  const interrupted=new GoogleWorkspace({...baseConfig,archiveState:f.state},failRetirement);
  await assert.rejects(interrupted.archiveApplication({...detail,revision:3},[original],first.folderId),/google_drive_400/);
- assert.equal(f.files.get(invalid)?.trashed,undefined);assert.ok([...f.files.values()].some(file=>file.name==='Application-r2.pdf'));
+ assert.equal(f.files.get(invalid)?.trashed,undefined);assert.ok([...f.files.values()].some(file=>(file.name==='Application.pdf'||file.name==='Application-r2.pdf')));
  const sessions=f.sessions.size;
  await interrupted.archiveApplication({...detail,revision:3},[original],first.folderId);
  assert.equal(f.files.get(invalid)?.trashed,true);assert.equal(f.sessions.size,sessions,'retry uses the already verified PDF');
+});
+
+test('current-only candidate folder keeps originals and moves verified revisions into sibling history',async()=>{
+ const f=fixture(),first=await f.workspace.archiveApplication(detail,[original]);
+ const originalId=[...f.files.values()].find(file=>file.name==='resume.pdf')!.id as string;
+ const archive=new GoogleDriveArchive(baseConfig,f.state,f.fetcher);
+ const lookalike=await archive.file('unrelated-original','Application-r999.pdf','application/pdf',first.folderId,new Uint8Array([9,9,9]));
+ await f.workspace.archiveApplication({...detail,revision:2},[original],first.folderId);
+ const inCandidate=[...f.files.values()].filter(file=>!file.trashed&&(file.parents as string[]|undefined)?.includes(first.folderId));
+ assert.deepEqual(inCandidate.map(file=>file.name).sort(),['Application-r999.pdf','Application.pdf','resume.pdf'].sort());
+ assert.deepEqual(f.files.get(originalId)!.parents,[first.folderId]);assert.deepEqual(f.bytes.get(originalId),original.bytes);assert.deepEqual(f.files.get(lookalike)!.parents,[first.folderId]);
+ const older=[...f.files.values()].find(file=>file.name==='Application-r1.pdf')!;
+ const history=f.files.get((older.parents as string[])[0])!,historyRoot=f.files.get((history.parents as string[])[0])!;
+ assert.equal(historyRoot.name,'Application history');assert.deepEqual(historyRoot.parents,[baseConfig.driveRootId]);assert.notEqual(history.id,first.folderId);
+ const previousHash=await hash(f.bytes.get(older.id as string)!);
+ assert.equal(await archive.confirmFile(`hub:application:${detail.id}:pdf:v1:revision:1`,first.folderId,String(older.id),previousHash),true);
+ const count=f.files.size;await f.workspace.archiveApplication(detail,[original],first.folderId);assert.equal(f.files.size,count,'Replaying an old worker creates no extra files or folder');
+ const current=[...f.files.values()].find(file=>file.name==='Application.pdf'&&(file.parents as string[])?.includes(first.folderId))!;
+ assert.equal((current.appProperties as Record<string,string>).aclApplicationRevision,'2');
+});
+
+test('an interrupted history move resumes without replacing the latest PDF bytes',async()=>{
+ const f=fixture(),first=await f.workspace.archiveApplication(detail,[original]);let fail=true;
+ const fetcher:typeof fetch=async(input,init={})=>{if(fail&&init.method==='PATCH'&&new URL(String(input)).searchParams.has('addParents')){fail=false;return response({},400);}return f.fetcher(input,init);};
+ const worker=new GoogleWorkspace({...baseConfig,archiveState:f.state},fetcher),newer={...detail,revision:2};
+ await assert.rejects(worker.archiveApplication(newer,[original],first.folderId));
+ const current=[...f.files.values()].find(file=>(file.appProperties as Record<string,string>)?.aclApplicationRevision==='2')!;
+ const content=f.bytes.get(String(current.id))!.slice();
+ await worker.archiveApplication(newer,[original],first.folderId);
+ assert.deepEqual(f.bytes.get(String(current.id)),content);
+ assert.equal([...f.files.values()].filter(file=>file.name==='Application.pdf'&&(file.parents as string[])?.includes(first.folderId)).length,1);
 });
