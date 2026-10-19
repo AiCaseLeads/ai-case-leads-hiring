@@ -258,10 +258,10 @@ test('legacy optional screening can become required and a blank minimum blocks s
 
 test('country preset creates full choices, saves selected eligibility, and reopens without manual option editing',async t=>{
  const {page,writes}=await setup(t,{jobs:[structuredClone(prior)]});await questions(page);
- await page.getByRole('button',{name:'Add country of residence question',exact:true}).click();
+ await page.getByLabel('Add a question',{exact:true}).selectOption('country');await page.getByRole('button',{name:'Add question',exact:true}).click();
  const country=page.locator('.hub-question').filter({has:page.getByRole('region',{name:'Country of residence screening',exact:true})});
  assert.equal(await country.count(),1);assert.equal(await country.locator('textarea').count(),1); // optional instructions only; no manual choices editor
- assert.equal(await page.getByRole('button',{name:'Add country of residence question',exact:true}).isDisabled(),true);
+ assert.equal(await page.getByLabel('Add a question',{exact:true}).locator('option[value=country]').count(),0);
  await page.getByLabel('Eligible countries',{exact:true}).selectOption('in');
  await page.getByLabel('Find countries',{exact:true}).fill('Spain');await page.getByLabel('Spain',{exact:true}).check();
  await page.getByLabel('Find countries',{exact:true}).fill('United States');await page.getByLabel('United States',{exact:true}).check();

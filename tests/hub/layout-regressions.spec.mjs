@@ -1,3 +1,4 @@
+async function addQuestion(page,kind="custom"){await page.getByLabel("Add a question",{exact:true}).selectOption(kind);await page.getByRole("button",{name:"Add question",exact:true}).click();}
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {createServer} from 'node:http';
@@ -235,10 +236,16 @@ test('collapsed question rows stay compact and editors remain usable on phone an
 test('expanded country picker uses bounded columns and preserves search-hidden selections at all widths',async t=>{
  const {page,origin,errors}=await setup(t);
  for(const width of [320,390,1280]){
-  await page.setViewportSize({width,height:900});await page.goto(origin+'/?view=jobs');await page.getByRole('button',{name:'Edit job',exact:true}).first().click();await page.getByRole('list',{name:'Job setup progress'}).getByRole('button',{name:'Application questions',exact:true}).click();await page.getByRole('button',{name:'Add country of residence question',exact:true}).click();await page.getByLabel('Eligible countries',{exact:true}).selectOption('in');
+  await page.setViewportSize({width,height:900});await page.goto(origin+'/?view=jobs');await page.getByRole('button',{name:'Edit job',exact:true}).first().click();await page.getByRole('list',{name:'Job setup progress'}).getByRole('button',{name:'Application questions',exact:true}).click();await addQuestion(page,"country");await page.getByLabel('Eligible countries',{exact:true}).selectOption('in');
   const picker=page.getByRole('region',{name:'Country of residence screening',exact:true});await picker.getByRole('checkbox',{name:'Europe',exact:true}).check();await picker.getByRole('checkbox',{name:'North America',exact:true}).check();await picker.getByRole('status').getByText('92 selected · Must live in a selected country',{exact:true}).waitFor();
   const list=picker.getByRole('group',{name:'Select countries',exact:true});const bounds=await list.evaluate(e=>({height:e.getBoundingClientRect().height,scroll:e.scrollHeight,overflow:getComputedStyle(e).overflowY}));assert.ok(bounds.height<=330,JSON.stringify(bounds));assert.ok(bounds.scroll>bounds.height);assert.equal(bounds.overflow,'auto');assert.equal(await picker.locator('.hub-country-options').first().evaluate(e=>getComputedStyle(e).gridTemplateColumns.split(' ').length),width<640?1:3);await noOverflow(page);await artifact(page,'expanded-country-picker-'+width);if(process.env.HUB_LAYOUT_ARTIFACTS){await picker.scrollIntoViewIfNeeded();await page.screenshot({path:process.env.HUB_LAYOUT_ARTIFACTS+'/expanded-country-viewport-'+width+'.png'});}
   await picker.getByLabel('Find countries',{exact:true}).fill('Spain');assert.equal(await picker.getByLabel('Spain',{exact:true}).isChecked(),true);await picker.getByRole('status').getByText('92 selected · Must live in a selected country',{exact:true}).waitFor();await noOverflow(page);await picker.getByLabel('Find countries',{exact:true}).fill('');
  }
+ assert.deepEqual(errors,[]);
+});
+
+test('compact question footer stays bounded across desktop and phone',async t=>{
+ const{page,origin,errors}=await setup(t);await page.route('**/api/hub/jobs',r=>r.fulfill({json:{data:[{...jobs[0],fields:[{path:'years',title:'Years of experience',type:'Number',required:true}],rules:[]}]}}));
+ for(const width of[320,390,1280]){await page.setViewportSize({width,height:900});await page.goto(origin+'/?view=jobs');await page.getByRole('button',{name:'Edit job',exact:true}).click();await page.getByRole('list',{name:'Job setup progress'}).getByRole('button',{name:'Application questions',exact:true}).click();await noOverflow(page);const height=await page.locator('.hub-job-editor').evaluate(e=>e.getBoundingClientRect().height);assert.ok(height<(width<640?1500:1100),JSON.stringify({width,height}));assert.equal(await page.getByLabel('Rejection email',{exact:true}).isVisible(),false);console.log('Question editor height',width,height);await artifact(page,'question-footer-'+width);}
  assert.deepEqual(errors,[]);
 });
