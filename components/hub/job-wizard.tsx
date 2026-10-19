@@ -2,6 +2,8 @@
 import { countries, countryResidenceField, isCountryResidence, residencePath } from "@/lib/countries";
 import { screeningValue, summarizeCountries } from "@/lib/job-setup/screening-summary";
 import { DEFAULT_REJECTION } from "@/lib/hiring/email-templates";
+import { englishProficiencyField, englishProficiencyPath, englishMinimum, isEnglishProficiency } from "@/lib/english-proficiency";
+import { EnglishScreening } from "./english-screening";
 import { CountryScreening } from "./country-screening";
 import { ScreeningSummary } from "./screening-summary";
 import { contactPaths, withRequiredContacts } from "@/lib/hiring/contact-fields";
@@ -445,6 +447,7 @@ export function JobWizard({
 
 function questionRuleSummary(field:ApplicationField,rules:Rule[]) {
   const enabled=rules.filter(rule=>rule.fieldPath===field.path && rule.enabled);const rule=enabled[0];if(!rule)return "";
+  if(isEnglishProficiency(field)&&rule.operator==="in"&&englishMinimum(rule.value))return `Minimum ${englishMinimum(rule.value)}`;
   const value=Array.isArray(rule.value)?(isCountryResidence(field)?summarizeCountries(rule.value).label:rule.value.map(value=>screeningValue(value,field)).join(", ")):screeningValue(rule.value,field);
   const labels:Record<string,string>={gte:"Minimum",lte:"Maximum",equals:"Must answer",not_equals:"Must not answer",contains:"Includes",in:"Only",not_in:"Excludes"};
   return `${labels[rule.operator]||"Requirement"} ${value || "not set"}${enabled.length>1?` · +${enabled.length-1} rules`:""}`;
@@ -757,7 +760,7 @@ function Editor({
     }
     if (section === 1) {
       const invalidCountry=rules.find(rule=>rule.enabled && ["in","not_in"].includes(rule.operator) && (!Array.isArray(rule.value) || !rule.value.length));
-      if(invalidCountry){setExpandedQuestion(invalidCountry.fieldPath);setError("Select at least one country for each country screening rule, or choose Any country.");return false;}
+      if(invalidCountry){setExpandedQuestion(invalidCountry.fieldPath);setError("Select at least one allowed answer for each screening rule, or remove the minimum requirement.");return false;}
       const longInstructions=fields.find(field=>(field.description?.length||0)>2000);
       if(longInstructions){setExpandedQuestion(longInstructions.path);setInvalidInstructions(longInstructions.path);setError("Keep question instructions within 2,000 characters.");return false;}
       if (!validateNumericScreening()) return false;
@@ -1162,7 +1165,7 @@ function Editor({
                           <select
                             value={f.required ? "required" : "optional"}
                             disabled={
-                              f.path === resumePath || f.required &&
+                              f.path === resumePath || isEnglishProficiency(f) || f.required &&
                               rules.some(
                                 (r) =>
                                   r.fieldPath === f.path &&
@@ -1190,7 +1193,7 @@ function Editor({
                         <Field label={`Question ${i - contactPaths.length + 1} answer format`}>
                           <select
                             value={f.type}
-                            disabled={f.path===resumePath || isCountryResidence(f) || rules.some((r) => r.fieldPath === f.path)}
+                            disabled={f.path===resumePath || isCountryResidence(f) || isEnglishProficiency(f) || rules.some((r) => r.fieldPath === f.path)}
                             onChange={(e) =>
                               updateField(i, {
                                 type: e.target.value as FieldType,
@@ -1211,7 +1214,7 @@ function Editor({
                       <div>
                         {f.type === "Number" && <Field label={`Question ${i-contactPaths.length+1} number display`}><select value={f.numberFormat||"number"} onChange={event=>updateField(i,event.target.value==="currency"?{numberFormat:"currency",currency:"USD"}:{numberFormat:"number",currency:undefined})}><option value="number">Number</option><option value="currency">Currency (USD)</option></select></Field>}
                         {f.path===resumePath && <p className="hub-muted">A résumé/CV is required for every application.</p>}
-                        {isCountryResidence(f) ? <p className="hub-muted">This preset uses the complete country list. Choose eligible countries below; remove the question if you no longer need it.</p> : rules.some((r) => r.fieldPath === f.path) && (
+                        {isEnglishProficiency(f) ? <p className="hub-muted">CEFR levels A1–C2 are fixed; C2 is highest.</p> : isCountryResidence(f) ? <p className="hub-muted">This preset uses the complete country list. Choose eligible countries below; remove the question if you no longer need it.</p> : rules.some((r) => r.fieldPath === f.path) && (
                           <p className="hub-muted">
                             Remove screening rules before changing the answer format.
                           </p>
@@ -1231,6 +1234,7 @@ function Editor({
                         </Field>
                         </details>
                       </div>
+                      {isEnglishProficiency(f) && <EnglishScreening field={f} rules={rules} change={setRules}/>}
                       {isCountryResidence(f) && <CountryScreening field={f} rules={rules} change={setRules} requireAnswer={()=>updateField(i,{required:true})} autoReject={autoReject}/>}
                       <QuestionScreening
                         requireAnswer={() => updateField(i, { required: true })}
@@ -1242,7 +1246,7 @@ function Editor({
 
                         }}
                       />
-                      {["ValueSelect", "MultiValueSelect"].includes(f.type) && !isCountryResidence(f) && (
+                      {["ValueSelect", "MultiValueSelect"].includes(f.type) && !isCountryResidence(f) && !isEnglishProficiency(f) && (
                         <ChoiceInput
                           key={f.path + f.type}
                           label={`Question ${i - contactPaths.length + 1} choices`}
@@ -1264,6 +1268,7 @@ function Editor({
               </div>}
             </DragOverlay>
             </DndContext>
+            <button type="button" className="hub-button secondary" style={{marginBlock:"16px",marginRight:"8px"}} disabled={fields.length>=100 || fields.some(field=>field.path===englishProficiencyPath)} onClick={()=>{setFields([...fields,englishProficiencyField()]);setExpandedQuestion(englishProficiencyPath);}}>Add English proficiency question</button>
             <button type="button" className="hub-button secondary" style={{marginBlock:"16px"}} disabled={fields.length>=100 || fields.some(field=>field.path===residencePath)} onClick={()=>{setFields([...fields,countryResidenceField()]);setExpandedQuestion(residencePath);}}>Add country of residence question</button>
             <div className="hub-form-grid">
               <Field label="Add from the question library">
@@ -1816,7 +1821,7 @@ function AdvancedRules({
               </select>
             </Field>
             <Field label={`Requirement ${i + 1} expected answer`}>
-              {Array.isArray(r.value) ? <p>{r.value.length} selected countries. Edit the country list on its question above.</p> : typeof r.value === "boolean" ? (
+              {Array.isArray(r.value) ? <p>{r.value.length} selected answers. Edit the screening setting on its question above.</p> : typeof r.value === "boolean" ? (
                 <select
                   value={String(r.value)}
                   onChange={(e) =>

@@ -1,4 +1,5 @@
 import type { ApplicationField } from "@/lib/hiring/types";
+import { englishMinimum, isEnglishProficiency } from "@/lib/english-proficiency";
 import { isCountryResidence } from "@/lib/countries";
 import { screeningValue, summarizeCountries } from "@/lib/job-setup/screening-summary";
 import type { Rule } from "./types";
@@ -17,9 +18,10 @@ export function ScreeningSummary({ rules, fields }: { rules: Rule[]; fields: App
       {enabled.map((rule, index) => {
         const field = fields.find(item => item.path === rule.fieldPath);
         const countries = field && isCountryResidence(field) && Array.isArray(rule.value) ? summarizeCountries(rule.value) : null;
+        const minimum = field && isEnglishProficiency(field) && rule.operator==="in" ? englishMinimum(rule.value) : "";
         return <li key={`${rule.fieldPath}:${rule.operator}:${index}`} className={"hub-screening-preview-rule"}>
           <div className={"hub-screening-preview-question"}>{field?.title || "Application question"}</div>
-          <div className={"hub-screening-preview-answer"}><span className={"hub-screening-preview-condition"}>{conditions[rule.operator]}</span><strong>{countries ? countries.label : screeningValue(rule.value, field)}</strong></div>
+          <div className={"hub-screening-preview-answer"}><span className={"hub-screening-preview-condition"}>{minimum?"Minimum English level":countries?conditions[rule.operator]:rule.operator==="in"?"Accepted answers":rule.operator==="not_in"?"Excluded answers":conditions[rule.operator]}</span><strong>{minimum?`${minimum} or higher`:countries ? countries.label : screeningValue(rule.value, field)}</strong></div>
           {countries && <details className={"hub-screening-preview-countries"}>
             <summary>View {countries.count} selected countries</summary>
             <div className={"hub-screening-preview-countryGroups"}>{countries.groups.map(group => <section key={group.name}>
