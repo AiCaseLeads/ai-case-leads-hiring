@@ -687,24 +687,12 @@ export function CandidateDetail({
   useEffect(()=>{if(!resumeRequest || section!=="application")return;resumeTarget.current?.scrollIntoView({block:"start",behavior:"instant"});resumeTarget.current?.focus({preventScroll:true});},[resumeRequest,section]);
   const recordTabs = useRef<HTMLDivElement>(null);
   const previousSection = useRef(section);
-  const previousResumeRequest = useRef(resumeRequest);
   useLayoutEffect(() => {
-    const resumeRequested = previousResumeRequest.current !== resumeRequest;
-    previousResumeRequest.current = resumeRequest;
     if (previousSection.current === section) return;
     previousSection.current = section;
-    if (resumeRequested) return;
-    // Recheck after layout/scroll anchoring settles when a tall panel is replaced.
-    const revealTabs = () => {
-      const tabs = recordTabs.current;
-      if (!tabs) return;
-      const bounds = tabs.getBoundingClientRect();
-      if (bounds.top < 0 || bounds.bottom > window.innerHeight) tabs.scrollIntoView({block:"start",behavior:"instant"});
-    };
-    revealTabs();
-    const frame = requestAnimationFrame(revealTabs);
-    return () => cancelAnimationFrame(frame);
-  }, [section, resumeRequest]);
+    // A shorter panel must not retain an old bottom-of-page scroll target.
+    recordTabs.current?.scrollIntoView({block:"nearest",behavior:"instant"});
+  }, [section]);
   const emailRequest = useRef<{ action: string; subject: string; body: string; actionId: string; expectedRevision: number } | null>(null);
   async function exportPdf() {
     if(!resource.data||pdfBusy)return;
