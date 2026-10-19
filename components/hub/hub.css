@@ -1801,3 +1801,27 @@ body:has(.hiring-hub .hub-draft-overlay) { overflow: hidden; }
 .hub-main .hub-required-contacts { padding:10px 12px; display:flex; flex-wrap:wrap; align-items:center; gap:4px 12px; }
 .hub-main .hub-question-order-help { margin:10px 0; font-size:12px; }
 @media(max-width:600px) { .hub-question-row-heading { flex-wrap:wrap; } .hub-question-edit-toggle { flex-basis:calc(100% - 52px); } .hub-question-row-actions:not([hidden]) { margin-left:auto; } .hub-main .hub-editor-list > .hub-question { padding:8px; } }
+
+/* Dense internal country controls; applicant form controls stay unchanged. */
+.hub-job-editor .hub-question-editor { padding-top:10px; margin-top:6px; }
+.hub-job-editor .hub-question-editor .hub-field { margin-bottom:6px; gap:4px; }
+.hub-job-editor .hub-question-editor .hub-form-grid { gap:8px; }
+.hub-job-editor .hub-question-editor .hub-screening-question { padding:8px; margin-top:8px; }
+.hub-country-controls { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:10px; align-items:start; }
+.hub-country-controls > .hub-field { min-width:0; margin:0; }
+.hub-country-screening .hub-country-regions { border:0; padding:0; margin:8px 0; min-width:0; }
+.hub-country-regions > legend, .hub-country-group > legend { font-size:12px; font-weight:600; padding:0; margin-bottom:4px; }
+.hub-country-region-options { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,150px),1fr)); gap:0 8px; }
+.hub-country-screening .hub-checkbox { display:flex; align-items:center; gap:8px; min-height:36px; margin:0; padding:2px 4px; min-width:0; font-size:12px; line-height:1.25; cursor:pointer; }
+.hub-country-screening .hub-checkbox > input { width:16px; height:16px; min-height:16px; margin:0; flex:0 0 16px; }
+.hub-country-screening .hub-checkbox > span { min-width:0; overflow-wrap:anywhere; }
+.hub-country-screening .hub-checkbox:focus-within { outline:2px solid #27816e; outline-offset:-2px; border-radius:4px; }
+.hub-country-screening .hub-country-list { max-height:220px; overflow-y:auto; overscroll-behavior:contain; padding:6px 8px; border:1px solid #d7e3e1; border-radius:6px; }
+.hub-country-screening .hub-country-group { border:0; padding:0; margin:0 0 8px; min-width:0; }
+.hub-country-options { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); column-gap:10px; }
+.hub-job-editor .hub-question .hub-country-note { font-size:11px; line-height:1.35; margin:4px 0 0; color:#536f76; }
+.hub-job-editor .hub-question .hub-country-selection-count { margin:6px 0; font-size:12px; line-height:1.35; }
+@media(min-width:641px) and (pointer:fine) { .hub-job-editor .hub-question-editor .hub-field input:not([type=checkbox]), .hub-job-editor .hub-question-editor .hub-field select { min-height:36px; padding-block:6px; } }
+@media(max-width:900px) { .hub-country-options { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+@media(max-width:640px) { .hub-country-controls { grid-template-columns:minmax(0,1fr); gap:4px; } .hub-country-region-options { grid-template-columns:repeat(2,minmax(0,1fr)); } .hub-country-options { grid-template-columns:minmax(0,1fr); } .hub-country-screening .hub-country-list { max-height:240px; } }
+@media(max-width:640px), (pointer:coarse) { .hub-country-screening .hub-checkbox { min-height:44px; font-size:13px; } }
