@@ -1,3 +1,4 @@
+import { englishProficiencyPath, englishOptions, isEnglishProficiency, englishMinimum } from "../english-proficiency";
 import { validNumericAnswer } from "../hiring/validation";
 import { countryOptions, isCountryResidence, residencePath } from "../countries";
 import { hasDescriptionText } from "../job-description";
@@ -202,6 +203,7 @@ export function validateJob(input: JobInput): void {
       );
   for (const field of input.fields) {
     if ((field.numberFormat || field.currency) && (field.type !== "Number" || (field.currency && field.numberFormat !== "currency") || (field.numberFormat === "currency" && field.currency !== "USD"))) throw new HiringError("invalid_job",422,"Currency fields must be numeric and use USD.");
+    if (field.path === englishProficiencyPath && (!isEnglishProficiency(field) || field.options?.length !== englishOptions.length || englishOptions.some((option,index)=>field.options?.[index]?.value!==option.value || field.options?.[index]?.label!==option.label))) throw new HiringError("invalid_job",422,"English proficiency must use the complete built-in CEFR levels in order.");
     if (field.path === residencePath && (!isCountryResidence(field) || field.options?.length !== countryOptions.length || countryOptions.some(option => !field.options?.some(candidate=>candidate.value===option.value)))) throw new HiringError("invalid_job",422,"Country of residence must use the complete built-in country list.");
     if (!isCountryResidence(field) && (field.options?.length || 0)>100) throw new HiringError("invalid_job",422,"Custom select fields support up to 100 options.");
   }
@@ -214,6 +216,10 @@ export function validateJob(input: JobInput): void {
         "Screening rules must reference an existing answer field.",
       );
     if (field.type === "Number" && !validNumericAnswer(rule.value, field.numberFormat === "currency")) throw new HiringError("invalid_rule",422,"Use a valid numeric screening value; USD amounts support up to two decimal places.");
+    if (isEnglishProficiency(field)) {
+      if (rule.operator !== "in" || !englishMinimum(rule.value) || (rule.enabled && !field.required)) throw new HiringError("invalid_rule",422,"Choose a valid minimum English level and require an answer before enabling screening.");
+      continue;
+    }
     if (["in", "not_in"].includes(rule.operator)) {
       if (!isCountryResidence(field) || (rule.enabled && !field.required) || !Array.isArray(rule.value) || !rule.value.length || new Set(rule.value).size!==rule.value.length || rule.value.some(value=>!countryOptions.some(option=>option.value===value))) throw new HiringError("invalid_rule",422,"Choose at least one valid allowed country of residence.");
       continue;
