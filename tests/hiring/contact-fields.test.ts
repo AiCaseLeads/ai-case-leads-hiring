@@ -27,7 +27,7 @@ test('public legacy job requires canonical international phone and saves its fie
   const definition=await new LocalHiringProvider(f.db).jobInfo(job.id);
   assert.deepEqual(definition.fields.find(field=>field.path==='_systemfield_phone')?.type,'Phone');
   assert.equal(definition.fields.find(field=>field.path==='_systemfield_phone')?.required,true);
-  const base={jobPostingId:job.id,submissionKey:crypto.randomUUID(),formVersion:job.formVersion,fieldSubmissions:[{path:'_systemfield_name',value:'Legacy Applicant'},{path:'_systemfield_email',value:'applicant@example.invalid'}]};
+  const base={jobPostingId:job.id,submissionKey:crypto.randomUUID(),formVersion:job.formVersion,fieldSubmissions:[{path:'linkedin_profile',value:'https://www.linkedin.com/in/synthetic-applicant'},{path:'_systemfield_name',value:'Legacy Applicant'},{path:'_systemfield_email',value:'applicant@example.invalid'}]};
   await assert.rejects(()=>acceptLocalApplication(f.db,base,'a'.repeat(64),true,true),{code:'invalid_application'});
   for(const value of ['', '3055550123', '+123', '+01234567890'])await assert.rejects(()=>acceptLocalApplication(f.db,{...base,fieldSubmissions:[...base.fieldSubmissions,{path:'_systemfield_phone',value}]},'a'.repeat(64),true,true),{code:'invalid_application'});
   assert.equal(f.database.prepare('SELECT COUNT(*) AS n FROM hub_applications').get()!.n,0);

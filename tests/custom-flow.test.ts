@@ -5,7 +5,7 @@ import { acceptLocalApplication } from "../lib/hiring/local";
 import { sha256 } from "../lib/hiring/crypto";
 import type { ApplicationInput } from "../lib/hiring/types";
 const session="a".repeat(64);
-function input(jobId:string):ApplicationInput{return{jobPostingId:jobId,submissionKey:crypto.randomUUID(),fieldSubmissions:[{path:"_systemfield_phone",value:"+1 305 555 0123"},{path:"_systemfield_name",value:"Synthetic Applicant"},{path:"_systemfield_email",value:"synthetic@example.invalid"}]};}
+function input(jobId:string):ApplicationInput{return{jobPostingId:jobId,submissionKey:crypto.randomUUID(),fieldSubmissions:[{path:"linkedin_profile",value:"https://www.linkedin.com/in/synthetic-applicant"},{path:"_systemfield_phone",value:"+1 305 555 0123"},{path:"_systemfield_name",value:"Synthetic Applicant"},{path:"_systemfield_email",value:"synthetic@example.invalid"}]};}
 test("local acceptance, receipt and Google tasks commit together without network access",async()=>{
   const {database,db,store}=customDatabase();try{
     const role=await openSyntheticRole(store),application=input(role.id);
@@ -21,7 +21,7 @@ test("local acceptance, receipt and Google tasks commit together without network
     assert.equal(repeat.status,"accepted");
     assert.equal(database.prepare("SELECT COUNT(*) AS n FROM hub_applications").get()?.n,1);
     assert.equal(database.prepare("SELECT COUNT(*) AS n FROM hub_tasks").get()?.n,2);
-    await assert.rejects(()=>acceptLocalApplication(db,{...application,fieldSubmissions:[{path:"_systemfield_phone",value:"+1 305 555 0123"},{path:"_systemfield_name",value:"Changed"},{path:"_systemfield_email",value:"synthetic@example.invalid"}]},session,true),/different answers/);
+    await assert.rejects(()=>acceptLocalApplication(db,{...application,fieldSubmissions:[{path:"linkedin_profile",value:"https://www.linkedin.com/in/synthetic-applicant"},{path:"_systemfield_phone",value:"+1 305 555 0123"},{path:"_systemfield_name",value:"Changed"},{path:"_systemfield_email",value:"synthetic@example.invalid"}]},session,true),/different answers/);
     await assert.rejects(()=>acceptLocalApplication(db,application,"b".repeat(64),true),/another browser/);
   }finally{database.close();}
 });
