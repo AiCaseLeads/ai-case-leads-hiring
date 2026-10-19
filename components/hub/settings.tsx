@@ -190,7 +190,7 @@ function SettingsForm({
         </details>
       </>}
       {area === "notifications" && <>
-        <section className="hub-card"><h3>Default rejection message</h3><p className="hub-muted">Used when creating new jobs. Existing jobs keep their saved message and screening rules.</p><Field label="Approved template"><textarea rows={6} value={rejectionTemplate} onChange={e => setRejectionTemplate(e.target.value)} /></Field></section>
+        <details className="hub-card hub-setup-details"><summary>Default rejection message <span className="hub-muted">· {rejectionTemplate.trim() ? "Message ready" : "Using built-in message"}</span></summary><p className="hub-muted">Used when creating new jobs. Existing jobs keep their saved message and screening rules.</p><Field label="Approved template"><textarea rows={6} value={rejectionTemplate} onChange={e => setRejectionTemplate(e.target.value)} /></Field></details>
         <section className="hub-card"><h3>Interview reminders</h3><label className="hub-checkbox"><input type="checkbox" checked={remindersEnabled} onChange={e => setRemindersEnabled(e.target.checked)} />Send reminders for confirmed interviews</label><p className="hub-muted">24 hours and 1 hour before a future booking. Requires the verified automatic email connection. Cancelled and replaced bookings are skipped.</p></section>
       </>}
       <div className="hub-settings-save" role="group" aria-label="Save company settings"><button className="hub-button" type="submit" disabled={mutation.busy}>{mutation.busy ? "Saving…" : "Save company settings"}</button><Feedback error={validationError || mutation.error} success={validationError ? "" : mutation.success} /></div>

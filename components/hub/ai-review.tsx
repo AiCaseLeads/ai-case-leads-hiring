@@ -137,7 +137,7 @@ export function CandidateEvidence({ detail, saved, draft }: { detail: Applicatio
         {currentPdf && <>
           <p className={currentPdf.status === "ready" && !currentPdf.ocrIncomplete ? "hub-muted" : "hub-notice"}>{currentPdf.message}</p>
           {!!currentPdf.pages && <p className="hub-muted">{currentPdf.pages} pages. {(currentPdf.truncated || currentPdf.ocrIncomplete) ? "Partial text: some text was not read. Review the original before grading." : "Check the original for layout, graphics, and any text the reader missed."}</p>}
-          {currentPdf.status === "ready" && <Field label="Text read from uploaded PDF"><textarea readOnly rows={8} value={currentPdf.text} /></Field>}
+          {currentPdf.status === "ready" && <details className="hub-setup-details"><summary>View extracted résumé text</summary><Field label="Text read from uploaded PDF"><textarea readOnly rows={8} value={currentPdf.text} /></Field></details>}
           <button className="hub-button secondary" disabled={mutation.busy} onClick={() => {setResumeText(currentPdf.text);setSelectedPdf("");setConsent(false);}}>Use editable text instead</button>
           {["timeout","unavailable"].includes(currentPdf.status) && <button className="hub-button secondary" onClick={() => setPdfRetry(value => value + 1)}>Retry PDF reading</button>}
         </>}
