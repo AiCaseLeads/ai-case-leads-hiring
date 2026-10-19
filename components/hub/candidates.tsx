@@ -405,13 +405,13 @@ function JobCandidates({
       <CandidateDetail
         key={detailId}
         id={detailId}
-        back={() => {setDetailId(null); setDetailAction("note");setDetailSection("review");}}
+        back={() => {setDetailId(null); setDetailAction("note");setDetailSection("application");}}
         changed={changed}
         initialAction={detailAction}
         initialSection={detailSection}
         navigationFilter={filter}
         navigationJobs={jobs}
-        openApplicant={(id,_filter,section)=>{setDetailSection(section || "review");setDetailId(id);}}
+        openApplicant={(id,_filter,section)=>{setDetailSection(section || "application");setDetailId(id);}}
       />
     );
   return (
