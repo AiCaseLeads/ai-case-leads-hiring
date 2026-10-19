@@ -9,6 +9,7 @@ export function ApplicantNavigation({detail,filter,open,viewed,disabled=false}:{
   const params=new URLSearchParams(filter);
   if(!params.has("jobId"))params.set("jobId",detail.jobId);
   if(!params.has("sort"))params.set("sort","screening_newest");
+  if(!params.has("active")&&!params.get("stage")&&params.get("trash")!=="true")params.set("active","true");
   params.delete("page");
   const query=params.toString();
   const neighbors=useHubResource<{previousId:string|null;nextId:string|null;position:number;total:number}>(`/api/hub/applications/${encodeURIComponent(detail.id)}/navigation?${query}`);
