@@ -1912,3 +1912,20 @@ body:has(.hiring-hub .hub-draft-overlay) { overflow: hidden; }
  .hiring-hub .hub-main .hub-pipeline-tabs > button { min-height:44px; }
  .hiring-hub .hub-main .hub-column-filter input,.hiring-hub .hub-main .hub-column-filter select { min-height:44px; }
 }
+
+/* A quiet document reader: compact controls and a whole-page view by default. */
+.hub-file-list .hub-resume-preview { padding:10px; background:#f4f6f7; border-color:#d9e2e5; max-width:760px; }
+.hub-document-expand { display:block; margin-left:auto; font-size:12px; }
+.hub-document-toolbar { display:flex; gap:6px; align-items:center; margin:6px 0 10px; }
+.hub-document-toolbar .hub-icon-button { width:36px; min-height:36px; padding:6px; }
+.hub-document-page-count { min-width:46px; text-align:center; font-size:12px; font-variant-numeric:tabular-nums; }
+.hub-document-toolbar select { margin-left:auto; width:auto; min-width:0; padding:6px 8px; font-size:13px; border:1px solid #ccdadd; border-radius:6px; background:white; }
+.hub-document-stage { overflow:auto; background:#e9eef0; border:1px solid #d9e2e5; border-radius:5px; padding:8px; }
+.hub-document-stage canvas { box-shadow:0 2px 8px #16323b18; background:white; }
+.hub-document-stage.is-fit-page { max-height:none; }
+.hub-document-caption { color:#526971; font-size:11px; line-height:1.5; margin:8px 0 0; }
+.hub-word-reading-view { overflow:auto; padding:20px; margin-top:10px; background:white; border:1px solid #dde5e8; border-radius:4px; color:#18343d; box-shadow:0 2px 8px #16323b0a; }
+.hub-word-reading-view p { white-space:pre-wrap; overflow-wrap:anywhere; font-size:14px; line-height:1.65; margin:0 0 14px; }
+.hub-word-reading-view p:last-child { margin-bottom:0; }
+@media(max-width:640px) { .hub-document-toolbar .hub-icon-button { width:44px; min-height:44px; } .hub-document-toolbar select { min-height:44px; font-size:16px; } .hub-word-reading-view { padding:14px; } }
+@media(max-width:640px) { .hub-document-stage.is-fit-page { max-height:280px; } .is-expanded .hub-document-stage.is-fit-page { max-height:min(70vh,700px); } }
