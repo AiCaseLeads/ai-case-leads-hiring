@@ -1232,17 +1232,11 @@ export function CandidateDetail({
                   detail.communications.map((message) => (
                     <article className="hub-history-item" key={message.id}>
                       <div>
-                        <strong>{message.subject}</strong>
-                        <Badge
-                          tone={
-                            message.status === "failed" ? "danger" : "neutral"
-                          }
-                        >
-                          {communicationSummary(message.status).label}
-                        </Badge>
+                        <strong>{message.purpose || "Email"} · {communicationSummary(message.status).label.toLowerCase()}</strong>
+
                       </div>
                       <small>{communicationSummary(message.status).explanation}</small>
-                      <details><summary>View message</summary><p className="hub-preserve">{message.body}</p></details>
+                      <details><summary>View message</summary><strong>{message.subject}</strong><p className="hub-preserve">{message.body}</p></details>
                       <small>{displayDate(message.createdAt)}</small>
                     </article>
                   ))

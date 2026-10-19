@@ -75,6 +75,7 @@ export type HistoryEntry = {
 };
 export type Communication = {
   id: string;
+  purpose?: string;
   subject: string;
   body: string;
   status: string;

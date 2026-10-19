@@ -121,7 +121,8 @@ export type ApplicationDetail = ApplicationSummary & {
   notes: HistoryEntry[];
   communications: {
     id: string;
-    subject: string;
+    purpose?: string;
+  subject: string;
     body: string;
     status: string;
     createdAt: number;
