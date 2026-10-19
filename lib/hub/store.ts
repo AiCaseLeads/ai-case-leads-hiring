@@ -40,8 +40,9 @@ import {
 } from "./validation";
 import { assertJobEditable, jobLifecycleKey, type JobLifecycle } from "./job-lifecycle";
 
-export const DEFAULT_REJECTION =
-  "Hi {{name}},\n\nThank you for applying for {{jobTitle}} at AI Case Leads. We appreciate your interest. We will not be moving forward with your application for this role.\n\nAI Case Leads Hiring Team";
+import { DEFAULT_REJECTION } from "../hiring/email-templates";
+export { DEFAULT_REJECTION } from "../hiring/email-templates";
+
 type Bind = string | number | null;
 export type ApplicationFilters = {
   q?:string;jobId?:string;stage?:string;assignee?:string;qualification?:"pass"|"review"|"fail";

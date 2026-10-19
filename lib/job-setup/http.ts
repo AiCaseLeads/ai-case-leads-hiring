@@ -50,7 +50,10 @@ export async function handleJobSetup(
       KEY,
       structuredClone(emptySetup),
     );
-    if (request.method === "GET") return jsonResponse({ data: setup });
+    if (request.method === "GET") {
+      const configured = await store.setting<string>("rejection_template", DEFAULT_REJECTION);
+      return jsonResponse({ data: { ...setup, defaultRejectionTemplate: configured?.trim() ? configured : DEFAULT_REJECTION } });
+    }
     assertSameOrigin(request);
     if (request.method === "PATCH") {
       const input = parse(catalogCommand, await body(request));

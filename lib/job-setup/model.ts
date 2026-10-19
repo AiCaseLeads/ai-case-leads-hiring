@@ -38,6 +38,7 @@ export type JobRequest = {
   jobId?: string;
 };
 export type SetupCatalog = {
+  defaultRejectionTemplate?: string;
   revision: number;
   templates: JobTemplate[];
   requests: JobRequest[];

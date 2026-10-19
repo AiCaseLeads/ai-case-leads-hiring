@@ -1,6 +1,7 @@
 "use client";
 import { countries, countryResidenceField, isCountryResidence, residencePath } from "@/lib/countries";
 import { screeningValue, summarizeCountries } from "@/lib/job-setup/screening-summary";
+import { DEFAULT_REJECTION } from "@/lib/hiring/email-templates";
 import { CountryScreening } from "./country-screening";
 import { ScreeningSummary } from "./screening-summary";
 import { contactPaths, withRequiredContacts } from "@/lib/hiring/contact-fields";
@@ -542,6 +543,7 @@ function Editor({
     (originalBinding &&
       !scorecards.archived.includes(originalBinding.templateId)) ||
     (job && originalBinding);
+  const defaultRejection = catalog.defaultRejectionTemplate?.trim() ? catalog.defaultRejectionTemplate : DEFAULT_REJECTION;
   const saveFeedback = useRef<HTMLDivElement>(null);
   const [expandedQuestion,setExpandedQuestion]=useState<string|null>(null);
   const [invalidInstructions,setInvalidInstructions]=useState<string|null>(null);
@@ -863,7 +865,7 @@ function Editor({
         rules,
         autoReject,
         aiMatchEnabled,
-        ...(rejection.trim() ? { rejectionTemplate: rejection } : {}),
+        rejectionTemplate: rejection.trim() ? rejection : defaultRejection,
         assessmentPrompt: assessment,
         archiveProject:
           job?.archiveProject ||
@@ -1339,6 +1341,7 @@ function Editor({
               }}
               autoReject={autoReject}
               setAutoReject={setAutoReject}
+              defaultRejection={defaultRejection}
               rejection={rejection}
               setRejection={setRejection}
             />
@@ -1736,6 +1739,7 @@ function QuestionScreening({
 }
 
 function AdvancedRules({
+  defaultRejection,
   reveal=false,
   fields,
   rules,
@@ -1745,6 +1749,7 @@ function AdvancedRules({
   rejection,
   setRejection,
 }: {
+  defaultRejection: string;
   reveal?:boolean;
   fields: ApplicationField[];
   rules: Rule[];
@@ -1758,6 +1763,8 @@ function AdvancedRules({
     change(rules.map((r, n) => (n === i ? { ...r, ...patch } : r)));
 
   }
+  const [editingRejection, setEditingRejection] = useState(false);
+  const [rejectionInput, setRejectionInput] = useState("");
   return (
     <section className="hub-card hub-screening-decisions">
       <h3>What happens when an applicant does not qualify?</h3>
@@ -1887,19 +1894,22 @@ function AdvancedRules({
         </button>
       </details>
       <Field
-        label="Rejection email (optional)"
-        hint="Leave blank to use the team’s saved email template."
+        label="Rejection email"
+        hint="Ready to use. {{name}} and {{jobTitle}} are filled in automatically. Customize this job’s message if needed."
       >
         <textarea
           rows={5}
           maxLength={10000}
-          value={rejection}
+          value={editingRejection ? rejectionInput : (rejection.trim() ? rejection : defaultRejection)}
+          onFocus={(event) => { setRejectionInput(event.currentTarget.value); setEditingRejection(true); }}
+          onBlur={() => setEditingRejection(false)}
           onChange={(e) => {
+            setRejectionInput(e.target.value);
             setRejection(e.target.value);
-
           }}
         />
       </Field>
+      <button type="button" className="hub-text-button" disabled={!rejection.trim() || rejection === defaultRejection} onClick={() => { setRejection(""); setEditingRejection(false); }}>Use default rejection message</button>
       <label className="hub-checkbox">
         <input
           type="checkbox"
