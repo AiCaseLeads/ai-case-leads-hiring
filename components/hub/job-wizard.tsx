@@ -561,7 +561,7 @@ function Editor({
     [customSlug, setCustomSlug] = useState<string | null>(job?.slug || null),
     [assessment, setAssessment] = useState(source?.assessmentPrompt || ""),
     [rules, setRules] = useState<Rule[]>(structuredClone(source?.rules || [])),
-    [autoReject, setAutoReject] = useState(job?.autoReject || false),
+    [autoReject, setAutoReject] = useState(job ? (job.autoReject ?? false) : true),
     [aiMatchEnabled, setAiMatchEnabled] = useState(job?.aiMatchEnabled || false),
     [rejection, setRejection] = useState(source?.rejectionTemplate || ""),
     [choice, setChoice] = useState(
@@ -829,13 +829,6 @@ function Editor({
       goToStep(1);
       return;
     }
-    if (autoReject && !rules.some((r) => r.enabled)) {
-      setError(
-        "Add an enabled qualifying answer, or turn off automatic rejection.",
-      );
-      goToStep(1);
-      return;
-    }
     if (status === "open" && !hasDescriptionText(description)) {
       setError("Add a job description before publishing.");
       goToStep(0);
@@ -863,7 +856,7 @@ function Editor({
         status,
         fields,
         rules,
-        autoReject,
+        autoReject: autoReject && rules.some(rule => rule.enabled),
         aiMatchEnabled,
         rejectionTemplate: rejection.trim() ? rejection : defaultRejection,
         assessmentPrompt: assessment,
@@ -975,7 +968,7 @@ function Editor({
       {!job && source && (
         <p className="hub-notice">
           This is a new posting. Applicants from the original job stay saved
-          there. Automatic rejection starts off.
+          there. Automatic rejection applies only after you save enabled screening requirements.
         </p>
       )}
       <ol
@@ -1614,7 +1607,9 @@ function Editor({
             <section className="hub-card">
               <h3>Automatic screening</h3>
               <p>
-                {autoReject
+                {autoReject && !rules.some(rule => rule.enabled)
+                  ? "Inactive — no screening requirements are enabled. Applicants enter your New queue for review."
+                  : autoReject
                   ? "On — complete answers below your minimums receive the rejection email. Missing screening answers stay in the recruiter queue."
                   : "Off — applicants enter your New queue for the team to review."}
               </p>
@@ -1923,6 +1918,7 @@ function AdvancedRules({
         />{" "}
         Automatically reject applicants who fail enabled requirements
       </label>
+      {autoReject && !rules.some(rule => rule.enabled) && <p className="hub-muted">Inactive until you add and save an enabled screening requirement. No applicants are automatically rejected without requirements.</p>}
     </section>
   );
 }
