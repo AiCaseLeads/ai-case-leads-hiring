@@ -656,7 +656,7 @@ nav a:hover {
 .job-description {
   font-size: 16px;
   line-height: 1.9;
-  color: #536e74;
+  color: var(--ink);
 }
 .job-description h2 {
   font-size: 22px;
@@ -1350,7 +1350,7 @@ nav a:hover {
 }
 
 /* The public description and recruiter preview share one readable format. */
-.description-copy { white-space: pre-wrap; overflow-wrap: anywhere; }
+.description-copy { color: var(--ink); white-space: pre-wrap; overflow-wrap: anywhere; }
 .description-copy p { margin: 0 0 1em; white-space: inherit; }
 .description-copy h2, .description-copy h3, .description-copy h4 { font-weight: 700; line-height: 1.35; margin: 1em 0 .6em; }
 .description-copy h2 { font-size: 1.4em; }
