@@ -34,7 +34,7 @@ async function resolveShare(store:HubStore,token:string){
  return share.applicationId;
 }
 function resumeFiles(detail:ApplicationDetail){
- const paths=new Set(detail.fields.filter(field=>field.type==='File'&&(field.path==='_systemfield_resume'||/résumé|resume|\bcv\b/i.test(field.title))).map(field=>field.path));
+ const paths=new Set(detail.fields.filter(field=>field.type==='File'&&(field.path==='_systemfield_resume'||/^(?:r[eé]sum[eé](?:\s*\/\s*cv)?|cv|curriculum vitae)$/i.test(field.title.trim()))).map(field=>field.path));
  return detail.files.filter(file=>file.fieldPath&&paths.has(file.fieldPath));
 }
 export async function sharedApplicant(store:HubStore,token:string){
