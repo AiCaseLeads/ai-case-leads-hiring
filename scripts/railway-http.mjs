@@ -19,7 +19,8 @@ export function normalizeRailwayRequest(request, origin, railwayEdge = !!process
 }
 function cacheBoundary(response, pathname) {
   const staticAsset = pathname.startsWith("/_next/static/");
-  if (!staticAsset && !pathname.startsWith("/api/") && pathname !== "/team") return;
+  const sharedApplicant = pathname.startsWith("/shared-applicants/");
+  if (!staticAsset && !sharedApplicant && !pathname.startsWith("/api/") && pathname !== "/team") return;
   const original = response.writeHead;
   response.writeHead = function(status, ...args) {
     const index = typeof args[0] === "string" ? 1 : 0;
@@ -30,6 +31,10 @@ function cacheBoundary(response, pathname) {
     }
     headers = { ...headers, "Cache-Control": "no-store" };
     response.setHeader("Cache-Control", "no-store");
+    if (sharedApplicant) {
+      for (const name of Object.keys(headers)) if (["referrer-policy", "x-robots-tag", "x-content-type-options"].includes(name.toLowerCase())) delete headers[name];
+      Object.assign(headers, {"Referrer-Policy": "no-referrer", "X-Robots-Tag": "noindex, nofollow, noarchive", "X-Content-Type-Options": "nosniff"});
+    }
     if (staticAsset && status >= 400) { response.removeHeader("ETag"); response.removeHeader("Last-Modified"); }
     args[index] = headers;
     return original.call(this, status, ...args);

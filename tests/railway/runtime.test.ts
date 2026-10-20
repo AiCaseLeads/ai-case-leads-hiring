@@ -133,6 +133,12 @@ test("actual Node stream caps chunked bodies and prevents missing-asset caching"
   const origin = `http://127.0.0.1:${address.port}`;
   try {
     const okay = await fetch(origin + "/api/synthetic", { method: "POST", body: "synthetic", headers: { Host: "evil.invalid", "X-Forwarded-Proto": "http" } }); assert.equal(okay.status, 200); assert.equal(okay.headers.get("cache-control"), "no-store"); assert.deepEqual(await okay.json(), { bytes: 9, host: "careers.example.invalid", proto: "https" });
+    const shared = await fetch(origin + "/shared-applicants/synthetic");
+    assert.equal(shared.headers.get("cache-control"), "no-store");
+    assert.equal(shared.headers.get("referrer-policy"), "no-referrer");
+    assert.equal(shared.headers.get("x-robots-tag"), "noindex, nofollow, noarchive");
+    assert.equal(shared.headers.get("x-content-type-options"), "nosniff");
+    await shared.arrayBuffer();
     const uploadPath = "/api/uploads/" + "f".repeat(64);
     const oneMiB = await fetch(origin + uploadPath, { method: "POST", body: new Uint8Array(1024 * 1024) }); assert.equal(oneMiB.status, 200); assert.equal(((await oneMiB.json()) as { bytes: number }).bytes, 1024 * 1024);
     const maxMultipart = await fetch(origin + uploadPath, { method: "POST", body: new Uint8Array(10 * 1024 * 1024 + 65536) }); assert.equal(maxMultipart.status, 200); assert.equal(((await maxMultipart.json()) as { bytes: number }).bytes, 10 * 1024 * 1024 + 65536);
