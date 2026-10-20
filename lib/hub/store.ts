@@ -1729,11 +1729,14 @@ export class HubStore {
     return { updated: ids.length };
   }
   /** Only untouched initial review applicants may enter a bulk rejection plan. */
-  private async bulkRejectionEligible(id:string):Promise<boolean>{
-    return !!await this.stmt(`SELECT 1 AS eligible FROM hub_applications a WHERE a.id=? AND a.stage='Application Review' AND ${activeApplicationsSql('a')}
+  private bulkRejectionEligibilitySql(){
+    return `a.stage='Application Review' AND ${activeApplicationsSql('a')}
       AND NOT EXISTS(SELECT 1 FROM hub_interviews i WHERE i.application_id=a.id)
       AND NOT EXISTS(SELECT 1 FROM hub_assessments i WHERE i.application_id=a.id)
-      AND NOT EXISTS(SELECT 1 FROM hub_history h WHERE h.application_id=a.id AND h.to_stage IN ('Screening','Assessment','Interview','Offer','Hired'))`,id).first();
+      AND NOT EXISTS(SELECT 1 FROM hub_history h WHERE h.application_id=a.id AND h.to_stage IN ('Screening','Assessment','Interview','Offer','Hired'))`;
+  }
+  private async bulkRejectionEligible(id:string):Promise<boolean>{
+    return !!await this.stmt(`SELECT 1 AS eligible FROM hub_applications a WHERE a.id=? AND ${this.bulkRejectionEligibilitySql()}`,id).first();
   }
   async previewBulkRejection(filters:ApplicationFilters,ids:string[]|undefined,reason:string,member:HubMember){
     let matching:string[];
@@ -1745,7 +1748,13 @@ export class HubStore {
       throw error;
     }
     const entries:{id:string;revision:number}[]=[];
-    for(const id of matching)if(await this.bulkRejectionEligible(id)){const app=await this.applicationRow(id);entries.push({id,revision:app.revision});}
+    // Bounded set queries avoid two sequential database reads per candidate at 10k.
+    for(let offset=0;offset<matching.length;offset+=100){
+      const ids=matching.slice(offset,offset+100);
+      const eligible=await this.rows<{id:string;revision:number}>(`SELECT a.id,a.revision FROM hub_applications a WHERE a.id IN (${ids.map(()=>"?").join(",")}) AND ${this.bulkRejectionEligibilitySql()}`,...ids);
+      const byId=new Map(eligible.map(row=>[row.id,row]));
+      for(const id of ids){const row=byId.get(id);if(row)entries.push(row);}
+    }
     const planId=crypto.randomUUID(),expiresAt=Date.now()+30*60_000;
     await this.setSetting('bulk_rejection:'+planId,{actor:member.email.toLowerCase(),entries,reason,expiresAt,cursor:0,updated:0,skipped:0});
     return {planId,count:entries.length,excluded:matching.length-entries.length,expiresAt};
@@ -1761,8 +1770,8 @@ export class HubStore {
     if(plan.expiresAt<Date.now())throw new HiringError('bulk_plan_expired',409,'This preview expired. Preview the remaining applicants again.');
     const next={...plan},statements:D1PreparedStatement[]=[];
     for(const entry of plan.entries.slice(plan.cursor,plan.cursor+100)){
-      const app=await this.applicationRow(entry.id);
-      if(app.revision!==entry.revision||!await this.bulkRejectionEligible(entry.id)){next.skipped++;}
+      const app=await this.stmt("SELECT * FROM hub_applications WHERE id=?",entry.id).first<ApplicationRow>();
+      if(!app||app.revision!==entry.revision||!await this.bulkRejectionEligible(entry.id)){next.skipped++;}
       else{statements.push(...await this.actionStatements(app,{action:'reject',reason:plan.reason,expectedRevision:entry.revision},member));next.updated++;}
       next.cursor++;
     }

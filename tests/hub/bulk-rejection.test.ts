@@ -50,3 +50,20 @@ test('bulk preview rejects selected IDs from another job and uses rejection-spec
  assert.equal(database.prepare("SELECT count(*) n FROM hub_tasks WHERE id LIKE '%:rejection:%'").get()!.n,0);
  }finally{database.close();}
 });
+test('forced competing plan commits roll back the loser and missing snapshot rows are skipped',async()=>{
+ const {store,database}=createStore();try{
+ const job=await store.saveJob(jobInput());await store.acceptApplication(applicationInput(job.id));
+ const plan=await store.previewBulkRejection({jobId:job.id},undefined,'Decision.',MANAGER);
+ // Include a disappeared record without deleting an application with foreign-key children.
+ const key='bulk_rejection:'+plan.planId;const snapshot=await store.setting<Record<string,unknown>>(key,{});
+ (snapshot.entries as unknown[]).push({id:'purged-record',revision:1});await store.setSetting(key,snapshot);
+ const original=store.db.batch.bind(store.db);let arrived=0;let release!:()=>void;const barrier=new Promise<void>(resolve=>{release=resolve;});
+ store.db.batch=async statements=>{arrived++;if(arrived===2)release();await barrier;return original(statements);};
+ const results=await Promise.allSettled([store.executeBulkRejection(plan.planId,MANAGER),store.executeBulkRejection(plan.planId,MANAGER)]);
+ assert.equal(results.filter(result=>result.status==='fulfilled').length,1);assert.equal(results.filter(result=>result.status==='rejected').length,1);
+ assert.equal(database.prepare("SELECT count(*) n FROM hub_tasks WHERE id LIKE '%:rejection:%'").get()!.n,1);
+ assert.equal(database.prepare("SELECT count(*) n FROM hub_history WHERE text='Decision.'").get()!.n,1);
+ assert.deepEqual(await store.executeBulkRejection(plan.planId,MANAGER),{updated:1,skipped:1,total:2,remaining:0,complete:true});
+ assert.equal((database.prepare("PRAGMA table_info(hub_settings)").all().find(row=>row.name==='value'))!.notnull,1);
+ }finally{database.close();}
+});
