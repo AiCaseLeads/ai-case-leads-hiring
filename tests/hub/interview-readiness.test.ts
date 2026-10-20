@@ -13,6 +13,7 @@ test('readiness follows effective recruiter contact instead of owner or unrelate
  await f.store.setSetting(teamKey(f.job.id),{members:[RECRUITER.email],replyTo:RECRUITER.email,revision:1});
  const owner={...MANAGER,email:'sales@aicaseleads.com'};
  const result=await interviewReadiness(f.store,owner,f.id,env);
+ assert.deepEqual(result.cc,[owner.email]);assert.deepEqual(result.replyTo,[RECRUITER.email,owner.email]);
  assert.equal(result.sender,RECRUITER.email);assert.equal(result.mailReady,true);assert.equal(result.mailIssue,null);
  assert.ok(!JSON.stringify(result).includes('never-return-this'));
  assert.equal((await f.store.getApplication(f.id)).stage,'Application Review');

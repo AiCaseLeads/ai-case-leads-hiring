@@ -26,3 +26,8 @@ export function candidateTaskMailMode(taskId: string, applicationId: string, pay
 export function isRejectionTask(taskId:string,applicationId:string):boolean {
  return taskId===`gmail:${applicationId}:rejection` || taskId.startsWith(`gmail:${applicationId}:rejection:`);
 }
+
+export function isInterviewInvitationTask(taskId:string,applicationId:string):boolean {
+ const prefix=`gmail:${applicationId}:interview:`;
+ return taskId.startsWith(prefix)&&/^[^:]+:invitation:[0-9]+$/.test(taskId.slice(prefix.length));
+}

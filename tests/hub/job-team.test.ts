@@ -162,3 +162,21 @@ test("owner sales hiring alerts are suppressed at delivery even if a legacy team
  assert.equal((await f.store.tasks()).find(task=>task.id==="legacy-sales-notice")?.status,"done");
  f.database.close();
 });
+
+test('interview-only copy uses active requester and allows owner replies without leaking into automatic mail',async()=>{
+ const {candidateMail}=await import('../../lib/job-team/service');
+ const {mimeMessage}=await import('../../lib/google/gmail');
+ const f=await fixture();try{
+ const job=await f.store.saveJob(jobInput()),app=await f.store.acceptApplication(applicationInput(job.id));
+ await configure(f,job.id,[RECRUITER.email],{replyTo:RECRUITER.email});
+ const input={to:'candidate@example.invalid',subject:'Interview',body:'Choose a time',messageId:'interview@example.invalid',cc:['forged@example.invalid']};
+ const context={applicationId:app.id,mailMode:'recruiter',interview:true,actor:'sales@aicaseleads.com'};
+ const mail=await candidateMail(f.store,input,['sales@aicaseleads.com'],context);
+ assert.equal(mail.sender,RECRUITER.email);assert.deepEqual(mail.cc,['sales@aicaseleads.com']);assert.deepEqual(mail.replyTo,[RECRUITER.email,'sales@aicaseleads.com']);
+ assert.match(mimeMessage(mail.sender!,mail),/Cc: sales@aicaseleads.com/);
+ const same=await candidateMail(f.store,input,[],{...context,actor:RECRUITER.email});assert.deepEqual(same.cc,[RECRUITER.email]);assert.deepEqual(same.replyTo,[RECRUITER.email]);
+ const external=await candidateMail(f.store,input,[],{...context,actor:'external@example.invalid'});assert.equal(external.cc,undefined);
+ const automatic=await candidateMail(f.store,input,['sales@aicaseleads.com'],{applicationId:app.id,rejection:true});assert.equal(automatic.cc,undefined);assert.deepEqual(automatic.replyTo,['no-reply@notify.aicaseleads.com']);
+ assert.throws(()=>mimeMessage(RECRUITER.email,{...input,cc:['bad\r\nBcc: stolen@example.invalid']}));
+ }finally{f.database.close();}
+});

@@ -1,3 +1,5 @@
+import {candidateMail} from "../job-team/service";
+import {isInterviewInvitationTask} from "../google/mail-setup";
 import {communicationPurpose} from "./communication-purpose";
 import { MAIL_SETUP_ERRORS } from "../google/mail-setup";
 import { activeApplicationsSql, applicationTrash } from './application-lifecycle';
@@ -929,7 +931,7 @@ export class HubStore {
     const [files,history,communications,assessments,interviews,scorecards,links] = await Promise.all([
       this.rows<{id:string;field_path:string;filename:string;content_type:string;size:number}>("SELECT id,field_path,filename,content_type,size FROM hub_files WHERE application_id=? AND uploaded_at>0 ORDER BY filename",id),
       this.rows<{id:string;type:string;text:string;actor:string;created_at:number}>("SELECT * FROM hub_history WHERE application_id=? ORDER BY created_at,id",id),
-      this.rows<{id:string;task_id:string;subject:string;body:string;status:string;created_at:number}>("SELECT * FROM hub_communications WHERE application_id=? ORDER BY created_at DESC,id",id),
+      this.rows<{id:string;task_id:string;subject:string;body:string;status:string;created_at:number;payload_json:string|null}>("SELECT c.*,t.payload_json FROM hub_communications c LEFT JOIN hub_tasks t ON t.id=c.task_id WHERE c.application_id=? ORDER BY c.created_at DESC,c.id",id),
       this.rows<{id:string;status:"invited"|"submitted";prompt:string;answer:string|null;submitted_at:number|null}>("SELECT * FROM hub_assessments WHERE application_id=? ORDER BY created_at DESC,id DESC",id),
       this.rows<InterviewRow>("SELECT * FROM hub_interviews WHERE application_id=? ORDER BY created_at DESC,id DESC",id),
       this.rows<{id:string;actor:string;score:number;criteria:string;text:string;created_at:number}>("SELECT * FROM hub_scorecards WHERE application_id=? ORDER BY created_at DESC,id",id),
@@ -951,7 +953,16 @@ export class HubStore {
       answers:decode(app.answers_json,[]),fields:decode(app.fields_json,[]),qualificationEvidence:decode(app.qualification_json,[]),
       files:files.map((file) => ({id:file.id,fieldPath:file.field_path,filename:file.filename,contentType:file.content_type,size:file.size,url:`/api/files/${encodeURIComponent(file.id)}`})),
       history:events,notes:events.filter((event) => event.type === "note"),
-      communications:communications.map((item) => ({id:item.id,purpose:communicationPurpose(item.task_id,id),subject:item.subject,body:item.body,status:item.status,createdAt:item.created_at})),
+      communications:await Promise.all(communications.map(async(item) => {
+        const payload=decode<Record<string,unknown>>(item.payload_json||"{}",{});
+        const direction=item.status==='received'?'incoming' as const:'outgoing' as const;
+        let envelope=payload.deliveryEnvelope as {sender?:string;to?:string[];cc?:string[];replyTo?:string[]}|undefined;
+        if(!envelope&&['pending','queued','failed'].includes(item.status)&&isInterviewInvitationTask(item.task_id,id))try{
+          const mail=await candidateMail(this,payload as unknown as import('../google/gmail').MailInput,(process.env.ADMIN_EMAILS||'').split(','),{applicationId:id,mailMode:'recruiter',actor:payload.actor,interview:true});
+          envelope={sender:mail.sender,to:[mail.to],cc:mail.cc||[],replyTo:mail.replyTo||[]};
+        }catch{/* Unconfigured routing stays unspecified until it can be verified. */}
+        return {id:item.id,purpose:communicationPurpose(item.task_id,id),subject:item.subject,body:item.body,status:item.status,createdAt:item.created_at,direction,...(envelope||{}),...(direction==='incoming'?{sender:typeof payload.sender==='string'?payload.sender:app.email}:{} )};
+      })),
       assessments:allAssessments,interviews:allInterviews,
       ...(allAssessments[0]?{assessment:allAssessments[0]}:{}),...(allInterviews[0]?{interview:allInterviews[0]}:{}),scorecards:cards};
   }

@@ -9,10 +9,11 @@ import { HiringError } from '../hiring/errors';
 export async function interviewReadiness(store: HubStore, member: HubMember, applicationId: string, env: PersonalMailEnv) {
  const owners=(env.ADMIN_EMAILS || '').split(',');
  const app=await store.applicationRow(applicationId);
+ let cc:string[]=[],replyTo:string[]=[];
  let sender: string | null=null, mailReady=false, mailIssue: string | null=null;
  try {
-  const envelope=await candidateMail(store,{to:app.email,subject:'Interview invitation',body:'Your private interview booking link.',messageId:'<readiness-preview@jobs.aicaseleads.com>'},owners,{mailMode:'recruiter',actor:member.email,applicationId});
-  sender=envelope.candidateAccount || null;
+  const envelope=await candidateMail(store,{to:app.email,subject:'Interview invitation',body:'Your private interview booking link.',messageId:'<readiness-preview@jobs.aicaseleads.com>'},owners,{mailMode:'recruiter',actor:member.email,applicationId,interview:true});
+  sender=envelope.candidateAccount || null;cc=envelope.cc||[];replyTo=envelope.replyTo||[];
   mailReady=!!sender && (await personalMailStatus(store,sender,env)).connected;
   if(!mailReady) mailIssue='recruiter_email_not_connected';
  } catch(error) {
@@ -33,5 +34,5 @@ export async function interviewReadiness(store: HubStore, member: HubMember, app
    renewCalendarReady=staff.some(person=>person.email===pinned.ownerEmail) && status.ready && status.calendarId===pinned.calendarId;
   } else renewCalendarReady=sharedCalendarReady;
  }
- return {sender,mailReady,mailIssue,companyGoogleReady,sharedCalendarReady,renewCalendarReady,hasActiveInterview:!!current && current.status!=='cancelled',interviewers};
+ return {sender,cc,replyTo,mailReady,mailIssue,companyGoogleReady,sharedCalendarReady,renewCalendarReady,hasActiveInterview:!!current && current.status!=='cancelled',interviewers};
 }

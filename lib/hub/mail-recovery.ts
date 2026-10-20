@@ -11,7 +11,7 @@ import { personalMailWorkspace, type PersonalMailEnv } from "../personal-mail/se
 import { canonicalJson, privateToken, sha256 } from "../hiring/crypto";
 import { HiringError } from "../hiring/errors";
 import type { MailInput } from "../google/gmail";
-import { candidateTaskMailMode, isRejectionTask } from "../google/mail-setup";
+import { candidateTaskMailMode, isInterviewInvitationTask, isRejectionTask } from "../google/mail-setup";
 
 const LIMIT = 200;
 const PLAN_MS = 10 * 60_000;
@@ -23,7 +23,7 @@ export type RecoveryDependencies = { env: PersonalMailEnv; resolve?: (account: s
 type Planned = { id: string; snapshot: string; envelope: string; transport: string };
 type Plan = { actor: string; from: number; to: number; expiresAt: number; digest: string; items: Planned[]; consumed?: { queued: number; at: number } };
 type MailKind = "Application receipt" | "Automatic rejection" | "Recruiter message" | "Assessment invitation" | "Interview invitation" | "Recruiter rejection" | "Team notification" | "Review reminder";
-export type RecoveryPreview = { planId: string | null; digest: string | null; expiresAt: number | null; eligible: number; remaining: number; scanned: number; counts: Partial<Record<MailKind, number>>; skipped: Array<{ reason: string; count: number }>; messages: Array<{ id: string; applicant: string; job: string; kind: MailKind; sender: string; replyTo: string[]; subject: string }>; automaticSender: string; privacy: string };
+export type RecoveryPreview = { planId: string | null; digest: string | null; expiresAt: number | null; eligible: number; remaining: number; scanned: number; counts: Partial<Record<MailKind, number>>; skipped: Array<{ reason: string; count: number }>; messages: Array<{ id: string; applicant: string; job: string; kind: MailKind; sender: string; replyTo: string[]; cc:string[]; subject: string }>; automaticSender: string; privacy: string };
 
 const columns = "t.*,a.revision AS app_revision,a.stage AS app_stage,a.stage_entered_at AS app_stage_entered_at,a.email AS app_email,a.name AS app_name,a.job_title,c.status AS communication_status,c.updated_at AS communication_updated_at,c.provider_id,c.thread_id";
 const joins = "FROM hub_tasks t JOIN hub_applications a ON a.id=t.application_id LEFT JOIN hub_communications c ON c.task_id=t.id";
@@ -73,7 +73,7 @@ async function envelope(store: HubStore, row: Row, env: PersonalMailEnv, now: nu
     else if (messageKind === "Review reminder") mail = await reviewReminderMail(task(row, payload), store, owners);
     else {
       if (typeof payload.to !== "string" || payload.to.toLowerCase() !== row.app_email.toLowerCase() || !["subject", "body", "messageId"].every(key => typeof payload[key] === "string")) return { reason: "Recipient or original message identity needs individual review" };
-      mail = await candidateMail(store, payload as unknown as MailInput, owners, { mailMode: candidateTaskMailMode(row.id, row.application_id, payload), actor: payload.actor, applicationId: row.application_id, rejection:isRejectionTask(row.id,row.application_id) });
+      mail = await candidateMail(store, payload as unknown as MailInput, owners, { mailMode: candidateTaskMailMode(row.id, row.application_id, payload), actor: payload.actor, applicationId: row.application_id, rejection:isRejectionTask(row.id,row.application_id),interview:isInterviewInvitationTask(row.id,row.application_id) });
     }
     if (!mail || mail.to.toLowerCase() === "sales@aicaseleads.com") return { reason: "Notification is no longer current or owner notifications are disabled" };
     return { kind: messageKind, mail: internal ? { ...mail, sender:CANDIDATE_SENDER,replyTo:[AUTOMATIC_REPLY_TO],candidateAccount:undefined } : mail };
@@ -117,7 +117,7 @@ export async function previewMailRecovery(store: HubStore, member: HubMember, in
     if (items.length >= LIMIT) { remaining++; continue; }
     items.push({ id: row.id, snapshot: await sha256(canonicalJson(row)), envelope: await sha256(canonicalJson(built.mail)),transport:readiness.identity });
     counts[built.kind] = (counts[built.kind] || 0) + 1;
-    messages.push({ id: row.id, applicant: row.app_name, job: row.job_title, kind: built.kind, sender: built.mail.sender || built.mail.candidateAccount!, replyTo: built.mail.replyTo || [], subject: built.mail.subject });
+    messages.push({ id: row.id, applicant: row.app_name, job: row.job_title, kind: built.kind, sender: built.mail.sender || built.mail.candidateAccount!, replyTo: built.mail.replyTo || [], cc:built.mail.cc||[], subject: built.mail.subject });
   }
   const planId = items.length ? privateToken() : null, expiresAt = items.length ? now + PLAN_MS : null;
   const digest = items.length ? await sha256(canonicalJson({ actor: member.email, from, to, items })) : null;
