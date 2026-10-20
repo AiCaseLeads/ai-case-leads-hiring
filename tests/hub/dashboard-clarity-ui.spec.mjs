@@ -39,7 +39,7 @@ test('review shortcut and validated job links retain exact filters after a refre
  await nav.getByRole('button',{name:'Applicants',exact:true}).click();await page.getByRole('heading',{name:'Applicant list'}).waitFor();
  await page.goBack();await page.getByRole('heading',{name:'Job postings'}).waitFor();
  await page.goBack();await page.getByRole('heading',{name:'Hiring overview'}).waitFor();
- await page.getByRole('link',{name:'Recent applicant',exact:true}).click();await page.getByRole('heading',{name:'Applicant detail'}).waitFor();
+ const recent=page.getByRole('link',{name:'Recent applicant',exact:true});const recentHref=new URL(await recent.getAttribute('href'),page.url());await recent.click();await page.getByRole('heading',{name:'Applicant detail'}).waitFor();assert.equal(new URL(page.url()).searchParams.get('application'),recentHref.searchParams.get('application'));assert.equal(recentHref.searchParams.get('view'),'applications');
  await page.goBack();await page.getByRole('heading',{name:'Hiring overview'}).waitFor();
  await page.goForward();await page.getByRole('heading',{name:'Applicant detail'}).waitFor();
  await page.getByRole('button',{name:'Back to applicants'}).click();await page.getByRole('heading',{name:'Hiring overview'}).waitFor();
