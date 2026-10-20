@@ -165,6 +165,17 @@ export async function handleHubRequest(
         parse(actionInput, await json(request)),
         member,
       );
+    else if(section === "bulk-rejection" && request.method === "POST") {
+      const body=await json(request) as Record<string,unknown>;
+      if(!body||typeof body!=="object"||Array.isArray(body))throw new HiringError("invalid_bulk",422,"Choose applicants to preview.");
+      if(id==="preview"){
+        if(Object.keys(body).some(key=>!["ids","reason"].includes(key))||body.ids!==undefined&&(!Array.isArray(body.ids)||body.ids.length<1||body.ids.length>10000||body.ids.some(value=>typeof value!=="string"||value.length>128)||new Set(body.ids).size!==body.ids.length)||body.reason!==undefined&&(typeof body.reason!=="string"||!body.reason.trim()||body.reason.length>2000))throw new HiringError("invalid_bulk",422,"Choose valid applicants and a rejection reason.");
+        data=await store.previewBulkRejection(applicationFilters(request),body.ids as string[]|undefined,typeof body.reason==="string"?body.reason.trim():"Not selected after recruiter review.",member);
+      }else if(id==="execute"){
+        if(Object.keys(body).some(key=>!["planId","confirmed"].includes(key))||body.confirmed!==true||typeof body.planId!=="string"||! /^[a-f0-9-]{36}$/.test(body.planId))throw new HiringError("invalid_bulk",422,"Confirm the previewed group before rejecting applicants.");
+        data=await store.executeBulkRejection(body.planId,member);
+      }else throw new HiringError("not_found",404,"This action is unavailable.");
+    }
     else if (section === "bulk" && request.method === "POST") {
       const input = parse(bulkInput, await json(request));
       data = await store.bulk(input.ids, input, member);

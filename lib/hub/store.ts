@@ -1728,6 +1728,42 @@ export class HubStore {
     }
     return { updated: ids.length };
   }
+  /** Only untouched initial review applicants may enter a bulk rejection plan. */
+  private async bulkRejectionEligible(id:string):Promise<boolean>{
+    return !!await this.stmt(`SELECT 1 AS eligible FROM hub_applications a WHERE a.id=? AND a.stage='Application Review' AND ${activeApplicationsSql('a')}
+      AND NOT EXISTS(SELECT 1 FROM hub_interviews i WHERE i.application_id=a.id)
+      AND NOT EXISTS(SELECT 1 FROM hub_assessments i WHERE i.application_id=a.id)
+      AND NOT EXISTS(SELECT 1 FROM hub_history h WHERE h.application_id=a.id AND h.to_stage IN ('Screening','Assessment','Interview','Offer','Hired'))`,id).first();
+  }
+  async previewBulkRejection(filters:ApplicationFilters,ids:string[]|undefined,reason:string,member:HubMember){
+    const matching=await this.exportIds(filters,ids),entries:{id:string;revision:number}[]=[];
+    for(const id of matching)if(await this.bulkRejectionEligible(id)){const app=await this.applicationRow(id);entries.push({id,revision:app.revision});}
+    const planId=crypto.randomUUID(),expiresAt=Date.now()+30*60_000;
+    await this.setSetting('bulk_rejection:'+planId,{actor:member.email.toLowerCase(),entries,reason,expiresAt,cursor:0,updated:0,skipped:0});
+    return {planId,count:entries.length,excluded:matching.length-entries.length,expiresAt};
+  }
+  async executeBulkRejection(planId:string,member:HubMember){
+    type Plan={actor:string;entries:{id:string;revision:number}[];reason:string;expiresAt:number;cursor:number;updated:number;skipped:number};
+    const key='bulk_rejection:'+planId,row=await this.stmt('SELECT value FROM hub_settings WHERE key=?',key).first<{value:string}>();
+    if(!row)throw new HiringError('bulk_plan_missing',404,'Preview these applicants before rejecting them.');
+    const plan=JSON.parse(row.value) as Plan;
+    if(plan.actor!==member.email.toLowerCase())throw new HiringError('bulk_plan_forbidden',403,'Only the recruiter who previewed this group can confirm it.');
+    const result=(p:Plan)=>({updated:p.updated,skipped:p.skipped,total:p.entries.length,remaining:p.entries.length-p.cursor,complete:p.cursor===p.entries.length});
+    if(plan.cursor===plan.entries.length)return result(plan);
+    if(plan.expiresAt<Date.now())throw new HiringError('bulk_plan_expired',409,'This preview expired. Preview the remaining applicants again.');
+    const next={...plan},statements:D1PreparedStatement[]=[];
+    for(const entry of plan.entries.slice(plan.cursor,plan.cursor+100)){
+      const app=await this.applicationRow(entry.id);
+      if(app.revision!==entry.revision||!await this.bulkRejectionEligible(entry.id)){next.skipped++;}
+      else{statements.push(...await this.actionStatements(app,{action:'reject',reason:plan.reason,expectedRevision:entry.revision},member));next.updated++;}
+      next.cursor++;
+    }
+    // Plan progress and all decisions/outbox entries commit together. A concurrent replay
+    // loses this compare-and-swap and rolls back without sending a second message.
+    statements.unshift(this.stmt('UPDATE hub_settings SET value=CASE WHEN value=? THEN ? ELSE NULL END,updated_at=? WHERE key=?',row.value,JSON.stringify(next),Date.now(),key));
+    try{await this.db.batch(statements);}catch{throw new HiringError('bulk_plan_changed',409,'The group changed while saving. Retry this same confirmed group to continue safely.');}
+    return result(next);
+  }
   async latestInterview(applicationId: string): Promise<InterviewRow | null> {
     return this.stmt(
       "SELECT * FROM hub_interviews WHERE application_id=? ORDER BY created_at DESC,id DESC LIMIT 1",
