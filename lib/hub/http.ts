@@ -1,3 +1,4 @@
+import {manageApplicantShare} from "./applicant-share";
 import { APPLICATION_SORTS, type ApplicationFilters } from "./store";
 import { withRequiredApplicationFields } from "../hiring/contact-fields";
 import { downloadApplications } from "./exports";
@@ -92,6 +93,15 @@ export async function handleHubRequest(
     let data: unknown;
     if (section === "overview" && request.method === "GET")
       data = await store.overview();
+    else if(section==='applications' && id && operation==='share' && ['GET','POST','DELETE'].includes(request.method)){
+      let days=7;
+      if(request.method==='POST'){
+        const body=await json(request) as Record<string,unknown>;
+        if(!body||typeof body!=='object'||Array.isArray(body)||Object.keys(body).some(key=>key!=='expiresInDays')||(body.expiresInDays!==undefined&&![7,30].includes(body.expiresInDays as number)))throw new HiringError('invalid_share',422,'Choose a seven-day or thirty-day link.');
+        days=(body.expiresInDays as number|undefined)??7;
+      }
+      data=await manageApplicantShare(store,id,request.method,days);
+    }
     else if (section === "jobs" && request.method === "GET" && !id)
       data = await store.listJobs();
     else if (section === "jobs" && request.method === "POST" && !id) {

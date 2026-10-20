@@ -8,6 +8,10 @@ import { MAX_FILE_BYTES } from '../hiring/validation';
 /** Original uploads are private. Only verified PDF/raster bytes may render inline. */
 export async function privateApplicationFile(request:Request,id:string,member:HubMember|null,db?:D1Database,bucket?:Pick<R2Bucket,'get'>):Promise<Response>{
   if(!member?.email)throw new HiringError('staff_access_required',403,'Sign in with an authorized hiring account.');
+  return applicationFileResponse(request,id,db,bucket);
+}
+/** Internal renderer; callers must authorize staff or a scoped share before invoking. */
+export async function applicationFileResponse(request:Request,id:string,db?:D1Database,bucket?:Pick<R2Bucket,'get'>):Promise<Response>{
   if(!db||!bucket)throw new HiringError('storage_unavailable',503,'File storage is unavailable.');
   const preview=new URL(request.url).searchParams.get('preview')==='1';
   const file=await db.prepare('SELECT filename,content_type,object_key,size FROM hub_files WHERE id=? AND application_id IS NOT NULL AND uploaded_at>0').bind(id).first<{filename:string;content_type:string;object_key:string;size:number}>();
