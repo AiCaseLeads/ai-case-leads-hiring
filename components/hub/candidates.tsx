@@ -1,4 +1,5 @@
 "use client";
+import { normalizeApplicantScope, applicantStageChoice, applyApplicantStageChoice } from "./applicant-stage-filter";
 import { NavigationLink, applicantHref } from "./navigation-link";
 import {ShareApplicant} from "./share-applicant";
 import {BulkRejection} from "./bulk-rejection";
@@ -34,11 +35,7 @@ import {
   type ReviewerGrade,
 } from "./types";
 
-function reviewQueue(params:URLSearchParams) {
-  if(params.get("trash")==="true")params.delete("active");
-  else if(!params.has("active"))params.set("active",params.get("stage")?"false":"true");
-  return params;
-}
+const reviewQueue = normalizeApplicantScope;
 function GradeSummary({ grade }: { grade?: ReviewerGrade }) {
   return grade?.reviewed && grade.averageScore !== null ? (
     <span><strong>{grade.averageScore.toFixed(2)} / 5</strong><span className="hub-secondary-line">{grade.reviewerCount} reviewer{grade.reviewerCount === 1 ? "" : "s"}</span></span>
@@ -467,9 +464,13 @@ function JobCandidates({
       </div>
       <div className="hub-button-row hub-application-view-tabs"><button className="hub-pipeline-tab" type="button" aria-pressed={!inTrash} onClick={()=>applyView(new URLSearchParams({jobId}).toString())}>Applications</button><button className="hub-pipeline-tab" type="button" aria-pressed={inTrash} onClick={()=>applyView(new URLSearchParams({jobId,trash:"true"}).toString())}>Trash</button></div>
       {inTrash && <p className="hub-muted">Deleted applications stay here with their original files and history. Open an application to restore it. Cancelled emails and booking links are not sent again.</p>}
-      {!inTrash && <div className="hub-filter-grid" aria-label="Applicant scope and stage">
-        <Field label="Applicants"><select disabled={invalidDates} title="Active excludes rejected, withdrawn and hired applicants." value={new URLSearchParams(filter).get("active")==="true"?"true":"false"} onChange={event=>{const params=draftQuery();params.set("active",event.target.value);applyView(params.toString());}}><option value="true">Active applicants</option><option value="false">All applicants</option></select></Field>
-        <Field label="Stage"><select disabled={invalidDates} value={excludeStage?`exclude:${excludeStage}`:stage} onChange={event=>{const value=event.target.value;const params=draftQuery();params.delete("stage");params.delete("excludeStage");if(value.startsWith("exclude:"))params.set("excludeStage",value.slice(8));else if(value)params.set("stage",value);applyView(params.toString());}}><option value="">All stages</option><optgroup label="Only this stage">{stages.map(value=><option key={value} value={value}>{stageLabel(value)}</option>)}</optgroup><optgroup label="Exclude this stage">{stages.map(value=><option key={value} value={`exclude:${value}`}>Not {stageLabel(value).toLowerCase()}</option>)}</optgroup></select></Field>
+      {!inTrash && <div className="hub-filter-grid">
+        <Field label="Applicant stage"><select disabled={invalidDates} value={applicantStageChoice(new URLSearchParams(filter))} onChange={event=>applyView(applyApplicantStageChoice(draftQuery(),event.target.value).toString())}>
+          <option value="active">Active applicants</option><option value="all">All applicants</option>
+          <option value="active:exclude:Screening">Active — not shortlisted</option>
+          <optgroup label="Only this stage">{stages.map(value=><option key={value} value={`stage:${value}`}>Only {stageLabel(value).toLowerCase()}</option>)}</optgroup>
+          {excludeStage&&applicantStageChoice(new URLSearchParams(filter))!=="active:exclude:Screening"&&<option value={applicantStageChoice(new URLSearchParams(filter))}>{new URLSearchParams(filter).get("active")==="false"?"All":"Active"} — not {stageLabel(excludeStage).toLowerCase()}</option>}
+        </select></Field>
       </div>}
       <div className="hub-applicant-toolbar">
       <form className="hub-applicant-filter-form" onSubmit={filterSubmit}>
