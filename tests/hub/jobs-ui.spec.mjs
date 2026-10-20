@@ -305,7 +305,7 @@ test("mobile blank job follows real steps, required questions and scorecard; fai
 });
 test("editing a legacy posting preserves its address, archive labels, form revision and unset location", async (t) => {
   const { page, writes } = await setup(t);
-  await page.getByRole("button", { name: "Edit job", exact: true }).click();
+  await page.getByRole("link", { name: "Edit job", exact: true }).click();
   assert.equal(await page.getByLabel("Work arrangement").inputValue(), "");
   await next(page);await next(page);await next(page);
   await page
@@ -502,7 +502,7 @@ test('pending save must not close a newly chosen template in the same chooser hi
 
 test("published job sections can be opened directly without Continue or saving", async (t) => {
   const { page, writes } = await setup(t);
-  await page.getByRole("button", { name: "Edit job", exact: true }).click();
+  await page.getByRole("link", { name: "Edit job", exact: true }).click();
   const steps = page.getByRole("list", { name: "Job setup progress" });
   await steps.getByRole("button", { name: "Application questions", exact: true }).click();
   await page.getByRole("heading", { name: "What should applicants send?", exact: true }).waitFor();
@@ -744,4 +744,8 @@ test('LinkedIn is a fixed required question on existing jobs and absent from the
  await page.getByText('Changes saved.',{exact:false}).waitFor();
  const field=writes[0].job.fields.find(field=>field.path==='linkedin_profile');
  assert.equal(field.required,true);assert.equal(field.type,'SocialLink');assert.equal(writes[0].job.fields.find(f=>f.path==='_systemfield_resume').required,true);assert.equal(writes[0].job.fields.find(f=>f.path==='_systemfield_phone').required,true);assert.equal(writes[0].job.autoReject,false);assert.deepEqual(writes[0].job.rules,prior.rules);
+});
+
+test('job edit link has a reloadable URL and retains ordinary editor draft guards',async t=>{
+ const{page,writes}=await setup(t);const edit=page.getByRole('link',{name:'Edit job',exact:true});const href=await edit.getAttribute('href');assert.equal(new URL(href,page.url()).searchParams.get('jobEditor'),'existing-job');assert.equal(new URL(href,page.url()).searchParams.has('jobSession'),false);const before=page.url();const prevented=await edit.evaluate(el=>{let value;document.addEventListener('click',e=>{value=e.defaultPrevented;e.preventDefault();},{once:true});el.dispatchEvent(new MouseEvent('click',{bubbles:true,cancelable:true,metaKey:true}));return value;});assert.equal(prevented,false);assert.equal(page.url(),before);await edit.click();await page.getByLabel('Job title',{exact:true}).fill('Unsaved revised title');await page.getByRole('button',{name:'Back to jobs',exact:true}).click();await page.getByRole('button',{name:'Keep editing',exact:true}).click();assert.equal(await page.getByLabel('Job title',{exact:true}).inputValue(),'Unsaved revised title');assert.equal(writes.length,0);
 });
