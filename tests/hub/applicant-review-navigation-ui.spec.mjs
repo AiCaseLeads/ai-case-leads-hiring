@@ -178,3 +178,21 @@ test('leaving a running bulk rejection stops further chunks until explicit recov
  await page.route('**/api/hub/bulk-rejection/**',async route=>{const req=route.request();if(req.url().includes('/preview'))return route.fulfill({json:{data:{planId:'leave-plan',count:125,excluded:0,expiresAt:Date.now()+60000}}});executions++;await blocked;return route.fulfill({json:{data:{updated:100,skipped:0,total:125,remaining:25,complete:false}}});});
  await page.getByRole('button',{name:'Reject unshortlisted applicants',exact:true}).click();await page.getByRole('button',{name:'Reject 125 and queue emails',exact:true}).click();await page.waitForFunction(()=>document.querySelector('.hub-bulk-rejection button')?.disabled);await page.evaluate(()=>{const url=new URL(location.href);url.searchParams.set('jobId','different-job');history.pushState({},'',url);dispatchEvent(new Event('hub:navigate'));});release();await page.waitForTimeout(300);assert.equal(executions,1);assert.equal(await page.getByRole('button',{name:'Continue this rejection safely',exact:true}).count(),0);
 });
+
+async function shortlistedFixture(page){
+ let stage='Screening';const actions=[];
+ await page.route('**/api/hub/applications**',async route=>{const req=route.request(),path=new URL(req.url()).pathname;let data;
+ if(path.endsWith('/action')){const body=req.postDataJSON();actions.push(body);stage=body.stage;data={...record('app-1'),stage,revision:2};}
+ else if(path==='/api/hub/applications')data={items:[{...record('app-1'),stage}],total:1,page:1,pageSize:25};
+ else if(path.endsWith('/navigation'))data={previousId:null,nextId:null,position:1,total:1};
+ else if(path.endsWith('/viewed'))data={viewedAt:123};
+ else data={...record('app-1'),stage};
+ return route.fulfill({json:{data}});});return actions;
+}
+test('shortlisted profile can return to initial review without email action and protects unsaved notes',async t=>{
+ const{page}=await setup(t);const actions=await shortlistedFixture(page);await page.getByRole('button',{name:'Applicant app-1',exact:true}).click();await page.getByRole('button',{name:'Remove from shortlist',exact:true}).waitFor();await page.getByLabel('More applicant actions',{exact:true}).click();await page.locator('.hub-job-menu[open]').getByRole('button',{name:'Add note',exact:true}).click();await page.getByLabel('Internal note',{exact:true}).fill('Unsaved');assert.equal(await page.getByRole('button',{name:'Remove from shortlist',exact:true}).isDisabled(),true);await page.getByLabel('Internal note',{exact:true}).fill('');await page.getByRole('button',{name:'Remove from shortlist',exact:true}).click();await page.getByRole('button',{name:'Shortlist',exact:true}).waitFor();assert.deepEqual(actions,[{action:'stage',stage:'Application Review',expectedRevision:1}]);assert.equal(await page.getByRole('button',{name:'Remove from shortlist',exact:true}).count(),0);
+});
+test('list row and selected shortlisted applicants expose stage-only removal',async t=>{
+ const{page}=await setup(t);const actions=await shortlistedFixture(page);await page.getByRole('button',{name:'Refresh applications',exact:true}).click();await page.getByRole('button',{name:'Remove from shortlist Applicant app-1',exact:true}).click();await page.getByRole('button',{name:'Shortlist Applicant app-1',exact:true}).waitFor();assert.equal(actions[0].stage,'Application Review');assert.equal(actions[0].action,'stage');
+ const second=await setup(t);await shortlistedFixture(second.page);const bulk=[];await second.page.route('**/api/hub/bulk',async route=>{bulk.push(route.request().postDataJSON());return route.fulfill({json:{data:{updated:1}}});});await second.page.getByRole('button',{name:'Refresh applications',exact:true}).click();await second.page.getByRole('button',{name:'Remove from shortlist Applicant app-1',exact:true}).waitFor();await second.page.getByLabel('Select Applicant app-1',{exact:true}).check();await second.page.getByRole('button',{name:'Remove selected from shortlist',exact:true}).click();assert.deepEqual(bulk,[{ids:['app-1'],expectedRevisions:{'app-1':1},action:'stage',stage:'Application Review'}]);
+});

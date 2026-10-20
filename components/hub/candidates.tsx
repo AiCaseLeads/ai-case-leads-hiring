@@ -85,6 +85,7 @@ export function CandidateTable({
   toggle,
   togglePage,
   shortlist,
+  unshortlist,
   interview,
   busy = false,
   showRole = true,
@@ -96,6 +97,7 @@ export function CandidateTable({
   toggle?: (id: string) => void;
   togglePage?: () => void;
   shortlist?: (item: ApplicationSummary) => void;
+  unshortlist?: (item: ApplicationSummary) => void;
   interview?: (item: ApplicationSummary) => void;
   busy?: boolean;
   showRole?: boolean;
@@ -122,7 +124,7 @@ export function CandidateTable({
             <th scope="col" role="columnheader" aria-sort={sort==="ai_match_desc"?"descending":sort==="ai_match_asc"?"ascending":"none"}>{onSort && !cardLayout?<button type="button" className="hub-table-sort" onClick={()=>onSort(sort==="ai_match_desc"?"ai_match_asc":"ai_match_desc")}>AI job match <span aria-hidden="true">{sort==="ai_match_desc"?"↓":sort==="ai_match_asc"?"↑":"↕"}</span></button>:"AI job match"}</th>
             <th scope="col" role="columnheader" className="hub-optional-owner" aria-sort={sort==="owner_asc"?"ascending":sort==="owner_desc"?"descending":"none"}>{onSort && !cardLayout?<button type="button" className="hub-table-sort" onClick={()=>onSort(sort==="owner_asc"?"owner_desc":"owner_asc")}>Owner <span aria-hidden="true">{sort==="owner_asc"?"↓":sort==="owner_desc"?"↑":"↕"}</span></button>:"Owner"}{onColumnFilter && !cardLayout&&<JobActionMenu label="Filter Owner" triggerLabel={assignee?"Filtered":"Filter"}><form className="hub-column-filter" key={assignee||"any"} onSubmit={event=>{event.preventDefault();onColumnFilter("assignee",String(new FormData(event.currentTarget).get("owner")||"").trim());}}><label>Recruiter email<input aria-label="Filter owner email" name="owner" type="email" defaultValue={assignee||""}/></label><button type="submit">Apply owner filter</button><button type="button" onClick={()=>onColumnFilter("assignee","")}>All owners</button></form></JobActionMenu>}</th>
             <th scope="col" role="columnheader" className="hub-optional-applied" aria-sort={sort==="newest"?"descending":sort==="oldest"?"ascending":"none"}>{onSort && !cardLayout?<button type="button" className="hub-table-sort" onClick={()=>onSort(sort==="newest"?"oldest":"newest")}>Applied <span aria-hidden="true">{sort==="newest"?"↓":sort==="oldest"?"↑":"↕"}</span></button>:"Applied"}</th>
-            {(shortlist || interview) && <th scope="col" role="columnheader">Next step</th>}
+            {(shortlist || unshortlist || interview) && <th scope="col" role="columnheader">Next step</th>}
           </tr>
         </thead>
         <tbody role="rowgroup">
@@ -159,8 +161,9 @@ export function CandidateTable({
               <td role="cell" data-label="AI job match"><MatchScore match={item.aiMatch} /></td>
               <td role="cell" data-label="Owner" className="hub-optional-owner">{item.assignee || "Unassigned"}</td>
               <td role="cell" data-label="Applied" className="hub-nowrap hub-optional-applied">{displayDate(item.createdAt)}</td>
-              {(shortlist || interview) && <td role="cell" data-label="Next step"><div className="hub-candidate-row-actions">
+              {(shortlist || unshortlist || interview) && <td role="cell" data-label="Next step"><div className="hub-candidate-row-actions">
                 {shortlist && !item.trashed && item.stage === "Application Review" && <button type="button" className="hub-button secondary" disabled={busy} onClick={() => shortlist(item)}>Shortlist<span className="sr-only"> {item.name}</span></button>}
+                {unshortlist && !item.trashed && item.stage === "Screening" && <button type="button" className="hub-button secondary" disabled={busy} onClick={() => unshortlist(item)}>Remove from shortlist<span className="sr-only"> {item.name}</span></button>}
                 {interview && !item.trashed && !["Rejected", "Withdrawn", "Hired"].includes(item.stage) && <button type="button" className="hub-text-button" disabled={busy} onClick={() => interview(item)}>Request interview<span className="sr-only"> with {item.name}</span></button>}
               </div></td>}
             </tr>
@@ -406,6 +409,18 @@ function JobCandidates({
     const result = await mutation.run("/api/hub/applications/" + encodeURIComponent(item.id) + "/action", "POST", {action:"stage", stage:"Screening", expectedRevision:item.revision}, `${item.name} added to the shortlist.`);
     if (result !== undefined) {changed(); await resource.reload();}
   }
+  async function unshortlist(item:ApplicationSummary){
+    if(item.stage!=="Screening"||mutation.busy)return;
+    const result=await mutation.run(`/api/hub/applications/${encodeURIComponent(item.id)}/action`,"POST",{action:"stage",stage:"Application Review",expectedRevision:item.revision},`${item.name} removed from the shortlist. No email sent.`);
+    if(result!==undefined){changed();await resource.reload();}
+  }
+  async function unshortlistSelected(){
+    if(allMatching||filtersDirty||mutation.busy)return;
+    const records=(resource.data?.items||[]).filter(item=>selected.includes(item.id));
+    if(!records.length||records.length!==selected.length||records.length>100||records.some(item=>item.stage!=="Screening"))return;
+    const result=await mutation.run("/api/hub/bulk","POST",{ids:selected,expectedRevisions:Object.fromEntries(records.map(item=>[item.id,item.revision])),action:"stage",stage:"Application Review"},`${records.length} applicants removed from the shortlist. No emails sent.`);
+    if(result!==undefined){setSelected([]);changed();await resource.reload();}
+  }
   async function shortlistSelected() {
     if (allMatching || filtersDirty) return;
     const records=(resource.data?.items || []).filter(item=>selected.includes(item.id));
@@ -509,6 +524,7 @@ function JobCandidates({
               screeningConfigured={selectedJob?.rules?.some(rule=>rule.enabled) ?? false}
               busy={mutation.busy}
               shortlist={item=>void shortlist(item)}
+              unshortlist={item=>void unshortlist(item)}
               interview={item=>{if(onSelect)onSelect(item.id,"interview",filter);else{setDetailAction("interview");setDetailId(item.id);}}}
               select={id=>onSelect?onSelect(id,undefined,filter):setDetailId(id)}
               selected={allMatching ? resource.data.items.map(item=>item.id) : selected}
@@ -566,6 +582,7 @@ function JobCandidates({
       {selected.length > 0 && !allMatching && !inTrash && (
         <form className="hub-bulk" onSubmit={applyBulk}>
           <strong>{selected.length} selected</strong>
+          {(resource.data?.items||[]).filter(item=>selected.includes(item.id)).every(item=>item.stage==="Screening")&&<button type="button" className="hub-button secondary" disabled={mutation.busy||filtersDirty} onClick={()=>void unshortlistSelected()}>Remove selected from shortlist</button>}
           <button type="button" className="hub-button" disabled={mutation.busy || filtersDirty || !(resource.data?.items || []).filter(item=>selected.includes(item.id)).every(item=>["Application Review","Screening"].includes(item.stage))} onClick={()=>void shortlistSelected()}>Shortlist selected</button>
           <Field label="Bulk action">
             <select
@@ -748,6 +765,11 @@ export function CandidateDetail({
     const result = await mutation.run("/api/hub/applications/" + encodeURIComponent(id) + "/action", "POST", {action:"stage", stage:"Screening", expectedRevision:resource.data.revision}, "Added to the shortlist.");
     if (result !== undefined) {await resource.reload(); changed();}
   }
+  async function unshortlist(){
+    if(!resource.data||resource.data.stage!=="Screening"||mutation.busy||rejectBusy||dirty)return;
+    const result=await mutation.run(`/api/hub/applications/${encodeURIComponent(id)}/action`,"POST",{action:"stage",stage:"Application Review",expectedRevision:resource.data.revision},"Removed from the shortlist. No email sent.");
+    if(result!==undefined){await resource.reload();changed();}
+  }
   async function rejectAndContinue() {
     if(!resource.data || mutation.busy || rejectionInFlight.current || dirty || ["Rejected","Withdrawn","Hired"].includes(resource.data.stage))return;
     rejectionInFlight.current=true;setRejectBusy(true);
@@ -840,6 +862,7 @@ export function CandidateDetail({
             </div>
             <div className="hub-candidate-quick-actions" aria-label="Applicant actions">
               {!detail.trashed && detail.stage==="Application Review" && <button type="button" className="hub-button" disabled={mutation.busy||rejectBusy} onClick={()=>void shortlist()}>Shortlist</button>}
+              {!detail.trashed && detail.stage==="Screening" && <button type="button" className="hub-button secondary" disabled={mutation.busy||rejectBusy||dirty} title={dirty?"Save or clear unsaved changes first.":"Return to initial review without sending an email."} onClick={()=>void unshortlist()}>Remove from shortlist</button>}
               {!detail.trashed && !["Rejected","Withdrawn","Hired"].includes(detail.stage) && <button type="button" className="hub-button secondary" disabled={mutation.busy||rejectBusy} onClick={()=>{setAction("interview");setActionOpen(true);mutation.clear();}}>Request interview</button>}
               {!detail.trashed&&!['Rejected','Withdrawn','Hired'].includes(detail.stage)&&<button type="button" className="hub-button secondary" disabled={mutation.busy||rejectBusy||dirty} title={dirty?"Save or clear your unsaved note or action before rejecting.":"Reject and queue this job’s rejection email, then open the next active applicant."} onClick={()=>void rejectAndContinue()}>{rejectBusy?"Rejecting…":"Reject"}</button>}
               {resumeFile(detail) && <button type="button" className="hub-button secondary" onClick={()=>{setSection("application");setResumeRequest(value=>value+1);}}>View résumé</button>}
