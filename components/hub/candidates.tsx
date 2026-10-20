@@ -2,7 +2,8 @@
 import { NavigationLink, applicantHref } from "./navigation-link";
 import {ShareApplicant} from "./share-applicant";
 import {BulkRejection} from "./bulk-rejection";
-import {activitySummary, communicationSummary} from "./activity-summary";
+import { ApplicantMessages } from "./applicant-messages";
+import {activitySummary} from "./activity-summary";
 import { ApplicationAnswers, answerContactName } from "./application-answers";
 import { JobActionMenu } from "./action-menu";
 import { ApplicantNavigation, ResumePreview, resumeFile } from "./application-review-tools";
@@ -57,7 +58,7 @@ function qualificationTone(value: string) {
 function qualificationLabel(value: string, screeningConfigured?: boolean) {
   return value === "pass" ? "Requirements met" : value === "fail" ? "Requirement not met" : screeningConfigured === false ? "No screening rules" : screeningConfigured === true ? "Check answers" : "No screening decision";
 }
-type InterviewReadiness = {sender:string|null;mailReady:boolean;mailIssue:string|null;companyGoogleReady:boolean;sharedCalendarReady:boolean;renewCalendarReady:boolean;hasActiveInterview:boolean;interviewers:{email:string;ready:boolean}[]};
+type InterviewReadiness = {cc?:string[];replyTo?:string[];sender:string|null;mailReady:boolean;mailIssue:string|null;companyGoogleReady:boolean;sharedCalendarReady:boolean;renewCalendarReady:boolean;hasActiveInterview:boolean;interviewers:{email:string;ready:boolean}[]};
 function InterviewBookingChoice({applicationId,value,change,renew,ready}:{applicationId:string;value:string;change:(value:string)=>void;renew:boolean;ready:(value:boolean)=>void}) {
   const resource=useHubResource<InterviewReadiness>("/api/interview-readiness?applicationId="+encodeURIComponent(applicationId));
   const canSend=!!resource.data?.mailReady && !!resource.data.companyGoogleReady && (renew ? resource.data.hasActiveInterview && resource.data.renewCalendarReady : (value==="__shared__" ? resource.data.sharedCalendarReady : !!resource.data.interviewers.find(person=>person.email===value&&person.ready)));
@@ -73,7 +74,7 @@ function InterviewBookingChoice({applicationId,value,change,renew,ready}:{applic
           {resource.data.interviewers.map(person=><option key={person.email} value={person.email} disabled={!person.ready}>{person.email}{person.ready?"":" — setup needed"}</option>)}
         </select>
       </Field>
-      {resource.data.mailReady ? <p className="hub-muted">Invitation from {resource.data.sender}. Replies go to that recruiter.</p> : <p className="hub-notice">{resource.data.mailIssue==="recruiter_reply_contact_required" ? "Choose a recruiter to handle candidate replies in this job’s hiring team before sending invitations." : `${resource.data.sender || "The recruiter"} needs to connect their recruiting email in Settings → My connections before invitations can be sent.`}</p>}
+      {resource.data.mailReady ? <p className="hub-muted">Invitation from {resource.data.sender}.{resource.data.cc?.length?` Copied: ${resource.data.cc.join(", ")}.`:""} Replies go to {resource.data.replyTo?.length?resource.data.replyTo.join(", "):"the connected recruiter"}.</p> : <p className="hub-notice">{resource.data.mailIssue==="recruiter_reply_contact_required" ? "Choose a recruiter to handle candidate replies in this job’s hiring team before sending invitations." : `${resource.data.sender || "The recruiter"} needs to connect their recruiting email in Settings → My connections before invitations can be sent.`}</p>}
       {renew && !resource.data.hasActiveInterview && <p className="hub-notice">No active interview to replace. Turn off replacement mode and choose an interviewer.</p>}
       {renew && resource.data.companyGoogleReady && resource.data.hasActiveInterview && !resource.data.renewCalendarReady && <p className="hub-notice">The original interviewer needs to reconnect their calendar and save availability before sending a replacement link.</p>}
       {!renew && resource.data.companyGoogleReady && !resource.data.sharedCalendarReady && !resource.data.interviewers.some(person=>person.ready) && <p className="hub-notice">Connect an interview calendar and save availability in Settings → My connections.</p>}
@@ -1199,6 +1200,7 @@ export function CandidateDetail({
               </section>
               </div>
               <div role="tabpanel" id="candidate-panel-activity" aria-labelledby="candidate-tab-activity" hidden={section!=="activity"}>
+              <ApplicantMessages detail={detail} busy={mutation.busy||decisionBusy||dirty} compose={()=>{setAction("email");setActionOpen(true);mutation.clear();}}/>
               {(detail.assessments || (detail.assessment ? [detail.assessment] : [])).map((assessment, index) => (
                 <section className="hub-card" key={assessment.id}>
                   <div className="hub-section-heading compact">
@@ -1225,7 +1227,7 @@ export function CandidateDetail({
                     <Badge>{interview.status}</Badge>
                   </div>
                   <p>
-                    {displayDate(interview.start, interview.timeZone)}
+                    {interview.start?displayDate(interview.start, interview.timeZone):"No interview time selected yet"}
                     {interview.timeZone &&
                       " · " + interview.timeZone}
                   </p>
@@ -1278,27 +1280,6 @@ export function CandidateDetail({
                   ))
                 ) : (
                   <p className="hub-muted">No internal notes yet.</p>
-                )}
-              </section>
-              <section className="hub-card">
-                <h3>Communication history</h3>
-                {detail.communications.length ? (
-                  detail.communications.map((message) => (
-                    <article className="hub-history-item" key={message.id}>
-                      <div>
-                        <strong>{message.purpose || "Email"} · {communicationSummary(message.status).label.toLowerCase()}</strong>
-
-                      </div>
-                      <small>{communicationSummary(message.status).explanation}</small>
-                      <details><summary>View message</summary><strong>{message.subject}</strong><p className="hub-preserve">{message.body}</p></details>
-                      <small>{displayDate(message.createdAt)}</small>
-                    </article>
-                  ))
-                ) : (
-                  <p className="hub-muted">
-                    No messages yet. Assessments and interviews require an
-                    explicit recruiter action.
-                  </p>
                 )}
               </section>
               <section className="hub-card">

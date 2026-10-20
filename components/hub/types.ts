@@ -121,6 +121,11 @@ export type ApplicationDetail = ApplicationSummary & {
   notes: HistoryEntry[];
   communications: {
     id: string;
+    direction?: "incoming" | "outgoing";
+    sender?: string;
+    to?: string[];
+    cc?: string[];
+    replyTo?: string[];
     purpose?: string;
   subject: string;
     body: string;
