@@ -1,4 +1,5 @@
 "use client";
+import {BulkRejection} from "./bulk-rejection";
 import {activitySummary, communicationSummary} from "./activity-summary";
 import { ApplicationAnswers, answerContactName } from "./application-answers";
 import { JobActionMenu } from "./action-menu";
@@ -484,6 +485,7 @@ function JobCandidates({
         </details>
       </div>
       </div>
+      {!inTrash && selectedJob && <BulkRejection filter={filter} jobTitle={selectedJob.title} disabled={filtersDirty || resource.loading || !!resource.error || !resource.data?.total} changed={()=>{setSelected([]);setAllMatching(false);void resource.reload();changed();}}/>}
       {allMatching && <p className="hub-selection-banner" role="status">All {resource.data?.total || 0} matching applicants across every page are selected for download. To change applicant stages, clear this selection and select applicants on a single page.</p>}
       {isTopTen && <p className="hub-muted">Top 10 includes active applicants with a completed AI match in this filtered view.</p>}
       {selectedJob && !selectedJob.rules?.some(rule=>rule.enabled) && <p className="hub-muted hub-screening-help">No screening rules are enabled for this job. AI matches still compare the résumé and answers with the job description.</p>}
