@@ -19,7 +19,7 @@ export async function syncConnectedHiringReplies(store:HubStore,db:D1Database,bu
    if(Date.now()>=deadline-1000)break;
    // Advance before provider work so a broken mailbox cannot starve later recruiters.
    await store.setSetting(CURSOR,account);
-   try{const workspace=await resolve(account);if(!workspace)continue;const mailboxDeadline=Math.min(deadline,Date.now()+8000);workspace.setDeadline?.(mailboxDeadline);imported+=await sync(store,db,workspace,25,mailboxDeadline,bucket);if(await store.setting(`mail_sync_last_error:${account}`,''))failed=true;}catch{failed=true;}
+   try{const workspace=await resolve(account);if(!workspace)continue;const mailboxDeadline=Math.min(deadline,Date.now()+8000);workspace.setDeadline?.(mailboxDeadline);const profile=await workspace.profile();if(profile.email.trim().toLowerCase()!==account)throw new Error('mailbox_identity_mismatch');imported+=await sync(store,db,workspace,25,mailboxDeadline,bucket);if(await store.setting(`mail_sync_last_error:${account}`,''))failed=true;}catch{failed=true;}
   }
   if(failed)await store.setSetting('mail_sync_last_error','A recruiting mailbox could not be synchronized. Check its connection; other mailboxes continue.');
   return imported;
