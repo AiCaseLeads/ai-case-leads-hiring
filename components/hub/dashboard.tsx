@@ -252,7 +252,7 @@ export function HiringDashboard({
         </header>
         <main id="hub-main" className="hub-main">
           {workspaceNotice && <p className="hub-notice" role="status">{workspaceNotice}</p>}
-          {decisionNotice && <div className="hub-notice" style={{display:"flex",alignItems:"center",gap:12,justifyContent:"space-between"}}><p role="status" style={{margin:0}}>{decisionNotice}</p><button type="button" className="hub-button-text" aria-label="Dismiss decision notification" onClick={dismissDecision}>Dismiss</button></div>}
+          {decisionNotice && <div className="hub-notice" style={{display:"flex",alignItems:"center",gap:12,justifyContent:"space-between"}}><p role="status" style={{margin:0}}>{decisionNotice}</p><button type="button" className="hub-text-button" aria-label="Dismiss decision notification" onClick={dismissDecision}>Dismiss</button></div>}
           {view === "applications" && <div hidden={!!detailId}><Candidates
             key={data?.jobs.some(job => job.id === initialJobId) ? initialJobId : "job-index"}
             initialStage={initialStage}
