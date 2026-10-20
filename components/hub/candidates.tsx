@@ -178,7 +178,7 @@ export function CandidateTable({
 type CandidatesProps = {
   jobs: HubJob[]; refresh: number; changed: () => void; reviewerEmail: string;
   initialStage?: string; initialJobId?: string; initialFilter?: string; initialPage?: number;
-  onSelect?: (id: string, action?: "interview", filter?: string) => void; onFilterChange?: (filter: string, page: number) => void;
+  onSelect?: (id: string, action?: "interview", filter?: string) => void; onFilterChange?: (filter: string, page: number, replace?: boolean) => void;
 };
 
 export function Candidates(props: CandidatesProps) {
@@ -240,7 +240,7 @@ function JobCandidates({
   initialFilter?: string;
   initialPage?: number;
   onSelect?: (id: string, action?: "interview", filter?: string) => void;
-  onFilterChange?: (filter: string, page: number) => void;
+  onFilterChange?: (filter: string, page: number, replace?: boolean) => void;
 }) {
   const defaultSort = "screening_newest";
   const initial = new URLSearchParams(initialFilter);
@@ -328,7 +328,7 @@ function JobCandidates({
   const incomingFilter = initial.toString();
   useEffect(()=>{
     const raw=new URLSearchParams(initialFilter);
-    if(raw.get("active")==="true"&&["Rejected","Withdrawn","Hired"].includes(raw.get("stage")||""))onFilterChange?.(incomingFilter,initialPage);
+    if(raw.get("active")==="true"&&["Rejected","Withdrawn","Hired"].includes(raw.get("stage")||""))onFilterChange?.(incomingFilter,initialPage,true);
   },[initialFilter,incomingFilter,initialPage,onFilterChange]);
   const previousLocation = useRef({filter:incomingFilter,page:initialPage});
   useEffect(() => {

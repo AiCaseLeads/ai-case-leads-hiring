@@ -172,11 +172,11 @@ export function HiringDashboard({
     if (window.history.state?.aiclHub && window.history.state?.candidateFrom === url.href) window.history.back();
     else {if (!url.searchParams.has("view")) url.searchParams.set("view", "applications"); navigate(url, true);}
   }
-  function applyFilters(filter: string, page: number) {
+  function applyFilters(filter: string, page: number, replace = false) {
     const url = viewUrl("applications");
     new URLSearchParams(filter).forEach((value, key) => url.searchParams.set(key, value));
     if (page > 1) url.searchParams.set("page", String(page));
-    navigate(url);
+    navigate(url, replace);
   }
   function manageScorecards() { const url = viewUrl("settings"); url.searchParams.set("section", "scorecards"); navigate(url); }
   return (
