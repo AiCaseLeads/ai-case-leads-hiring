@@ -34,8 +34,8 @@ import {
 } from "./types";
 
 function reviewQueue(params:URLSearchParams) {
-  if(params.get("stage") || params.get("trash")==="true")params.delete("active");
-  else if(!params.has("active"))params.set("active","true");
+  if(params.get("trash")==="true")params.delete("active");
+  else if(!params.has("active"))params.set("active",params.get("stage")?"false":"true");
   return params;
 }
 function GradeSummary({ grade }: { grade?: ReviewerGrade }) {
@@ -254,6 +254,7 @@ function JobCandidates({
   const [q, setQ] = useState(initial.get("q") || ""),
     [jobId] = useState(initialJobId),
     [stage, setStage] = useState(initial.get("stage") || ""),
+    [excludeStage,setExcludeStage]=useState(initial.get("excludeStage")||""),
     [assignee, setAssignee] = useState(initial.get("assignee") || ""),
     [qualification, setQualification] = useState(initial.get("qualification") || ""),
     [grade, setGrade] = useState(initial.get("grade") || ""),
@@ -307,13 +308,13 @@ function JobCandidates({
   function draftQuery() {
     const search = new URLSearchParams();
     if (inTrash) search.set("trash", "true");
-    for (const [key, value] of Object.entries({q, jobId, stage, assignee, qualification, grade, sort, appliedFrom, appliedTo})) {
+    for (const [key, value] of Object.entries({q, jobId, stage, excludeStage, assignee, qualification, grade, sort, appliedFrom, appliedTo})) {
       if (value) search.set(key, value);
     }
     if (appliedFrom || appliedTo) search.set("timeZone", timeZone);
     if (duplicate) search.set("duplicate", "true");
     if (isTopTen && sort === "ai_match_desc") search.set("top", "10");
-    if(!stage&&!inTrash)search.set("active",new URLSearchParams(filter).get("active")||"true");
+    if(!inTrash)search.set("active",new URLSearchParams(filter).get("active")||(stage?"false":"true"));
     return search;
   }
   const draft = draftQuery();
@@ -321,7 +322,7 @@ function JobCandidates({
   const filtersDirty = Array.from(new Set([...draft.keys(), ...applied.keys()])).some(key => draft.get(key) !== applied.get(key));
   const invalidDates = !!appliedFrom && !!appliedTo && appliedFrom > appliedTo;
   function syncFields(params: URLSearchParams) {
-    setQ(params.get("q") || ""); setStage(params.get("stage") || ""); setAssignee(params.get("assignee") || "");
+    setQ(params.get("q") || ""); setStage(params.get("stage") || ""); setExcludeStage(params.get("excludeStage")||""); setAssignee(params.get("assignee") || "");
     setQualification(params.get("qualification") || ""); setGrade(params.get("grade") || ""); setSort(params.get("sort") || defaultSort); setDuplicate(params.get("duplicate") === "true");
     setAppliedFrom(params.get("appliedFrom") || ""); setAppliedTo(params.get("appliedTo") || "");
     setTimeZone(params.get("timeZone") || Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC");
@@ -465,7 +466,10 @@ function JobCandidates({
       </div>
       <div className="hub-button-row hub-application-view-tabs"><button className="hub-pipeline-tab" type="button" aria-pressed={!inTrash} onClick={()=>applyView(new URLSearchParams({jobId}).toString())}>Applications</button><button className="hub-pipeline-tab" type="button" aria-pressed={inTrash} onClick={()=>applyView(new URLSearchParams({jobId,trash:"true"}).toString())}>Trash</button></div>
       {inTrash && <p className="hub-muted">Deleted applications stay here with their original files and history. Open an application to restore it. Cancelled emails and booking links are not sent again.</p>}
-      {!inTrash && <div className="hub-pipeline-tabs" role="group" aria-label="Hiring stages">{["active", "", "Application Review", "Screening", "Interview", "Offer", "Hired", "Rejected"].map(value=><button key={value||"all"} className={"hub-pipeline-tab"+((value==="active"?!stage&&new URLSearchParams(filter).get("active")==="true":stage===value&&(value!==""||new URLSearchParams(filter).get("active")==="false"))?" active":"")} type="button" aria-pressed={value==="active"?!stage&&new URLSearchParams(filter).get("active")==="true":stage===value&&(value!==""||new URLSearchParams(filter).get("active")==="false")} onClick={()=>{const params=new URLSearchParams(filter);if(value&&value!=="active"){params.set("stage",value);params.delete("active");}else{params.delete("stage");params.set("active",value==="active"?"true":"false");}applyView(params.toString());}}>{value==="active"?"Active":value?stageLabel(value):"All"}</button>)}</div>}
+      {!inTrash && <div className="hub-filter-grid" aria-label="Applicant scope and stage">
+        <Field label="Applicants"><select value={new URLSearchParams(filter).get("active")==="true"?"true":"false"} onChange={event=>{const params=draftQuery();params.set("active",event.target.value);applyView(params.toString());}}><option value="true">Active applicants</option><option value="false">All applicants</option></select></Field>
+        <Field label="Stage"><select value={excludeStage?`exclude:${excludeStage}`:stage} onChange={event=>{const value=event.target.value;const params=draftQuery();params.delete("stage");params.delete("excludeStage");if(value.startsWith("exclude:"))params.set("excludeStage",value.slice(8));else if(value)params.set("stage",value);applyView(params.toString());}}><option value="">All stages</option><optgroup label="Only this stage">{stages.map(value=><option key={value} value={value}>{stageLabel(value)}</option>)}</optgroup><optgroup label="Exclude this stage">{stages.map(value=><option key={value} value={`exclude:${value}`}>Not {stageLabel(value).toLowerCase()}</option>)}</optgroup></select></Field>
+      </div>}
       <div className="hub-applicant-toolbar">
       <form className="hub-applicant-filter-form" onSubmit={filterSubmit}>
         <div className="hub-applicant-filters">
@@ -478,7 +482,7 @@ function JobCandidates({
         {filtersDirty && <p className="hub-notice" role="status">Your filters have changed. Click Apply filters to update the results and downloads.</p>}
         <details className="hub-advanced-filters"><summary>More filters{[grade,assignee,duplicate,appliedFrom,appliedTo].filter(Boolean).length ? ` · ${[grade,assignee,duplicate,appliedFrom,appliedTo].filter(Boolean).length} selected` : ""}</summary>
           <div className="hub-filter-grid">
-          {!inTrash && <Field label="Stage"><select value={stage} onChange={e=>setStage(e.target.value)}><option value="">All stages</option>{stages.map(value=><option key={value} value={value}>{stageLabel(value)}</option>)}</select></Field>}
+
           {!inTrash && <Field label="Order"><select value={sort} onChange={e=>setSort(e.target.value)}><option value="screening_newest">Requirements met, then newest</option><option value="newest">Newest applications</option><option value="oldest">Oldest applications</option><option value="owner_asc">Owner A–Z</option><option value="owner_desc">Owner Z–A</option><option value="screening_asc">Requirements met first</option><option value="screening_desc">Unmet requirements first</option><option value="ai_match_asc">Lowest AI match first</option><option value="ai_match_desc">Highest AI match first</option><option value="grade_desc">Highest reviewer grade first</option></select></Field>}
           <Field label="Applied from"><input type="date" value={appliedFrom} max={appliedTo || undefined} onChange={e=>setAppliedFrom(e.target.value)}/></Field>
           <Field label="Applied through"><input type="date" value={appliedTo} min={appliedFrom || undefined} onChange={e=>setAppliedTo(e.target.value)}/></Field>
@@ -797,7 +801,7 @@ export function CandidateDetail({
     if(!resource.data || mutation.busy || rejectionInFlight.current || dirty || ["Rejected","Withdrawn","Hired"].includes(resource.data.stage))return;
     rejectionInFlight.current=true;setRejectBusy(true);
     const params=reviewQueue(new URLSearchParams(navigationFilter));
-    params.set("jobId",resource.data.jobId);params.set("active","true");params.delete("page");
+    params.set("jobId",resource.data.jobId);params.delete("page");
     if(!params.has("sort"))params.set("sort","screening_newest");
     let nextId:string|null=null;let navigationReady=false;
     try {
