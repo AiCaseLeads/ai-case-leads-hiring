@@ -1,3 +1,4 @@
+import {sendShareInvitations} from "./share-invitations";
 import {manageApplicantShare} from "./applicant-share";
 import { APPLICATION_SORTS, type ApplicationFilters } from "./store";
 import { withRequiredApplicationFields } from "../hiring/contact-fields";
@@ -93,6 +94,11 @@ export async function handleHubRequest(
     let data: unknown;
     if (section === "overview" && request.method === "GET")
       data = await store.overview();
+    else if(section==='applications' && id && operation==='share-invitations' && request.method==='POST'){
+      const body=await json(request) as Record<string,unknown>;
+      if(!body||typeof body!=='object'||Array.isArray(body)||Object.keys(body).some(key=>key!=='token')||typeof body.token!=='string')throw new HiringError('invalid_share',422,'Choose a current sharing link.');
+      data=await sendShareInvitations(store,id,body.token,new URL(request.url).origin);
+    }
     else if(section==='applications' && id && operation==='share' && ['GET','POST','DELETE'].includes(request.method)){
       let days=7;
       if(request.method==='POST'){
