@@ -903,7 +903,7 @@ export function CandidateDetail({
               <summary>{action === "interview" ? "Request an interview" : "Applicant actions"}</summary>
               <p className="hub-muted">Choose an action below. Interview invitations are sent only when you click Send booking link.</p>
               <form onSubmit={submit}>
-                <fieldset disabled={mutation.busy||detail.trashed}>
+                <fieldset disabled={mutation.busy||decisionBusy||detail.trashed}>
                   <Field label="Action">
                     <select
                       value={action}
