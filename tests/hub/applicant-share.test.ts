@@ -18,7 +18,7 @@ test('staff sharing is explicit, scoped and hash-only; public profile omits priv
  const publicResult=await sharedApplicant(store,token);assert.match(publicResult.headers.get('X-Robots-Tag')!,/noindex/);const body=await publicResult.text();assert.doesNotMatch(body,/INTERNAL SECRET NOTE|communications|assignee|driveFolder|qualificationEvidence|PRIVATE WARNING|PRIVATE ERROR|model|progress/);
  assert.equal(JSON.parse(body).aiMatch.score,88);
  assert.deepEqual(Object.keys(JSON.parse(body)).sort(),['aiMatch','answers','fields','files','jobTitle','name']);
- assert.deepEqual(await manageApplicantShare(store,app.id,'GET'),{active:true,expiresAt:data.expiresAt});
+ assert.deepEqual(await manageApplicantShare(store,app.id,'GET'),{active:true,expiresAt:data.expiresAt,access:'public',emails:[]});
  await manageApplicantShare(store,app.id,'DELETE');await assert.rejects(sharedApplicant(store,token),{code:'share_unavailable'});
  }finally{database.close();}
 });
@@ -66,5 +66,49 @@ test('moving an application to Trash permanently revokes its share after restora
  assert.deepEqual(await manageApplicantShare(store,app.id,'GET'),{active:false});
  await assert.rejects(sharedApplicant(store,token),{code:'share_unavailable'});
  assert.equal(database.prepare("SELECT count(*) AS count FROM hub_settings WHERE key LIKE 'applicant_share:%'").get()!.count,0);
+ }finally{database.close();}
+});
+
+test('restricted shares require verified exact email/domain and never create hiring staff sessions',async()=>{
+ const {store,database,db}=createStore();try{
+ const {verifyShareEmail}=await import('../../lib/hub/share-verification');
+ const {staffMemberFromRequest}=await import('../../lib/railway/auth-core');
+ const job=await store.saveJob(jobInput()),app=await store.acceptApplication(applicationInput(job.id));
+ const created=await manageApplicantShare(store,app.id,'POST',7,{access:'people',emails:['External@Example.org']}) as {url:string};
+ const token=created.url.split('/').at(-1)!;
+ await assert.rejects(sharedApplicant(store,token),{code:'share_sign_in_required'});
+ let sentBody='';const transport=async()=>({fingerprint:'synthetic',verify:async()=>{},sendMail:async(mail:{body:string})=>{sentBody=mail.body;return {};},reconcileMail:async()=>null});
+ const req=(body:unknown,cookie='')=>new Request('https://jobs.example.invalid/verify',{method:'POST',headers:{origin:'https://jobs.example.invalid','content-type':'application/json',cookie},body:JSON.stringify(body)});
+ await assert.rejects(verifyShareEmail(req({email:'other@example.org'}),store,token,transport),{code:'share_access_denied'});
+ const start=await verifyShareEmail(req({email:'external@example.org'}),store,token,transport);const browser=start.headers.get('Set-Cookie')!.split(';')[0],code=sentBody.match(/\b\d{6}\b/)![0];
+ await assert.rejects(verifyShareEmail(req({email:'external@example.org',code}),store,token,transport),{code:'invalid_code'});
+ const attempts=await Promise.allSettled([verifyShareEmail(req({email:'external@example.org',code},browser),store,token,transport),verifyShareEmail(req({email:'external@example.org',code},browser),store,token,transport)]);
+ assert.equal(attempts.filter(result=>result.status==='fulfilled').length,1);assert.equal((attempts.find(result=>result.status==='rejected') as PromiseRejectedResult).reason.code,'invalid_code');
+ const finish=(attempts.find(result=>result.status==='fulfilled') as PromiseFulfilledResult<Response>).value;const headers=new Headers({cookie:finish.headers.get('Set-Cookie')!.split(';')[0]});
+ assert.equal((await sharedApplicant(store,token,headers)).status,200);
+ assert.equal(await staffMemberFromRequest(headers,{db,origin:'https://jobs.example.invalid',secureCookies:true,adminEmails:''}),null);
+ await assert.rejects(verifyShareEmail(req({email:'external@example.org',code},browser),store,token,transport),{code:'invalid_code'});
+ const company=await manageApplicantShare(store,app.id,'POST',7,{access:'company'}) as {url:string};
+ await assert.rejects(sharedApplicant(store,company.url.split('/').at(-1)!,headers),{code:'share_access_denied'});
+ await manageApplicantShare(store,app.id,'DELETE');await assert.rejects(sharedApplicant(store,company.url.split('/').at(-1)!,headers),{code:'share_unavailable'});
+ }finally{database.close();}
+});
+
+test('verification codes expire, cap guesses and enforce exact company domain',async()=>{
+ const {store,database}=createStore();try{
+ const {verifyShareEmail}=await import('../../lib/hub/share-verification');
+ const job=await store.saveJob(jobInput()),app=await store.acceptApplication(applicationInput(job.id));
+ const made=await manageApplicantShare(store,app.id,'POST',7,{access:'company'}) as {url:string},token=made.url.split('/').at(-1)!;
+ let sentBody='';const transport=async()=>({fingerprint:'synthetic',verify:async()=>{},sendMail:async(mail:{body:string})=>{sentBody=mail.body;return {};},reconcileMail:async()=>null});
+ const req=(email:string,code?:string,cookie='')=>new Request('https://jobs.example.invalid/verify',{method:'POST',headers:{origin:'https://jobs.example.invalid','content-type':'application/json',cookie},body:JSON.stringify({email,...(code?{code}:{})})});
+ for(const email of ['someone@evil-aicaseleads.com','someone@aicaseleads.com.evil.org'])await assert.rejects(verifyShareEmail(req(email),store,token,transport),{code:'share_access_denied'});
+ const now=Date.now(),start=await verifyShareEmail(req('viewer@aicaseleads.com'),store,token,transport,now),browser=start.headers.get('Set-Cookie')!.split(';')[0],code=sentBody.match(/\b\d{6}\b/)![0],wrong=code==='000000'?'111111':'000000';
+ for(let i=0;i<5;i++)await assert.rejects(verifyShareEmail(req('viewer@aicaseleads.com',wrong,browser),store,token,transport,now),{code:'invalid_code'});
+ await assert.rejects(verifyShareEmail(req('viewer@aicaseleads.com',code,browser),store,token,transport,now),{code:'invalid_code'});
+ const start2=await verifyShareEmail(req('viewer@aicaseleads.com'),store,token,transport,now);const browser2=start2.headers.get('Set-Cookie')!.split(';')[0],code2=sentBody.match(/\b\d{6}\b/)![0];
+ await assert.rejects(verifyShareEmail(req('viewer@aicaseleads.com',code2,browser2),store,token,transport,now+600001),{code:'invalid_code'});
+ const verified=await verifyShareEmail(req('viewer@aicaseleads.com',code2,browser2),store,token,transport,now);
+ const headers=new Headers({cookie:verified.headers.get('Set-Cookie')!.split(';')[0]});assert.equal((await sharedApplicant(store,token,headers)).status,200);
+ await assert.rejects(sharedApplicantFile(new Request('https://jobs.example.invalid/file'),store,token,'none'),{code:'share_sign_in_required'});
  }finally{database.close();}
 });

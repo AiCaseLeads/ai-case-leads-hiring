@@ -100,13 +100,13 @@ export async function handleHubRequest(
       data=await sendShareInvitations(store,id,body.token,new URL(request.url).origin);
     }
     else if(section==='applications' && id && operation==='share' && ['GET','POST','DELETE'].includes(request.method)){
-      let days=7;
+      let days=7; let options:{access?:unknown;emails?:unknown}={};
       if(request.method==='POST'){
         const body=await json(request) as Record<string,unknown>;
-        if(!body||typeof body!=='object'||Array.isArray(body)||Object.keys(body).some(key=>key!=='expiresInDays')||(body.expiresInDays!==undefined&&![7,30].includes(body.expiresInDays as number)))throw new HiringError('invalid_share',422,'Choose a seven-day or thirty-day link.');
-        days=(body.expiresInDays as number|undefined)??7;
+        if(!body||typeof body!=='object'||Array.isArray(body)||Object.keys(body).some(key=>!['expiresInDays','access','emails'].includes(key))||(body.expiresInDays!==undefined&&![7,30].includes(body.expiresInDays as number)))throw new HiringError('invalid_share',422,'Choose a seven-day or thirty-day link.');
+        days=(body.expiresInDays as number|undefined)??7; options={access:body.access,emails:body.emails};
       }
-      data=await manageApplicantShare(store,id,request.method,days);
+      data=await manageApplicantShare(store,id,request.method,days,options);
     }
     else if (section === "jobs" && request.method === "GET" && !id)
       data = await store.listJobs();
