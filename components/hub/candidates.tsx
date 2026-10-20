@@ -740,8 +740,6 @@ export function CandidateDetail({
     return()=>{if(window.__aiclDraftGuard===guard)window.__aiclDraftGuard=previous;window.removeEventListener("beforeunload",beforeUnload);};
   },[]);
   const resumeTarget = useRef<HTMLLIElement>(null);
-  const [resumeRequest,setResumeRequest]=useState(0);
-  useEffect(()=>{if(!resumeRequest || section!=="application")return;resumeTarget.current?.scrollIntoView({block:"start",behavior:"instant"});resumeTarget.current?.focus({preventScroll:true});},[resumeRequest,section]);
   const recordTabs = useRef<HTMLDivElement>(null);
   const previousSection = useRef(section);
   useLayoutEffect(() => {
@@ -866,7 +864,6 @@ export function CandidateDetail({
               {!detail.trashed && detail.stage==="Screening" && <button type="button" className="hub-button secondary" disabled={mutation.busy||rejectBusy||dirty} title={dirty?"Save or clear unsaved changes first.":"Return to initial review without sending an email."} onClick={()=>void unshortlist()}>Remove from shortlist</button>}
               {!detail.trashed && !["Rejected","Withdrawn","Hired"].includes(detail.stage) && <button type="button" className="hub-button secondary" disabled={mutation.busy||rejectBusy} onClick={()=>{setAction("interview");setActionOpen(true);mutation.clear();}}>Request interview</button>}
               {!detail.trashed&&!['Rejected','Withdrawn','Hired'].includes(detail.stage)&&<button type="button" className="hub-button secondary" disabled={mutation.busy||rejectBusy||dirty} title={dirty?"Save or clear your unsaved note or action before rejecting.":"Reject and queue this job’s rejection email, then open the next active applicant."} onClick={()=>void rejectAndContinue()}>{rejectBusy?"Rejecting…":"Reject"}</button>}
-              {resumeFile(detail) && <button type="button" className="hub-button secondary" onClick={()=>{setSection("application");setResumeRequest(value=>value+1);}}>View résumé</button>}
               {detail.trashed && <button type="button" className="hub-button secondary" disabled={mutation.busy||rejectBusy} onClick={()=>void lifecycle("restore")}>Restore application</button>}
               {!detail.trashed&&<ShareApplicant key={detail.id} id={detail.id}/>}
               <JobActionMenu label="More applicant actions" triggerLabel="More">
