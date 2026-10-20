@@ -39,7 +39,7 @@ function crc32(bytes: Uint8Array) {
   return (crc ^ 0xffffffff) >>> 0;
 }
 /** Check bounded OOXML ZIP structure, required XML parts, and their integrity. */
-function docx(bytes: Uint8Array): boolean {
+function docx(bytes: Uint8Array, strictPreview = false): boolean {
   if (bytes.length < 22) return false;
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   let eocd = -1;
@@ -66,15 +66,19 @@ function docx(bytes: Uint8Array): boolean {
     const localNameLength = view.getUint16(local + 26, true), localExtra = view.getUint16(local + 28, true);
     const data = local + 30 + localNameLength + localExtra;
     if (data + packed > start || decoder.decode(bytes.subarray(local + 30, local + 30 + localNameLength)) !== name) return false;
-    if (wanted.has(name)) {
-      if (!inflated || inflated > 2 * 1024 * 1024) return false;
+    if (wanted.has(name) || strictPreview) {
+      const xmlEntry = /\.(xml|rels)$/i.test(name);
+      const limit = wanted.has(name) || xmlEntry ? 2 * 1024 * 1024 : 8 * 1024 * 1024;
+      if ((wanted.has(name) && !inflated) || inflated > limit || (strictPreview && totalInflated > 32 * 1024 * 1024)) return false;
       const source = bytes.subarray(data, data + packed);
       let content: Uint8Array;
-      try { content = method === 0 ? source : inflateRawSync(source, {maxOutputLength: 2 * 1024 * 1024}); } catch { return false; }
+      try { content = method === 0 ? source : inflateRawSync(source, {maxOutputLength: strictPreview ? Math.max(1, inflated) : 2 * 1024 * 1024}); } catch { return false; }
       if (content.length !== inflated || crc32(content) !== crc) return false;
-      const text = decoder.decode(content);
-      if (/<!DOCTYPE|<!ENTITY/i.test(text)) return false;
-      xml.set(name, text);
+      if (wanted.has(name) || xmlEntry) {
+        const text = decoder.decode(content);
+        if (/<!DOCTYPE|<!ENTITY/i.test(text)) return false;
+        if (wanted.has(name)) xml.set(name, text);
+      }
     }
     p = next;
   }
@@ -133,9 +137,9 @@ function legacyWord(bytes: Uint8Array): boolean {
   }
   return word && table;
 }
-export function documentStructure(bytes: Uint8Array, type: string): boolean {
+export function documentStructure(bytes: Uint8Array, type: string, strictPreview = false): boolean {
   try {
-    if (type === WORD) return docx(bytes);
+    if (type === WORD) return docx(bytes, strictPreview);
     if (type === "application/msword") return legacyWord(bytes);
     if (type === "application/pdf") {
       if (bytes.length < 80 || !/^%PDF-[12]\.[0-9]/.test(decoder.decode(bytes.subarray(0, 12)))) return false;

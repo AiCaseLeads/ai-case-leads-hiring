@@ -1,4 +1,5 @@
 import test from 'node:test';
+import {documentStructure} from '../../lib/hiring/document-structure';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {extractWordText} from '../../lib/word/extract';
@@ -50,4 +51,13 @@ test('Word API preview authenticates, verifies identity and serves private text;
   await assert.rejects(privateApplicationFile(formattedRequest,'word',MANAGER,db,bucket(broken)),{code:'preview_unavailable'});
   const original=await privateApplicationFile(new Request('https://jobs.example.invalid/api/files/word'),'word',MANAGER,db,bucket());assert.equal(original.headers.get('Content-Type'),DOCX_MIME);assert.match(original.headers.get('Content-Disposition')!,/^attachment/);assert.deepEqual(new Uint8Array(await original.arrayBuffer()),new Uint8Array(bytes));
  }finally{database.close();}
+});
+
+test('formatted preview validates actual expansion and CRC of media and auxiliary XML',()=>{
+ const bytes=sampleDocx({...DOCX_PARTS,'word/media/image.png':'x'.repeat(4096),'word/styles.xml':'<styles/>'});
+ assert.equal(documentStructure(bytes,DOCX_MIME,true),true);
+ const central=bytes.indexOf(Buffer.from([0x50,0x4b,1,2]));const media=bytes.indexOf(Buffer.from('word/media/image.png'),central)-46;
+ const bomb=Buffer.from(bytes);bomb.writeUInt32LE(1,media+24);assert.equal(documentStructure(bomb,DOCX_MIME),true);assert.equal(documentStructure(bomb,DOCX_MIME,true),false);
+ const crc=Buffer.from(bytes);crc.writeUInt32LE(0,media+16);assert.equal(documentStructure(crc,DOCX_MIME,true),false);
+ const entity=sampleDocx({...DOCX_PARTS,'word/styles.xml':'<!DOCTYPE x [<!ENTITY a SYSTEM "https://example.invalid/leak">]><styles/>'});assert.equal(documentStructure(entity,DOCX_MIME,true),false);
 });

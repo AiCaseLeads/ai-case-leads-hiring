@@ -23,7 +23,7 @@ export async function privateApplicationFile(request:Request,id:string,member:Hu
   const bytes=await boundedBytes(new Request(request.url,{method:'POST',body:object.body,duplex:'half'} as RequestInit),MAX_FILE_BYTES);
   if(bytes.length!==file.size||!fileSignature(bytes,file.content_type))throw new HiringError('preview_unavailable',415,'This file cannot be safely previewed. Download the original instead.');
   if(new URL(request.url).searchParams.get('format')==='docx'){
-    if(file.content_type!=='application/vnd.openxmlformats-officedocument.wordprocessingml.document'||!documentStructure(bytes,file.content_type))throw new HiringError('preview_unavailable',415,'This document cannot be safely previewed. Download the original instead.');
+    if(file.content_type!=='application/vnd.openxmlformats-officedocument.wordprocessingml.document'||!documentStructure(bytes,file.content_type,true))throw new HiringError('preview_unavailable',415,'This document cannot be safely previewed. Download the original instead.');
     headers.set('Content-Length',String(bytes.length));
     return new Response(request.method==='HEAD'?null:bytes as BodyInit,{headers});
   }
