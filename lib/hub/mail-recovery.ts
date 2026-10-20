@@ -11,7 +11,7 @@ import { personalMailWorkspace, type PersonalMailEnv } from "../personal-mail/se
 import { canonicalJson, privateToken, sha256 } from "../hiring/crypto";
 import { HiringError } from "../hiring/errors";
 import type { MailInput } from "../google/gmail";
-import { candidateTaskMailMode } from "../google/mail-setup";
+import { candidateTaskMailMode, isRejectionTask } from "../google/mail-setup";
 
 const LIMIT = 200;
 const PLAN_MS = 10 * 60_000;
@@ -73,7 +73,7 @@ async function envelope(store: HubStore, row: Row, env: PersonalMailEnv, now: nu
     else if (messageKind === "Review reminder") mail = await reviewReminderMail(task(row, payload), store, owners);
     else {
       if (typeof payload.to !== "string" || payload.to.toLowerCase() !== row.app_email.toLowerCase() || !["subject", "body", "messageId"].every(key => typeof payload[key] === "string")) return { reason: "Recipient or original message identity needs individual review" };
-      mail = await candidateMail(store, payload as unknown as MailInput, owners, { mailMode: candidateTaskMailMode(row.id, row.application_id, payload), actor: payload.actor, applicationId: row.application_id });
+      mail = await candidateMail(store, payload as unknown as MailInput, owners, { mailMode: candidateTaskMailMode(row.id, row.application_id, payload), actor: payload.actor, applicationId: row.application_id, rejection:isRejectionTask(row.id,row.application_id) });
     }
     if (!mail || mail.to.toLowerCase() === "sales@aicaseleads.com") return { reason: "Notification is no longer current or owner notifications are disabled" };
     return { kind: messageKind, mail: internal ? { ...mail, sender:CANDIDATE_SENDER,replyTo:[AUTOMATIC_REPLY_TO],candidateAccount:undefined } : mail };

@@ -57,7 +57,7 @@ export async function candidateReplyTo(_store:HubStore,_applicationId:string,_ow
  void _store; void _applicationId; void _owners;
  return [AUTOMATIC_REPLY_TO];
 }
-export async function candidateMail(store:HubStore,input:MailInput,owners:string[]=[],context?:{mailMode?:unknown;actor?:unknown;applicationId:string}):Promise<MailInput>{
+export async function candidateMail(store:HubStore,input:MailInput,owners:string[]=[],context?:{mailMode?:unknown;actor?:unknown;applicationId:string;rejection?:boolean}):Promise<MailInput>{
  const staff=await store.rows<{email:string}>("SELECT lower(trim(email)) AS email FROM hub_members");
  const connected=await store.setting<string>("google_sender","");
  const privateAddresses=new Set([...staff.map(person=>person.email),...owners,connected].filter(Boolean).map(value=>value.toLowerCase()));
@@ -76,6 +76,8 @@ export async function candidateMail(store:HubStore,input:MailInput,owners:string
  const addresses=`${input.subject} ${input.body}`.match(/[A-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi)||[];
  if(addresses.some(address=>address.toLowerCase()!==CANDIDATE_SENDER&&address.toLowerCase()!==replyTo&&privateAddresses.has(address.toLowerCase())))throw new HiringError("candidate_mail_exposes_staff_address",422,"Remove staff email addresses from the applicant email template before retrying.");
  // Copy only the supported envelope fields: queued legacy replyTo/sender cannot leak through.
- const notice=replyTo===AUTOMATIC_REPLY_TO?AUTOMATED_MAIL_NOTICE:"You can reply to this email to contact your recruiter. For application help or privacy requests, visit https://jobs.aicaseleads.com/help.";
- return {to:input.to,subject:input.subject,body:input.body.includes(notice)?input.body:`${input.body}\n\n${notice}`,messageId:input.messageId,sender:replyTo===AUTOMATIC_REPLY_TO?CANDIDATE_SENDER:replyTo,replyTo:[replyTo],candidateMail:true,candidateAccount:replyTo===AUTOMATIC_REPLY_TO?undefined:replyTo};
+ const shortNotice="This is an automated email. Please do not reply.";
+ const body=context?.rejection?input.body.replaceAll(AUTOMATED_MAIL_NOTICE,shortNotice):input.body;
+ const notice=context?.rejection?shortNotice:replyTo===AUTOMATIC_REPLY_TO?AUTOMATED_MAIL_NOTICE:"You can reply to this email to contact your recruiter. For application help or privacy requests, visit https://jobs.aicaseleads.com/help.";
+ return {to:input.to,subject:input.subject,body:body.includes(notice)?body:`${body}\n\n${notice}`,messageId:input.messageId,sender:replyTo===AUTOMATIC_REPLY_TO?CANDIDATE_SENDER:replyTo,replyTo:[replyTo],candidateMail:true,candidateAccount:replyTo===AUTOMATIC_REPLY_TO?undefined:replyTo};
 }

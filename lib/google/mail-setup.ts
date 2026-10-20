@@ -22,3 +22,7 @@ export function candidateTaskMailMode(taskId: string, applicationId: string, pay
   if (taskId === `gmail:${applicationId}:confirmation` || taskId === `gmail:${applicationId}:rejection` || taskId.startsWith(`gmail:${applicationId}:rejection:`)) return undefined;
   return payload.mailMode || (/:(manual|assessment|interview):/.test(taskId) ? "recruiter" : undefined);
 }
+
+export function isRejectionTask(taskId:string,applicationId:string):boolean {
+ return taskId===`gmail:${applicationId}:rejection` || taskId.startsWith(`gmail:${applicationId}:rejection:`);
+}
