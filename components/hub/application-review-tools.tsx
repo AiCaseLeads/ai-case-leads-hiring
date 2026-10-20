@@ -13,7 +13,7 @@ export function ApplicantNavigation({detail,filter,open,viewed,disabled=false}:{
   if(!params.has("active")&&!params.get("stage")&&params.get("trash")!=="true")params.set("active","true");
   params.delete("page");
   const query=params.toString();
-  const neighbors=useHubResource<{previousId:string|null;nextId:string|null;position:number;total:number}>(`/api/hub/applications/${encodeURIComponent(detail.id)}/navigation?${query}`);
+  const neighbors=useHubResource<{previousId:string|null;nextId:string|null;position:number;total:number;outsideView?:boolean}>(`/api/hub/applications/${encodeURIComponent(detail.id)}/navigation?${query}`,detail.revision);
   const [viewError,setViewError]=useState("");
   const [marked,setMarked]=useState(!!detail.viewedAt);
   const started=useRef(false);
@@ -27,7 +27,7 @@ export function ApplicantNavigation({detail,filter,open,viewed,disabled=false}:{
   return <div className="hub-review-navigation">
     <div className="hub-applicant-pager" aria-label="Browse matching applicants">
       <button type="button" className="hub-icon-button" aria-label="Previous applicant" title="Previous applicant" disabled={disabled || neighbors.loading || !neighbors.data?.previousId} onClick={()=>neighbors.data?.previousId && open(neighbors.data.previousId,query)}><ChevronLeft size={18} aria-hidden="true"/></button>
-      <span role="status" className="hub-applicant-position" title="Position in your current filtered list">{neighbors.loading?"Loading…":neighbors.data?`${neighbors.data.position} of ${neighbors.data.total}`:"Order unavailable"}</span>
+      <span role="status" className="hub-applicant-position" title="Position in your current filtered list">{neighbors.loading?"Loading…":neighbors.data?neighbors.data.outsideView?`Outside current filters · ${neighbors.data.total} applicants`:`${neighbors.data.position} of ${neighbors.data.total}`:"Order unavailable"}</span>
       <button type="button" className="hub-icon-button" aria-label="Next applicant" title="Next applicant" disabled={disabled || neighbors.loading || !neighbors.data?.nextId} onClick={()=>neighbors.data?.nextId && open(neighbors.data.nextId,query)}><ChevronRight size={18} aria-hidden="true"/></button>
       <span className="hub-applicant-viewed" title={marked?"Viewed by you":"No recorded view by you yet"}>{marked?"Viewed":"New to you"}</span>
     </div>
