@@ -900,7 +900,19 @@ export class HubStore {
     const rows=await this.rows<{id:string}>(`${selected.cte}SELECT a.id FROM hub_applications a${selected.join}${selected.clause} ORDER BY ${selected.order} LIMIT ${filters.top?10:10001}`,...selected.values);
     if(rows.length>10000)throw new HiringError("navigation_too_large",422,"Narrow the filters to at most 10,000 applicants before browsing.");
     const position=rows.findIndex(row=>row.id===id);
-    if(position<0)throw new HiringError("application_not_in_view",404,"This applicant no longer matches the current filters. Return to the applicant list.");
+    if(position<0){
+      const anchor=await this.applicationRow(id);
+      if(filters.jobId&&anchor.job_id!==filters.jobId)throw new HiringError("application_not_in_view",404,"This applicant is not part of the selected job.");
+      // Keep the selected cohort intact, but insert the current applicant as a
+      // navigation anchor after a stage/filter-changing action. Never return it
+      // as a member of the filtered count or add other nonmatching applicants.
+      const candidates=new Set(rows.map(row=>row.id));
+      const anchored=await this.rows<{id:string}>(`${selected.cte}SELECT a.id FROM hub_applications a${selected.join} WHERE ((${selected.clause.replace(/^ WHERE /, "")}${filters.top?` AND a.id IN (${rows.map(()=>"?").join(",")||"NULL"})`:""}) OR a.id=?) ORDER BY ${selected.order} LIMIT 10002`,...selected.values,...(filters.top?rows.map(row=>row.id):[]),id);
+      const index=anchored.findIndex(row=>row.id===id);
+      const previous=index<0?null:anchored.slice(0,index).reverse().find(row=>candidates.has(row.id))?.id??null;
+      const next=index<0?null:anchored.slice(index+1).find(row=>candidates.has(row.id))?.id??null;
+      return {previousId:previous,nextId:next,position:0,total:rows.length,outsideView:true};
+    }
     return {previousId:rows[position-1]?.id??null,nextId:rows[position+1]?.id??null,position:position+1,total:rows.length};
   }
   async markApplicationViewed(id:string,viewerEmail:string) {

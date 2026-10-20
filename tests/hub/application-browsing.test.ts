@@ -41,7 +41,7 @@ test('navigation follows exact date, qualification and ordering across page boun
   const boundary=page1.items.at(-1)!.id;
   assert.deepEqual(await store.applicationNavigation(boundary,filters),{previousId:page1.items.at(-2)!.id,nextId:page2.items[0].id,position:30,total:65});
   assert.equal((await store.applicationNavigation(page1.items[0].id,filters)).previousId,null);
-  await assert.rejects(store.applicationNavigation(rejected.id,filters),{code:'application_not_in_view'});
+  assert.deepEqual(await store.applicationNavigation(rejected.id,filters),{previousId:null,nextId:page1.items[0].id,position:0,total:65,outsideView:true});
   const response=await handleHubRequest(req(`applications/${boundary}/navigation?`+new URLSearchParams(filters)),['applications',boundary,'navigation'],MANAGER,store);
   assert.equal(response.status,200);assert.equal((await response.json() as {data:{position:number}}).data.position,30);
   database.prepare("INSERT INTO hub_settings(key,value,updated_at) VALUES(?, '{}', 1)").run('application_trash:'+page2.items[0].id);
@@ -52,7 +52,7 @@ test('navigation follows exact date, qualification and ordering across page boun
   const top={jobId:job.id,sort:'ai_match_desc' as const,top:10 as const};
   const topIds=await store.exportIds(top);assert.equal(topIds.length,10);
   assert.deepEqual(await store.applicationNavigation(topIds[9],top),{previousId:topIds[8],nextId:null,position:10,total:10});
-  await assert.rejects(store.applicationNavigation(page1.items[11].id,top),{code:'application_not_in_view'});
+  assert.deepEqual(await store.applicationNavigation(page1.items[11].id,top),{previousId:topIds[9],nextId:null,position:0,total:10,outsideView:true});
  }finally{database.close();}
 });
 
@@ -73,5 +73,21 @@ test('private inline files require staff, verify bytes and identity, and protect
   for(const mime of ['text/html','image/svg+xml','application/msword']){database.prepare('UPDATE hub_files SET content_type=? WHERE id=?').run(mime,'test-pdf');await assert.rejects(privateApplicationFile(request(),'test-pdf',MANAGER,db,bucket()),{code:'preview_unavailable'});}
   const attachment=await privateApplicationFile(new Request(origin+'/api/files/test-pdf'),'test-pdf',MANAGER,db,bucket());assert.match(attachment.headers.get('Content-Disposition')!,/^attachment/);
   assert.equal((await store.getApplication(app.id)).files[0].fieldPath,'resume');
+ }finally{database.close();}
+});
+
+test('stale shortlisted anchor retains exact filtered neighbors across pages',async()=>{
+ const {store,database}=createStore();try{
+ const job=await store.saveJob(jobInput());
+ for(let n=0;n<65;n++){const app=await store.acceptApplication(applicationInput(job.id));database.prepare("UPDATE hub_applications SET qualification='pass',stage='Application Review',created_at=? WHERE id=?").run(Date.parse('2026-10-15T06:00Z')+n,app.id);}
+ const filters={jobId:job.id,stage:'Application Review' as const,qualification:'pass' as const,sort:'newest' as const,appliedFrom:'2026-10-15',appliedTo:'2026-10-15',timeZone:'America/Bogota'};
+ const p1=await store.applications(filters),p2=await store.applications({...filters,page:2}),anchor=p1.items[29].id;
+ database.prepare("UPDATE hub_applications SET stage='Screening' WHERE id=?").run(anchor);
+ assert.deepEqual(await store.applicationNavigation(anchor,filters),{previousId:p1.items[28].id,nextId:p2.items[0].id,position:0,total:64,outsideView:true});
+ database.prepare("UPDATE hub_applications SET qualification='fail' WHERE id=?").run(p2.items[0].id);
+ assert.equal((await store.applicationNavigation(anchor,filters)).nextId,p2.items[1].id);
+ const other=await store.saveJob({...jobInput(),title:'Another job'}),foreign=await store.acceptApplication(applicationInput(other.id));
+ await assert.rejects(store.applicationNavigation(foreign.id,filters),{code:'application_not_in_view'});
+ assert.deepEqual(await store.applicationNavigation(anchor,{...filters,stage:'Rejected'}),{previousId:null,nextId:null,position:0,total:0,outsideView:true});
  }finally{database.close();}
 });
