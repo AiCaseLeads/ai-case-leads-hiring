@@ -21,6 +21,8 @@ export async function changeApplicationTrash(store:HubStore,id:string,action:'tr
   const statements=[store.stmt("UPDATE hub_applications SET id=CASE WHEN revision=? AND NOT EXISTS(SELECT 1 FROM hub_tasks t WHERE t.application_id=hub_applications.id AND t.kind IN ('gmail','calendar') AND t.status='running') AND NOT EXISTS(SELECT 1 FROM hub_interviews i WHERE i.application_id=hub_applications.id AND i.status IN ('pending','booked','cancel_pending','failed')) THEN id ELSE NULL END,stage=?,stage_entered_at=?,revision=revision+1,updated_at=? WHERE id=?",expectedRevision,nextStage,now,now,id)];
   if(action==='trash') statements.push(
     store.stmt('INSERT INTO hub_settings(key,value,updated_at) VALUES(?,?,?)',applicationTrashKey(id),JSON.stringify({previousStage:app.stage,deletedAt:now,actor:member.email}),now),
+    store.stmt("DELETE FROM hub_settings WHERE key='applicant_share:token:'||(SELECT json_extract(value,'$.hash') FROM hub_settings WHERE key=?)",'applicant_share:'+id),
+    store.stmt('DELETE FROM hub_settings WHERE key=?','applicant_share:'+id),
     store.stmt("UPDATE hub_links SET used_at=? WHERE application_id=? AND used_at IS NULL",now,id),
     store.stmt("UPDATE hub_interviews SET status='cancelled',revision=revision+1,updated_at=? WHERE application_id=? AND status='invited'",now,id),
     store.stmt("UPDATE hub_tasks SET status='done',result_json=?,last_error=NULL,lease_token=NULL,lease_until=NULL,updated_at=? WHERE application_id=? AND kind='gmail' AND status IN ('pending','failed')",JSON.stringify({cancelled:true,applicationTrashed:true}),now,id),

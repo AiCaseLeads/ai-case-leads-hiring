@@ -1,3 +1,4 @@
+import {changeApplicationTrash} from '../../lib/hub/application-lifecycle';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createStore,jobInput,applicationInput,MANAGER,currentAction} from './fixtures';
@@ -36,5 +37,34 @@ test('share files enforce résumé ownership and immediately reject revoked, exp
  await store.setSetting('application_trash:'+app.id,{deletedAt:Date.now()});await assert.rejects(sharedApplicantFile(req,store,token,'resume',bucket),{code:'share_unavailable'});await db.prepare('DELETE FROM hub_settings WHERE key=?').bind('application_trash:'+app.id).run();
  const saved=await store.setting<Record<string,unknown>>('applicant_share:'+app.id,{});await store.setSetting('applicant_share:'+app.id,{...saved,expiresAt:1});await assert.rejects(sharedApplicant(store,token),{code:'share_unavailable'});
  await assert.rejects(sharedApplicant(store,'invalid'),{code:'share_unavailable'});
+ }finally{database.close();}
+});
+
+test('revoking while a résumé is being fetched cancels the pending public response',async()=>{
+ const {store,database}=createStore();try{
+ const job=await store.saveJob(jobInput()),app=await store.acceptApplication(applicationInput(job.id));
+ const bytes=new TextEncoder().encode('%PDF-1.7\nsynthetic');
+ database.prepare("INSERT INTO hub_files(id,session_hash,job_id,field_path,filename,content_type,size,object_key,expires_at,uploaded_at,application_id) VALUES('race-resume','test',?,'_systemfield_resume','CV.pdf','application/pdf',?,'race-key',1,1,?)").run(job.id,bytes.length,app.id);
+ const made=await manageApplicantShare(store,app.id,'POST') as {url:string};const token=made.url.split('/').at(-1)!;
+ let cancelled=false;
+ const bucket={get:async()=>{
+  await manageApplicantShare(store,app.id,'DELETE');
+  return {size:bytes.length,customMetadata:{fileId:'race-resume'},body:new ReadableStream({cancel(){cancelled=true;}})};
+ }} as unknown as Pick<R2Bucket,'get'>;
+ await assert.rejects(sharedApplicantFile(new Request('https://jobs.example.invalid/file'),store,token,'race-resume',bucket),{code:'share_unavailable'});
+ assert.equal(cancelled,true);
+ }finally{database.close();}
+});
+
+test('moving an application to Trash permanently revokes its share after restoration',async()=>{
+ const {store,database}=createStore();try{
+ const job=await store.saveJob(jobInput()),app=await store.acceptApplication(applicationInput(job.id));
+ const made=await manageApplicantShare(store,app.id,'POST') as {url:string};const token=made.url.split('/').at(-1)!;
+ const before=await store.getApplication(app.id);
+ const trashed=await changeApplicationTrash(store,app.id,'trash',before.revision,MANAGER);
+ await changeApplicationTrash(store,app.id,'restore',trashed.revision,MANAGER);
+ assert.deepEqual(await manageApplicantShare(store,app.id,'GET'),{active:false});
+ await assert.rejects(sharedApplicant(store,token),{code:'share_unavailable'});
+ assert.equal(database.prepare("SELECT count(*) AS count FROM hub_settings WHERE key LIKE 'applicant_share:%'").get()!.count,0);
  }finally{database.close();}
 });

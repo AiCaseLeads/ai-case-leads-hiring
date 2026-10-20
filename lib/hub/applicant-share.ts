@@ -18,7 +18,7 @@ export async function manageApplicantShare(store:HubStore,id:string,method:strin
  if(method==='GET')return saved&&saved.expiresAt>Date.now()?{active:true,expiresAt:saved.expiresAt}:{active:false};
  const token=privateToken(),hash=await sha256(token),expiresAt=Date.now()+days*86400000,value={applicationId:id,expiresAt,hash};
  await store.db.batch([
-  store.stmt('INSERT INTO hub_settings(key,value,updated_at) VALUES(?,?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_at=excluded.updated_at',key,JSON.stringify(value),Date.now()),
+  store.stmt("INSERT INTO hub_settings(key,value,updated_at) VALUES(?,CASE WHEN NOT EXISTS(SELECT 1 FROM hub_settings WHERE key=?) THEN ? ELSE NULL END,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_at=excluded.updated_at",key,'application_trash:'+id,JSON.stringify(value),Date.now()),
   store.stmt('INSERT INTO hub_settings(key,value,updated_at) VALUES(?,?,?)',prefix+'token:'+hash,JSON.stringify(value),Date.now()),
   ...(saved?[store.stmt('DELETE FROM hub_settings WHERE key=?',prefix+'token:'+saved.hash)]:[]),
  ]);
