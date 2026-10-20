@@ -1094,6 +1094,7 @@ export function CandidateDetail({
             <div className="hub-detail-main">
               <div ref={recordTabs} className="hub-button-row hub-profile-tabs" role="tablist" aria-label="Applicant record">{([{id:"application",label:"Application & files"},{id:"review",label:"AI review & notes"},{id:"activity",label:"Activity & messages"}] as const).map(tab=><button key={tab.id} type="button" role="tab" id={`candidate-tab-${tab.id}`} aria-selected={section===tab.id} tabIndex={section===tab.id?0:-1} onKeyDown={event=>{const ids=["application","review","activity"] as const;const index=ids.indexOf(section);const next=event.key==="ArrowRight"?ids[(index+1)%3]:event.key==="ArrowLeft"?ids[(index+2)%3]:event.key==="Home"?ids[0]:event.key==="End"?ids[2]:null;if(next){event.preventDefault();setSection(next);document.getElementById(`candidate-tab-${next}`)?.focus({preventScroll:true});}}} aria-controls={`candidate-panel-${tab.id}`} className={"hub-button " + (section===tab.id ? "" : "secondary")} onClick={()=>setSection(tab.id)}>{tab.label}</button>)}</div>
               <div role="tabpanel" id="candidate-panel-review" aria-labelledby="candidate-tab-review" hidden={section!=="review"}>
+              <fieldset disabled={decisionBusy} style={{border:0,padding:0,margin:0,minWidth:0}}>
               {section === "review" && <CandidateMatch applicationId={detail.id}/>}
               <section className="hub-card hub-candidate-notes"><div className="hub-section-heading compact"><h3>Recruiter notes</h3><button type="button" className="hub-text-button" onClick={()=>{setAction("note");setActionOpen(true);}}>Add note</button></div>{detail.notes.length ? detail.notes.slice(0,5).map(note=><article className="hub-history-item" key={note.id}><strong>{note.actor}</strong>{note.text.length>500 ? <details><summary>Read note · {displayDate(note.createdAt)}</summary><p className="hub-preserve">{note.text}</p></details> : <><p className="hub-preserve">{note.text}</p><small>{displayDate(note.createdAt)}</small></>}</article>) : <p className="hub-muted">No notes yet.</p>}</section>
               <details className="hub-card"><summary>Optional: human grades and scorecards</summary>
@@ -1109,6 +1110,7 @@ export function CandidateDetail({
               <details className="hub-card"><summary>Advanced: evidence and verification tools</summary>
               <CandidateEvidence key={detail.id} detail={detail} draft={evidenceDraft} saved={() => { void resource.reload(); changed(); }} />
               </details>
+              </fieldset>
               </div>
               <div role="tabpanel" id="candidate-panel-application" aria-labelledby="candidate-tab-application" hidden={section!=="application"}>
               <section className="hub-card">
