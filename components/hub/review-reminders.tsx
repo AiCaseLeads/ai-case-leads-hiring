@@ -1,4 +1,5 @@
 "use client";
+import { NavigationLink, applicantHref } from "./navigation-link";
 import { useState } from "react";
 import { useHubMutation,useHubResource,displayDate } from "./api";
 import { Badge,Feedback,Field,ResourceState } from "./shared";
@@ -29,7 +30,7 @@ export function ReviewReminderQueue({refresh=0,onSelect,compact=false}:{refresh?
     <Field label="Review queue"><select value={scope} onChange={e=>{setScope(e.target.value);setOffset(0);setExpanded(false);}}><option value="mine">Assigned to me</option><option value="all">All team applications</option><option value="unassigned">Unassigned</option></select></Field>
     <ResourceState loading={resource.loading} error={resource.error} retry={()=>void resource.reload()}/>
     {resource.data&&!resource.loading&&<><p><strong>{resource.data.total}</strong> overdue {resource.data.total===1?"review":"reviews"} · {scope==="mine"?"Assigned to you only":scope==="unassigned"?"No reviewer assigned":"Across the whole team"}</p>
-      {resource.data.applications.length?<ul>{resource.data.applications.slice(0,compact && !expanded ? 5 : 50).map(a=><li key={a.id}><button className="hub-button secondary" onClick={()=>onSelect(a.id)}>{a.name} · {a.jobTitle}</button><span className="hub-muted"> {a.assignee||"Unassigned"} · Waiting since {displayDate(a.stageEnteredAt)}</span></li>)}</ul>:<p>No overdue reviews in this queue.</p>}
+      {resource.data.applications.length?<ul>{resource.data.applications.slice(0,compact && !expanded ? 5 : 50).map(a=><li key={a.id}><NavigationLink className="hub-button secondary" href={applicantHref(a.id)} navigate={()=>onSelect(a.id)}>{a.name} · {a.jobTitle}</NavigationLink><span className="hub-muted"> {a.assignee||"Unassigned"} · Waiting since {displayDate(a.stageEnteredAt)}</span></li>)}</ul>:<p>No overdue reviews in this queue.</p>}
       {compact && resource.data.applications.length > 5 && <button className="hub-text-button" onClick={() => setExpanded(value => !value)}>{expanded ? "Show fewer" : "Show more waiting applicants"}</button>}
       {resource.data.total > 50 && (!compact || expanded) && <div className="hub-actions"><button className="hub-button secondary" disabled={!offset} onClick={()=>setOffset(Math.max(0,offset-50))}>Previous reviews</button><button className="hub-button secondary" disabled={offset+50>=resource.data.total} onClick={()=>setOffset(offset+50)}>Next reviews</button></div>}
     </>}

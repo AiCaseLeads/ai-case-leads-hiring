@@ -51,7 +51,7 @@ async function setup(t,{mode='list',screening=false,mailReady=true,failShortlist
 
 test('screening state explains no rules and missing answers while AI match stays independent',async t=>{
  for(const screening of [false,true]){
-  const{page,errors}=await setup(t,{screening});await page.getByRole('button',{name:'Synthetic Applicant',exact:true}).waitFor();
+  const{page,errors}=await setup(t,{screening});await page.getByRole('link',{name:'Synthetic Applicant',exact:true}).waitFor();
   await page.getByText(screening?'Check answers':'No screening rules',{exact:true}).waitFor();
   assert.equal(await page.getByRole('columnheader',{name:'Reviewer grade',exact:true}).count(),0);
   assert.equal(await page.getByText('Needs review',{exact:true}).count(),0);
@@ -92,7 +92,7 @@ test('AI overview prioritizes strengths and questions while exact quotes remain 
 });
 
 test('visible downloads fit mobile and desktop with compiled production CSS',async t=>{
- const{page,errors}=await setup(t);await page.getByRole('button',{name:'Synthetic Applicant',exact:true}).waitFor();assert.equal(await page.getByLabel('Download scope').isVisible(),true);
+ const{page,errors}=await setup(t);await page.getByRole('link',{name:'Synthetic Applicant',exact:true}).waitFor();assert.equal(await page.getByLabel('Download scope').isVisible(),true);
  for(const width of [320,390,768,1280,1728]){
   await page.setViewportSize({width,height:900});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),true,JSON.stringify(await page.evaluate(()=>[...document.querySelectorAll('*')].filter(e=>e.getBoundingClientRect().right>innerWidth+1).slice(0,8).map(e=>[e.tagName,e.className,e.getBoundingClientRect().right]))));
   await page.getByLabel('Download scope').waitFor();assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),true,JSON.stringify(await page.evaluate(()=>[...document.querySelectorAll('*')].filter(e=>e.getBoundingClientRect().right>innerWidth+1).slice(0,8).map(e=>[e.tagName,e.className,e.getBoundingClientRect().right]))));
@@ -102,7 +102,7 @@ test('visible downloads fit mobile and desktop with compiled production CSS',asy
 
 
 test('pipeline stages preserve search and ranking within the selected job',async t=>{
- const{page,queries}=await setup(t);await page.getByLabel('Search',{exact:true}).fill('Synthetic');await page.getByLabel('Order',{exact:true}).selectOption('ai_match_desc');await page.getByRole('button',{name:'Apply filters',exact:true}).click();await page.getByRole('button',{name:'Synthetic Applicant',exact:true}).waitFor();
+ const{page,queries}=await setup(t);await page.getByLabel('Search',{exact:true}).fill('Synthetic');await page.getByLabel('Order',{exact:true}).selectOption('ai_match_desc');await page.getByRole('button',{name:'Apply filters',exact:true}).click();await page.getByRole('link',{name:'Synthetic Applicant',exact:true}).waitFor();
  await page.getByRole('button',{name:'Shortlisted',exact:true}).click();await page.waitForResponse(response=>response.url().includes('stage=Screening'));
  const filters=queries.at(-1);assert.equal(filters.get('jobId'),'job-one');assert.equal(filters.get('q'),'Synthetic');assert.equal(filters.get('sort'),'ai_match_desc');assert.equal(filters.get('stage'),'Screening');
  assert.equal(await page.getByRole('button',{name:'Shortlisted',exact:true}).getAttribute('aria-pressed'),'true');

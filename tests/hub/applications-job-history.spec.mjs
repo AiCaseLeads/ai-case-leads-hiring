@@ -29,12 +29,12 @@ async function setup(t,query=''){
   if(url.pathname==='/api/review-reminders')data={total:0,applications:[],staff:[],config:{enabled:false,dueHours:48,fallbackAdmins:[]}};
   return route.fulfill({json:{data}});
  });
- await page.goto(`http://127.0.0.1:${server.address().port}/?view=applications${query}`);if(query.includes('jobId=job-1'))await page.getByRole('button',{name:'Synthetic Applicant',exact:true}).waitFor();return{page,queries};
+ await page.goto(`http://127.0.0.1:${server.address().port}/?view=applications${query}`);if(query.includes('jobId=job-1'))await page.getByRole('link',{name:'Synthetic Applicant',exact:true}).waitFor();return{page,queries};
 }
 test('job cards, applicant details and browser Back/Forward retain job, Top10 and filters',async t=>{
- const{page}=await setup(t);await page.getByRole('heading',{name:'Choose a job'}).waitFor();await page.getByRole('button',{name:'View applications for Synthetic Engineer'}).click();await page.getByRole('button',{name:'Synthetic Applicant',exact:true}).waitFor();assert.equal(new URL(page.url()).searchParams.get('jobId'),'job-1');
+ const{page}=await setup(t);await page.getByRole('heading',{name:'Choose a job'}).waitFor();await page.getByRole('button',{name:'View applications for Synthetic Engineer'}).click();await page.getByRole('link',{name:'Synthetic Applicant',exact:true}).waitFor();assert.equal(new URL(page.url()).searchParams.get('jobId'),'job-1');
  await page.getByRole('button',{name:'Top 10 AI matches',exact:true}).click();await page.getByRole('button',{name:'Show all applicants',exact:true}).waitFor();const jobUrl=page.url();assert.equal(new URL(jobUrl).searchParams.get('top'),'10');
- await page.getByRole('button',{name:'Synthetic Applicant',exact:true}).click();await page.getByRole('heading',{name:'Synthetic Applicant',exact:true}).waitFor();await page.goBack();await page.getByRole('button',{name:'Show all applicants',exact:true}).waitFor();assert.equal(page.url(),jobUrl);
+ await page.getByRole('link',{name:'Synthetic Applicant',exact:true}).click();await page.getByRole('heading',{name:'Synthetic Applicant',exact:true}).waitFor();await page.goBack();await page.getByRole('button',{name:'Show all applicants',exact:true}).waitFor();assert.equal(page.url(),jobUrl);
  await page.goForward();await page.getByRole('heading',{name:'Synthetic Applicant',exact:true}).waitFor();await page.getByRole('button',{name:'Back to applications',exact:true}).click();await page.getByRole('button',{name:'Show all applicants',exact:true}).waitFor();assert.equal(page.url(),jobUrl);
  await page.getByRole('button',{name:'All jobs',exact:true}).click();await page.getByRole('heading',{name:'Choose a job'}).waitFor();assert.equal(new URL(page.url()).searchParams.has('jobId'),false);await page.goBack();await page.getByRole('button',{name:'Show all applicants',exact:true}).waitFor();assert.equal(page.url(),jobUrl);
 });

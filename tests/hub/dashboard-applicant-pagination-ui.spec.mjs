@@ -22,7 +22,7 @@ async function setup(t,{width=390,initialJobId='',initialFilter='',total=75,page
 
 test('real dashboard retains all-page download selection across 20 pages, dates, history and reload',async t=>{
  const{page,requests,errors}=await setup(t,{width:1280,total:500,pageSize:25});
- await page.getByRole('button',{name:'Synthetic Applicant',exact:true}).waitFor();
+ await page.getByRole('link',{name:'Synthetic Applicant',exact:true}).waitFor();
  await page.getByLabel('Screening',{exact:true}).selectOption('pass');
  await page.getByLabel('Applied from',{exact:true}).fill('2026-10-15');
  await page.getByLabel('Applied through',{exact:true}).fill('2026-10-17');

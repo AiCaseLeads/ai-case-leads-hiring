@@ -210,7 +210,7 @@ async function next(page) {
 }
 
 async function edit(page) {
- await page.getByRole('button',{name:'Edit job',exact:true}).click();
+ await page.getByRole('link',{name:'Edit job',exact:true}).click();
  return page.getByRole('textbox',{name:'Job description',exact:true});
 }
 async function selectAll(page,box){await box.focus();await page.keyboard.press('ControlOrMeta+A');}

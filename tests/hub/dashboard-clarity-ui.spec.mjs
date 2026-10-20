@@ -22,7 +22,7 @@ test('home prioritizes applicant work, keeps connection status compact and start
  await page.getByRole('button',{name:'Manage scorecard templates',exact:true}).click();await page.getByRole('heading',{name:'Reusable scorecards',exact:true}).waitFor();assert.equal(await page.locator('#scorecard-settings').count(),1);assert.equal(await page.locator('#scorecard-settings').isVisible(),true);
 });
 test('recruiters can review overdue work and see delivery activity without administrator controls',async t=>{
- const page=await setup(t,'recruiter',1);await page.getByRole('button',{name:'Sample Applicant · Engineer',exact:true}).waitFor();assert.equal(await page.getByRole('button',{name:'Create job',exact:true}).count(),1);assert.equal(await page.getByRole('navigation').getByRole('button',{name:'Settings',exact:true}).count(),1);
+ const page=await setup(t,'recruiter',1);await page.getByRole('link',{name:'Sample Applicant · Engineer',exact:true}).waitFor();assert.equal(await page.getByRole('button',{name:'Create job',exact:true}).count(),1);assert.equal(await page.getByRole('navigation').getByRole('button',{name:'Settings',exact:true}).count(),1);
  await page.getByRole('button',{name:'Delivery activity',exact:true}).click();await page.getByRole('heading',{name:'Delivery activity',exact:true}).waitFor();
 });
 
@@ -39,7 +39,7 @@ test('review shortcut and validated job links retain exact filters after a refre
  await nav.getByRole('button',{name:'Applicants',exact:true}).click();await page.getByRole('heading',{name:'Applicant list'}).waitFor();
  await page.goBack();await page.getByRole('heading',{name:'Job postings'}).waitFor();
  await page.goBack();await page.getByRole('heading',{name:'Hiring overview'}).waitFor();
- await page.getByRole('button',{name:'Recent applicant',exact:true}).click();await page.getByRole('heading',{name:'Applicant detail'}).waitFor();
+ await page.getByRole('link',{name:'Recent applicant',exact:true}).click();await page.getByRole('heading',{name:'Applicant detail'}).waitFor();
  await page.goBack();await page.getByRole('heading',{name:'Hiring overview'}).waitFor();
  await page.goForward();await page.getByRole('heading',{name:'Applicant detail'}).waitFor();
  await page.getByRole('button',{name:'Back to applicants'}).click();await page.getByRole('heading',{name:'Hiring overview'}).waitFor();
