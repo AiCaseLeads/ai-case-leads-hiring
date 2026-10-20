@@ -47,7 +47,7 @@ export { DEFAULT_REJECTION } from "../hiring/email-templates";
 type Bind = string | number | null;
 export const APPLICATION_SORTS = ["newest","oldest","screening_newest","screening_asc","screening_desc","owner_asc","owner_desc","ai_match_asc","ai_match_desc","grade_desc"] as const;
 export type ApplicationFilters = {
-  q?:string;jobId?:string;stage?:string;active?:boolean;assignee?:string;qualification?:"pass"|"review"|"fail";
+  q?:string;jobId?:string;stage?:string;excludeStage?:string;active?:boolean;assignee?:string;qualification?:"pass"|"review"|"fail";
   appliedFrom?:string;appliedTo?:string;timeZone?:string;
   top?:10;grade?:"reviewed"|"ungraded";sort?:typeof APPLICATION_SORTS[number];duplicate?:boolean;page?:number;trash?:boolean;
 };
@@ -806,7 +806,8 @@ export class HubStore {
     if(filters.q) {where.push("(instr(lower(a.name),lower(?))>0 OR instr(lower(a.email),lower(?))>0)");values.push(filters.q,filters.q);}
     for(const [key,column] of [["jobId","job_id"],["stage","stage"],["assignee","assignee"],["qualification","qualification"]] as const)
       if(filters[key]) {where.push(`a.${column}=?`);values.push(filters[key]!);}
-    if(filters.active && !filters.stage)where.push("a.stage NOT IN ('Rejected','Withdrawn','Hired')");
+    if(filters.excludeStage){where.push("a.stage<>?");values.push(filters.excludeStage);}
+    if(filters.active)where.push("a.stage NOT IN ('Rejected','Withdrawn','Hired')");
     const dates=applicationDateBounds(filters);
     if(dates.from!==undefined){where.push("a.created_at>=?");values.push(dates.from);}
     if(dates.to!==undefined){where.push("a.created_at<?");values.push(dates.to);}

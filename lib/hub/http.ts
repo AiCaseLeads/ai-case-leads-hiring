@@ -1,3 +1,4 @@
+import {STAGES} from "./types";
 import {sendShareInvitations} from "./share-invitations";
 import {manageApplicantShare} from "./applicant-share";
 import { APPLICATION_SORTS, type ApplicationFilters } from "./store";
@@ -62,6 +63,8 @@ function applicationFilters(request: Request) {
           (sort && !APPLICATION_SORTS.includes(sort as typeof APPLICATION_SORTS[number])) || (duplicate && duplicate !== "true") ||
           ((grade || (sort && ["grade_desc","ai_match_desc","ai_match_asc"].includes(sort))) && !jobId))
         throw new HiringError("invalid_filter", 422, "Choose one role before comparing reviewer grades, and check the application filters.");
+      const stage=params.get("stage")||undefined,excludeStage=params.get("excludeStage")||undefined;
+      if([stage,excludeStage].some(value=>value&&!STAGES.includes(value as typeof STAGES[number])))throw new HiringError("invalid_filter",422,"Choose a valid application stage.");
       const dates={appliedFrom:params.get('appliedFrom')||undefined,appliedTo:params.get('appliedTo')||undefined,timeZone:params.get('timeZone')||undefined};
       applicationDateBounds(dates);
       return {
@@ -69,7 +72,8 @@ function applicationFilters(request: Request) {
         q,
         top: params.get("top") === "10" ? 10 as const : undefined,
         jobId,
-        stage: params.get("stage") || undefined,
+        stage,
+        excludeStage,
         assignee: params.get("assignee") || undefined,
         page: Number(page),
         qualification: qualification as "pass" | "review" | "fail" | undefined,
