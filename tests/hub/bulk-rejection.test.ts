@@ -41,3 +41,12 @@ test('simultaneous confirmed requests cannot duplicate decisions or outbox tasks
  assert.deepEqual(await store.executeBulkRejection(plan.planId,MANAGER),{updated:3,skipped:0,total:3,remaining:0,complete:true});
  }finally{database.close();}
 });
+test('bulk preview rejects selected IDs from another job and uses rejection-specific errors',async()=>{
+ const {store,database}=createStore();try{
+ const first=await store.saveJob(jobInput()),second=await store.saveJob({...jobInput(),slug:'second-role'});
+ const other=await store.acceptApplication(applicationInput(second.id));
+ await assert.rejects(store.previewBulkRejection({jobId:first.id},[other.id],'Not selected.',MANAGER),{code:'bulk_selection_changed'});
+ await assert.rejects(store.previewBulkRejection({},undefined,'Not selected.',MANAGER),error=>{assert.ok(error instanceof Error);assert.match(error.message,/previewing bulk rejections/);return true;});
+ assert.equal(database.prepare("SELECT count(*) n FROM hub_tasks WHERE id LIKE '%:rejection:%'").get()!.n,0);
+ }finally{database.close();}
+});
