@@ -14,6 +14,7 @@ test('known history has readable labels and unknown machine records never leak J
 test('communication queued, sent, delivered, failed and uncertain remain distinct',()=>{
  assert.equal(communicationSummary('pending').label,'Queued');
  assert.equal(communicationSummary('sent').label,'Sent');assert.match(communicationSummary('sent').explanation,/not confirmed/);
+ assert.equal(communicationSummary('sent_external').label,'Sent from email');
  assert.equal(communicationSummary('delivered').label,'Delivered');
  assert.equal(communicationSummary('failed').label,'Failed');
  assert.match(communicationSummary('uncertain').explanation,/Do not send a duplicate/);

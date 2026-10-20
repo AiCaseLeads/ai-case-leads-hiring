@@ -64,7 +64,7 @@ async function importMessage(store: HubStore, db: D1Database, google: GoogleWork
   const added = files.filter(file => !file.existing), changed = !existing || existing.body !== body || added.length > 0;
   const statements = [
     ...(changed ? [db.prepare("UPDATE hub_applications SET revision=revision+1,updated_at=? WHERE id=?").bind(now, appId)] : []),
-    db.prepare("INSERT INTO hub_tasks (id,application_id,kind,payload_json,status,attempts,run_after,created_at,updated_at) VALUES (?,?,'gmail',?,'done',0,?,?,?) ON CONFLICT(id) DO NOTHING").bind(taskId, appId, JSON.stringify({ deliveryAccount:mailbox,messageId: message.messageId, direction: message.sent ? "outbound" : "inbound" }), now, message.createdAt || now, now),
+    db.prepare("INSERT INTO hub_tasks (id,application_id,kind,payload_json,status,attempts,run_after,created_at,updated_at) VALUES (?,?,'gmail',?,'done',0,?,?,?) ON CONFLICT(id) DO NOTHING").bind(taskId, appId, JSON.stringify({ deliveryAccount:mailbox,messageId: message.messageId, sender:address(message.from), direction: message.sent ? "outbound" : "inbound" }), now, message.createdAt || now, now),
     db.prepare("INSERT INTO hub_communications (id,application_id,task_id,subject,body,status,provider_id,thread_id,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?) ON CONFLICT(task_id) DO UPDATE SET body=excluded.body,subject=excluded.subject,updated_at=CASE WHEN hub_communications.body<>excluded.body THEN excluded.updated_at ELSE hub_communications.updated_at END").bind(`communication:${taskId}`, appId, taskId, message.subject, body, message.sent ? "sent_external" : "received", message.id, message.threadId, message.createdAt || now, now),
   ];
   for (const file of added) statements.push(db.prepare("INSERT INTO hub_files(id,job_id,field_path,filename,content_type,size,object_key,uploaded_at,application_id,expires_at,session_hash) VALUES(?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO NOTHING").bind(file.id, app.job_id, `gmail:${message.id}:${file.partId}`, file.name!, file.contentType!, file.size!, file.objectKey!, now, appId, Number.MAX_SAFE_INTEGER, app.session_hash));
@@ -77,28 +77,33 @@ async function importMessage(store: HubStore, db: D1Database, google: GoogleWork
 
 export async function syncHiringReplies(store: HubStore, db: D1Database, google: GoogleWorkspace, max = 50, deadline = Date.now() + 20_000, bucket?: R2Bucket): Promise<number> {
   const token = crypto.randomUUID(), now = Date.now();
-  const claim = await db.prepare("INSERT INTO hub_settings(key,value,updated_at) VALUES(?,?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_at=excluded.updated_at WHERE CAST(json_extract(hub_settings.value,'$.until') AS INTEGER)<=? RETURNING value").bind(LEASE, JSON.stringify({ token, until: Math.max(now + 30_000, deadline + 5000) }), now, now).first();
-  if (!claim) return 0;
+  let leaseKey:string|undefined,mailbox:string|undefined;
   let imported = 0;
   try {
+    const profile = await google.profile();
+    mailbox=profile.email;
+    const stateKey=`${STATE}:${mailbox}`;
+    leaseKey=`${LEASE}:${mailbox}`;
+    const claim = await db.prepare("INSERT INTO hub_settings(key,value,updated_at) VALUES(?,?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_at=excluded.updated_at WHERE CAST(json_extract(hub_settings.value,'$.until') AS INTEGER)<=? RETURNING value").bind(leaseKey, JSON.stringify({ token, until: Math.max(now + 30_000, deadline + 5000) }), now, now).first();
+    if (!claim) return 0;
     const known = await db.prepare("SELECT 1 AS present FROM hub_communications WHERE status IN ('sent','sent_external') AND thread_id IS NOT NULL LIMIT 1").first();
     if(!known){await store.setSetting("mail_sync_last_checked_at",Date.now());await store.setSetting("mail_sync_last_error","");return 0;}
-    const profile = await google.profile();
     const scopedKnown=await db.prepare("SELECT 1 AS present FROM hub_communications c JOIN hub_tasks t ON t.id=c.task_id WHERE c.status IN ('sent','sent_external') AND c.thread_id IS NOT NULL AND json_extract(t.payload_json,'$.deliveryAccount')=? LIMIT 1").bind(profile.email).first();
     if(!scopedKnown){await store.setSetting("mail_sync_last_checked_at",Date.now());await store.setSetting("mail_sync_last_error","");return 0;}
     if (!profile.historyId || !/^[0-9]{1,40}$/.test(profile.historyId)) throw new GoogleError("gmail_history_unavailable");
-    let state = await store.setting<SyncState | null>(STATE, null);
-    if (!state || state.mailbox !== profile.email) { state = { mailbox: profile.email, historyId: profile.historyId, catchupEpoch: crypto.randomUUID() }; await store.setSetting(STATE, state); }
+    let state = await store.setting<SyncState | null>(stateKey, null);
+    if(!state){const legacy=await store.setting<SyncState|null>(STATE,null);if(legacy?.mailbox===mailbox){state=legacy;await store.setSetting(stateKey,state);}}
+    if (!state || state.mailbox !== profile.email) { state = { mailbox: profile.email, historyId: profile.historyId, catchupEpoch: crypto.randomUUID() }; await store.setSetting(stateKey, state); }
     // Finish a durably saved page before fetching another. The cursor cannot skip a partial page.
     if (!state.pending && Date.now() < deadline - 1000) {
       try {
         const page = await google.mailHistory(state.historyId, state.pageToken);
         state.pending = page.messages; state.nextPageToken = page.nextPageToken; state.targetHistoryId = page.historyId;
-        await store.setSetting(STATE, state);
+        await store.setSetting(stateKey, state);
       } catch (error) {
         if (!(error instanceof GoogleError && error.status === 404)) throw error;
         state = { mailbox: profile.email, historyId: profile.historyId, catchupEpoch: crypto.randomUUID() };
-        await store.setSetting(STATE, state);
+        await store.setSetting(stateKey, state);
       }
     }
     for (let count = 0; state.pending?.length && count < Math.max(1, Math.min(max, 100)) && Date.now() < deadline - 1000; count++) {
@@ -116,17 +121,17 @@ export async function syncHiringReplies(store: HubStore, db: D1Database, google:
         }
         if (message) imported += await importMessage(store, db, google, message, linked, bucket, deadline,profile.email);
       }
-      state.pending.shift(); await store.setSetting(STATE, state);
+      state.pending.shift(); await store.setSetting(stateKey, state);
     }
     if (state.pending && !state.pending.length) {
       if (state.nextPageToken) state.pageToken = state.nextPageToken;
       else { state.historyId = state.targetHistoryId!; delete state.pageToken; }
       delete state.pending; delete state.nextPageToken; delete state.targetHistoryId;
-      await store.setSetting(STATE, state); await store.setSetting("mail_sync_last_checked_at", Date.now());
+      await store.setSetting(stateKey, state); await store.setSetting("mail_sync_last_checked_at", Date.now());
     }
     // Every newly linked thread receives one durable catch-up, even if its delta arrived
     // while delivery was uncertain. A cursor-expiry recovery starts a fresh catch-up epoch.
-    if(!state.catchupEpoch){state.catchupEpoch=crypto.randomUUID();await store.setSetting(STATE,state);}
+    if(!state.catchupEpoch){state.catchupEpoch=crypto.randomUUID();await store.setSetting(stateKey,state);}
     if(Date.now()<deadline-2000){
       const prefix=`gmail_thread_caught_up:${profile.email}:${state.catchupEpoch}:`;
       const groups=(await db.prepare("SELECT c.thread_id FROM hub_communications c JOIN hub_tasks t ON t.id=c.task_id LEFT JOIN hub_settings complete ON complete.key=?||c.thread_id LEFT JOIN hub_settings next ON next.key=?||c.thread_id WHERE json_extract(t.payload_json,'$.deliveryAccount')=? AND c.status IN ('sent','sent_external') AND c.thread_id IS NOT NULL AND complete.key IS NULL AND COALESCE(CAST(next.value AS INTEGER),0)<=? GROUP BY c.thread_id ORDER BY MAX(c.created_at) DESC,c.thread_id LIMIT 2").bind(prefix,`gmail_thread_next_poll:${profile.email}:`,profile.email,Date.now()).all<{thread_id:string}>()).results;
@@ -148,12 +153,17 @@ export async function syncHiringReplies(store: HubStore, db: D1Database, google:
       catch { await store.setSetting(`gmail_message_error:${profile.email}:${repair.provider_id}`, "gmail_message_repair_pending"); await store.setSetting(`gmail_message_next_repair:${profile.email}:${repair.provider_id}`, Date.now() + 15 * 60_000); }
     }
     const errors = await db.prepare("SELECT COUNT(*) AS n FROM hub_settings WHERE (key LIKE ? OR key LIKE ?) AND value<>'\"\"'").bind(`gmail_message_error:${profile.email}:%`,`gmail_thread_error:${profile.email}:%`).first<{ n: number }>();
-    await store.setSetting("mail_sync_last_error", errors?.n ? `${errors.n} hiring email import(s) need repair. Other threads continue syncing; original content remains in Gmail.` : "");
+    const issue=errors?.n ? `${errors.n} hiring email import(s) need repair. Other threads continue syncing; original content remains in Gmail.` : "";
+    await store.setSetting(`mail_sync_last_error:${mailbox}`,issue);
+    await store.setSetting(`mail_sync_last_checked_at:${mailbox}`,Date.now());
+    await store.setSetting("mail_sync_last_error",issue);
     return imported;
   } catch {
-    await store.setSetting("mail_sync_last_error", "Mailbox synchronization needs attention. Reconnect Google or inspect the integration queue; its saved cursor will resume.");
+    const issue="Mailbox synchronization needs attention. Reconnect Google or inspect the integration queue; its saved cursor will resume.";
+    if(mailbox)await store.setSetting(`mail_sync_last_error:${mailbox}`,issue);
+    await store.setSetting("mail_sync_last_error",issue);
     return imported;
   } finally {
-    await db.prepare("DELETE FROM hub_settings WHERE key=? AND json_extract(value,'$.token')=?").bind(LEASE, token).run();
+    if(leaseKey)await db.prepare("DELETE FROM hub_settings WHERE key=? AND json_extract(value,'$.token')=?").bind(leaseKey, token).run();
   }
 }

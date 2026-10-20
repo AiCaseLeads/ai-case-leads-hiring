@@ -76,10 +76,10 @@ test("delta pages checkpoint every message and never advance over a partial page
  const f=await fixture();let historyCalls=0;const params:string[]=[];
  try{
   const google=workspace(async(input)=>{const url=new URL(String(input));if(url.hostname==="oauth2.googleapis.com")return response({access_token:"synthetic",token_type:"Bearer",expires_in:3600});if(url.pathname.endsWith("/profile"))return response({emailAddress:sender,historyId:"100"});if(url.pathname.endsWith("/history")){historyCalls++;params.push(url.search);const second=url.searchParams.get("pageToken")==="next";return response({historyId:second?"120":"110",nextPageToken:second?undefined:"next",history:[{messagesAdded:(second?["r4"]:["r1","r2","r3"]).map(id=>({message:{id,threadId:"linked"}}))}]});}if(url.pathname.includes("/messages/")){const id=url.pathname.split("/").at(-1)!;return response({id,threadId:"linked",payload:{mimeType:"text/plain",headers:f.headers,body:{data:Buffer.from(id).toString("base64url")}}});}assert.fail(url.pathname);});
-  await syncHiringReplies(f.store,f.db,google,1);assert.equal((await f.store.setting<DeltaState>("gmail_delta_state_v1",{historyId:""})).historyId,"100");
+  await syncHiringReplies(f.store,f.db,google,1);assert.equal((await f.store.setting<DeltaState>(`gmail_delta_state_v1:${sender}`,{historyId:""})).historyId,"100");
   await syncHiringReplies(f.store,f.db,google,1);assert.equal(historyCalls,1);
-  await syncHiringReplies(f.store,f.db,google,1);assert.equal((await f.store.setting<DeltaState>("gmail_delta_state_v1",{historyId:""})).pageToken,"next");
-  await syncHiringReplies(f.store,f.db,google,1);assert.equal((await f.store.setting<DeltaState>("gmail_delta_state_v1",{historyId:""})).historyId,"120");assert.equal(historyCalls,2);assert.match(params[1],/startHistoryId=100/);assert.equal(f.database.prepare("SELECT COUNT(*) AS n FROM hub_communications WHERE status='received'").get()!.n,4);
+  await syncHiringReplies(f.store,f.db,google,1);assert.equal((await f.store.setting<DeltaState>(`gmail_delta_state_v1:${sender}`,{historyId:""})).pageToken,"next");
+  await syncHiringReplies(f.store,f.db,google,1);assert.equal((await f.store.setting<DeltaState>(`gmail_delta_state_v1:${sender}`,{historyId:""})).historyId,"120");assert.equal(historyCalls,2);assert.match(params[1],/startHistoryId=100/);assert.equal(f.database.prepare("SELECT COUNT(*) AS n FROM hub_communications WHERE status='received'").get()!.n,4);
  }finally{f.database.close();}
 });
 test("3000 already caught-up threads need one delta page, not a 300-wakeup sweep",async()=>{
@@ -88,7 +88,7 @@ test("3000 already caught-up threads need one delta page, not a 300-wakeup sweep
   const now=Date.now(),task=f.database.prepare("INSERT INTO hub_tasks(id,application_id,kind,payload_json,status,attempts,run_after,created_at,updated_at) VALUES(?,?,'gmail',?,'done',0,?,?,?)"),comm=f.database.prepare("INSERT INTO hub_communications(id,application_id,task_id,subject,body,status,provider_id,thread_id,created_at,updated_at) VALUES(?,?,?,'Synthetic','Synthetic','sent',?,?,?,?)"),marker=f.database.prepare("INSERT INTO hub_settings(key,value,updated_at) VALUES(?,'true',?)");
   f.database.exec("BEGIN");for(let n=0;n<3000;n++){const id=`task${n}`,thread=`thread${n}`;task.run(id,f.app.id,JSON.stringify({messageId:`<${n}@example.invalid>`,deliveryAccount:sender}),now,now,now);comm.run(`comm${n}`,f.app.id,id,`out${n}`,thread,now,now);marker.run(`gmail_thread_caught_up:${sender}:test:${thread}`,now);}f.database.exec("COMMIT");
   const google={async profile(){return{email:sender,historyId:"101"};},async mailHistory(){historyCalls++;return{historyId:"101",messages:[{id:"new-reply",threadId:"thread2999"}]};},async mailMessage(id:string){return{id,threadId:"thread2999",messageId:"<new@example.invalid>",inReplyTo:"<2999@example.invalid>",references:"",from:"synthetic@example.invalid",subject:"Reply",body:"Current reply",sent:false,createdAt:now,attachments:[]};},async threadMessages(){threadCalls++;return[];}} as unknown as GoogleWorkspace;
-  assert.equal(await syncHiringReplies(f.store,f.db,google),1);assert.equal(historyCalls,1);assert.equal(threadCalls,0);assert.equal((await f.store.setting<DeltaState>("gmail_delta_state_v1",{historyId:""})).historyId,"101");
+  assert.equal(await syncHiringReplies(f.store,f.db,google),1);assert.equal(historyCalls,1);assert.equal(threadCalls,0);assert.equal((await f.store.setting<DeltaState>(`gmail_delta_state_v1:${sender}`,{historyId:""})).historyId,"101");
  }finally{f.database.close();}
 });
 test("a reply seen before delivery linking is caught up after the thread becomes known",async()=>{
@@ -120,7 +120,7 @@ test("concurrent mailbox polls hold a lease and cannot overwrite the cursor",asy
  const f=await fixture();let calls=0,release!:()=>void,entered!:()=>void;const hold=new Promise<void>(resolve=>{release=resolve;}),ready=new Promise<void>(resolve=>{entered=resolve;});
  try{
   const google={async profile(){return{email:sender,historyId:"101"};},async mailHistory(){calls++;entered();await hold;return{historyId:"101",messages:[]};},async threadMessages(){return[];}} as unknown as GoogleWorkspace;
-  const first=syncHiringReplies(f.store,f.db,google);await ready;assert.equal(await syncHiringReplies(f.store,f.db,google),0);release();await first;assert.equal(calls,1);assert.equal((await f.store.setting<DeltaState>("gmail_delta_state_v1",{historyId:""})).historyId,"101");
+  const first=syncHiringReplies(f.store,f.db,google);await ready;assert.equal(await syncHiringReplies(f.store,f.db,google),0);release();await first;assert.equal(calls,1);assert.equal((await f.store.setting<DeltaState>(`gmail_delta_state_v1:${sender}`,{historyId:""})).historyId,"101");
  }finally{release();f.database.close();}
 });
 for (const status of [404, 403, 503]) {
@@ -129,7 +129,7 @@ for (const status of [404, 403, 503]) {
   try {
    const google={async profile(){return{email:sender,historyId:"102"};},async mailHistory(){return{historyId:"102",messages:[{id:"missing",threadId:"linked"},{id:"later",threadId:"linked"}]};},async mailMessage(id:string){messageCalls++;if(id==="missing")throw new GoogleError("google_api_error",status);return{id,threadId:"linked",messageId:"<later@example.invalid>",inReplyTo:f.reference,references:"",from:"synthetic@example.invalid",subject:"Reply",body:"Later reply survives",sent:false,createdAt:Date.now(),attachments:[]};},async threadMessages(){return[];}} as unknown as GoogleWorkspace;
    const imported=await syncHiringReplies(f.store,f.db,google);
-   const state=await f.store.setting<DeltaState&{pending?:Array<{id:string}>}>("gmail_delta_state_v1",{historyId:""});
+   const state=await f.store.setting<DeltaState&{pending?:Array<{id:string}>}>(`gmail_delta_state_v1:${sender}`,{historyId:""});
    if(status===404){
     assert.equal(imported,1);assert.equal(state.historyId,"102");assert.equal(state.pending,undefined);
     const observation=await f.store.setting<{applicationIds:string[]}|null>(`gmail_message_missing:${sender}:missing`,null);assert.deepEqual(observation?.applicationIds,[f.app.id]);
@@ -149,7 +149,7 @@ test("expired history cursor starts bounded catch-up and retains old replies",as
  const f=await fixture();
  try{
   const google={async profile(){return{email:sender,historyId:"200"};},async mailHistory(){throw new GoogleError("google_api_error",404);},async threadMessages(){return[{id:"old",threadId:"linked",messageId:"<old@example.invalid>",inReplyTo:f.reference,references:"",from:"synthetic@example.invalid",subject:"Reply",body:"Recovered old reply",sent:false,createdAt:Date.now(),attachments:[]}];}} as unknown as GoogleWorkspace;
-  assert.equal(await syncHiringReplies(f.store,f.db,google),1);assert.equal((await f.store.setting<DeltaState>("gmail_delta_state_v1",{historyId:""})).historyId,"200");assert.equal(f.database.prepare("SELECT body FROM hub_communications WHERE status='received'").get()!.body,"Recovered old reply");
+  assert.equal(await syncHiringReplies(f.store,f.db,google),1);assert.equal((await f.store.setting<DeltaState>(`gmail_delta_state_v1:${sender}`,{historyId:""})).historyId,"200");assert.equal(f.database.prepare("SELECT body FROM hub_communications WHERE status='received'").get()!.body,"Recovered old reply");
  }finally{f.database.close();}
 });
 test("cancellation contacts the original calendar despite a changed global default",async()=>{
@@ -197,4 +197,25 @@ test("mail sync excludes legacy sales and other recruiter links, catchup and rep
   const row=f.database.prepare("SELECT t.payload_json FROM hub_tasks t WHERE t.id=?").get(`gmail-import:${sender}:reply`)!;
   assert.equal(JSON.parse(String(row.payload_json)).deliveryAccount,sender);
  }finally{f.database.close();}
+});
+
+test('separate recruiter mailboxes keep independent cursors and leases while migrating the legacy cursor',async()=>{
+ const f=await fixture(),other='other@example.invalid';let release!:()=>void,entered!:()=>void;
+ const held=new Promise<void>(resolve=>{release=resolve;}),ready=new Promise<void>(resolve=>{entered=resolve;});
+ const starts:string[]=[];
+ try{
+  await f.store.taskStatement('second-mailbox',f.app.id,'gmail',{deliveryAccount:other},Date.now()).run();
+  f.database.prepare("INSERT INTO hub_communications(id,application_id,task_id,subject,body,status,provider_id,thread_id,created_at,updated_at) VALUES(?,?,?,'test','test','sent','original-2','linked-2',1,1)").run('second-communication',f.app.id,'second-mailbox');
+  const first={async profile(){return{email:sender,historyId:'900'};},async mailHistory(cursor:string){starts.push(cursor);entered();await held;return{historyId:'101',messages:[]};},async threadMessages(){return[];}} as unknown as GoogleWorkspace;
+  const second={async profile(){return{email:other,historyId:'500'};},async mailHistory(cursor:string){starts.push(cursor);return{historyId:'501',messages:[]};},async threadMessages(){return[];}} as unknown as GoogleWorkspace;
+  const firstRun=syncHiringReplies(f.store,f.db,first);await ready;
+  await syncHiringReplies(f.store,f.db,second);
+  assert.equal((await f.store.setting<DeltaState>(`gmail_delta_state_v1:${other}`,{historyId:''})).historyId,'501');
+  release();await firstRun;
+  assert.deepEqual(starts,['100','500']);
+  assert.equal((await f.store.setting<DeltaState>(`gmail_delta_state_v1:${sender}`,{historyId:''})).historyId,'101');
+  assert.equal((await f.store.setting<DeltaState>('gmail_delta_state_v1',{historyId:''})).historyId,'100','legacy seed is not overwritten by either mailbox');
+  await syncHiringReplies(f.store,f.db,second);
+  assert.equal(starts.at(-1),'501','second mailbox resumes its own cursor');
+ }finally{release?.();f.database.close();}
 });

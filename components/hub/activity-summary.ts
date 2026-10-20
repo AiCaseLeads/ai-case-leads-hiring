@@ -15,6 +15,7 @@ export function activitySummary(event:{type:string;text:string}):{title:string;d
 export function communicationSummary(status:string):{label:string;explanation:string}{
  const states:Record<string,{label:string;explanation:string}>={
  pending:{label:'Queued',explanation:'Waiting to send.'},running:{label:'Sending',explanation:'Sending is in progress.'},
+ sent_external:{label:'Sent from email',explanation:'Recorded from the connected mailbox; inbox delivery is not confirmed here.'},
  sent:{label:'Sent',explanation:'Accepted by the email service; inbox delivery is not confirmed here.'},
  delivered:{label:'Delivered',explanation:'Delivery was confirmed by the email service.'},
  failed:{label:'Failed',explanation:'The email could not be sent. Check delivery activity.'},
