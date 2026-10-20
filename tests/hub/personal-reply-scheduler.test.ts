@@ -16,5 +16,6 @@ test('reply scheduler fairly visits only sent hiring mailboxes, bounds work and 
  assert.equal(await syncConnectedHiringReplies(store,db,undefined,Date.now()+30000,resolve,sync),1);assert.deepEqual(resolved,['a@example.invalid','b@example.invalid','c@example.invalid']);
  assert.equal(await syncConnectedHiringReplies(store,db,undefined,Date.now()+30000,resolve,sync),2);assert.deepEqual(resolved.slice(3),['d@example.invalid','e@example.invalid','a@example.invalid']);assert.deepEqual(synced,['c@example.invalid','d@example.invalid','e@example.invalid']);
  const before=resolved.length;await store.setSetting('personal_mail_sync_scheduler_lease_v1',{token:'other',until:Date.now()+30000});assert.equal(await syncConnectedHiringReplies(store,db,undefined,Date.now()+30000,resolve,sync),0);assert.equal(resolved.length,before);
+ await store.setSetting('personal_mail_sync_scheduler_lease_v1',{token:'expired',until:0});const syncedBefore=synced.length;assert.equal(await syncConnectedHiringReplies(store,db,undefined,Date.now()+30000,async()=>({profile:async()=>({email:'wrong@example.invalid'})} as unknown as GoogleWorkspace),sync),0);assert.equal(synced.length,syncedBefore);assert.match(await store.setting('mail_sync_last_error',''),/could not be synchronized/);
  }finally{database.close();}
 });
