@@ -464,8 +464,8 @@ function JobCandidates({
       </div>
       <div className="hub-button-row hub-application-view-tabs"><button className="hub-pipeline-tab" type="button" aria-pressed={!inTrash} onClick={()=>applyView(new URLSearchParams({jobId}).toString())}>Applications</button><button className="hub-pipeline-tab" type="button" aria-pressed={inTrash} onClick={()=>applyView(new URLSearchParams({jobId,trash:"true"}).toString())}>Trash</button></div>
       {inTrash && <p className="hub-muted">Deleted applications stay here with their original files and history. Open an application to restore it. Cancelled emails and booking links are not sent again.</p>}
-      {!inTrash && <div className="hub-filter-grid">
-        <Field label="Applicant stage"><select disabled={invalidDates} value={applicantStageChoice(new URLSearchParams(filter))} onChange={event=>applyView(applyApplicantStageChoice(draftQuery(),event.target.value).toString())}>
+      {!inTrash && <div style={{maxWidth:"22rem"}}>
+        <Field label="Show applicants"><select disabled={invalidDates} value={applicantStageChoice(new URLSearchParams(filter))} onChange={event=>applyView(applyApplicantStageChoice(draftQuery(),event.target.value).toString())}>
           <option value="active">Active applicants</option><option value="all">All applicants</option>
           <option value="active:exclude:Screening">Active — not shortlisted</option>
           <optgroup label="Only this stage">{stages.map(value=><option key={value} value={`stage:${value}`}>Only {stageLabel(value).toLowerCase()}</option>)}</optgroup>
