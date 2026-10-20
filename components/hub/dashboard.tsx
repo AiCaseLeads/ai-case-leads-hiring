@@ -48,6 +48,12 @@ export function HiringDashboard({
   const [candidateAction, setCandidateAction] = useState<"note" | "interview">("note");
   const menuButton = useRef<HTMLButtonElement>(null);
   const [workspaceNotice, setWorkspaceNotice] = useState("");
+  const [decisionNotice,setDecisionNotice]=useState("");
+  const [decisionSequence,setDecisionSequence]=useState(0);
+  const decisionContext=useRef<{href:string;next:string|null}|null>(null);
+  function dismissDecision(){decisionContext.current=null;setDecisionNotice("");}
+  function showDecision(message:string,next:string|null=null){decisionContext.current={href:window.location.href,next};setDecisionNotice(message);setDecisionSequence(value=>value+1);}
+  useEffect(()=>{if(!decisionNotice)return;const timer=window.setTimeout(dismissDecision,8000);return()=>window.clearTimeout(timer);},[decisionNotice,decisionSequence]);
   const [createJob, setCreateJob] = useState(0);
   const [initialStage, setInitialStage] = useState("");
   const [initialJobId, setInitialJobId] = useState("");
@@ -55,6 +61,12 @@ export function HiringDashboard({
   function readLocation() {
     setMenuOpen(false);
     const params = new URLSearchParams(window.location.search);
+    const decision=decisionContext.current;
+    if(decision&&decision.href!==window.location.href){
+      const destination=params.get("application")||"list";
+      if(decision.next===destination&&params.get("view")==="applications"){decisionContext.current={href:window.location.href,next:null};}
+      else dismissDecision();
+    }
     if(params.get("personalMail"))queueMicrotask(()=>setWorkspaceNotice(params.get("personalMail")==="connected"?"Your recruiting email account is connected. Confirm your sender setup and test delivery before using it.":"Your recruiting email was not connected. Choose your signed-in account and approve all requested permissions, then try again."));
     const requested = params.get("view");
     const allowed = ["home", "overview", "applications", "jobs", "reports", "tasks", "settings"];
@@ -240,6 +252,7 @@ export function HiringDashboard({
         </header>
         <main id="hub-main" className="hub-main">
           {workspaceNotice && <p className="hub-notice" role="status">{workspaceNotice}</p>}
+          {decisionNotice && <div className="hub-notice" style={{display:"flex",alignItems:"center",gap:12,justifyContent:"space-between"}}><p role="status" style={{margin:0}}>{decisionNotice}</p><button type="button" className="hub-button-text" aria-label="Dismiss decision notification" onClick={dismissDecision}>Dismiss</button></div>}
           {view === "applications" && <div hidden={!!detailId}><Candidates
             key={data?.jobs.some(job => job.id === initialJobId) ? initialJobId : "job-index"}
             initialStage={initialStage}
@@ -259,7 +272,7 @@ export function HiringDashboard({
               id={detailId}
               initialAction={candidateAction}
               initialSection={candidateSection}
-              onDecisionNotice={setWorkspaceNotice}
+              onDecisionNotice={showDecision}
               navigationFilter={initialFilter}
               navigationJobs={data?.jobs || []}
               openApplicant={(id,filter,section)=>selectApplication(id,undefined,filter,section)}

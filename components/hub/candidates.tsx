@@ -661,7 +661,7 @@ export function CandidateDetail({
   navigationJobs?: HubJob[];
   openApplicant?: (id:string,filter:string,section?:"application"|"review"|"activity")=>void;
   initialSection?: "application"|"review"|"activity";
-  onDecisionNotice?: (message:string)=>void;
+  onDecisionNotice?: (message:string,next?:string|null)=>void;
 }) {
   const resource = useHubResource<ApplicationDetail>(
       "/api/hub/applications/" + encodeURIComponent(id),
@@ -758,7 +758,7 @@ export function CandidateDetail({
       const result=await mutation.run(`/api/hub/applications/${encodeURIComponent(id)}/action`,"POST",{action:"reject",reason:"Not selected after recruiter review.",expectedRevision:resource.data.revision},"Applicant rejected. Rejection email queued; delivery status is in Activity.");
       if(result!==undefined&&stillMounted.current){
         const message="Applicant rejected. Rejection email queued; delivery status is in Activity.";
-        onDecisionNotice?.(message);changed();
+        onDecisionNotice?.(message,navigationReady&&openApplicant?(nextId||"list"):null);changed();
         if(navigationReady&&openApplicant){if(nextId)openApplicant(nextId,params.toString(),section);else back();}
         else await resource.reload();
       }
