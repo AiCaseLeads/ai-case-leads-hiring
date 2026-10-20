@@ -326,6 +326,10 @@ function JobCandidates({
     setTimeZone(params.get("timeZone") || Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC");
   }
   const incomingFilter = initial.toString();
+  useEffect(()=>{
+    const raw=new URLSearchParams(initialFilter);
+    if(raw.get("active")==="true"&&["Rejected","Withdrawn","Hired"].includes(raw.get("stage")||""))onFilterChange?.(incomingFilter,initialPage);
+  },[initialFilter,incomingFilter,initialPage,onFilterChange]);
   const previousLocation = useRef({filter:incomingFilter,page:initialPage});
   useEffect(() => {
     const previous = previousLocation.current;
