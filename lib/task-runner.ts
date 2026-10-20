@@ -11,7 +11,7 @@ import type { GoogleWorkspace, OriginalFileSource, InterviewInput, MailInput } f
 import { sha256 } from "./hiring/crypto";
 import { cleanupExpiredUploads } from "./hiring/upload-cleanup";
 import { withinDeadline } from "./hiring/deadline";
-import { syncHiringReplies } from "./mail-sync";
+import { syncConnectedHiringReplies } from "./personal-mail/reply-sync";
 import { enqueueReviewReminders, reviewReminderMail } from "./review-reminders/service";
 import { DriveArchiveContinuation, DriveArchiveFailure, type DriveArchiveProgress } from "./google/drive";
 
@@ -220,7 +220,7 @@ export async function processHubTasks(store:HubStore,db:D1Database,bucket:R2Buck
         if(ambiguous)uncertain++;else failed++;
       }
     }
-    if(recruitingMail&&Date.now()<deadline-1000)replies=await syncHiringReplies(store,db,recruitingMail,50,deadline,bucket);
+    if(Date.now()<deadline-1000)replies=await syncConnectedHiringReplies(store,db,bucket,deadline,account=>candidateTransport(store,account,candidateResolver));
     const cleanup=Date.now()<deadline-1000?await cleanupExpiredUploads(db,bucket,deadline,2):{deleted:0,failed:0};
     const count=await db.prepare("SELECT SUM(CASE WHEN status IN ('pending','running') THEN 1 ELSE 0 END) AS pending,SUM(CASE WHEN status='failed' THEN 1 ELSE 0 END) AS failed,SUM(CASE WHEN status='uncertain' THEN 1 ELSE 0 END) AS uncertain FROM hub_tasks").first<{pending:number;failed:number;uncertain:number}>();
     const mailError=await store.setting("mail_sync_last_error","");
