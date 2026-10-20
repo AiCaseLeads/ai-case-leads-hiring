@@ -26,8 +26,8 @@ test('bulk endpoint requires same-origin staff and explicit preview confirmation
  assert.equal((await handleHubRequest(req('bulk-rejection/preview',{},'https://evil.invalid'),['bulk-rejection','preview'],MANAGER,store)).status,403);
  assert.equal((await handleHubRequest(req('bulk-rejection/execute',{planId:crypto.randomUUID()}),['bulk-rejection','execute'],MANAGER,store)).status,422);
  const job=await store.saveJob(jobInput());await store.acceptApplication(applicationInput(job.id));
- const preview=await handleHubRequest(req('bulk-rejection/preview?jobId='+job.id,{}),['bulk-rejection','preview'],MANAGER,store);assert.equal(preview.status,200);const plan=(await preview.json()).data;
- const response=await handleHubRequest(req('bulk-rejection/execute',{planId:plan.planId,confirmed:true}),['bulk-rejection','execute'],MANAGER,store);assert.equal(response.status,200);assert.equal((await response.json()).data.updated,1);
+ const preview=await handleHubRequest(req('bulk-rejection/preview?jobId='+job.id,{}),['bulk-rejection','preview'],MANAGER,store);assert.equal(preview.status,200);const plan=(await preview.json() as {data:{planId:string}}).data;
+ const response=await handleHubRequest(req('bulk-rejection/execute',{planId:plan.planId,confirmed:true}),['bulk-rejection','execute'],MANAGER,store);assert.equal(response.status,200);assert.equal((await response.json() as {data:{updated:number}}).data.updated,1);
  }finally{database.close();}
 });
 test('simultaneous confirmed requests cannot duplicate decisions or outbox tasks',async()=>{

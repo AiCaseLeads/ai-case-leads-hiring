@@ -1736,7 +1736,15 @@ export class HubStore {
       AND NOT EXISTS(SELECT 1 FROM hub_history h WHERE h.application_id=a.id AND h.to_stage IN ('Screening','Assessment','Interview','Offer','Hired'))`,id).first();
   }
   async previewBulkRejection(filters:ApplicationFilters,ids:string[]|undefined,reason:string,member:HubMember){
-    const matching=await this.exportIds(filters,ids),entries:{id:string;revision:number}[]=[];
+    let matching:string[];
+    try{matching=await this.exportIds(filters,ids);}catch(error){
+      if(error instanceof HiringError){
+        const messages:Record<string,string>={export_job_required:"Choose a job before previewing bulk rejections.",export_too_large:"Narrow the filters to at most 10,000 applicants per rejection group.",export_selection_changed:"Some selected applicants no longer match this job and its filters. Refresh and preview the group again."};
+        if(messages[error.code])throw new HiringError(error.code.replace("export_","bulk_"),error.status,messages[error.code]);
+      }
+      throw error;
+    }
+    const entries:{id:string;revision:number}[]=[];
     for(const id of matching)if(await this.bulkRejectionEligible(id)){const app=await this.applicationRow(id);entries.push({id,revision:app.revision});}
     const planId=crypto.randomUUID(),expiresAt=Date.now()+30*60_000;
     await this.setSetting('bulk_rejection:'+planId,{actor:member.email.toLowerCase(),entries,reason,expiresAt,cursor:0,updated:0,skipped:0});
