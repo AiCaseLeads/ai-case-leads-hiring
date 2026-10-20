@@ -1,0 +1,11 @@
+"use client";
+import {useState} from "react";
+export function SharedApplicantAccess({token,verified}:{token:string;verified:()=>void}){
+ const [email,setEmail]=useState(""),[code,setCode]=useState(""),[sent,setSent]=useState(false),[busy,setBusy]=useState(false),[notice,setNotice]=useState("");
+ async function submit(event:React.FormEvent){
+  event.preventDefault();if(busy)return;setBusy(true);setNotice("");
+  try{const response=await fetch(`/api/shared-applicants/${encodeURIComponent(token)}/verify`,{method:"POST",credentials:"same-origin",cache:"no-store",referrerPolicy:"no-referrer",headers:{"Content-Type":"application/json"},body:JSON.stringify({email:email.trim(),...(sent?{code}: {})})});if(!response.ok){if(response.status===403)throw Error("This email does not have access. Use an invited address or ask the sender to update access.");if(response.status===429)throw Error("Too many attempts. Please wait before trying again.");throw Error(sent?"That code could not be verified. Check it or request a new code.":"A code could not be sent. Check your email address and try again.");}if(sent)verified();else{setSent(true);setNotice("Check your email for a six-digit code. It expires in 10 minutes.");}}
+  catch(error){setNotice(error instanceof Error?error.message:"Verification failed. Please try again.");}finally{setBusy(false);}
+ }
+ return <section className="hub-card hub-shared-access"><h1>Verify your email to view</h1><p>This application is shared with specific people or the AI Case Leads team.</p><form onSubmit={event=>void submit(event)}><label>Email address<input type="email" autoComplete="email" required value={email} disabled={busy||sent} onChange={event=>setEmail(event.target.value)}/></label>{sent&&<label>Verification code<input inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} required value={code} disabled={busy} onChange={event=>setCode(event.target.value.replace(/\D/g,""))}/></label>}{notice&&<p role="status">{notice}</p>}<div className="hub-button-row"><button className="hub-button" type="submit" disabled={busy}>{busy?"Please wait…":sent?"Verify and open":"Email me a code"}</button>{sent&&<button className="hub-text-button" type="button" disabled={busy} onClick={()=>{setSent(false);setCode("");setNotice("");}}>Use another email or request a new code</button>}</div></form></section>;
+}

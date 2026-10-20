@@ -18,3 +18,7 @@
 .hub-share-footer { display:flex; align-items:center; justify-content:space-between; gap:12px; border-top:1px solid #e3ebe8; padding-top:16px; margin-top:18px; }
 .hub-share-footer>div { margin-left:auto; }
 @media(max-width:640px){.hub-share-dialog{padding:18px}.hub-share-dialog input,.hub-share-dialog select{font-size:16px}.hub-share-heading h2{font-size:20px}}
+
+.hub-shared-access { max-width:480px; margin:40px auto; }
+.hub-shared-access label { display:block; margin:16px 0; }
+.hub-shared-access input { display:block; margin-top:6px; width:100%; min-height:44px; padding:10px; border:1px solid #cadbd6; border-radius:8px; box-sizing:border-box; font-size:16px; }

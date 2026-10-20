@@ -23,6 +23,11 @@ export function ShareApplicant({id}:{id:string}) {
   try{const data=await hubRequest<{url:string;expiresAt:number}>(`/api/hub/applications/${encodeURIComponent(id)}/share`,"POST",{expiresInDays:days,access,emails:access==="people"?emails:[]});setUrl(new URL(data.url,location.origin).href);setActive(true);setExpires(data.expiresAt);setNotice("Link ready. Copy it and send it to the people you want to share with.");}
   catch(error){setNotice(error instanceof Error?error.message:"Could not create the link.");}finally{setBusy(false);}
  }
+ async function invite(){
+  if(busy||!url||access!=="people")return;setBusy(true);setNotice("");
+  try{const token=new URL(url).pathname.split("/").pop();const result=await hubRequest<{sent:number;alreadySent:number;failed:number;uncertain:number}>(`/api/hub/applications/${encodeURIComponent(id)}/share-invitations`,"POST",{token});setNotice(`${result.sent} invitations sent; ${result.alreadySent} already sent.${result.failed?` ${result.failed} failed.`:""}${result.uncertain?` ${result.uncertain} could not be confirmed. Check delivery before retrying.`:""}`);}
+  catch(error){setNotice(error instanceof Error?error.message:"Could not send invitations.");}finally{setBusy(false);}
+ }
  async function revoke(){
   if(busy)return;setBusy(true);
   try{await hubRequest(`/api/hub/applications/${encodeURIComponent(id)}/share`,"DELETE",{});setActive(false);setUrl("");setExpires(null);setNotice("Link revoked.");}
@@ -40,6 +45,7 @@ export function ShareApplicant({id}:{id:string}) {
    {active&&<p className="hub-share-hint">An active link expires {expires?new Date(expires).toLocaleDateString():"soon"}. Replacing it stops the old link from working.</p>}
    {url&&<label className="hub-share-link">Share link<input readOnly value={url} onFocus={event=>event.target.select()}/></label>}
    {notice&&<p role="status" className="hub-share-notice">{notice}</p>}
+   {url&&access==="people"&&<button type="button" className="hub-button secondary" disabled={busy} onClick={()=>void invite()}>Send email invitations</button>}
    <footer className="hub-share-footer">{active&&<button type="button" className="hub-text-button" disabled={busy} onClick={()=>void revoke()}>Revoke link</button>}<div>{url?<button type="button" className="hub-button" onClick={()=>void navigator.clipboard.writeText(url).then(()=>setNotice("Link copied.")).catch(()=>setNotice("Select and copy the link above."))}>Copy link</button>:<button type="button" className="hub-button" disabled={busy||!loaded||access==="people"&&!validPeople} onClick={()=>void create()}>{busy?"Working…":active?"Replace link":"Create link"}</button>}</div></footer>
   </dialog>
  </>;
