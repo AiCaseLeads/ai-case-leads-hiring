@@ -97,7 +97,7 @@ test('redesigned workspace stays usable across mobile, tablet and desktop widths
    assert.ok(await page.locator('[role="tablist"]').evaluate(e=>{const r=e.getBoundingClientRect();return r.top>=-1&&r.top<innerHeight;}),'Changing a tab leaves record navigation in view');
   }
   if(artifacts){await page.evaluate(()=>window.scrollTo(0,0));await page.screenshot({path:`${artifacts}/candidate-${width}.png`,fullPage:true});}
-  await page.getByRole('button',{name:'Request interview',exact:true}).click();await page.getByLabel('Who will conduct this interview?',{exact:true}).waitFor();await noOverflow(page);
+  await page.getByLabel('More applicant actions',{exact:true}).click();await page.locator('.hub-job-menu[open]').getByRole('button',{name:'Request interview',exact:true}).click();await page.getByLabel('Who will conduct this interview?',{exact:true}).waitFor();await noOverflow(page);
   const interviewLayout=await page.locator('.hub-action-panel').evaluate(panel=>({panel:panel.getBoundingClientRect().toJSON(),record:document.querySelector('.hub-detail-main').getBoundingClientRect().toJSON()}));if(width<=1100)assert.ok(interviewLayout.panel.top<=interviewLayout.record.top,'Mobile interview setup appears before long applicant content');
   assert.equal(await page.getByRole('button',{name:'Send booking link',exact:true}).isDisabled(),true,'Opening an interview does not send or bypass interviewer choice');await page.locator('.hub-candidate-actions > summary').click();
   await page.goto(origin+'/?view=reports');await page.getByRole('heading',{name:'Reports',exact:true}).waitFor();

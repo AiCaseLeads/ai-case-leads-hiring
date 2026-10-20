@@ -137,7 +137,7 @@ try{
  assert.match(applicationPdf.suggestedFilename(),/\.pdf$/);assert.equal(readFileSync(await applicationPdf.path()).subarray(0,5).toString(),'%PDF-');
  await team.getByRole('button',{name:'Shortlist',exact:true}).click();await team.getByText('Added to the shortlist.',{exact:true}).waitFor();
  assert.equal((await api('/api/hub/applications/'+firstId)).stage,'Screening');
- await team.getByRole('button',{name:'Request interview',exact:true}).click();await team.getByRole('button',{name:'Send booking link',exact:true}).waitFor();
+ await team.getByLabel('More applicant actions',{exact:true}).click();await team.locator('.hub-job-menu[open]').getByRole('button',{name:'Request interview',exact:true}).click();await team.getByRole('button',{name:'Send booking link',exact:true}).waitFor();
  assert.equal(await team.getByRole('button',{name:'Send booking link',exact:true}).isDisabled(),true,'Disconnected Gmail/Calendar cannot send an interview invitation');
  assert.equal((await api('/api/hub/applications/'+firstId)).interviews.length,0);
  await team.goBack();await team.getByRole('heading',{name:chosenJob.title,exact:true}).waitFor();assert.equal(team.url(),jobApplicationsUrl);
