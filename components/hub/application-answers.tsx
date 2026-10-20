@@ -3,7 +3,7 @@ import { contactPaths, isLinkedInProfile } from "@/lib/hiring/contact-fields";
 import type { ApplicationDetail } from "./types";
 import { displayAnswer } from "./api";
 
-export function answerContactName(detail:ApplicationDetail) {
+export function answerContactName(detail:Pick<ApplicationDetail,"name"|"email"|"answers"|"fields">) {
  const read=(path:string)=>String(detail.answers.find(answer=>answer.path===path)?.value||"").trim();
  const first=read(contactPaths[0]),last=read(contactPaths[1]);
  if(!first)return detail.name||last||"Unnamed applicant";
@@ -24,7 +24,7 @@ function linkedText(text:string):ReactNode {
  }
  parts.push(text.slice(cursor));return parts;
 }
-export function ApplicationAnswers({detail}:{detail:ApplicationDetail}) {
+export function ApplicationAnswers({detail}:{detail:Pick<ApplicationDetail,"name"|"email"|"answers"|"fields">}) {
  const read=(path:string)=>String(detail.answers.find(answer=>answer.path===path)?.value||"").trim();
  const email=read(contactPaths[2])||detail.email,phone=read(contactPaths[3]);
  const phoneHref=/^\+?[\d ()-]+$/.test(phone)?`tel:${phone.replace(/[ ()-]/g,"")}`:null;

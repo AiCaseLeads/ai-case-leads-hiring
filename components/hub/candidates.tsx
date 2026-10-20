@@ -1,4 +1,5 @@
 "use client";
+import {ShareApplicant} from "./share-applicant";
 import {BulkRejection} from "./bulk-rejection";
 import {activitySummary, communicationSummary} from "./activity-summary";
 import { ApplicationAnswers, answerContactName } from "./application-answers";
@@ -867,6 +868,7 @@ export function CandidateDetail({
               {!detail.trashed&&!['Rejected','Withdrawn','Hired'].includes(detail.stage)&&<button type="button" className="hub-button secondary" disabled={mutation.busy||rejectBusy||dirty} title={dirty?"Save or clear your unsaved note or action before rejecting.":"Reject and queue this job’s rejection email, then open the next active applicant."} onClick={()=>void rejectAndContinue()}>{rejectBusy?"Rejecting…":"Reject"}</button>}
               {resumeFile(detail) && <button type="button" className="hub-button secondary" onClick={()=>{setSection("application");setResumeRequest(value=>value+1);}}>View résumé</button>}
               {detail.trashed && <button type="button" className="hub-button secondary" disabled={mutation.busy||rejectBusy} onClick={()=>void lifecycle("restore")}>Restore application</button>}
+              {!detail.trashed&&<ShareApplicant id={detail.id}/>}
               <JobActionMenu label="More applicant actions" triggerLabel="More">
                 {!detail.trashed && <button type="button" onClick={()=>{setAction("note");setActionOpen(true);mutation.clear();}}><StickyNote size={16} aria-hidden="true"/>Add note</button>}
                 {!detail.trashed && <button type="button" disabled={mutation.busy||rejectBusy} onClick={()=>{setAction("stage");setActionOpen(true);mutation.clear();}}><Settings2 size={16} aria-hidden="true"/>Other applicant actions</button>}
