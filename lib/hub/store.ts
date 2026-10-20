@@ -1755,6 +1755,9 @@ export class HubStore {
       const byId=new Map(eligible.map(row=>[row.id,row]));
       for(const id of ids){const row=byId.get(id);if(row)entries.push(row);}
     }
+    // Retain completed/abandoned snapshots for seven days so uncertain clients can
+    // replay safely, then prune a bounded batch without touching active plans.
+    await this.stmt(`DELETE FROM hub_settings WHERE key IN (SELECT key FROM hub_settings WHERE key LIKE 'bulk_rejection:%' AND updated_at<? AND json_valid(value) AND json_extract(value,'$.expiresAt')<? ORDER BY updated_at LIMIT 100)`,Date.now()-7*86400_000,Date.now()).run();
     const planId=crypto.randomUUID(),expiresAt=Date.now()+30*60_000;
     await this.setSetting('bulk_rejection:'+planId,{actor:member.email.toLowerCase(),entries,reason,expiresAt,cursor:0,updated:0,skipped:0});
     return {planId,count:entries.length,excluded:matching.length-entries.length,expiresAt};

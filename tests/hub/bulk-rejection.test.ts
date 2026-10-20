@@ -67,3 +67,29 @@ test('forced competing plan commits roll back the loser and missing snapshot row
  assert.equal((database.prepare("PRAGMA table_info(hub_settings)").all().find(row=>row.name==='value'))!.notnull,1);
  }finally{database.close();}
 });
+test('preview prunes only bounded expired plan snapshots older than seven days',async()=>{
+ const {store,database}=createStore();try{
+ const job=await store.saveJob(jobInput());const now=Date.now();
+ const insert=database.prepare('INSERT INTO hub_settings(key,value,updated_at) VALUES(?,?,?)');
+ for(let i=0;i<105;i++)insert.run('bulk_rejection:old-'+i,JSON.stringify({expiresAt:now-8*86400000}),now-8*86400000);
+ insert.run('bulk_rejection:recent-completed',JSON.stringify({expiresAt:now-1000,cursor:1,entries:[{}]}),now-1000);
+ insert.run('unrelated:old',JSON.stringify({expiresAt:1}),1);
+ await store.previewBulkRejection({jobId:job.id},undefined,'Not selected.',MANAGER);
+ assert.equal(database.prepare("SELECT count(*) n FROM hub_settings WHERE key LIKE 'bulk_rejection:old-%'").get()!.n,5);
+ assert.ok(database.prepare("SELECT key FROM hub_settings WHERE key='bulk_rejection:recent-completed'").get());
+ assert.ok(database.prepare("SELECT key FROM hub_settings WHERE key='unrelated:old'").get());
+ }finally{database.close();}
+});
+test('advancement immediately before commit rolls back rejection outbox and plan progress',async()=>{
+ const {store,database}=createStore();try{
+ const job=await store.saveJob(jobInput());const app=await store.acceptApplication(applicationInput(job.id));
+ const plan=await store.previewBulkRejection({jobId:job.id},undefined,'Not selected.',MANAGER);
+ const original=store.db.batch.bind(store.db);let intervened=false;
+ store.db.batch=async statements=>{if(!intervened){intervened=true;database.prepare("UPDATE hub_applications SET stage='Screening',revision=revision+1 WHERE id=?").run(app.id);}return original(statements);};
+ await assert.rejects(store.executeBulkRejection(plan.planId,MANAGER),{code:'bulk_plan_changed'});
+ assert.equal(database.prepare("SELECT count(*) n FROM hub_tasks WHERE id LIKE '%:rejection:%'").get()!.n,0);
+ assert.equal((await store.setting<{cursor:number}>('bulk_rejection:'+plan.planId,{cursor:-1})).cursor,0);
+ assert.equal((await store.applicationRow(app.id)).stage,'Screening');
+ assert.deepEqual(await store.executeBulkRejection(plan.planId,MANAGER),{updated:0,skipped:1,total:1,remaining:0,complete:true});
+ }finally{database.close();}
+});
