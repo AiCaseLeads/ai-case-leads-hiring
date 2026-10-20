@@ -1,4 +1,5 @@
 "use client";
+import { NavigationLink, applicantHref } from "./navigation-link";
 import { requestDraftNavigation } from "./draft-navigation";
 import { useEffect, useRef, useState } from "react";
 import {
@@ -293,12 +294,12 @@ export function HiringDashboard({
                 </div>
                 <section className="hub-card hub-overview-jobs">
                   <div className="hub-section-heading compact"><h2>Open jobs</h2><button className="hub-text-button" onClick={() => changeView("jobs")}>Manage jobs</button></div>
-                  {data.jobs.some(job => job.status === "open" && (!job.lifecycle || job.lifecycle.state === "active")) ? <ul className="hub-home-job-list">{sortHubJobs(data.jobs).filter(job => job.status === "open" && (!job.lifecycle || job.lifecycle.state === "active")).slice(0, 6).map(job => <li key={job.id}><div><button className="hub-object-link" onClick={() => openJobApplicants(job.id)}>{job.title}</button><p className="hub-muted">{job.location || "Location not set"}</p></div><Badge tone={job.status === "open" ? "success" : "neutral"}>{job.status === "open" ? "Published" : "Draft"}</Badge><button className="hub-button secondary" onClick={() => openJobApplicants(job.id)}>View applicants</button></li>)}</ul> : <EmptyState title="No open jobs"><p>Publish a draft or resume a paused job from Jobs, or create a new posting.</p><button className="hub-button" onClick={beginJob}>Create job</button></EmptyState>}
+                  {data.jobs.some(job => job.status === "open" && (!job.lifecycle || job.lifecycle.state === "active")) ? <ul className="hub-home-job-list">{sortHubJobs(data.jobs).filter(job => job.status === "open" && (!job.lifecycle || job.lifecycle.state === "active")).slice(0, 6).map(job => <li key={job.id}><div><NavigationLink className="hub-object-link" href={"/team?view=applications&jobId="+encodeURIComponent(job.id)} navigate={() => openJobApplicants(job.id)}>{job.title}</NavigationLink><p className="hub-muted">{job.location || "Location not set"}</p></div><Badge tone={job.status === "open" ? "success" : "neutral"}>{job.status === "open" ? "Published" : "Draft"}</Badge><NavigationLink className="hub-button secondary" href={"/team?view=applications&jobId="+encodeURIComponent(job.id)} navigate={() => openJobApplicants(job.id)}>View applicants</NavigationLink></li>)}</ul> : <EmptyState title="No open jobs"><p>Publish a draft or resume a paused job from Jobs, or create a new posting.</p><button className="hub-button" onClick={beginJob}>Create job</button></EmptyState>}
                 </section>
                 <div className="hub-overview-columns">
                   <section className="hub-card">
                     <div className="hub-section-heading compact"><h2>Latest applicants</h2><button className="hub-text-button" onClick={() => changeView("applications")}>All jobs</button></div>
-                    {data.recentApplications.length ? <ul className="hub-activity-list">{data.recentApplications.slice(0,5).map(application => <li key={application.id}><button className="hub-object-link" onClick={() => selectApplication(application.id)}>{application.name}</button><p>{application.jobTitle}</p><span className="hub-muted">{stageLabel(application.stage)} · Applied {displayDate(application.createdAt)}</span></li>)}</ul> : <p className="hub-muted">Applications will appear here once a published job receives them.</p>}
+                    {data.recentApplications.length ? <ul className="hub-activity-list">{data.recentApplications.slice(0,5).map(application => <li key={application.id}><NavigationLink className="hub-object-link" href={applicantHref(application.id,"",application.jobId)} navigate={() => selectApplication(application.id)}>{application.name}</NavigationLink><p>{application.jobTitle}</p><span className="hub-muted">{stageLabel(application.stage)} · Applied {displayDate(application.createdAt)}</span></li>)}</ul> : <p className="hub-muted">Applications will appear here once a published job receives them.</p>}
                   </section>
                   <ReviewReminderQueue refresh={refresh} onSelect={selectApplication} compact />
                 </div>

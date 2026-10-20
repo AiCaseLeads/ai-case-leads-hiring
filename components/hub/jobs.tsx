@@ -1,4 +1,5 @@
 "use client";
+import { NavigationLink } from "./navigation-link";
 import { useEffect, useRef, useState } from "react";
 import { Plus, Copy, ExternalLink, Users, Files, Pause, Play, Archive, ArchiveRestore, Trash2 } from "lucide-react";
 import { useHubMutation, useHubResource } from "./api";
@@ -418,7 +419,7 @@ export function Jobs({
                 <article className="hub-job-row" key={j.id}>
                   <div className="hub-job-info">
                     <div className="hub-job-title-row">
-                      <h3>{j.title}</h3>
+                      <h3><a className="hub-object-link" href={"/team?view=applications&jobId="+encodeURIComponent(j.id)}>{j.title}</a></h3>
                       <Badge tone={j.status === "open" ? "success" : "neutral"}>
                         {collection === "archived" ? "Archived" : collection === "deleted" ? "In Trash" : j.status === "open" ? "Open" : j.status === "closed" ? "Paused" : "Draft"}
                       </Badge>
@@ -436,9 +437,9 @@ export function Jobs({
                       aria-label={`View applicants for ${j.title}`}
                     >View applicants</a>
                     {admin && collection === "active" && (
-                      <button className="hub-text-button" disabled={mutation.busy} onClick={() => openEditor(j)}>
+                      <NavigationLink className="hub-text-button" href={"/team?view=jobs&jobEditor="+encodeURIComponent(j.id)+"&jobStep=0"} navigate={() => {if(!mutation.busy)openEditor(j);}}>
                         Edit job
-                      </button>
+                      </NavigationLink>
                     )}
                     {admin && collection !== "active" && <button className="hub-text-button" disabled={mutation.busy} onClick={() => void lifecycleAction(j, "restore")}><ArchiveRestore size={15} /> Restore job</button>}
                     <JobActionMenu label={`Actions for ${j.title}`}>

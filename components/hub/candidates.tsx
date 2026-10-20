@@ -1,4 +1,5 @@
 "use client";
+import { NavigationLink, applicantHref } from "./navigation-link";
 import {ShareApplicant} from "./share-applicant";
 import {BulkRejection} from "./bulk-rejection";
 import {activitySummary, communicationSummary} from "./activity-summary";
@@ -90,10 +91,11 @@ export function CandidateTable({
   interview,
   busy = false,
   showRole = true,
-  screeningConfigured, sort, onSort, qualification, assignee, onColumnFilter,
+  hrefFor, screeningConfigured, sort, onSort, qualification, assignee, onColumnFilter,
 }: {
   items: ApplicationSummary[];
   select: (id: string) => void;
+  hrefFor?: (item:ApplicationSummary)=>string;
   selected?: string[];
   toggle?: (id: string) => void;
   togglePage?: () => void;
@@ -142,12 +144,13 @@ export function CandidateTable({
                 </td>
               )}
               <td role="cell" data-label="Candidate" className="hub-candidate-identity">
-                <button
+                <NavigationLink
+                  href={hrefFor?.(item)||applicantHref(item.id,"",item.jobId)}
                   className="hub-text-button hub-candidate-name"
-                  onClick={() => select(item.id)}
+                  navigate={() => select(item.id)}
                 >
                   {item.name || "Unnamed applicant"}
-                </button>
+                </NavigationLink>
                 <span className="hub-secondary-line">{item.email}</span>
                 <span title={item.viewedAt?`Viewed by you ${displayDate(item.viewedAt)}`:"No recorded view by you yet. This does not mean a new application."}><Badge tone={item.viewedAt?"neutral":"success"}>{item.viewedAt?"Viewed":"New to you"}</Badge></span>
                 {item.duplicateEmail && <Badge tone="warning">Shared email · {item.duplicateApplicationCount || 2} applications</Badge>}
@@ -207,11 +210,12 @@ export function Candidates(props: CandidatesProps) {
     <Feedback error={downloadError} success={downloadNotice}/>
     <div className="hub-application-job-list">{jobs.map(job => {
       const count = counts.data?.items.find(item => item.jobId === job.id);
+      const jobParams=new URLSearchParams({view:"applications",jobId:job.id});if(props.initialStage)jobParams.set("stage",props.initialStage);
       const openJob = () => {const params=new URLSearchParams({jobId:job.id});if(props.initialStage)params.set("stage",props.initialStage);props.onFilterChange?.(params.toString(),1);};
       return <article className="hub-application-job-row" key={job.id}>
-        <div><h3><button type="button" className="hub-text-button hub-job-title-link" onClick={openJob}>{job.title}</button></h3><p className="hub-muted">{job.location || jobLocation(job)} · {job.lifecycle?.state === "archived" ? "Archived" : job.lifecycle?.state === "deleted" ? "In Trash" : job.status === "open" ? "Open" : job.status === "closed" ? "Paused" : "Draft"}</p></div>
+        <div><h3><NavigationLink href={`/team?${jobParams}`} className="hub-text-button hub-job-title-link" navigate={openJob}>{job.title}</NavigationLink></h3><p className="hub-muted">{job.location || jobLocation(job)} · {job.lifecycle?.state === "archived" ? "Archived" : job.lifecycle?.state === "deleted" ? "In Trash" : job.status === "open" ? "Open" : job.status === "closed" ? "Paused" : "Draft"}</p></div>
         <div className="hub-job-applicant-count"><strong>{counts.data ? count?.total || 0 : counts.loading ? "…" : "—"}</strong><span>applicants</span></div>
-        <JobActionMenu label={`Manage applicants for ${job.title}`} triggerLabel="Manage"><button type="button" onClick={openJob}><Users size={16} aria-hidden="true"/>View applications</button><button type="button" disabled={!!downloadBusy} onClick={()=>void downloadJob(job,"zip")}><Download size={16} aria-hidden="true"/>{downloadBusy===job.id?"Preparing ZIP…":"Download all applications ZIP"}</button></JobActionMenu>
+        <JobActionMenu label={`Manage applicants for ${job.title}`} triggerLabel="Manage"><NavigationLink href={`/team?${jobParams}`} navigate={openJob}><Users size={16} aria-hidden="true"/>View applications</NavigationLink><button type="button" disabled={!!downloadBusy} onClick={()=>void downloadJob(job,"zip")}><Download size={16} aria-hidden="true"/>{downloadBusy===job.id?"Preparing ZIP…":"Download all applications ZIP"}</button></JobActionMenu>
       </article>;
     })}</div>
     {!jobs.length && <EmptyState title="No jobs found"><p>Try another search or create a posting from Jobs.</p></EmptyState>}
@@ -515,6 +519,7 @@ function JobCandidates({
         <>
           {resource.data.items.length ? (
             <CandidateTable
+              hrefFor={item=>applicantHref(item.id,new URLSearchParams({...Object.fromEntries(new URLSearchParams(filter)),page:String(page)}).toString(),item.jobId)}
               items={resource.data.items}
               showRole={false}
               qualification={new URLSearchParams(filter).get("qualification")||""}
