@@ -19,24 +19,25 @@ export function BulkRejection({filter,disabled,jobTitle,selectedIds=[],changed}:
   finally{running.current=false;if(mounted.current)setBusy(false);}
  }
  async function execute(){
-  if(!plan||running.current||(!started&&scope!==currentScope))return;running.current=true;setBusy(true);setError("");setStarted(true);remember(plan,progress,true);
+  if(!plan||running.current||(!started&&(disabled||scope!==currentScope)))return;running.current=true;setBusy(true);setError("");setStarted(true);remember(plan,progress,true);
   try{while(mounted.current){const result=await hubRequest<Progress>("/api/hub/bulk-rejection/execute","POST",{planId:plan.planId,confirmed:true});if(!mounted.current)return;setProgress(result);remember(plan,result,true);if(result.complete){changed();break;}}}
   catch(cause){if(mounted.current){setError(cause instanceof Error?cause.message:"Processing stopped. Retry this same selection to continue safely.");changed();}}
   finally{running.current=false;if(mounted.current)setBusy(false);}
  }
  const stale=scope!==currentScope;
+ let selectedScope=false;try{selectedScope=Array.isArray(JSON.parse(scope).ids);}catch{}
  return <div className="hub-bulk-rejection">
   <div className="hub-button-row">{selectedIds.length>0&&<label className="hub-checkbox"><input type="checkbox" checked={selectionOnly} disabled={busy||started&&!progress?.complete} onChange={event=>setSelectionOnly(event.target.checked)}/> Use only {selectedIds.length} selected applicants</label>}<button type="button" className="hub-button secondary" disabled={disabled||busy||started&&!progress?.complete||selectionOnly&&!selectedIds.length} onClick={()=>void preview()}>Reject unshortlisted applicants</button></div>
   {error&&<p role="alert">{error}</p>}
   {plan&&<section className="hub-card" aria-label="Confirm bulk rejection" style={{marginTop:12}}>
    <strong>{progress?.complete?"Bulk rejection completed":`Review ${plan.count.toLocaleString()} eligible applicants`}</strong>
-   <p>{jobTitle} · Previewed filters, across every page.</p>
+   <p>{jobTitle} · {selectedScope?"Selected applicants within the previewed filters.":"Previewed filters, across every page."}</p>
    <p>Only applicants still in initial review who have never moved forward or received an interview are included. Shortlisted, interviewed, offered, hired, rejected, and withdrawn applicants are protected.</p>
    {!progress?.complete&&<p>{plan.count.toLocaleString()} applicants will be rejected and their rejection emails queued. {plan.excluded.toLocaleString()} matching applicants are excluded. This does not delete applications or files.</p>}
    {progress&&<p role="status">{progress.updated.toLocaleString()} applicants rejected; emails queued. {progress.skipped.toLocaleString()} skipped because their records changed. {progress.remaining.toLocaleString()} remaining.</p>}
    {stale&&!started&&<p role="alert">Filters changed. Preview the updated selection before confirming.</p>}
    <div className="hub-button-row">
-    {!progress?.complete&&<button type="button" className="hub-button" disabled={busy||!plan.count||(!started&&stale)} onClick={()=>void execute()}>{busy?"Processing…":started?"Continue this rejection safely":`Reject ${plan.count.toLocaleString()} and queue emails`}</button>}
+    {!progress?.complete&&<button type="button" className="hub-button" disabled={busy||!plan.count||(!started&&(disabled||stale))} onClick={()=>void execute()}>{busy?"Processing…":started?"Continue this rejection safely":`Reject ${plan.count.toLocaleString()} and queue emails`}</button>}
     <button type="button" className="hub-text-button" disabled={busy} onClick={clear}>{progress?.complete?"Close":started?"Close recovery notice":"Cancel"}</button>
    </div>
   </section>}
