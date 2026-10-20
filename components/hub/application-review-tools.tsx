@@ -2,6 +2,7 @@
 /* eslint-disable @next/next/no-img-element -- Authenticated résumé images must load directly without an image proxy. */
 import { useEffect, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
+import { DocxPreview } from "./docx-preview";
 import { PdfPreview } from "./pdf-preview";
 import { hubRequest, useHubResource } from "./api";
 import type { ApplicationDetail, HubJob } from "./types";
@@ -55,7 +56,7 @@ function FilePreview({file:resume}:{file:ApplicationDetail["files"][number]}) {
   useEffect(()=>{if(!previewable || word)return;const controller=new AbortController();void fetch(url,{method:"HEAD",credentials:"same-origin",signal:controller.signal}).then(response=>{if(!response.ok || !["application/pdf","image/png","image/jpeg","image/webp","text/plain"].includes((response.headers.get("content-type") || "").split(";")[0].trim()))throw Error("preview unavailable");setReady(true);}).catch(()=>{if(!controller.signal.aborted)setError(true);});return()=>controller.abort();},[url,previewable,word]);
   return <section className={"hub-resume-preview"+(expanded?" is-expanded":"")} aria-label="Résumé preview">
     {previewable && <button type="button" className="hub-text-button hub-document-expand" aria-expanded={expanded} onClick={()=>setExpanded(value=>!value)}>{expanded?"Compact preview":"Enlarge preview"}</button>}
-    {word ? <DriveWordPreview key={resume.id} fileId={resume.id} filename={resume.filename} textUrl={url} expanded={expanded}/> : previewable && ready && !error ? (resume.contentType==="application/pdf" ? <PdfPreview key={url} url={url} filename={resume.filename} expanded={expanded}/> : <img src={url} onError={()=>setError(true)} alt={`Résumé: ${resume.filename}`} style={{display:"block",maxWidth:"100%",maxHeight:expanded?"min(70vh,700px)":"280px",objectFit:"contain",margin:"0 auto"}}/>) : previewable ? <p role="status">{error?"Preview is unavailable. Use the Download link above or refresh to retry.":"Loading résumé preview…"}</p> : <p className="hub-muted">This file format cannot be previewed here. Use the Download link above to open the original résumé.</p>}
+    {resume.contentType==="application/vnd.openxmlformats-officedocument.wordprocessingml.document" ? <DocxPreview key={resume.id} fileId={resume.id} filename={resume.filename} expanded={expanded}/> : word ? <DriveWordPreview key={resume.id} fileId={resume.id} filename={resume.filename} textUrl={url} expanded={expanded}/> : previewable && ready && !error ? (resume.contentType==="application/pdf" ? <PdfPreview key={url} url={url} filename={resume.filename} expanded={expanded}/> : <img src={url} onError={()=>setError(true)} alt={`Résumé: ${resume.filename}`} style={{display:"block",maxWidth:"100%",maxHeight:expanded?"min(70vh,700px)":"280px",objectFit:"contain",margin:"0 auto"}}/>) : previewable ? <p role="status">{error?"Preview is unavailable. Use the Download link above or refresh to retry.":"Loading résumé preview…"}</p> : <p className="hub-muted">This file format cannot be previewed here. Use the Download link above to open the original résumé.</p>}
   </section>;
 }
 

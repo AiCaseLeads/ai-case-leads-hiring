@@ -42,9 +42,12 @@ test('Word API preview authenticates, verifies identity and serves private text;
   await assert.rejects(privateApplicationFile(request(),'word',null,db,bucket()),{code:'staff_access_required'});
   await assert.rejects(privateApplicationFile(request(),'word',MANAGER,db,bucket(bytes,'other')),{code:'file_identity_mismatch'});
   const response=await privateApplicationFile(request(),'word',MANAGER,db,bucket());assert.equal(response.headers.get('Content-Type'),'text/plain; charset=utf-8');assert.equal(response.headers.get('X-Preview-Format'),'word-text');assert.equal(response.headers.get('Cache-Control'),'private, no-store');assert.equal(response.headers.get('X-Content-Type-Options'),'nosniff');assert.match(await response.text(),/Synthetic resume/);
-  const broken=bytes.slice();broken[60]^=1;
+  const broken=Uint8Array.from(bytes);broken[60]^=1;
   const head=await privateApplicationFile(request('HEAD'),'word',MANAGER,db,bucket(broken));assert.equal(head.status,200);assert.equal(await head.text(),'');
   await assert.rejects(privateApplicationFile(request(),'word',MANAGER,db,bucket(broken)),{code:'preview_unavailable'});
+  const formattedRequest=new Request('https://jobs.example.invalid/api/files/word?preview=1&format=docx');
+  const formatted=await privateApplicationFile(formattedRequest,'word',MANAGER,db,bucket());assert.equal(formatted.headers.get('Content-Type'),DOCX_MIME);assert.deepEqual(new Uint8Array(await formatted.arrayBuffer()),new Uint8Array(bytes));
+  await assert.rejects(privateApplicationFile(formattedRequest,'word',MANAGER,db,bucket(broken)),{code:'preview_unavailable'});
   const original=await privateApplicationFile(new Request('https://jobs.example.invalid/api/files/word'),'word',MANAGER,db,bucket());assert.equal(original.headers.get('Content-Type'),DOCX_MIME);assert.match(original.headers.get('Content-Disposition')!,/^attachment/);assert.deepEqual(new Uint8Array(await original.arrayBuffer()),new Uint8Array(bytes));
  }finally{database.close();}
 });

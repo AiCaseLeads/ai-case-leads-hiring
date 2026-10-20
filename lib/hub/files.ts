@@ -1,3 +1,4 @@
+import { documentStructure } from "../hiring/document-structure";
 import { extractWordText, WORD_MIMES } from "../word/extract";
 import type { HubMember } from './auth-core';
 import { HiringError } from '../hiring/errors';
@@ -21,6 +22,11 @@ export async function privateApplicationFile(request:Request,id:string,member:Hu
   // Uploads are bounded to 10 MB. Validate actual bytes before the browser can render them.
   const bytes=await boundedBytes(new Request(request.url,{method:'POST',body:object.body,duplex:'half'} as RequestInit),MAX_FILE_BYTES);
   if(bytes.length!==file.size||!fileSignature(bytes,file.content_type))throw new HiringError('preview_unavailable',415,'This file cannot be safely previewed. Download the original instead.');
+  if(new URL(request.url).searchParams.get('format')==='docx'){
+    if(file.content_type!=='application/vnd.openxmlformats-officedocument.wordprocessingml.document'||!documentStructure(bytes,file.content_type))throw new HiringError('preview_unavailable',415,'This document cannot be safely previewed. Download the original instead.');
+    headers.set('Content-Length',String(bytes.length));
+    return new Response(request.method==='HEAD'?null:bytes as BodyInit,{headers});
+  }
   if(WORD_MIMES.includes(file.content_type)){
     headers.set('Content-Type','text/plain; charset=utf-8');
     headers.set('X-Preview-Format','word-text');
