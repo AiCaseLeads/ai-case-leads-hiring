@@ -6,7 +6,14 @@ import { base64Url, exchangeStaffCode, StaffSignInError, type GoogleStaffIdentit
 
 const TOKEN = /^[a-f0-9]{64}$/;
 const STATE_TTL = 10 * 60_000;
-const SESSION_TTL = 12 * 60 * 60_000;
+const SESSION_TTL = 24 * 60 * 60_000;
+const REMEMBERED_SESSION_TTL = 30 * 24 * 60 * 60_000;
+// Preferences travel only in the server-side, one-use OAuth state. Callback
+// query parameters and browser cookies cannot extend the resulting session.
+function sessionPreference(saved:string):{returnTo:string;remember:boolean}{
+  try{const value=JSON.parse(saved);if(value&&typeof value==='object'&&typeof value.returnTo==='string')return {returnTo:safeStaffReturnPath(value.returnTo),remember:value.remember===true};}catch{/* Older in-flight OAuth states contain a plain return path. */}
+  return {returnTo:safeStaffReturnPath(saved),remember:false};
+}
 export function staffCookieNames(config: StaffAuthConfig) {
   return { session: config.secureCookies ? "__Host-aicl_staff_session" : "aicl_staff_session", browser: config.secureCookies ? "__Host-aicl_staff_oauth" : "aicl_staff_oauth" };
 }
@@ -62,7 +69,7 @@ export async function startStaffSignIn(request: Request, config: StaffAuthConfig
     await config.db.prepare("DELETE FROM staff_oauth_states WHERE expires_at<=?").bind(now).run();
     await config.db.prepare("DELETE FROM staff_sessions WHERE expires_at<=?").bind(now).run();
     const state = privateToken(), verifier = privateToken(), nonce = privateToken();
-    await config.db.prepare("INSERT INTO staff_oauth_states (state_hash,browser_hash,verifier,nonce_hash,return_to,expires_at,used_at) VALUES (?,?,?,?,?,?,NULL)").bind(await sha256(state), await sha256(browser), verifier, await sha256(nonce), safeStaffReturnPath(url.searchParams.get("return_to")), now + STATE_TTL).run();
+    await config.db.prepare("INSERT INTO staff_oauth_states (state_hash,browser_hash,verifier,nonce_hash,return_to,expires_at,used_at) VALUES (?,?,?,?,?,?,NULL)").bind(await sha256(state), await sha256(browser), verifier, await sha256(nonce), JSON.stringify({returnTo:safeStaffReturnPath(url.searchParams.get("return_to")),remember:url.searchParams.getAll("remember").length===1&&url.searchParams.get("remember")==="1"}), now + STATE_TTL).run();
     const challenge = base64Url(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier))));
     const authorization = new URL("https://accounts.google.com/o/oauth2/v2/auth");
     authorization.search = new URLSearchParams({ client_id: config.clientId, redirect_uri: `${config.origin}/api/auth/google/callback`, response_type: "code", scope: "openid email profile", prompt: "select_account", state, nonce, code_challenge: challenge, code_challenge_method: "S256" }).toString();
@@ -84,13 +91,14 @@ export async function completeStaffSignIn(request: Request, config: StaffAuthCon
     if (query.has("error") || !code) throw new StaffSignInError("failed");
     const identity = await exchangeStaffCode({ clientId: config.clientId, clientSecret: config.clientSecret, origin: config.origin, code, verifier: claimed.verifier, nonceHash: claimed.nonce_hash }, fetcher, now);
     if (!await currentStaffMember(identity, config)) throw new StaffSignInError("not_authorized");
+    const preference=sessionPreference(claimed.return_to),sessionTtl=preference.remember?REMEMBERED_SESSION_TTL:SESSION_TTL;
     const old = cookie(request.headers, staffCookieNames(config).session);
     const token = privateToken();
-    const writes = [config.db.prepare("INSERT INTO staff_sessions (token_hash,user_id,email,full_name,created_at,expires_at) VALUES (?,?,?,?,?,?)").bind(await sha256(token), identity.userId, identity.email, identity.fullName, now, now + SESSION_TTL)];
+    const writes = [config.db.prepare("INSERT INTO staff_sessions (token_hash,user_id,email,full_name,created_at,expires_at) VALUES (?,?,?,?,?,?)").bind(await sha256(token), identity.userId, identity.email, identity.fullName, now, now + sessionTtl)];
     if (old) writes.push(config.db.prepare("DELETE FROM staff_sessions WHERE token_hash=?").bind(await sha256(old)));
     await config.db.batch(writes);
-    response = redirectTo(`${config.origin}${safeStaffReturnPath(claimed.return_to)}`);
-    response.headers.append("Set-Cookie", setCookie(config, staffCookieNames(config).session, token, SESSION_TTL / 1000));
+    response = redirectTo(`${config.origin}${preference.returnTo}`);
+    response.headers.append("Set-Cookie", setCookie(config, staffCookieNames(config).session, token, sessionTtl / 1000));
   } catch (error) {
     const reason = error instanceof StaffSignInError ? error.reason : "unavailable";
     response = redirectTo(`${config.origin}/team?auth=${reason}`);

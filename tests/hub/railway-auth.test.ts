@@ -23,8 +23,8 @@ function responseCookie(response: Response, name: string): string {
   const entry = response.headers.getSetCookie().find(value => value.startsWith(`${name}=`));
   assert.ok(entry); return entry.split(";")[0];
 }
-async function flow(config: StaffAuthConfig, overrides: Record<string, unknown> = {}, returnTo = "/team") {
-  const start = await startStaffSignIn(new Request(`${ORIGIN}/api/auth/google/start?return_to=${encodeURIComponent(returnTo)}`), config, NOW);
+async function flow(config: StaffAuthConfig, overrides: Record<string, unknown> = {}, returnTo = "/team", remember=false) {
+  const start = await startStaffSignIn(new Request(`${ORIGIN}/api/auth/google/start?return_to=${encodeURIComponent(returnTo)}${remember?"&remember=1":""}`), config, NOW);
   const url = new URL(start.headers.get("location")!);
   const browserCookie = responseCookie(start, staffCookieNames(config).browser);
   const token = await signedToken(url.searchParams.get("nonce")!, overrides);
@@ -72,7 +72,7 @@ test("login uses trusted callback, PKCE, nonce and only identity scopes; opaque 
     assert.match(response.headers.get("set-cookie")!, /HttpOnly; SameSite=Lax;.*Secure/);
     const row = f.database.prepare("SELECT * FROM staff_sessions").get()!;
     assert.equal(row.token_hash, await sha256(raw)); assert.notEqual(row.token_hash, raw);
-    assert.equal(row.expires_at, NOW + 12 * 3600_000);
+    assert.equal(row.expires_at, NOW + 24 * 3600_000);
     assert.deepEqual(await staffMemberFromRequest(new Headers({ Cookie: sessionCookie }), f.config, NOW + 1), { userId: "synthetic-google-sales", email: "sales@aicaseleads.com", role: "admin", isOwner: true });
     assert.equal(await verifiedStaffSession(new Headers({ Cookie: sessionCookie }), f.config, Number(row.expires_at)), null);
     assert.equal(f.database.prepare("SELECT COUNT(*) count FROM hub_settings WHERE key LIKE 'google_%'").get()!.count, 0);
@@ -181,4 +181,34 @@ test("provider outages, oversized responses and invalid signatures never issue s
       assert.equal(f.database.prepare("SELECT COUNT(*) count FROM staff_sessions").get()!.count, 0);
     } finally { f.database.close(); }
   }
+});
+
+test('remember preference is bound to consumed OAuth state and expires absolutely after thirty days',async()=>{
+ const f=fixture();try{
+ const auth=await flow(f.config,{},'/team?view=applications',true);
+ const response=await completeStaffSignIn(auth.callback(),f.config,auth.fetcher,NOW);
+ const session=responseCookie(response,staffCookieNames(f.config).session);
+ assert.equal(response.headers.get('Location'),ORIGIN+'/team?view=applications');
+ assert.ok(response.headers.getSetCookie().some(value=>value.includes('Max-Age=2592000')&&value.includes('HttpOnly')&&value.includes('Secure')));
+ const row=f.database.prepare('SELECT created_at,expires_at FROM staff_sessions').get()!;
+ assert.equal(row.expires_at,NOW+30*86400000);
+ assert.ok(await verifiedStaffSession(new Headers({Cookie:session}),f.config,NOW+29*86400000));
+ assert.equal(f.database.prepare('SELECT expires_at FROM staff_sessions').get()!.expires_at,row.expires_at,'requests never extend absolute expiry');
+ assert.equal(await verifiedStaffSession(new Headers({Cookie:session}),f.config,NOW+30*86400000),null);
+ const ordinary=await flow(f.config);const forged=new Request(ordinary.callback().url+'&remember=1',{headers:{Cookie:ordinary.browserCookie}});
+ await completeStaffSignIn(forged,f.config,ordinary.fetcher,NOW);
+ assert.equal(f.database.prepare('SELECT MAX(expires_at) maximum FROM staff_sessions WHERE token_hash<>?').get(await sha256(session.split('=')[1]))!.maximum,NOW+86400000);
+ }finally{f.database.close();}
+});
+test('remembered session is immediately revoked by membership removal and explicit logout',async()=>{
+ const f=fixture();try{
+ const auth=await flow(f.config,{},'/team',true),response=await completeStaffSignIn(auth.callback(),f.config,auth.fetcher,NOW),session=responseCookie(response,staffCookieNames(f.config).session);
+ addMember(f,'sales@aicaseleads.com','admin',0);
+ assert.equal(await staffMemberFromRequest(new Headers({Cookie:session}),f.config,NOW+1000),null);
+ assert.equal(f.database.prepare('SELECT COUNT(*) count FROM staff_sessions').get()!.count,0);
+ f.database.prepare('DELETE FROM hub_members').run();
+ const again=await flow(f.config,{},'/team',true),signed=await completeStaffSignIn(again.callback(),f.config,again.fetcher,NOW);
+ await logoutStaff(new Request(ORIGIN+'/api/auth/logout',{method:'POST',headers:{Origin:ORIGIN,Cookie:responseCookie(signed,staffCookieNames(f.config).session)}}),f.config);
+ assert.equal(f.database.prepare('SELECT COUNT(*) count FROM staff_sessions').get()!.count,0);
+ }finally{f.database.close();}
 });
