@@ -1409,3 +1409,8 @@ nav a:hover {
  .detail-heading h1,.job-main h3,.job-description { overflow-wrap:anywhere; }
  .application-form input:not([type=checkbox]):not([type=radio]),.application-form textarea,.application-form select { font-size:16px; }
 }
+
+.team-sign-in { display: grid; justify-items: start; gap: 12px; max-width: 34rem; }
+.team-sign-in .team-remember { display: flex; align-items: center; gap: 10px; min-height: 44px; cursor: pointer; }
+.team-sign-in .team-remember input { width: 20px; height: 20px; flex: 0 0 auto; margin: 0; }
+.team-sign-in .team-remember-help { margin: 0; font-size: 14px; line-height: 1.5; color: var(--muted, #516b72); }

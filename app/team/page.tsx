@@ -57,9 +57,12 @@ export default async function TeamPage({ searchParams }: { searchParams?: Promis
             to authorized team members.
           </p>
         ) : (
-          <a className="button ink" href={chatGPTSignInPath(signInDestination)}>
-            {usesGoogleStaffAuth() ? "Sign in with Google" : "Sign in to the hiring hub"}
-          </a>
+          usesGoogleStaffAuth() ? <form action="/api/auth/google/start" method="get" className="team-sign-in">
+            <input type="hidden" name="return_to" value={signInDestination}/>
+            <label className="team-remember"><input type="checkbox" name="remember" value="1" aria-describedby="remember-help"/> Keep me signed in for 30 days</label>
+            <p id="remember-help" className="team-remember-help">Leave unchecked on shared devices. Otherwise, sign-in lasts 24 hours.</p>
+            <button type="submit" className="button ink">Sign in with Google</button>
+          </form> : <a className="button ink" href={chatGPTSignInPath(signInDestination)}>Sign in to the hiring hub</a>
         )}
         {usesGoogleStaffAuth() && <p className="team-boundary">Sign in with your own invited Google Workspace account. In Settings → My setup, recruiters connect their own recruiting email and calendar. The owner manages company Drive storage and the fallback calendar separately.</p>}
         <p>
