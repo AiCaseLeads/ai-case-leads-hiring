@@ -17,6 +17,8 @@ export const stages = [
   "Screening",
   "Assessment",
   "Interview",
+  "Awaiting Founder Review",
+  "Second Round Interview",
   "Offer",
   "Hired",
   "Rejected",
@@ -50,6 +52,7 @@ export type HubJob = Job & {
   assessmentPrompt?: string;
 };
 export type ApplicationSummary = {
+  notesReview?: {version:string;hasUnread:boolean;count:number;reviewedAt:number|null};
   viewedAt?: number | null;
   trashed?: boolean;
   id: string;

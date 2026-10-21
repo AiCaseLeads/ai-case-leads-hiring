@@ -3,6 +3,7 @@ import { normalizeApplicantScope, applicantStageChoice, applyApplicantStageChoic
 import { NavigationLink, applicantHref } from "./navigation-link";
 import {ShareApplicant} from "./share-applicant";
 import {BulkRejection} from "./bulk-rejection";
+import { RecruiterNotes } from "./recruiter-notes";
 import { ApplicantMessages } from "./applicant-messages";
 import {activitySummary} from "./activity-summary";
 import { ApplicationAnswers, answerContactName } from "./application-answers";
@@ -156,6 +157,7 @@ export function CandidateTable({
               {showRole && <td role="cell" data-label="Role">{item.jobTitle}</td>}
               <td role="cell" data-label="Stage">
                 <Badge>{item.trashed?"In Trash":stageLabel(item.stage)}</Badge>
+                {!!item.notesReview?.hasUnread&&<Badge tone="warning">New notes</Badge>}
               </td>
               <td role="cell" data-label="Screening">
                 <span title={item.qualification === "review" ? screeningConfigured === false ? "This job has no enabled screening rules. The AI match is shown separately." : "An answer needed by the screening rules is missing or could not be evaluated. Check the application answers. The AI match is shown separately." : undefined}><Badge tone={qualificationTone(item.qualification)}>{qualificationLabel(item.qualification, screeningConfigured)}</Badge></span>
@@ -798,6 +800,11 @@ export function CandidateDetail({
       }
     } finally {rejectionInFlight.current=false;if(stillMounted.current)setShortlistBusy(false);}
   }
+  async function founderTransition(target:"Awaiting Founder Review"|"Second Round Interview") {
+    if(!resource.data||mutation.busy||decisionBusy||dirty)return;
+    const result=await mutation.run(`/api/hub/applications/${encodeURIComponent(id)}/action`,"POST",{action:"stage",stage:target,expectedRevision:resource.data.revision},target==="Awaiting Founder Review"?"Sent for founder review. No email sent.":"Moved to second-round interview. No invitation sent; request an interview when ready.");
+    if(result!==undefined){await resource.reload();changed();}
+  }
   async function unshortlist(){
     if(!resource.data||resource.data.stage!=="Screening"||mutation.busy||decisionBusy||dirty)return;
     const result=await mutation.run(`/api/hub/applications/${encodeURIComponent(id)}/action`,"POST",{action:"stage",stage:"Application Review",expectedRevision:resource.data.revision},"Removed from the shortlist. No email sent.");
@@ -898,6 +905,8 @@ export function CandidateDetail({
               {!detail.trashed && detail.stage==="Screening" && <button type="button" className="hub-button secondary" disabled={mutation.busy||decisionBusy||dirty} title={dirty?"Save or clear unsaved changes first.":"Return to initial review without sending an email."} onClick={()=>void unshortlist()}>Remove from shortlist</button>}
               {!detail.trashed&&!['Rejected','Withdrawn','Hired'].includes(detail.stage)&&<button type="button" className="hub-button secondary" disabled={mutation.busy||decisionBusy||dirty} title={dirty?"Save or clear your unsaved note or action before rejecting.":"Reject and queue this job’s rejection email, then open the next active applicant."} onClick={()=>void rejectAndContinue()}>{rejectBusy?"Rejecting…":"Reject"}</button>}
               {detail.trashed && <button type="button" className="hub-button secondary" disabled={mutation.busy||decisionBusy} onClick={()=>void lifecycle("restore")}>Restore application</button>}
+              {!detail.trashed&&detail.stage==="Interview"&&<button type="button" className="hub-button secondary" disabled={mutation.busy||decisionBusy||dirty||!detail.notes.length} title={!detail.notes.length?"Save interview feedback in Recruiter notes first.":"Move to founder review without sending an email."} onClick={()=>void founderTransition("Awaiting Founder Review")}>Send for founder review</button>}
+              {!detail.trashed&&detail.stage==="Awaiting Founder Review"&&<button type="button" className="hub-button" disabled={mutation.busy||decisionBusy||dirty} onClick={()=>void founderTransition("Second Round Interview")}>Move to second-round interview</button>}
               {!detail.trashed&&<ShareApplicant key={detail.id} id={detail.id}/>}
               <JobActionMenu label="More applicant actions" triggerLabel="More">
                 {!detail.trashed && !["Rejected","Withdrawn","Hired"].includes(detail.stage) && <button type="button" disabled={mutation.busy||decisionBusy} onClick={()=>{setAction("interview");setActionOpen(true);mutation.clear();}}><CalendarClock size={16} aria-hidden="true"/>Request interview</button>}
@@ -910,6 +919,7 @@ export function CandidateDetail({
             </div>
           </header>
           <Feedback error={mutation.error||pdfError} success={mutation.success}/>
+          {!detail.trashed&&["Interview","Awaiting Founder Review","Second Round Interview"].includes(detail.stage)&&<p className="hub-notice">{detail.stage==="Interview"?"After the first interview, save feedback in Recruiter notes, then send for founder review.":detail.stage==="Awaiting Founder Review"?"Review the recruiter’s feedback, mark the notes reviewed, then move to a second-round interview or reject.":"Ready for the second round. Use More → Request interview when you want to send a booking invitation."} <button type="button" className="hub-text-button" onClick={()=>setSection("review")}>View recruiter notes{detail.notesReview?.hasUnread?" · new":""}</button></p>}
           {detail.trashed && <p className="hub-muted">This application is in Trash. Its files and history are retained. Restore it before taking recruiting actions.</p>}
           {deleteOpen && <div className="hub-card" role="alertdialog" aria-labelledby="delete-application-title"><h3 id="delete-application-title">Move this application to Trash?</h3><p>It will leave your recruiting queues. Files and history stay saved, and you can restore it from this job’s Trash tab. Unsent emails and active booking links will be cancelled.</p><div className="hub-button-row"><button className="hub-button secondary" type="button" disabled={mutation.busy||decisionBusy} onClick={()=>setDeleteOpen(false)}>Keep application</button><button className="hub-button" type="button" disabled={mutation.busy||decisionBusy} onClick={()=>void lifecycle("trash")}>Move to Trash</button></div></div>}
           <div className="hub-detail-grid">
@@ -1111,7 +1121,7 @@ export function CandidateDetail({
               <div role="tabpanel" id="candidate-panel-review" aria-labelledby="candidate-tab-review" hidden={section!=="review"}>
               <fieldset disabled={decisionBusy} style={{border:0,padding:0,margin:0,minWidth:0}}>
               {section === "review" && <CandidateMatch applicationId={detail.id}/>}
-              <section className="hub-card hub-candidate-notes"><div className="hub-section-heading compact"><h3>Recruiter notes</h3><button type="button" className="hub-text-button" onClick={()=>{setAction("note");setActionOpen(true);}}>Add note</button></div>{detail.notes.length ? detail.notes.slice(0,5).map(note=><article className="hub-history-item" key={note.id}><strong>{note.actor}</strong>{note.text.length>500 ? <details><summary>Read note · {displayDate(note.createdAt)}</summary><p className="hub-preserve">{note.text}</p></details> : <><p className="hub-preserve">{note.text}</p><small>{displayDate(note.createdAt)}</small></>}</article>) : <p className="hub-muted">No notes yet.</p>}</section>
+              <RecruiterNotes detail={detail} busy={mutation.busy||decisionBusy||dirty} addNote={()=>{setAction("note");setActionOpen(true);}} changed={()=>{void resource.reload();changed();}}/>
               <details className="hub-card"><summary>Optional: human grades and scorecards</summary>
               <section className="hub-card">
                 <h3>Reviewer grade</h3>
@@ -1273,20 +1283,7 @@ export function CandidateDetail({
                   </p>
                 )}
               </section>
-              <section className="hub-card">
-                <h3>Notes</h3>
-                {detail.notes.length ? (
-                  detail.notes.map((note) => (
-                    <article className="hub-history-item" key={note.id}>
-                      <strong>{note.actor}</strong>
-                      <p className="hub-preserve">{note.text}</p>
-                      <small>{displayDate(note.createdAt)}</small>
-                    </article>
-                  ))
-                ) : (
-                  <p className="hub-muted">No internal notes yet.</p>
-                )}
-              </section>
+              <RecruiterNotes detail={detail} busy={mutation.busy||decisionBusy||dirty} addNote={()=>{setAction("note");setActionOpen(true);}} changed={()=>{void resource.reload();changed();}}/>
               <section className="hub-card">
                 <h3>Hiring history</h3>
                 {detail.history.length ? (
