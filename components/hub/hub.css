@@ -1960,3 +1960,6 @@ body:has(.hiring-hub .hub-draft-overlay) { overflow: hidden; }
  .hub-document-toolbar .hub-document-page-count { flex-basis:100%; text-align:left; }
  .hub-document-toolbar select { margin-left:0; }
 }
+
+.hub-founder-guidance { display: block; }
+.hub-founder-guidance > .hub-text-button { display: inline-flex; width: auto; min-width: 150px; min-height: 44px; margin-top: 4px; white-space: normal; }
