@@ -197,7 +197,7 @@ export const hubCommunications = sqliteTable(
     createdAt: integer("created_at").notNull(),
     updatedAt: integer("updated_at").notNull(),
   },
-  (t) => [uniqueIndex("hub_communication_task_unique").on(t.taskId)],
+  (t) => [uniqueIndex("hub_communication_task_unique").on(t.taskId), index("hub_communication_app_idx").on(t.applicationId,t.createdAt.desc(),t.id)],
 );
 export const hubAssessments = sqliteTable(
   "hub_assessments",
