@@ -23,8 +23,8 @@ function responseCookie(response: Response, name: string): string {
   const entry = response.headers.getSetCookie().find(value => value.startsWith(`${name}=`));
   assert.ok(entry); return entry.split(";")[0];
 }
-async function flow(config: StaffAuthConfig, overrides: Record<string, unknown> = {}, returnTo = "/team", remember=false) {
-  const start = await startStaffSignIn(new Request(`${ORIGIN}/api/auth/google/start?return_to=${encodeURIComponent(returnTo)}${remember?"&remember=1":""}`), config, NOW);
+async function flow(config: StaffAuthConfig, overrides: Record<string, unknown> = {}, returnTo = "/team", remember:boolean|string=false) {
+  const start = await startStaffSignIn(new Request(`${ORIGIN}/api/auth/google/start?return_to=${encodeURIComponent(returnTo)}${typeof remember==="string"?remember:remember?"&remember=1":""}`), config, NOW);
   const url = new URL(start.headers.get("location")!);
   const browserCookie = responseCookie(start, staffCookieNames(config).browser);
   const token = await signedToken(url.searchParams.get("nonce")!, overrides);
@@ -211,4 +211,17 @@ test('remembered session is immediately revoked by membership removal and explic
  await logoutStaff(new Request(ORIGIN+'/api/auth/logout',{method:'POST',headers:{Origin:ORIGIN,Cookie:responseCookie(signed,staffCookieNames(f.config).session)}}),f.config);
  assert.equal(f.database.prepare('SELECT COUNT(*) count FROM staff_sessions').get()!.count,0);
  }finally{f.database.close();}
+});
+
+test('legacy plain OAuth return paths and duplicate remember parameters retain safe default duration',async()=>{
+ for(const legacy of [true,false]){
+  const f=fixture();try{
+   const auth=await flow(f.config,{},'/team?view=jobs',legacy?false:'&remember=1&remember=1');
+   if(legacy)f.database.prepare('UPDATE staff_oauth_states SET return_to=?').run('/team?view=jobs');
+   const response=await completeStaffSignIn(auth.callback(),f.config,auth.fetcher,NOW);
+   assert.equal(response.headers.get('Location'),ORIGIN+'/team?view=jobs');
+   assert.equal(f.database.prepare('SELECT expires_at FROM staff_sessions').get()!.expires_at,NOW+86400000);
+   assert.ok(response.headers.getSetCookie().some(value=>value.includes('Max-Age=86400')));
+  }finally{f.database.close();}
+ }
 });
