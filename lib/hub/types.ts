@@ -4,6 +4,8 @@ export const STAGES = [
   "Screening",
   "Assessment",
   "Interview",
+  "Awaiting Founder Review",
+  "Second Round Interview",
   "Offer",
   "Hired",
   "Rejected",
@@ -47,6 +49,7 @@ export type ApplicationSummary = {
   jobId: string;
   jobTitle: string;
   stage: Stage;
+  notesReview?: import("./note-review").NotesReview;
   qualification: "pass" | "review" | "fail";
   assignee: string | null;
   createdAt: number;

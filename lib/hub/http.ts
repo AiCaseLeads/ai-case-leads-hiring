@@ -1,3 +1,4 @@
+import {markNotesReviewed} from "./note-review";
 import {STAGES} from "./types";
 import {sendShareInvitations} from "./share-invitations";
 import {manageApplicantShare} from "./applicant-share";
@@ -150,7 +151,11 @@ export async function handleHubRequest(
       data = await store.applications(applicationFilters(request),member.email);
     } else if(section==='applications' && id && operation==='navigation' && request.method==='GET') {
       data=await store.applicationNavigation(id,applicationFilters(request));
-    } else if(section==='applications' && id && operation==='viewed' && request.method==='POST') {
+    } else if(section==='applications' && id && operation==='notes-reviewed' && request.method==='POST') {
+      const body=await json(request) as Record<string,unknown>;
+      if(!body||typeof body!=='object'||Array.isArray(body)||Object.keys(body).some(key=>key!=='expectedNotesVersion')||typeof body.expectedNotesVersion!=='string'||! /^[a-f0-9]{64}$/.test(body.expectedNotesVersion))throw new HiringError('invalid_request',422,'Provide the current notes version.');
+      data=await markNotesReviewed(store,id,member.email,body.expectedNotesVersion);
+    } else if(section==='applications' && id && operation==='viewed'  && request.method==='POST') {
       const input=await json(request);
       if(!input||typeof input!=='object'||Array.isArray(input)||Object.keys(input).length)throw new HiringError('invalid_request',422,'Send an empty view acknowledgement.');
       data=await store.markApplicationViewed(id,member.email);

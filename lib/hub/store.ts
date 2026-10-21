@@ -1,3 +1,4 @@
+import {notesReviews} from "./note-review";
 import {candidateMail} from "../job-team/service";
 import {isInterviewInvitationTask} from "../google/mail-setup";
 import {communicationPurpose} from "./communication-purpose";
@@ -860,7 +861,8 @@ export class HubStore {
       const found=await this.rows<{application_id:string;viewed_at:number}>(`SELECT application_id,viewed_at FROM hub_application_views WHERE viewer_email=? AND application_id IN (${ids.map(()=>'?').join(',')})`,viewerEmail.trim().toLowerCase(),...ids);
       for(const view of found)views.set(view.application_id,view.viewed_at);
     }
-    return rows.map((row)=>({...summary(row),...(viewerEmail?{viewedAt:views.get(row.id)??null}:{}),grade:gradeForScorecards(cards.get(row.id)||[]),aiMatch:matches.get(row.id)}));
+    const noteStates=viewerEmail?await notesReviews(this,rows.map(row=>row.id),viewerEmail):new Map();
+    return rows.map((row)=>({...summary(row),...(viewerEmail?{notesReview:noteStates.get(row.id)}:{}),...(viewerEmail?{viewedAt:views.get(row.id)??null}:{}),grade:gradeForScorecards(cards.get(row.id)||[]),aiMatch:matches.get(row.id)}));
   }
   async applications(filters:ApplicationFilters={},viewerEmail?:string) {
     const selected=this.applicationSelection(filters), page=Math.max(1,Math.min(100000,filters.page||1)),pageSize=30;
@@ -937,6 +939,7 @@ export class HubStore {
       this.rows<{id:string;actor:string;score:number;criteria:string;text:string;created_at:number}>("SELECT * FROM hub_scorecards WHERE application_id=? ORDER BY created_at DESC,id",id),
       this.rows<{kind:string;payload_json:string;expires_at:number;used_at:number|null}>("SELECT kind,payload_json,expires_at,used_at FROM hub_links WHERE application_id=?",id),
     ]);
+    const noteState=viewerEmail?(await notesReviews(this,[id],viewerEmail)).get(id):undefined;
     const events = history.map((h) => ({id:h.id,type:h.type,text:h.text,actor:h.actor,createdAt:h.created_at}));
     const linkInfo = (kind:"assessment"|"interview",itemId:string) => {
       const matching = links.filter((link) => link.kind === kind && decode<Record<string,unknown>>(link.payload_json,{})[`${kind}Id`] === itemId);
@@ -953,6 +956,7 @@ export class HubStore {
       answers:decode(app.answers_json,[]),fields:decode(app.fields_json,[]),qualificationEvidence:decode(app.qualification_json,[]),
       files:files.map((file) => ({id:file.id,fieldPath:file.field_path,filename:file.filename,contentType:file.content_type,size:file.size,url:`/api/files/${encodeURIComponent(file.id)}`})),
       history:events,notes:events.filter((event) => event.type === "note"),
+      ...(noteState?{notesReview:noteState}:{}),
       communications:await Promise.all(communications.map(async(item) => {
         const payload=decode<Record<string,unknown>>(item.payload_json||"{}",{});
         const direction=item.status==='received'?'incoming' as const:'outgoing' as const;
@@ -1214,7 +1218,7 @@ export class HubStore {
     }>(
       `SELECT a.source,COUNT(*) AS count,
         SUM(CASE WHEN a.qualification='pass' THEN 1 ELSE 0 END) AS qualified,
-        SUM(CASE WHEN a.stage='Interview' OR EXISTS (SELECT 1 FROM hub_history h WHERE h.application_id=a.id AND h.type='stage' AND h.to_stage='Interview') THEN 1 ELSE 0 END) AS interviewed,
+        SUM(CASE WHEN a.stage IN ('Interview','Awaiting Founder Review','Second Round Interview') OR EXISTS (SELECT 1 FROM hub_history h WHERE h.application_id=a.id AND h.type='stage' AND h.to_stage IN ('Interview','Awaiting Founder Review','Second Round Interview')) THEN 1 ELSE 0 END) AS interviewed,
         SUM(CASE WHEN a.stage='Hired' THEN 1 ELSE 0 END) AS hired
         FROM hub_applications a WHERE ${activeApplicationsSql('a')} GROUP BY a.source ORDER BY count DESC,a.source`,
     );
@@ -1282,6 +1286,8 @@ export class HubStore {
         "Screening",
         "Assessment",
         "Interview",
+        "Awaiting Founder Review",
+        "Second Round Interview",
         "Offer",
         "Hired",
       ].map((stage) => ({
@@ -1357,6 +1363,7 @@ export class HubStore {
             422,
             "Use Reject and record a rejection reason.",
           );
+        if(input.stage==='Awaiting Founder Review'&&!await this.stmt("SELECT id FROM hub_history WHERE application_id=? AND type='note' AND trim(text)<>'' LIMIT 1",app.id).first())throw new HiringError('interview_notes_required',422,'Save interview notes before sending this applicant for founder review.');
         stage = input.stage;
         text = `Moved to ${stage}`;
         if (stage === app.stage) return [];
@@ -1622,7 +1629,7 @@ export class HubStore {
             {metadata:{mailMode:"recruiter",actor:member.email}},
           ),
         );
-        stage = renewing ? app.stage : "Interview";
+        stage = renewing || app.stage==="Second Round Interview" ? app.stage : "Interview";
         text = renewing ? "Interview invitation renewed and queued" : "Interview invitation queued";
         break;
       }
@@ -1757,7 +1764,7 @@ export class HubStore {
     return `a.stage='Application Review' AND ${activeApplicationsSql('a')}
       AND NOT EXISTS(SELECT 1 FROM hub_interviews i WHERE i.application_id=a.id)
       AND NOT EXISTS(SELECT 1 FROM hub_assessments i WHERE i.application_id=a.id)
-      AND NOT EXISTS(SELECT 1 FROM hub_history h WHERE h.application_id=a.id AND h.to_stage IN ('Screening','Assessment','Interview','Offer','Hired'))`;
+      AND NOT EXISTS(SELECT 1 FROM hub_history h WHERE h.application_id=a.id AND h.to_stage IN ('Screening','Assessment','Interview','Awaiting Founder Review','Second Round Interview','Offer','Hired'))`;
   }
   private async bulkRejectionEligible(id:string):Promise<boolean>{
     return !!await this.stmt(`SELECT 1 AS eligible FROM hub_applications a WHERE a.id=? AND ${this.bulkRejectionEligibilitySql()}`,id).first();
