@@ -17,3 +17,6 @@ await build({
   define: { "process.env.HOSTING_PLATFORM": JSON.stringify("railway") },
   build: { ssr: path.join(root, "lib/railway/worker.ts"), outDir: "dist/railway", emptyOutDir: true, rolldownOptions: { output: { entryFileNames: "worker.mjs" } } },
 });
+
+// Dedicated CPU-bound PDF renderer; runtime Docker already copies all of dist/.
+await build({configFile:false,build:{ssr:path.join(root,"lib/pdf/render-worker.ts"),outDir:"dist/pdf-render",emptyOutDir:true,rolldownOptions:{output:{entryFileNames:"render-worker.mjs"}}}});
