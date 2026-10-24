@@ -169,6 +169,7 @@ export const hubTasks = sqliteTable(
   },
   (t) => [
     index("hub_task_pending_idx").on(t.status, t.runAfter),
+    index("hub_task_application_idx").on(t.applicationId, t.kind, t.status),
     check(
       "hub_task_status_valid",
       sql`${t.status} IN ('pending','running','done','failed','uncertain')`,
