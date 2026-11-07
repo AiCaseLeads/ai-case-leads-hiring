@@ -21,3 +21,5 @@ Failed health checks restart the previous container against the current database
 Successful releases record the previous container in root-only release.json. To roll back manually, check schema compatibility, stop/rename the current container, rename the recorded prior container to hiring, start it and verify local/public health. Never automatically restore SQLite.
 
 Protect main with required checks/review: permission to merge main is permission to change production app code. The root deployment script is not automatically replaced by CI. Its updates require separate administrator review. Do not log env values or applicant data. Do not prune old backups/images until retention and recovery are agreed.
+
+If Docker removal or inspection times out during rollback, the deployer fails closed rather than risking two active workers. An operator must inspect running containers, stop the failed replacement, restore the recorded previous container name to `hiring`, start it, and verify health. Do not start the previous app while the replacement's writer state is unknown. This exceptional recovery is manual; no database restore is part of it.
