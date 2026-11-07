@@ -1,0 +1,23 @@
+jobs.aicaseleads.com 3-232-178-171.sslip.io {
+ encode gzip
+ @recordingUpload {
+  path /api/hub/interview-recordings
+  method POST
+ }
+ handle @recordingUpload {
+  request_body {
+   max_size 128MB
+  }
+  reverse_proxy hiring:3000 {
+   header_up X-Real-IP {remote_host}
+  }
+ }
+ handle {
+  request_body {
+   max_size 12MB
+  }
+  reverse_proxy hiring:3000 {
+   header_up X-Real-IP {remote_host}
+  }
+ }
+}

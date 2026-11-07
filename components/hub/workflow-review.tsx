@@ -1,0 +1,18 @@
+"use client";
+import {useState} from "react";
+import {useHubResource,useHubMutation} from "./api";
+import {Field,Feedback,ResourceState,Badge} from "./shared";
+type Review={version:number;recommendation:string;notes:string;summary:string;recordingUrl:string;salaryExpectation:string;availability:string;concerns:string;readiness:{ready:boolean;missing:string[]};canApprove:boolean};
+export function WorkflowReview({id,changed,refresh=0,onDirty}:{id:string;changed:()=>void;refresh?:number;onDirty?:(dirty:boolean)=>void}){
+ const r=useHubResource<Review>(`/api/hub/applications/${encodeURIComponent(id)}/recruiter-review`,refresh);
+ return <section className="hub-card hub-interview-review"><div className="hub-section-heading compact"><div><h3>Interview handoff</h3><p className="hub-muted">Keep the interview evidence and recommendation together.</p></div>{r.data&&<Badge tone={r.data.readiness.ready?"success":"warning"}>{r.data.readiness.ready?"Ready for founder review":"Incomplete"}</Badge>}</div><ResourceState loading={r.loading} error={r.error} retry={()=>void r.reload()}/>{r.data&&!r.loading&&<ReviewForm key={r.data.version} id={id} initial={r.data} onDirty={onDirty} saved={()=>{void r.reload();changed()}}/>}</section>
+}
+function ReviewForm({id,initial,saved,onDirty}:{id:string;initial:Review;saved:()=>void;onDirty?:(dirty:boolean)=>void}){
+ const [v,set]=useState(initial),m=useHubMutation();
+ const update=(key:keyof Review,value:string)=>{set(old=>({...old,[key]:value}));onDirty?.(true);};
+ return <form onSubmit={async e=>{e.preventDefault();const {recommendation,notes,summary,recordingUrl,salaryExpectation,availability,concerns}=v;const result=await m.run(`/api/hub/applications/${encodeURIComponent(id)}/recruiter-review`,"PUT",{expectedVersion:initial.version,recommendation,notes,summary,recordingUrl,salaryExpectation,availability,concerns},"Interview handoff saved.");if(result!==undefined){onDirty?.(false);saved()}}}>
+ <div className="hub-review-grid"><Field label="Recommendation"><select value={v.recommendation} onChange={e=>update("recommendation",e.target.value)}><option value="">Choose a recommendation</option><option value="advance">Move forward</option><option value="hold">Discuss / hold</option><option value="reject">Do not move forward</option></select></Field><Field label="Recording link"><input type="text" value={v.recordingUrl} onChange={e=>update("recordingUrl",e.target.value)} placeholder="MeetGeek or another authorized recording URL"/></Field><Field label="Salary expectation"><input value={v.salaryExpectation} onChange={e=>update("salaryExpectation",e.target.value)} placeholder="Amount, currency and pay period"/></Field><Field label="Availability"><input value={v.availability} onChange={e=>update("availability",e.target.value)} placeholder="Start date, hours and notice period"/></Field></div>
+ <Field label="Interview summary"><textarea rows={3} maxLength={20000} value={v.summary} onChange={e=>update("summary",e.target.value)}/></Field><details><summary>Interview notes and concerns</summary><Field label="Interview notes"><textarea rows={4} maxLength={20000} value={v.notes} onChange={e=>update("notes",e.target.value)}/></Field><Field label="Outstanding concerns"><textarea rows={2} maxLength={10000} value={v.concerns} onChange={e=>update("concerns",e.target.value)} placeholder="Write None if there are no outstanding concerns."/></Field></details>
+ {!initial.readiness.ready&&<p className="hub-muted">To send for review, add: {initial.readiness.missing.join(", ")}.</p>}<Feedback error={m.error} success={m.success}/><button className="hub-button secondary" disabled={m.busy}>{m.busy?"Saving…":"Save interview handoff"}</button>
+ </form>
+}

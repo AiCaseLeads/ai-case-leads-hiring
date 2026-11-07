@@ -1,4 +1,6 @@
 "use client";
+import { JobImport } from "./job-import";
+import { JobAutomation } from "./job-automation";
 import { NavigationLink } from "./navigation-link";
 import { useEffect, useRef, useState } from "react";
 import { Plus, Copy, ExternalLink, Users, Files, Pause, Play, Archive, ArchiveRestore, Trash2 } from "lucide-react";
@@ -53,6 +55,8 @@ export function Jobs({
     [success, setSuccess] = useState(""),
     [templateJob, setTemplateJob] = useState<HubJob | null>(null),
     [templateName, setTemplateName] = useState("");
+  const [importOpen,setImportOpen]=useState(false);
+  const [automationJob,setAutomationJob]=useState<HubJob|null>(null);
   const [teamJob, setTeamJob] = useState<HubJob | null>(null);
   const [deleteJob, setDeleteJob] = useState<HubJob | null>(null);
   const deleteDialog = useRef<HTMLElement>(null);
@@ -276,6 +280,7 @@ export function Jobs({
         .toLowerCase()
         .includes(search.toLowerCase()),
   );
+  if(importOpen)return <JobImport onClose={()=>setImportOpen(false)} onPublished={()=>{setImportOpen(false);void jobs.reload();changed();}}/>;
   return (
     <>
       <div hidden={!editorVisible}>{editorVisible ? editor : null}</div>
@@ -334,6 +339,7 @@ export function Jobs({
             <h2 id="jobs-title">Jobs</h2>
             <p>Manage your job postings and their applicants.</p>
           </div>
+          {admin && <button className="hub-button secondary" type="button" onClick={()=>setImportOpen(true)}>Create with AI / upload</button>}
           {admin && (
             <button
               className="hub-button"
@@ -367,6 +373,7 @@ export function Jobs({
             <button className="hub-text-button" type="button" disabled={mutation.busy} onClick={() => setDeleteJob(null)}>Cancel deletion</button>
           </div>
         </section></div>}
+        {automationJob&&<div><button type="button" className="hub-text-button" onClick={()=>setAutomationJob(null)}>Close automation</button><JobAutomation key={automationJob.id+":"+automationJob.formVersion} job={automationJob} changed={()=>{setAutomationJob(null);void jobs.reload();changed();}}/></div>}
         {teamJob && (
           <JobTeamPanel
             key={teamJob.id}
@@ -442,7 +449,7 @@ export function Jobs({
                       </NavigationLink>
                     )}
                     {admin && collection !== "active" && <button className="hub-text-button" disabled={mutation.busy} onClick={() => void lifecycleAction(j, "restore")}><ArchiveRestore size={15} /> Restore job</button>}
-                    <JobActionMenu label={`Actions for ${j.title}`}>
+                    <JobActionMenu label={`Actions for ${j.title}`}><button type="button" onClick={()=>setAutomationJob(j)}>Automation</button><a href={"/team?view=interviews&jobId="+encodeURIComponent(j.id)}>View interviews</a>
 {admin && collection === "active" && j.status !== "draft" && <button className="hub-text-button" disabled={mutation.busy} onClick={() => void lifecycleAction(j, j.status === "open" ? "pause" : "resume")}>{j.status === "open" ? <><Pause size={15} /> Pause job</> : <><Play size={15} /> Resume job</>}</button>}
                         {collection === "active" && <button
                           className="hub-text-button"

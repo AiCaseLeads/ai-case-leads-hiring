@@ -1,3 +1,4 @@
+import {workflowNotificationMail} from "./hub/recruiting-workflow";
 import { AUTOMATIC_REPLY_TO } from './email/contracts';
 import { automaticMailTransport, reserveAutomaticMail, isAutomaticMailDeferred, type AutomaticMailResolver } from './email/service';
 import { candidateTaskMailMode, isInterviewInvitationTask, isRejectionTask, isMailSetupError } from "./google/mail-setup";
@@ -57,7 +58,7 @@ async function reconcileUncertain(db:D1Database,store:HubStore,max:number,deadli
     const claimed=await db.prepare("UPDATE hub_tasks SET status='running',lease_token=?,lease_until=?,updated_at=? WHERE id=? AND status='uncertain' AND run_after<=? RETURNING id").bind(lease,Date.now()+5*60*1000,Date.now(),item.id,Date.now()).first();
     if(!claimed)continue;
     try{
-      const payload=JSON.parse(item.payload_json) as MailInput & {jobNotification?:boolean;reviewReminder?:boolean;deliveryAccount?:string;deliveryProvider?:string;deliveryFingerprint?:string;deliveryTo?:string;deliveryStartedAt?:number};
+      const payload=JSON.parse(item.payload_json) as MailInput & {jobNotification?:boolean;reviewReminder?:boolean;workflowNotification?:boolean;deliveryAccount?:string;deliveryProvider?:string;deliveryFingerprint?:string;deliveryTo?:string;deliveryStartedAt?:number};
       let found:Record<string,unknown>|null;
       if(payload.deliveryProvider==='sendgrid'){
         const transport=await automaticResolver();transport.setDeadline?.(deadline);
@@ -66,7 +67,7 @@ async function reconcileUncertain(db:D1Database,store:HubStore,max:number,deadli
       }else{
         // Missing provider is a legacy Gmail send, never a reason to migrate uncertainty.
         if(payload.deliveryProvider&&payload.deliveryProvider!=='gmail')throw {code:'mail_delivery_provider_unknown'};
-        const internal=payload.jobNotification===true||payload.reviewReminder===true;
+        const internal=payload.jobNotification===true||payload.reviewReminder===true||payload.workflowNotification===true;
         const transport=await candidateTransport(store,payload.deliveryAccount || (internal?process.env.CANDIDATE_MAIL_ACCOUNT:undefined),resolver);
         transport.setDeadline?.(deadline);
         const gmailResult=await transport.reconcileMail(payload.messageId);found=gmailResult?{...gmailResult}:null;
@@ -92,6 +93,11 @@ async function taskEffect(task:Task,store:HubStore,db:D1Database,bucket:R2Bucket
     if(await applicationTrash(store,task.applicationId)) return {stale:true,applicationTrashed:true};
   }
   if(task.kind==="gmail"){
+    if(task.payload.workflowNotification===true){
+      const mail=await workflowNotificationMail(task,store,owners);
+      if(!mail)return {stale:true};
+      return sendAutomaticTask(task,mail,store,db,deadline,automaticResolver);
+    }
     if(task.payload.jobNotification===true){
       const mail=await jobNotificationMail(task,store,owners);
       if(!mail||mail.to.trim().toLowerCase()==="sales@aicaseleads.com")return {stale:true};

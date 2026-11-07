@@ -3,6 +3,7 @@ import { isIP } from "node:net";
 
 const MAX_FILE = 10 * 1024 * 1024;
 const MAX_JSON = 512 * 1024;
+const MAX_RECORDING = 100 * 1024 * 1024;
 export function normalizeRailwayRequest(request, origin, railwayEdge = !!process.env.RAILWAY_DEPLOYMENT_ID) {
   const site = new URL(origin);
   const realIp = typeof request.headers["x-real-ip"] === "string" ? request.headers["x-real-ip"].trim() : "";
@@ -67,7 +68,10 @@ export function railwayRequestHandler(listeners, origin, legacyDomain = process.
     }
     normalizeRailwayRequest(request, origin);
     const fileUpload = request.method === "POST" && /^\/api\/uploads\/[a-f0-9]{64}$/.test(pathname);
-    const limit = fileUpload ? MAX_FILE + 65536 : MAX_JSON;
+    // Large bodies are allowed only on these exact authenticated raw-upload routes.
+    const jobImportUpload = request.method === "POST" && pathname === "/api/job-import/upload";
+    const recordingUpload = request.method === "POST" && pathname === "/api/hub/interview-recordings";
+    const limit = fileUpload ? MAX_FILE + 65536 : recordingUpload ? MAX_RECORDING : jobImportUpload ? MAX_FILE : MAX_JSON;
     const length = Number(request.headers["content-length"] || 0);
     if (!Number.isFinite(length) || length < 0 || length > limit) { reject(response, "request_too_large", 413); request.resume(); return; }
     let incoming = request;

@@ -312,3 +312,8 @@ export const hubApplicationViews = sqliteTable("hub_application_views", {
   viewerEmail:text("viewer_email").notNull(),
   viewedAt:integer("viewed_at").notNull(),
 }, table => [primaryKey({columns:[table.applicationId,table.viewerEmail]})]);
+
+export const hubRecruiterReviews = sqliteTable("hub_recruiter_reviews", {
+ applicationId:text("application_id").primaryKey().notNull().references(()=>hubApplications.id),
+ version:integer("version").notNull().default(1),recommendation:text("recommendation").notNull().default(""),notes:text("notes").notNull().default(""),summary:text("summary").notNull().default(""),recordingUrl:text("recording_url").notNull().default(""),salaryExpectation:text("salary_expectation").notNull().default(""),availability:text("availability").notNull().default(""),concerns:text("concerns").notNull().default(""),updatedBy:text("updated_by").notNull(),updatedAt:integer("updated_at").notNull(),
+},table=>[index("hub_recruiter_review_updated_idx").on(table.updatedAt)]);

@@ -2,15 +2,19 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createStore,jobInput,applicationInput,MANAGER,RECRUITER,currentAction} from './fixtures';
 import {markNotesReviewed} from '../../lib/hub/note-review';
+import {saveRecruiterReview} from '../../lib/hub/recruiting-workflow';
 import {handleHubRequest} from '../../lib/hub/http';
 test('founder review requires saved notes, progresses without mail and remains protected from initial-review bulk rejection',async()=>{
  const {store,database}=createStore();try{
  const job=await store.saveJob(jobInput()),app=await store.acceptApplication(applicationInput(job.id));
  const mails=()=>database.prepare("SELECT count(*) n FROM hub_tasks WHERE kind='gmail'").get()!.n;
- const before=mails();await assert.rejects(currentAction(store,app.id,{action:'stage',stage:'Awaiting Founder Review'},MANAGER),{code:'interview_notes_required'});
+ const before=mails();await assert.rejects(currentAction(store,app.id,{action:'stage',stage:'Awaiting Founder Review'},MANAGER),{code:'interview_handoff_incomplete'});
  await currentAction(store,app.id,{action:'note',text:'First interview completed; strong examples.'},RECRUITER);
+ await saveRecruiterReview(store,app.id,{expectedVersion:0,recommendation:'advance',notes:'Strong examples',summary:'First interview complete',recordingUrl:'https://example.invalid/recording',salaryExpectation:'3000',availability:'Immediately',concerns:'None'},RECRUITER);
  await currentAction(store,app.id,{action:'stage',stage:'Awaiting Founder Review'},RECRUITER);
  assert.equal((await store.applications({stage:'Awaiting Founder Review',active:true})).total,1);
+ const review=(await store.getApplication(app.id,MANAGER.email)).notesReview!;
+ await markNotesReviewed(store,app.id,MANAGER.email,review.version);
  await currentAction(store,app.id,{action:'stage',stage:'Second Round Interview'},MANAGER);
  assert.equal(mails(),before);assert.equal((await store.applications({stage:'Second Round Interview',active:true})).total,1);
  assert.ok((await store.reports()).conversion.some(row=>row.stage==='Second Round Interview'&&row.count===1));

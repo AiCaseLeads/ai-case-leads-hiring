@@ -1,3 +1,4 @@
+import {getRecruiterReview,saveRecruiterReview,workflowOverview,listRoleInterviews,workflowSettings,saveWorkflowSettings} from "./recruiting-workflow";
 import {markNotesReviewed} from "./note-review";
 import {STAGES} from "./types";
 import {sendShareInvitations} from "./share-invitations";
@@ -97,7 +98,14 @@ export async function handleHubRequest(
     if (request.method !== "GET") assertSameOrigin(request);
     const [section, id, operation] = path;
     let data: unknown;
-    if (section === "overview" && request.method === "GET")
+    if(section==='meetgeek') {const {handleMeetGeekRequest}=await import('../meetgeek/service');return handleMeetGeekRequest(request,path,member,store);}
+    if(section==='workflow'&&id==='overview'&&request.method==='GET')data=await workflowOverview(store,member);
+    else if(section==='workflow'&&id==='settings'&&request.method==='GET')data=await workflowSettings(store);
+    else if(section==='workflow'&&id==='settings'&&request.method==='PATCH')data=await saveWorkflowSettings(store,await json(request),member);
+    else if(section==='interviews'&&!id&&request.method==='GET'){const params=new URL(request.url).searchParams;data=await listRoleInterviews(store,{jobId:params.get('jobId')||undefined,owner:params.get('owner')||undefined,status:params.get('status')||undefined,page:params.has('page')?Number(params.get('page')):undefined,pageSize:params.has('pageSize')?Number(params.get('pageSize')):undefined});}
+    else if(section==='applications'&&id&&operation==='recruiter-review'&&request.method==='GET')data=await getRecruiterReview(store,id,member);
+    else if(section==='applications'&&id&&operation==='recruiter-review'&&['PUT','PATCH'].includes(request.method))data=await saveRecruiterReview(store,id,await json(request),member);
+    else if (section === "overview" && request.method === "GET")
       data = await store.overview();
     else if(section==='applications' && id && operation==='share-invitations' && request.method==='POST'){
       const body=await json(request) as Record<string,unknown>;

@@ -1,5 +1,5 @@
 import { withRequiredApplicationFields } from "../../lib/hiring/contact-fields";
-import { currentAction, currentBulk } from "./fixtures";
+import { addReviewedNote, currentAction, currentBulk } from "./fixtures";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { applicationIdForSubmissionKey } from "../../lib/hub/store";
@@ -268,7 +268,7 @@ test("bulk actions are all-or-nothing and private settings exclude sealed OAuth 
   const posting = await store.saveJob(jobInput());
   const { id } = await store.acceptApplication(applicationInput(posting.id));
   await assert.rejects(
-    currentBulk(store, [id, "missing"], { action: "stage", stage: "Offer" }, MANAGER),
+    currentBulk(store, [id, "missing"], { action: "stage", stage: "Screening" }, MANAGER),
     { code: "application_not_found" },
   );
   assert.equal((await store.getApplication(id)).stage, "Application Review");
@@ -609,6 +609,7 @@ test("source quality measures distinct actual stage visits and uses applications
     a3 = await cohort("alpha", 1),
     b1 = await cohort("beta", 1),
     b2 = await cohort("beta", 2);
+  for (const app of [a1,a3,b1]) await addReviewedNote(store,app.id);
   for (const stage of ["Interview", "Offer", "Interview", "Hired"] as const)
     await currentAction(store, a1.id, { action: "stage", stage }, MANAGER);
   await currentAction(store, a2.id, { action: "stage", stage: "Interview" }, MANAGER);

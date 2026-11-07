@@ -1,0 +1,2 @@
+import {requireHubMember} from '@/lib/hub/auth';import {getHubStore} from '@/lib/hub/runtime';import {assertSameOrigin,errorResponse} from '@/lib/hiring/http';import {workspaceEnv} from '@/lib/workspace-config';import {handleImport} from '@/lib/job-import/handler';
+export const dynamic='force-dynamic';export async function POST(r:Request){try{await requireHubMember(r);assertSameOrigin(r);return await handleImport(r,await getHubStore(r),workspaceEnv().GOOGLE_TOKEN_KEY);}catch(e){return errorResponse(e);}}

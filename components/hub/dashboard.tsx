@@ -1,8 +1,11 @@
 "use client";
+import { WorkflowHome } from "./workflow-home";
+import { InterviewWorkspace } from "./interview-workspace";
 import { NavigationLink, applicantHref } from "./navigation-link";
 import { requestDraftNavigation } from "./draft-navigation";
 import { useEffect, useRef, useState } from "react";
 import {
+  CalendarDays,
   BarChart3,
   BriefcaseBusiness,
   ClipboardList,
@@ -26,10 +29,11 @@ import { Badge, EmptyState, ResourceState } from "./shared";
 import { stageLabel, stages, type Member, type Overview } from "./types";
 
 type View =
-  "overview" | "applications" | "jobs" | "reports" | "tasks" | "settings";
+  "overview" | "applications" | "interviews" | "jobs" | "reports" | "tasks" | "settings";
 const navigation = [
   { id: "overview", label: "Home", icon: LayoutDashboard },
   { id: "applications", label: "Applicants", icon: ClipboardList },
+  { id: "interviews", label: "Interviews", icon: CalendarDays },
   { id: "jobs", label: "Jobs", icon: BriefcaseBusiness },
   { id: "reports", label: "Reports", icon: BarChart3 },
   { id: "settings", label: "Settings", icon: Settings2 },
@@ -70,7 +74,7 @@ export function HiringDashboard({
     }
     if(params.get("personalMail"))queueMicrotask(()=>setWorkspaceNotice(params.get("personalMail")==="connected"?"Your recruiting email account is connected. Confirm your sender setup and test delivery before using it.":"Your recruiting email was not connected. Choose your signed-in account and approve all requested permissions, then try again."));
     const requested = params.get("view");
-    const allowed = ["home", "overview", "applications", "jobs", "reports", "tasks", "settings"];
+    const allowed = ["home", "overview", "applications", "interviews", "jobs", "reports", "tasks", "settings"];
     const next = requested && allowed.includes(requested) ? (requested === "home" ? "overview" : requested as View) : params.has("application") ? "applications" : "overview";
     setView(next);
     setDetailId(params.get("application"));
@@ -78,7 +82,7 @@ export function HiringDashboard({
     setCandidateSection(requestedSection==="review" || requestedSection==="activity" ? requestedSection : "application");
     setCandidateAction(params.get("candidateAction") === "interview" ? "interview" : "note");
     setInitialStage(next === "applications" && stages.includes(params.get("stage") || "") ? params.get("stage")! : "");
-    setInitialJobId(next === "applications" ? params.get("jobId") || "" : "");
+    setInitialJobId(next === "applications" || next === "interviews" ? params.get("jobId") || "" : "");
     const filters = new URLSearchParams();
     for (const key of ["q", "jobId", "stage", "excludeStage", "assignee", "qualification", "grade", "sort", "top", "active", "duplicate", "trash", "appliedFrom", "appliedTo", "timeZone"]) if (next === "applications" && params.has(key)) filters.set(key, params.get(key)!);
     setInitialFilter(filters.toString());
@@ -162,7 +166,7 @@ export function HiringDashboard({
   function selectApplication(id: string, action?: "interview", filter?: string, section?:"application"|"review"|"activity") {
     const url = new URL(window.location.href); url.searchParams.set("application", id);
     if(section)url.searchParams.set("candidateSection",section);else url.searchParams.delete("candidateSection");
-    if(filter) new URLSearchParams(filter).forEach((value,key)=>url.searchParams.set(key,value));
+    if(filter!==undefined){for(const key of ["q","jobId","stage","excludeStage","assignee","qualification","grade","sort","top","active","duplicate","trash","appliedFrom","appliedTo","timeZone","page"])url.searchParams.delete(key);url.searchParams.set("view","applications");new URLSearchParams(filter).forEach((value,key)=>url.searchParams.set(key,value));}
     if(action) url.searchParams.set("candidateAction",action); else url.searchParams.delete("candidateAction");
     navigate(url, false, window.location.href);
   }
@@ -271,6 +275,7 @@ export function HiringDashboard({
             <CandidateDetail
               key={`${detailId}:${candidateAction}`}
               id={detailId}
+              reviewerEmail={member.email}
               initialAction={candidateAction}
               initialSection={candidateSection}
               onDecisionNotice={showDecision}
@@ -283,11 +288,13 @@ export function HiringDashboard({
           ) : view === "overview" ? (
             <>
               <div className="hub-section-heading">
-                <div><h1>Hiring overview</h1><p>Team totals by current stage, across all jobs. These are not counts since your last sign-in.</p></div>
+                <div><h1>Your hiring workspace</h1><p>Review applicants, complete interviews and make the next decision.</p></div>
                 <button className="hub-button" onClick={beginJob}>Create job</button>
               </div>
               <ResourceState loading={resource.loading} error={resource.error} retry={() => void resource.reload()} />
               {data && !resource.loading && <>
+                <WorkflowHome refresh={refresh} reviewerEmail={member.email} open={(id,filter)=>selectApplication(id,undefined,filter,"review")} />
+                <details className="hub-overview-details"><summary>Hiring overview &amp; connections</summary>
                 <div className="hub-overview-metrics" aria-label="Hiring snapshot">
                   {[{stage:"Application Review",label:"In initial review"},{stage:"Screening",label:"Shortlisted"},{stage:"Interview",label:"Interviews"}].map(item => <button className="hub-overview-metric" key={item.stage} onClick={() => openStage(item.stage)}><span>{item.label}</span><strong>{(data.stageCounts.find(stage => stage.stage === item.stage)?.count || 0).toLocaleString()}</strong><small>Across all jobs · view applicants</small></button>)}
                   <button className="hub-overview-metric" onClick={() => changeView("jobs")}><span>Open jobs</span><strong>{data.jobs.filter(job => job.status === "open" && (!job.lifecycle || job.lifecycle.state === "active")).length}</strong><small>Manage jobs</small></button>
@@ -303,11 +310,13 @@ export function HiringDashboard({
                   </section>
                   <ReviewReminderQueue refresh={refresh} onSelect={selectApplication} compact />
                 </div>
-                <div className="hub-home-status" aria-label="Hiring connections"><span className="hub-muted">{data.integrations.google && data.integrations.drive && data.integrations.applicationsEnabled ? "Company connections ready" : "Company needs attention"}</span><button className="hub-text-button" onClick={() => changeView("settings")}>Connections &amp; team</button><button className="hub-text-button" onClick={() => changeView("tasks")}>Delivery activity</button></div>
+                <div className="hub-home-status" aria-label="Hiring connections"><span className="hub-muted">{data.integrations.google && data.integrations.drive && data.integrations.applicationsEnabled ? "Company connections ready" : "Company needs attention"}</span><button className="hub-text-button" onClick={() => changeView("settings")}>Connections &amp; team</button><button className="hub-text-button" onClick={() => changeView("tasks")}>Delivery activity</button></div></details>
               </>}
             </>
           ) : view === "applications" ? null : view === "jobs" ? (
             <Jobs admin={true} refresh={refresh} changed={changed} startCreating={!!createJob} onManageScorecards={manageScorecards} />
+          ) : view === "interviews" ? (
+            <InterviewWorkspace jobId={initialJobId} refresh={refresh} jobs={data?.jobs || []} openApplicant={(id:string)=>selectApplication(id,undefined,undefined,"review")} />
           ) : view === "reports" ? (
             <Reports refresh={refresh} />
           ) : view === "tasks" ? (
