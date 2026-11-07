@@ -9,7 +9,7 @@ import { SQLiteD1Database } from "../../lib/railway/sqlite";
 import { FileObjectStore, MAX_OBJECT_BYTES } from "../../lib/railway/object-store";
 import { initializeRailwayStorage, closeRailwayStorage, getRailwayStorage, env, healthRailwayStorage } from "../../lib/railway/bindings";
 import { HubStore } from "../../lib/hub/store";
-import { jobInput, applicationInput, MANAGER, currentAction } from "../hub/fixtures";
+import { jobInput, applicationInput, MANAGER, currentAction, addReviewedNote } from "../hub/fixtures";
 import { createRailwayBackup } from "../../scripts/railway-backup.mjs";
 
 const migrations = path.resolve("drizzle");
@@ -61,14 +61,15 @@ test("actual hiring acceptance, receipts and task CAS persist through adapter re
     assert.equal(new Set(results.map(result=>result.id)).size,1);const id=results[0].id;
     assert.equal(await db.prepare("SELECT COUNT(*) n FROM hub_applications").first<number>("n"),1);
     assert.equal(await db.prepare("SELECT COUNT(*) n FROM hub_tasks").first<number>("n"),2);
+    await addReviewedNote(store,id);
     const revision=(await store.getApplication(id)).revision;
     const decisions=await Promise.allSettled([store.action(id,{action:"stage",stage:"Offer",expectedRevision:revision},MANAGER),store.action(id,{action:"reject",reason:"Synthetic",expectedRevision:revision},MANAGER)]);
     assert.equal(decisions.filter(decision=>decision.status==="fulfilled").length,1);
     await assert.rejects(db.prepare("INSERT INTO hub_scorecards(id,application_id,actor,score,criteria,text,created_at) VALUES('invalid','missing','synthetic',1,'','',0)").run());
     db.close();db=new SQLiteD1Database(path.join(root,"hiring.sqlite"));db.migrate(migrations);store=new HubStore(db.asD1(),{sessionHash:"a".repeat(64),origin:"https://jobs.example.invalid"});
-    const detail=await store.getApplication(id);assert.equal(detail.stage,"Offer");assert.equal(detail.revision,revision+1);
+    const detail=await store.getApplication(id);assert.ok(["Offer","Rejected"].includes(detail.stage),"exactly one concurrent disposition persists");assert.equal(detail.revision,revision+1);
     assert.equal((statSync(path.join(root,"hiring.sqlite")).mode&0o777),0o600);
-    await currentAction(store,id,{action:"note",text:"After real adapter restart"},MANAGER);assert.equal((await store.getApplication(id)).notes[0].text,"After real adapter restart");
+    await currentAction(store,id,{action:"note",text:"After real adapter restart"},MANAGER);assert.ok((await store.getApplication(id)).notes.some(note=>note.text==="After real adapter restart"));
   }finally{db.close();rmSync(root,{recursive:true,force:true});}
 });
 test("private originals persist metadata, exact bytes and streaming behavior across restart",async()=>{

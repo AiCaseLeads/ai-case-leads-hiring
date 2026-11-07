@@ -1,0 +1,3 @@
+import type {HubStore} from '../hub/store';
+import type {Recording} from './recordings';
+export async function listInterviewRecordings(store:HubStore,applicationId:string){await store.applicationRow(applicationId);const rows=await store.rows<{value:string}>("SELECT value FROM hub_settings WHERE key LIKE 'interview_recording:%' AND json_valid(value) AND json_extract(value,'$.applicationId')=? ORDER BY updated_at DESC",applicationId);return rows.flatMap(row=>{try{const record=JSON.parse(row.value) as Recording;return record.applicationId===applicationId?[{id:record.id,filename:record.filename,contentType:record.contentType,size:record.size,createdAt:record.createdAt,url:'/api/hub/interview-recordings/'+record.id}]:[];}catch{return [];}});}

@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { HubStore } from "../../lib/hub/store";
 import { handleHubRequest } from "../../lib/hub/http";
 import { handleCandidateRequest } from "../../lib/hub/candidate";
-import { createStore, jobInput, applicationInput, MANAGER, RECRUITER, currentAction, currentSettings, approveScheduling } from "./fixtures";
+import { createStore, jobInput, applicationInput, MANAGER, RECRUITER, addReviewedNote, currentAction, currentSettings, approveScheduling } from "./fixtures";
 
 const origin = "https://jobs.example.invalid";
 const request = (path:string,body:unknown,method="POST") => new Request(`${origin}${path}`,{method,headers:{Origin:origin,"Content-Type":"application/json"},body:JSON.stringify(body)});
@@ -37,6 +37,7 @@ test("a stale settings screen cannot restore a revoked recruiter, and successful
 test("stale staff rejection fails through HTTP before changing a hired application or queuing mail",async()=>{
   const {store,database}=createStore(),{id}=await application(store);
   const stale=await store.getApplication(id);
+  await addReviewedNote(store,id);
   await currentAction(store,id,{action:"stage",stage:"Hired"},MANAGER);
   const response=await handleHubRequest(request(`/api/hub/applications/${id}/action`,{action:"reject",reason:"Synthetic stale decision",expectedRevision:stale.revision}),["applications",id,"action"],RECRUITER,store);
   assert.equal(response.status,409);
@@ -50,6 +51,7 @@ test("stale staff rejection fails through HTTP before changing a hired applicati
 test("one stale revision aborts the entire bulk decision and its emails",async()=>{
   const {store,database}=createStore(),{id:first,job}=await application(store),{id:second}=await store.acceptApplication(applicationInput(job.id));
   const expectedRevisions={[first]:1,[second]:1};
+  await addReviewedNote(store,second);
   await currentAction(store,second,{action:"stage",stage:"Offer"},MANAGER);
   const response=await handleHubRequest(request('/api/hub/bulk',{ids:[first,second],action:"reject",reason:"Synthetic bulk decision",expectedRevisions}),["bulk"],MANAGER,store);
   assert.equal(response.status,409);

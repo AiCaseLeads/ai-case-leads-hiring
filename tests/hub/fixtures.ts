@@ -183,3 +183,10 @@ export async function approveScheduling(store: HubStore) {
     MANAGER,
   );
 }
+
+export async function addReviewedNote(store:HubStore,id:string,member:HubMember=MANAGER) {
+ await currentAction(store,id,{action:"note",text:"Interview evidence reviewed for hiring decision."},member);
+ const {markNotesReviewed}=await import("../../lib/hub/note-review");
+ const review=(await store.getApplication(id,member.email)).notesReview!;
+ await markNotesReviewed(store,id,member.email,review.version);
+}

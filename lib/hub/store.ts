@@ -1,3 +1,4 @@
+import {assertHiringTransition,workflowNotificationStatements} from "./recruiting-workflow";
 import {notesReviews} from "./note-review";
 import {candidateMail} from "../job-team/service";
 import {isInterviewInvitationTask} from "../google/mail-setup";
@@ -808,9 +809,9 @@ export class HubStore {
     const where:string[] = [filters.trash?`NOT (${activeApplicationsSql('a')})`:activeApplicationsSql('a')], values:Bind[] = [];
     if(filters.q) {where.push("(instr(lower(a.name),lower(?))>0 OR instr(lower(a.email),lower(?))>0)");values.push(filters.q,filters.q);}
     for(const [key,column] of [["jobId","job_id"],["stage","stage"],["assignee","assignee"],["qualification","qualification"]] as const)
-      if(filters[key]) {where.push(`a.${column}=?`);values.push(filters[key]!);}
+      if(filters[key]) {if(key==="assignee"&&filters[key]==="unassigned")where.push("(a.assignee IS NULL OR trim(a.assignee)='')");else {where.push(`a.${column}=?`);values.push(filters[key]!);}}
     if(filters.excludeStage){where.push("a.stage<>?");values.push(filters.excludeStage);}
-    if(filters.active)where.push("a.stage NOT IN ('Rejected','Withdrawn','Hired')");
+    if(filters.active&&!filters.stage)where.push("a.stage NOT IN ('Rejected','Withdrawn','Hired')");
     const dates=applicationDateBounds(filters);
     if(dates.from!==undefined){where.push("a.created_at>=?");values.push(dates.from);}
     if(dates.to!==undefined){where.push("a.created_at<?");values.push(dates.to);}
@@ -1363,10 +1364,11 @@ export class HubStore {
             422,
             "Use Reject and record a rejection reason.",
           );
-        if(input.stage==='Awaiting Founder Review'&&!await this.stmt("SELECT id FROM hub_history WHERE application_id=? AND type='note' AND trim(text)<>'' LIMIT 1",app.id).first())throw new HiringError('interview_notes_required',422,'Save interview notes before sending this applicant for founder review.');
+        await assertHiringTransition(this,app.id,input.stage,member);
         stage = input.stage;
         text = `Moved to ${stage}`;
         if (stage === app.stage) return [];
+        if(stage==='Awaiting Founder Review')statements.push(...await workflowNotificationStatements(this,app.id,eventId,now));
         break;
       case "assign":
         if (input.assignee === undefined)

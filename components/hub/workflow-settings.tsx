@@ -1,0 +1,6 @@
+"use client";
+import {useHubResource,useHubMutation} from "./api";
+import {useState} from "react";
+import {Field,ResourceState,Feedback} from "./shared";
+export function WorkflowSettings(){const r=useHubResource<{approvers:string[]}>("/api/hub/workflow/settings");return <section className="hub-card"><h3>Hiring decision-makers</h3><p>These people can approve second interviews and offers. The account owner always retains approval access.</p><ResourceState loading={r.loading} error={r.error} retry={()=>void r.reload()}/>{r.data&&<Approvers key={r.data.approvers.join(',')} initial={r.data.approvers} saved={()=>void r.reload()}/>}</section>}
+function Approvers({initial,saved}:{initial:string[];saved:()=>void}){const [emails,set]=useState(initial.join('\n')),m=useHubMutation();return <form onSubmit={async e=>{e.preventDefault();if(await m.run('/api/hub/workflow/settings','PATCH',{approvers:emails.split(/[\n,]/).map(s=>s.trim()).filter(Boolean)},'Hiring decision-makers saved.')!==undefined)saved()}}><Field label="Approver email addresses"><textarea rows={2} value={emails} onChange={e=>set(e.target.value)}/></Field><button className="hub-button secondary" disabled={m.busy}>Save decision-makers</button><Feedback error={m.error} success={m.success}/></form>}

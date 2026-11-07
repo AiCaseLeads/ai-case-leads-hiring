@@ -45,7 +45,7 @@ test('active review filter matches all-page export/navigation while explicit his
   for(const stage of ['Rejected','Withdrawn','Hired','Screening']){const {id}=await f.store.acceptApplication(applicationInput(first.job_id));f.database.prepare('UPDATE hub_applications SET stage=? WHERE id=?').run(stage,id);ids.push(id);}
   const filters={jobId:first.job_id,active:true,sort:'newest' as const};const list=await f.store.applications(filters);assert.equal(list.total,2);assert.deepEqual(new Set(list.items.map(x=>x.id)),new Set([ids[0],ids[4]]));
   assert.deepEqual(await f.store.exportIds(filters),list.items.map(x=>x.id));assert.equal((await f.store.applicationNavigation(list.items[0].id,filters)).nextId,list.items[1].id);
-  assert.equal((await f.store.applications({...filters,stage:'Rejected'})).total,0);
+  assert.equal((await f.store.applications({...filters,stage:'Rejected'})).total,1,'explicit stage overrides the default active scope');
   assert.deepEqual((await f.store.applications({...filters,active:false,stage:'Rejected'})).items.map(x=>x.id),[ids[1]]);
   const response=await handleHubRequest(new Request(`${origin}/api/hub/applications?active=true`),['applications'],RECRUITER,f.store);assert.equal(response.status,200);assert.equal((await response.json() as {data:{total:number}}).data.total,2);
   const all=await handleHubRequest(new Request(`${origin}/api/hub/applications?active=false`),['applications'],RECRUITER,f.store);assert.equal((await all.json() as {data:{total:number}}).data.total,5);

@@ -22,6 +22,9 @@ import { PersonalMailSetup } from "./personal-mail";
 import { AutomaticMailSetup, AutomaticMailNotice, automaticMailExplanation } from "./automatic-mail";
 import { PersonalCalendarSetup } from "./personal-calendar";
 import { TeamAccess } from "./team-access";
+import { AgentAccess } from "./agent-access";
+import { MeetGeekSettings } from "./interview-workspace";
+import { WorkflowSettings } from "./workflow-settings";
 import { RecruitingRequests } from "./recruiting-help";
 
 export function HubSettings({
@@ -60,7 +63,7 @@ export function HubSettings({
       {section === "team" && managesTeam && <><TeamAccess member={member} changed={changed} refresh={refresh} /><details className="hub-card hub-setup-details"><summary>Review reminders</summary><ReviewReminderSettings /></details></>}
       {section === "scorecards" && <><p className="hub-muted">Optional reusable review criteria for teams that want manual scorecards. AI matching uses each job’s description and applicant evidence.</p><section className="hub-card" id="scorecard-settings"><ScorecardTemplates jobs={jobs} /></section></>}
       {section === "help" && <RecruitingRequests />}
-      {section === "company" && (owner || managesTeam) && <><AutomaticMailSetup refresh={refresh} />{owner && <CompanySettings member={member} refresh={refresh} changed={changed} jobs={jobs} onDeliveryActivity={onDeliveryActivity} />}</>}
+      {section === "company" && (owner || managesTeam) && <><MeetGeekSettings/><AgentAccess isOwner={owner}/>{owner&&<WorkflowSettings/>}<AutomaticMailSetup refresh={refresh} />{owner && <CompanySettings member={member} refresh={refresh} changed={changed} jobs={jobs} onDeliveryActivity={onDeliveryActivity} />}</>}
     </div>
   </section>;
 }

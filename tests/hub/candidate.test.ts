@@ -9,6 +9,7 @@ import {
   jobInput,
   approveScheduling,
   currentAction,
+  addReviewedNote,
 } from "./fixtures";
 const req = (token: string, body?: unknown) =>
   new Request(
@@ -537,6 +538,7 @@ test("hiring an applicant also resolves future pending interview reservations th
     store,
     calendar,
   );
+  await addReviewedNote(store,id);
   await currentAction(store, id, { action: "stage", stage: "Hired" }, MANAGER);
   assert.equal(
     (await store.getApplication(id)).interview!.status,

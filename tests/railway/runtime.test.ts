@@ -143,6 +143,18 @@ test("actual Node stream caps chunked bodies and prevents missing-asset caching"
     const oneMiB = await fetch(origin + uploadPath, { method: "POST", body: new Uint8Array(1024 * 1024) }); assert.equal(oneMiB.status, 200); assert.equal(((await oneMiB.json()) as { bytes: number }).bytes, 1024 * 1024);
     const maxMultipart = await fetch(origin + uploadPath, { method: "POST", body: new Uint8Array(10 * 1024 * 1024 + 65536) }); assert.equal(maxMultipart.status, 200); assert.equal(((await maxMultipart.json()) as { bytes: number }).bytes, 10 * 1024 * 1024 + 65536);
     const tooLarge = await fetch(origin + uploadPath, { method: "POST", body: new Uint8Array(10 * 1024 * 1024 + 65537) }); assert.equal(tooLarge.status, 413); await tooLarge.arrayBuffer();
+    for (const [path, cap] of [["/api/job-import/upload", 10 * 1024 * 1024], ["/api/hub/interview-recordings?applicationId=test", 100 * 1024 * 1024]] as const) {
+      const accepted = await fetch(origin + path, { method: "POST", body: new Uint8Array(cap) });
+      assert.equal(accepted.status, 200); assert.equal(((await accepted.json()) as { bytes: number }).bytes, cap);
+      // Chunked uploads must meet the same boundary without trusting Content-Length.
+      const chunks = new ReadableStream({ start(controller) { for (let n = 0; n < cap / (1024 * 1024); n++) controller.enqueue(new Uint8Array(1024 * 1024)); controller.enqueue(new Uint8Array(1)); controller.close(); } });
+      const rejected = await fetch(origin + path, { method: "POST", body: chunks, duplex: "half" } as RequestInit);
+      assert.equal(rejected.status, 413); await rejected.arrayBuffer();
+    }
+    for (const [path, method] of [["/api/job-import/upload/extra", "POST"], ["/api/hub/interview-recordings/extra", "POST"], ["/api/job-import/upload", "PUT"], ["/api/hub/interview-recordings", "PUT"]]) {
+      const rejected = await fetch(origin + path, { method, body: new Uint8Array(512 * 1024 + 1) });
+      assert.equal(rejected.status, 413); await rejected.arrayBuffer();
+    }
     const stream = new ReadableStream({ start(controller) { for (let index = 0; index < 10; index++) controller.enqueue(new Uint8Array(64 * 1024)); controller.close(); } });
     const large = await fetch(origin + "/api/synthetic", { method: "POST", body: stream, duplex: "half" } as RequestInit); assert.equal(large.status, 413);
     const missing = await fetch(origin + "/_next/static/missing.js"); assert.equal(missing.status, 404); assert.equal(missing.headers.get("cache-control"), "no-store"); assert.equal(missing.headers.get("etag"), null); assert.equal(missing.headers.get("last-modified"), null);

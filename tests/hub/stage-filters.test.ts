@@ -15,7 +15,7 @@ test('active scope intersects included/excluded stages consistently across pages
  assert.deepEqual(await store.exportIds(excluded),ids);assert.deepEqual((await store.exportApplications(excluded)).items.map(app=>app.id),ids);
  assert.equal((await store.applicationNavigation(first.items[29].id,excluded)).nextId,second.items[0].id);
  assert.equal((await store.previewBulkRejection(excluded,undefined,'Not selected',MANAGER)).count,35);
- assert.equal((await store.applications({...base,stage:'Rejected'})).total,0);
+ assert.equal((await store.applications({...base,stage:'Rejected'})).total,5,'explicit stage overrides the default active scope');
  assert.equal((await store.applications({jobId:job.id,stage:'Rejected'})).total,5,'legacy terminal-stage URL without active remains available');
  assert.equal((await store.applications({...only,excludeStage:'Screening'})).total,0);
  const query=new URLSearchParams({jobId:job.id,active:'true',excludeStage:'Screening'});
