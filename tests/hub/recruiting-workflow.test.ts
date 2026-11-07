@@ -73,3 +73,13 @@ test('interview workspace filters by role and owner and recruiter-review endpoin
  const bad=new Request(get.url,{method:'PUT',headers:{origin:'https://other.invalid','content-type':'application/json'},body:JSON.stringify({expectedVersion:1,...complete})});assert.equal((await handleHubRequest(bad,['applications',app.id,'recruiter-review'],RECRUITER,store)).status,403);
  }finally{f.database.close();}
 });
+test('interview pages retain full matching count and stable non-overlapping ordering',async()=>{
+ const f=await fixture();try{
+ const {store,database,app}=f;
+ for(let index=0;index<105;index++)database.prepare("INSERT INTO hub_interviews(id,application_id,status,start,end,revision,created_at,updated_at) VALUES(?,?,'booked','2025-01-01T12:00:00.000Z','2025-01-01T12:30:00.000Z',1,0,0)").run('interview-'+String(index).padStart(3,'0'),app.id);
+ const first=await listRoleInterviews(store,{jobId:f.job.id}),second=await listRoleInterviews(store,{jobId:f.job.id,page:2}),last=await listRoleInterviews(store,{jobId:f.job.id,page:3});
+ assert.equal(first.total,105);assert.equal(first.page,1);assert.equal(first.pageSize,50);assert.equal(first.items.length,50);assert.equal(second.items.length,50);assert.equal(last.items.length,5);assert.equal(new Set([...first.items,...second.items,...last.items].map(item=>item.id)).size,105);
+ const response=await handleHubRequest(new Request('https://jobs.example.invalid/api/hub/interviews?page=2&pageSize=100'),['interviews'],RECRUITER,store);const data=(await response.json() as {data:{total:number;page:number;items:unknown[]}}).data;assert.equal(data.total,105);assert.equal(data.page,2);assert.equal(data.items.length,5);
+ await assert.rejects(listRoleInterviews(store,{page:0}),{code:'invalid_interview_page'});await assert.rejects(listRoleInterviews(store,{pageSize:101}),{code:'invalid_interview_page'});
+ }finally{f.database.close();}
+});
