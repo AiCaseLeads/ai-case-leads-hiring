@@ -20,7 +20,8 @@
     "build:railway": "node scripts/build-railway.mjs",
     "start:railway": "node scripts/start-railway.mjs",
     "test:railway": "tsx --test tests/railway/*.test.ts",
-    "test:railway:http": "tsx tests/railway-production.mjs"
+    "test:railway:http": "tsx tests/railway-production.mjs",
+    "test:mcp": "node --test tests/mcp/*.test.mjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",
