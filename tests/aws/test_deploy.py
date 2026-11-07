@@ -34,7 +34,8 @@ class Tests(unittest.TestCase):
     cid=next((i for i,v in state.items() if v['name']==a[2]),a[2]);state[cid]['running']=True;return
    raise AssertionError(a)
   def subrun(a,**kw):
-   if a[:3]==['docker','rm','-f']:state.pop(a[3],None)
+   if a[:3]==['docker','rm','-f']:
+    state.pop(a[3],None);return types.SimpleNamespace(returncode=0)
    return types.SimpleNamespace(returncode=1 if fail=='health' else 0)
   class Login:
    stdout=types.SimpleNamespace(close=lambda:None)
