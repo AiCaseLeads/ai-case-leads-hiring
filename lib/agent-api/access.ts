@@ -1,7 +1,7 @@
 import { privateToken, sha256 } from '../hiring/crypto';
 import { HiringError } from '../hiring/errors';
 import type { HubStore } from '../hub/store';
-export type AgentScope='jobs:draft'|'jobs:publish';
+export type AgentScope='jobs:draft'|'jobs:publish'|'jobs:read'|'applicants:read'|'files:read';
 type Access={id:string;hash:string;name:string;scopes:AgentScope[];createdBy:string;expiresAt:number;revoked:boolean};
 export async function issueAccess(store:HubStore,name:string,scopes:AgentScope[],actor:string){
  const id=crypto.randomUUID(),secret=privateToken(),token=`hiring_${id}_${secret}`;
@@ -12,6 +12,6 @@ export async function authorizeAgent(store:HubStore,request:Request,scope:AgentS
  const token=request.headers.get('authorization')?.match(/^Bearer (hiring_([a-f0-9-]{36})_[a-f0-9]{64})$/);if(!token)throw new HiringError('agent_unauthorized',401,'A valid scoped agent token is required.');
  const record=await store.setting<Access|null>('agent_access_'+token[2],null);
  if(!record||record.revoked||record.expiresAt<=Date.now()||record.hash!==await sha256(token[1])||!record.scopes.includes(scope))throw new HiringError('agent_unauthorized',403,'This token is expired, revoked or lacks the required scope.');
- // A token never impersonates a staff session and never grants applicant access.
+ // Tokens never impersonate staff; every capability requires its explicit scope.
  return record;
 }
