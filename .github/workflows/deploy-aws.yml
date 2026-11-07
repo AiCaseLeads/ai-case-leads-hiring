@@ -34,7 +34,7 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4
         with:
-          role-to-assume: arn:aws:iam::286853118669:role/hiring-github-deploy
+          role-to-assume: arn:aws:iam::286853118669:role/hiring-github-actions-deploy
           aws-region: us-east-1
       - uses: aws-actions/amazon-ecr-login@03f1aad4c6c7ffd436567f42f9384779290529bd # v2
       - name: Build and push immutable commit image

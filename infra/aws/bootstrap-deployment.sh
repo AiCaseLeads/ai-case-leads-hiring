@@ -20,18 +20,18 @@ JSON
 cat > "$folder/document.json" <<'JSON'
 {"schemaVersion":"2.2","description":"Deploy a full SHA-tagged hiring image using the root-owned host script","parameters":{"CommitSha":{"type":"String","allowedPattern":"^[0-9a-f]{40}$","interpolationType":"ENV_VAR"}},"mainSteps":[{"action":"aws:runShellScript","name":"deployHiring","inputs":{"timeoutSeconds":"1800","runCommand":["/usr/bin/python3 /opt/hiring/deploy-hiring.py \"$SSM_CommitSha\""]}}]}
 JSON
-if aws iam get-role --role-name hiring-github-deploy >/dev/null 2>&1; then
-  aws iam get-role --role-name hiring-github-deploy --query Role.AssumeRolePolicyDocument --output json > "$folder/existing-trust.json"
+if aws iam get-role --role-name hiring-github-actions-deploy >/dev/null 2>&1; then
+  aws iam get-role --role-name hiring-github-actions-deploy --query Role.AssumeRolePolicyDocument --output json > "$folder/existing-trust.json"
   python3 -c 'import json,sys; assert json.load(open(sys.argv[1])) == json.load(open(sys.argv[2])), "Existing trust differs; refusing overwrite"' "$folder/trust.json" "$folder/existing-trust.json"
-  [[ $(aws iam list-attached-role-policies --role-name hiring-github-deploy --query 'length(AttachedPolicies)' --output text) == 0 ]] || { echo 'Existing role has attached policies; review manually'; exit 1; }
-  inline=$(aws iam list-role-policies --role-name hiring-github-deploy --query 'PolicyNames' --output text)
+  [[ $(aws iam list-attached-role-policies --role-name hiring-github-actions-deploy --query 'length(AttachedPolicies)' --output text) == 0 ]] || { echo 'Existing role has attached policies; review manually'; exit 1; }
+  inline=$(aws iam list-role-policies --role-name hiring-github-actions-deploy --query 'PolicyNames' --output text)
   [[ -z "$inline" || "$inline" == HiringDeployment || "$inline" == None ]] || { echo 'Existing role has unexpected inline policies'; exit 1; }
   if [[ "$inline" == HiringDeployment ]]; then
-    aws iam get-role-policy --role-name hiring-github-deploy --policy-name HiringDeployment --query PolicyDocument --output json > "$folder/existing-policy.json"
+    aws iam get-role-policy --role-name hiring-github-actions-deploy --policy-name HiringDeployment --query PolicyDocument --output json > "$folder/existing-policy.json"
     python3 -c 'import json,sys; assert json.load(open(sys.argv[1])) == json.load(open(sys.argv[2])), "Existing policy differs; refusing overwrite"' "$folder/policy.json" "$folder/existing-policy.json"
   fi
 else
-  aws iam create-role --role-name hiring-github-deploy --assume-role-policy-document "file://$folder/trust.json" >/dev/null
+  aws iam create-role --role-name hiring-github-actions-deploy --assume-role-policy-document "file://$folder/trust.json" >/dev/null
 fi
 if aws ssm describe-document --name HiringDeploy >/dev/null 2>&1; then
   aws ssm get-document --name HiringDeploy --document-format JSON --query Content --output text > "$folder/existing-document.json"
@@ -39,5 +39,5 @@ if aws ssm describe-document --name HiringDeploy >/dev/null 2>&1; then
 else
   aws ssm create-document --name HiringDeploy --document-type Command --document-format JSON --content "file://$folder/document.json" >/dev/null
 fi
-aws iam put-role-policy --role-name hiring-github-deploy --policy-name HiringDeployment --policy-document "file://$folder/policy.json"
+aws iam put-role-policy --role-name hiring-github-actions-deploy --policy-name HiringDeployment --policy-document "file://$folder/policy.json"
 echo 'Configured GitHub main deployment to hiring-prod only.'
