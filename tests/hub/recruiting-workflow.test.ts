@@ -1,4 +1,5 @@
 import test from 'node:test';
+import {registerHooks} from 'node:module';
 import type {HubMember} from '../../lib/hub/auth';
 import assert from 'node:assert/strict';
 import {createStore,jobInput,applicationInput,MANAGER,RECRUITER,currentAction} from './fixtures';
@@ -82,4 +83,12 @@ test('interview pages retain full matching count and stable non-overlapping orde
  const response=await handleHubRequest(new Request('https://jobs.example.invalid/api/hub/interviews?page=2&pageSize=100'),['interviews'],RECRUITER,store);const data=(await response.json() as {data:{total:number;page:number;items:unknown[]}}).data;assert.equal(data.total,105);assert.equal(data.page,2);assert.equal(data.items.length,5);
  await assert.rejects(listRoleInterviews(store,{page:0}),{code:'invalid_interview_page'});await assert.rejects(listRoleInterviews(store,{pageSize:101}),{code:'invalid_interview_page'});
  }finally{f.database.close();}
+});
+test('MeetGeek asynchronous connection failures use the hub JSON error boundary',async()=>{
+ const hooks=registerHooks({resolve(specifier,context,next){if(specifier==='cloudflare:workers')return {url:'data:text/javascript,export const env = {};',shortCircuit:true};return next(specifier,context);}});
+ const f=await fixture();try{
+ const response=await handleHubRequest(new Request('https://jobs.example.invalid/api/hub/meetgeek/sync',{method:'POST',headers:{origin:'https://jobs.example.invalid','content-type':'application/json'},body:'{}'}),['meetgeek','sync'],MANAGER,f.store);
+ assert.equal(response.status,409);assert.match(response.headers.get('content-type')||'',/application\/json/);
+ const body=await response.json() as {error:{code:string;message:string}};assert.equal(body.error.code,'meetgeek_not_connected');assert.match(body.error.message,/Connect MeetGeek/);
+ }finally{hooks.deregister();f.database.close();}
 });

@@ -1,12 +1,12 @@
 /** MeetGeek API contract: https://docs.meetgeek.ai/api/getting-started/introduction */
 import {HiringError} from '../hiring/errors';
-export const REGIONS={eu:'https://api-eu.meetgeek.ai',us:'https://api-us.meetgeek.ai'} as const;
+export const REGIONS={global:'https://api.meetgeek.ai',eu:'https://api-eu.meetgeek.ai',us:'https://api-us.meetgeek.ai'} as const;
 export type Meeting={meeting_id:string;title?:string;participant_emails?:string[];event_id?:string;join_link?:string;timestamp_start_utc?:string;timestamp_end_utc?:string};
 export function meetingId(value:unknown):string {if(typeof value!=='string'||! /^[A-Za-z0-9_-]{8,100}$/.test(value))throw new HiringError('invalid_meeting',422,'Enter a valid MeetGeek meeting ID.');return value;}
 export class MeetGeekClient {
  constructor(private key:string,private region:keyof typeof REGIONS='eu',private fetcher:typeof fetch=fetch){}
  async request<T>(path:string,method='GET'):Promise<T>{
-  const response=await this.fetcher(REGIONS[this.region]+path,{method,headers:{Authorization:`Bearer ${this.key}`,Accept:'application/json'},redirect:'error',signal:AbortSignal.timeout(15000)});
+  let response:Response;try{response=await this.fetcher(REGIONS[this.region]+path,{method,headers:{Authorization:`Bearer ${this.key}`,Accept:'application/json'},redirect:'error',signal:AbortSignal.timeout(15000)});}catch{throw new HiringError('meetgeek_network_error',502,'MeetGeek could not be reached. Check the API endpoint and try again.');}
   if(!response.ok)throw new HiringError('meetgeek_unavailable',response.status===429?429:502,response.status===401||response.status===403?'MeetGeek access was denied. Check the API key, region and team sharing.':'MeetGeek could not complete this request. Try again shortly.');
   const reader=response.body?.getReader();if(!reader)throw new Error('Empty MeetGeek response');let size=0;const chunks:Uint8Array[]=[];try{while(true){const part=await reader.read();if(part.done)break;size+=part.value.length;if(size>2*1024*1024)throw new HiringError('meetgeek_response_too_large',502,'MeetGeek response exceeded the limit.');chunks.push(part.value);}}finally{await reader.cancel();reader.releaseLock();}const bytes=new Uint8Array(size);let offset=0;for(const chunk of chunks){bytes.set(chunk,offset);offset+=chunk.length;}return JSON.parse(new TextDecoder().decode(bytes)) as T;
  }

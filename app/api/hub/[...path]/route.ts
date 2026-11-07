@@ -10,7 +10,7 @@ async function handle(
   try {
     const member = await requireHubMember(request);
     const { path } = await context.params;
-    return handleHubRequest(request, path, member, await getHubStore(request));
+    return await handleHubRequest(request, path, member, await getHubStore(request));
   } catch (error) {
     return errorResponse(error);
   }

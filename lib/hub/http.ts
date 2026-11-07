@@ -98,7 +98,7 @@ export async function handleHubRequest(
     if (request.method !== "GET") assertSameOrigin(request);
     const [section, id, operation] = path;
     let data: unknown;
-    if(section==='meetgeek') {const {handleMeetGeekRequest}=await import('../meetgeek/service');return handleMeetGeekRequest(request,path,member,store);}
+    if(section==='meetgeek') {const {handleMeetGeekRequest}=await import('../meetgeek/service');return await handleMeetGeekRequest(request,path,member,store);}
     if(section==='workflow'&&id==='overview'&&request.method==='GET')data=await workflowOverview(store,member);
     else if(section==='workflow'&&id==='settings'&&request.method==='GET')data=await workflowSettings(store);
     else if(section==='workflow'&&id==='settings'&&request.method==='PATCH')data=await saveWorkflowSettings(store,await json(request),member);
