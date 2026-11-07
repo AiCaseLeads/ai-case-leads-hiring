@@ -87,7 +87,15 @@ def main():
             temporary.replace(BASE / 'release.json')
             print(json.dumps({'status': 'deployed', 'sha': sha}))
         except Exception:
-            subprocess.run(['docker', 'rm', '-f', new_id], check=False, timeout=60)
+            cleanup = subprocess.run(['docker', 'rm', '-f', new_id], check=False, timeout=60)
+            if cleanup.returncode:
+                # Never start two workers against the live database. If cleanup
+                # cannot prove the new writer stopped, leave recovery to an operator.
+                failed = json.loads(run('docker', 'inspect', new_id, capture=True))[0]
+                if failed['State']['Running']:
+                    run('docker', 'stop', '--time', '30', new_id)
+                if failed['Name'] == '/hiring':
+                    run('docker', 'rename', new_id, 'hiring-failed-' + uuid4().hex[:12])
             try:
                 old = json.loads(run('docker', 'inspect', current['Id'], capture=True))[0]
                 if old['Name'] != '/hiring': run('docker', 'rename', current['Id'], 'hiring')
