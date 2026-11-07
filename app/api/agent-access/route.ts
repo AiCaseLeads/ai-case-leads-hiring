@@ -1,11 +1,11 @@
 import {requireHubMember,requireHubOwner} from '@/lib/hub/auth';
 import {getHubStore} from '@/lib/hub/runtime';
 import {assertSameOrigin,errorResponse,jsonResponse} from '@/lib/hiring/http';
-import {issueAccess,type AgentScope} from '@/lib/agent-api/access';
+import {issueAccess,updateAccessScopes,AGENT_SCOPES,type AgentScope} from '@/lib/agent-api/access';
 import {readBody} from '@/lib/job-import/handler';
 import {HiringError} from '@/lib/hiring/errors';
 export const dynamic='force-dynamic';
-const allowed=['jobs:read','jobs:draft','jobs:publish','applicants:read','files:read'];
+const allowed:readonly string[]=AGENT_SCOPES;
 export async function GET(r:Request){try{
  const m=await requireHubMember(r);requireHubOwner(m);const store=await getHubStore(r);
  const rows=await store.rows<{value:string}>("SELECT value FROM hub_settings WHERE key LIKE 'agent_access_%'");
@@ -23,3 +23,5 @@ export async function DELETE(r:Request){try{
  const store=await getHubStore(r),key='agent_access_'+i.id,entry=await store.setting<Record<string,unknown>|null>(key,null);
  if(entry)await store.setSetting(key,{...entry,revoked:true});return jsonResponse({data:{revoked:true}});
 }catch(e){return errorResponse(e);}}
+
+export async function PATCH(r:Request){try{const member=await requireHubMember(r);requireHubOwner(member);assertSameOrigin(r);return jsonResponse({data:await updateAccessScopes(await getHubStore(r),await readBody(r),member)});}catch(error){return errorResponse(error);}}
