@@ -611,36 +611,53 @@ export class HubStore {
     );
   }
 
-  confirmedReminderStatements(
+  confirmedBookingMailStatements(
     input: { app: { id: string; email: string; name: string; job_title: string }; interviewId: string;
-      revision: number; start: string; meetUrl: string; timeZone: string; now: number },
+      revision: number; start: string; meetUrl: string; timeZone: string; now: number; confirmation?: "create" | "update" },
     guard?: { sql: string; values: Bind[] },
   ): D1PreparedStatement[] {
     const { app, interviewId, revision, start, meetUrl, timeZone, now } = input;
     const startMs = Date.parse(start);
-    if (!Number.isFinite(startMs) || !interviewId || !Number.isSafeInteger(revision) || revision < 1) return [];
+    if (!Number.isFinite(startMs) || startMs <= now || !interviewId || !Number.isSafeInteger(revision) || revision < 1) return [];
     let formatted: string;
     try {
       const url = new URL(meetUrl);
       if (url.origin !== 'https://meet.google.com' || url.pathname.length < 2 || url.username || url.password) return [];
-      formatted = new Intl.DateTimeFormat('en-US', { dateStyle: 'full', timeStyle: 'long', timeZone }).format(startMs);
+      formatted = new Intl.DateTimeFormat('en-US', {
+        weekday: 'long', month: 'long', day: 'numeric', year: 'numeric',
+        hour: 'numeric', minute: '2-digit', hour12: true, timeZoneName: 'short', timeZone,
+      }).format(startMs);
     } catch { return []; }
+    const details = `Please join on time and come prepared to discuss your experience.\n\nJoin Google Meet: ${meetUrl}\n\nAI Case Leads Hiring Team`;
+    const stateGuard = {
+      sql: `${currentBookedReminderSql} AND EXISTS (SELECT 1 FROM hub_interviews WHERE id=? AND meet_url=?)${guard ? ' AND ' + guard.sql : ''}`,
+      values: [interviewId, app.id, revision, start, interviewId, meetUrl, ...(guard?.values || [])],
+    };
+    const metadata = { interviewId, revision, interviewStart: start, meetUrl };
     const statements: D1PreparedStatement[] = [];
+    // Only a successful provider mutation requests a confirmation; the existing-booking
+    // backfill schedules remaining reminders without replaying a booking event.
+    if (input.confirmation) {
+      const action = input.confirmation === 'create' ? 'confirmed' : 'rescheduled';
+      const subject = `Interview ${action}: ${app.job_title}`;
+      const body = `Hi ${app.name},\n\nYour interview for ${app.job_title} is ${action} for ${formatted}.\n\n${details}`;
+      statements.push(...this.mailStatements(
+        `gmail:${app.id}:booking-confirmation:${interviewId}:${revision}`,
+        app, subject, body, now, body,
+        { metadata: { ...metadata, bookingConfirmation: true }, guard: stateGuard },
+      ));
+    }
     for (const { label, before } of bookedReminderTimes) {
       const due = startMs - before;
       if (due <= now) continue;
       const subject = `Interview reminder: ${app.job_title}`;
-      const body = `Hi ${app.name},\n\nYour interview for ${app.job_title} is scheduled for ${formatted}. Please join on time and come prepared to discuss your experience.\n\nJoin Google Meet: ${meetUrl}\n\nAI Case Leads Hiring Team`;
+      const body = `Hi ${app.name},\n\nYour interview for ${app.job_title} is scheduled for ${formatted}. ${details}`;
       statements.push(...this.mailStatements(
         `gmail:${app.id}:reminder:${interviewId}:${revision}:${label}`, app, subject, body, now, body,
         {
           runAfter: due,
-          metadata: { reminder: true, interviewId, revision, interviewStart: start },
-          guard: {
-            sql: `${interviewRemindersEnabledSql} AND ${currentBookedReminderSql} AND
-              EXISTS (SELECT 1 FROM hub_interviews WHERE id=? AND meet_url=?)${guard ? ' AND ' + guard.sql : ''}`,
-            values: [interviewId, app.id, revision, start, interviewId, meetUrl, ...(guard?.values || [])],
-          },
+          metadata: { ...metadata, reminder: true },
+          guard: { sql: `${interviewRemindersEnabledSql} AND ${stateGuard.sql}`, values: stateGuard.values },
         },
       ));
     }
@@ -2163,10 +2180,11 @@ export class HubStore {
       const payload = decode<Record<string, unknown>>(current.payload_json, {});
       const guard = { sql: completed, values: [id, leaseToken, result.status, now] };
       if (current.kind === "calendar" && ["create","update"].includes(String(payload.operation))) {
-        statements.push(...this.confirmedReminderStatements({
+        statements.push(...this.confirmedBookingMailStatements({
           app: await this.applicationRow(current.application_id),
           interviewId: String(payload.interviewId), revision: Number(payload.revision), start: String(payload.start),
           timeZone: String(payload.timeZone), meetUrl: String(result.result?.meetUrl || ''), now,
+          confirmation: payload.operation === 'create' ? 'create' : 'update',
         }, guard));
       }
       // Direct delivery and reconciliation both supply the confirmed provider ID.

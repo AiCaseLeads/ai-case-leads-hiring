@@ -53,8 +53,9 @@ test('candidate can pick a local calendar date before choosing a time on desktop
     assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
     if(process.env.BOOKING_SCREENSHOT_DIR) await page.screenshot({path:process.env.BOOKING_SCREENSHOT_DIR+'/booking-'+width+'.png',fullPage:true});
     await page.goto(url+'?preview');
+    assert.equal(await page.getByRole('combobox',{name:'Your time zone'}).inputValue(),'America/Los_Angeles');
     await page.getByRole('button',{name:'Tuesday, December 31, 2030'}).click();
-    await page.getByRole('radio',{name:'11:30 PM',exact:true}).check();
+    await page.getByRole('radio',{name:'3:30 PM',exact:true}).check();
     assert.ok(await page.getByRole('button',{name:'Book interview'}).isDisabled());
     await page.goto(url+'?empty');
     await page.getByRole('heading',{name:'No available times right now'}).waitFor();
@@ -62,11 +63,12 @@ test('candidate can pick a local calendar date before choosing a time on desktop
     if(width===390 || width===1280){
       await page.goto(url);
       await page.getByRole('button',{name:'Tuesday, December 31, 2030'}).click();
-      await page.getByRole('radio',{name:'11:30 PM',exact:true}).check();
+      await page.getByRole('radio',{name:'3:30 PM',exact:true}).check();
       await page.getByRole('button',{name:'Book interview'}).click();
       await page.getByRole('heading',{name:'Confirming your interview'}).waitFor();
       assert.equal(await page.getByRole('link',{name:'Join Google Meet'}).count(),0);
       await page.getByRole('heading',{name:'Your interview is confirmed'}).waitFor({timeout:8000});
+      assert.equal(booking.timeZone,'America/Los_Angeles');
       await page.getByRole('link',{name:'Join Google Meet'}).waitFor();
       assert.ok(await page.getByText(/Please join on time/).isVisible());
       assert.equal(await page.getByRole('radio').count(),0);
@@ -88,4 +90,50 @@ test('candidate can pick a local calendar date before choosing a time on desktop
     }
     await page.close();
   }
+
+  // The AWS origin has no trusted IP zone. The browser can quietly resolve an
+  // already-permitted location, even when the device clock is set to another zone.
+  const localContext=await browser.newContext({timezoneId:'UTC',geolocation:{latitude:34.0522,longitude:-118.2437},permissions:['geolocation']});
+  t.after(()=>localContext.close());
+  const localPage=await localContext.newPage();
+  const slots=['2030-12-31T23:30:00Z'];
+  const posts=[];
+  await localPage.route('**/api/candidate/*',route=>{
+    if(route.request().method()==='POST') posts.push(route.request().postDataJSON());
+    return route.fulfill({json:{data:{kind:'interview',jobTitle:'Example',status:'invited',slots}}});
+  });
+  await localPage.goto(url);
+  await localPage.waitForFunction(()=>document.querySelector('.booking-zone select')?.value==='America/Los_Angeles');
+  await localPage.getByRole('combobox',{name:'Your time zone'}).selectOption('America/New_York');
+  await localPage.reload();
+  assert.equal(await localPage.getByRole('combobox',{name:'Your time zone'}).inputValue(),'America/New_York');
+  await localPage.getByRole('button',{name:'Use my location'}).click();
+  await localPage.waitForFunction(()=>document.querySelector('.booking-zone select')?.value==='America/Los_Angeles');
+  await localPage.getByRole('button',{name:'Tuesday, December 31, 2030'}).click();
+  await localPage.getByRole('radio',{name:'3:30 PM',exact:true}).check();
+  await localPage.getByRole('button',{name:'Book interview'}).click();
+  assert.deepEqual(posts,[{action:'book',start:slots[0],timeZone:'America/Los_Angeles'}]);
+
+  // A first visit must not automatically prompt, and a denial leaves the picker usable.
+  const fallback=await browser.newPage({timezoneId:'Asia/Tokyo'});
+  t.after(()=>fallback.close());
+  await fallback.addInitScript(()=>{
+    window.locationRequests=0;
+    Object.defineProperty(navigator,'geolocation',{value:{getCurrentPosition:(_ok,error)=>{
+      window.locationRequests++; error({code:1});
+    }}});
+  });
+  await fallback.route('**/api/candidate/*',route=>route.fulfill({json:{data:{
+    kind:'interview',jobTitle:'Example',status:'invited',slots,
+    ...(fallback.url().includes('edge')?{locationTimeZone:'Asia/Manila'}:{}),
+  }}}));
+  await fallback.goto(url);
+  const zone=fallback.getByRole('combobox',{name:'Your time zone'});
+  assert.equal(await zone.inputValue(),'Asia/Tokyo');
+  assert.equal(await fallback.evaluate(()=>window.locationRequests),0);
+  await fallback.getByRole('button',{name:'Use my location'}).click();
+  await fallback.getByText('Location is unavailable. Choose your time zone manually.').waitFor();
+  assert.equal(await zone.inputValue(),'Asia/Tokyo');
+  await fallback.goto(url+'?edge');
+  assert.equal(await zone.inputValue(),'Asia/Manila');
 });

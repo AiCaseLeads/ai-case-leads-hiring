@@ -41,7 +41,7 @@ export async function backfillInterviewEmails(store: HubStore, now = Date.now())
   const statements = [];
   for (const booking of bookings) {
     if (booking.status === "booked") {
-      statements.push(...store.confirmedReminderStatements({ ...booking, app: booking, now }));
+      statements.push(...store.confirmedBookingMailStatements({ ...booking, app: booking, now }));
       continue;
     }
 

@@ -6,7 +6,7 @@ import type { HubStore } from "./store";
 import type { Task } from "./types";
 import { applicationTrash } from "./application-lifecycle";
 import { candidateMail, CANDIDATE_SENDER, jobNotificationMail } from "../job-team/service";
-import { bookedReminderIsCurrent, bookingFollowupIsCurrent } from "./interview-reminders";
+import { bookingConfirmationIsCurrent, bookedReminderIsCurrent, bookingFollowupIsCurrent } from "./interview-reminders";
 import { reviewReminderMail } from "../review-reminders/service";
 import { personalMailWorkspace, type PersonalMailEnv } from "../personal-mail/service";
 import { canonicalJson, privateToken, sha256 } from "../hiring/crypto";
@@ -23,7 +23,7 @@ type RecoveryTransport = { verifyMailSender: (sender: string, account?: string, 
 export type RecoveryDependencies = { env: PersonalMailEnv; resolve?: (account: string) => Promise<RecoveryTransport | null>; now?: () => number; automatic?: AutomaticMailResolver };
 type Planned = { id: string; snapshot: string; envelope: string; transport: string };
 type Plan = { actor: string; from: number; to: number; expiresAt: number; digest: string; items: Planned[]; consumed?: { queued: number; at: number } };
-type MailKind = "Application receipt" | "Automatic rejection" | "Recruiter message" | "Assessment invitation" | "Interview invitation" | "Recruiter rejection" | "Team notification" | "Review reminder" | "Booking follow-up" | "Interview reminder";
+type MailKind = "Application receipt" | "Automatic rejection" | "Recruiter message" | "Assessment invitation" | "Interview invitation" | "Recruiter rejection" | "Team notification" | "Review reminder" | "Booking follow-up" | "Interview reminder" | "Booking confirmation";
 export type RecoveryPreview = { planId: string | null; digest: string | null; expiresAt: number | null; eligible: number; remaining: number; scanned: number; counts: Partial<Record<MailKind, number>>; skipped: Array<{ reason: string; count: number }>; messages: Array<{ id: string; applicant: string; job: string; kind: MailKind; sender: string; replyTo: string[]; cc:string[]; subject: string }>; automaticSender: string; privacy: string };
 
 const columns = "t.*,a.revision AS app_revision,a.stage AS app_stage,a.stage_entered_at AS app_stage_entered_at,a.email AS app_email,a.name AS app_name,a.job_title,c.status AS communication_status,c.updated_at AS communication_updated_at,c.provider_id,c.thread_id";
@@ -37,6 +37,7 @@ function kind(row: Row, payload: Record<string, unknown>): MailKind | null {
   if (row.id.startsWith(prefix + "rejection:") && ["recruiter","automatic"].includes(String(payload.mailMode))) return "Recruiter rejection";
   if (row.id.startsWith(prefix + "assessment:") && payload.mailMode === "recruiter") return "Assessment invitation";
   if (row.id.startsWith(prefix + "interview:") && payload.mailMode === "recruiter") return "Interview invitation";
+  if (row.id.startsWith(prefix + "booking-confirmation:") && payload.bookingConfirmation === true) return "Booking confirmation";
   if (row.id.startsWith(prefix + "booking-followup:") && payload.bookingFollowup === true) return "Booking follow-up";
   if (row.id.startsWith(prefix + "reminder:") && payload.reminder === true) return "Interview reminder";
   if (payload.jobNotification === true) return "Team notification";
@@ -63,6 +64,8 @@ async function envelope(store: HubStore, row: Row, env: PersonalMailEnv, now: nu
   if (["Automatic rejection", "Recruiter rejection"].includes(messageKind) && (row.app_stage !== "Rejected" || row.created_at < row.app_stage_entered_at)) return { reason: "Rejection decision is no longer current" };
   if (messageKind === "Booking follow-up" && !await bookingFollowupIsCurrent(store, task(row, payload), now))
     return { reason: "Booking follow-up is no longer due" };
+  if (messageKind === "Booking confirmation" && !await bookingConfirmationIsCurrent(store, task(row, payload), now))
+    return { reason: "The interview booking has changed or its start time has passed" };
   if (messageKind === "Interview reminder" && !await bookedReminderIsCurrent(store, task(row, payload), now))
     return { reason: "Interview reminder is no longer due" };
   if (["Assessment invitation", "Interview invitation"].includes(messageKind)) {

@@ -1,3 +1,7 @@
+import { bookingConfirmationIsCurrent } from "../../lib/hub/interview-reminders";
+import { automaticFixture } from "./automatic-fixture";
+import { processHubTasks } from "../../lib/task-runner";
+import type { MailInput } from "../../lib/google/gmail";
 import { currentAction, currentSettings } from "./fixtures";
 import assert from "node:assert/strict";
 import { test } from "node:test";
@@ -564,6 +568,11 @@ test("Calendar booking and cancellation results each atomically queue their curr
   database
     .prepare("UPDATE hub_tasks SET status='done' WHERE kind='drive'")
     .run();
+  const superseded = await store.claimTask(Date.now());
+  assert.equal(superseded?.payload.bookingConfirmation, true);
+  assert.equal(await bookingConfirmationIsCurrent(store, superseded!, Date.now()), false);
+  await store.finishTask(superseded!.id, superseded!.leaseToken!, {status:'done',result:{stale:true}});
+  database.prepare("UPDATE hub_tasks SET status='done' WHERE kind='drive'").run();
   const beforeCancel = await store.getApplication(applicationId),
     cancel = await store.claimTask(Date.now());
   assert.equal(cancel!.payload.operation, "cancel");
@@ -740,6 +749,8 @@ test("explicitly enabled reminders queue at the three future offsets with the co
   const archive = await store.claimTask(Date.now());
   assert.equal(archive!.kind, "drive");
   await store.finishTask(archive!.id, archive!.leaseToken!, { status: "done" });
+  const confirmation = await store.claimTask(Date.now());
+  assert.equal(confirmation!.payload.bookingConfirmation, true);
   assert.equal(await store.claimTask(Date.now()), null);
   database.close();
 });
@@ -798,7 +809,10 @@ test("conflicting Calendar completions create one set of reminders reflecting th
   ]);
   assert.equal(results.filter((r) => r.status === "fulfilled").length, 1);
   assert.equal(results.filter((r) => r.status === "rejected").length, 1);
+  const confirmations = (await store.tasks()).filter(task=>task.payload.bookingConfirmation);
+  assert.equal(confirmations.length,1);
   const current = await store.getApplication(applicationId);
+  assert.ok(String(confirmations[0].payload.body).includes(current.interview!.meetUrl!));
   assert.equal(current.revision, initial.revision + 1);
   const reminders = (await store.tasks()).filter((t) => t.payload.reminder);
   assert.equal(reminders.length, 3);
@@ -863,6 +877,9 @@ test("rescheduling queues a new reminder generation without rewriting old payloa
   database
     .prepare("UPDATE hub_tasks SET status='done' WHERE kind='drive'")
     .run();
+  const firstConfirmation = (await store.tasks()).find(task=>task.payload.bookingConfirmation)!;
+  assert.equal(await bookingConfirmationIsCurrent(store, firstConfirmation, Date.now()), true);
+  database.prepare("UPDATE hub_tasks SET status='done' WHERE id=?").run(firstConfirmation.id);
   const start = new Date(Date.parse(payload.start) + 86400000).toISOString(),
     end = new Date(Date.parse(payload.end) + 86400000).toISOString();
   database
@@ -891,6 +908,12 @@ test("rescheduling queues a new reminder generation without rewriting old payloa
   });
   const reminders = (await store.tasks()).filter((t) => t.payload.reminder);
   assert.equal(reminders.length, 6);
+  const confirmations = (await store.tasks()).filter(task=>task.payload.bookingConfirmation);
+  assert.equal(confirmations.length, 2);
+  const rescheduled = confirmations.find(task=>task.payload.revision===3)!;
+  assert.match(String(rescheduled.payload.subject), /rescheduled/i);
+  assert.equal(await bookingConfirmationIsCurrent(store, firstConfirmation, Date.now()), false);
+  assert.equal(await bookingConfirmationIsCurrent(store, rescheduled, Date.now()), true);
   assert.equal(
     reminders.filter(
       (t) =>
@@ -905,4 +928,31 @@ test("rescheduling queues a new reminder generation without rewriting old payloa
     3,
   );
   database.close();
+});
+
+test("new provider-confirmed booking sends a separate candidate email in their chosen zone even with reminders disabled", async t => {
+  const {store, db, database, applicationId, taskId, payload} = await calendarFixture(48);
+  t.after(()=>database.close());
+  await currentSettings(store, {interviewRemindersEnabled:false}, MANAGER);
+  assert.equal((await store.tasks()).some(task=>task.payload.bookingConfirmation),false);
+  const zone = "Asia/Kolkata";
+  database.prepare("UPDATE hub_tasks SET payload_json=json_set(payload_json,'$.timeZone',?) WHERE id=?").run(zone,taskId);
+  const calendar = await store.claimTask(Date.now());
+  const link = "https://meet.google.com/abc-defg-hij";
+  await store.finishTask(taskId, calendar!.leaseToken!,{status:"done",result:{id:"google-event",meetUrl:link}});
+  const booking = await store.getApplication(applicationId);
+  const confirmation = (await store.tasks()).find(task=>task.payload.bookingConfirmation)!;
+  assert.equal(booking.communications.find(row=>row.subject===confirmation.payload.subject)?.purpose,"Interview booking confirmation");
+  database.prepare("UPDATE hub_tasks SET status='done' WHERE kind='drive'").run();
+  const sent:MailInput[]=[];
+  const transport = automaticFixture(async mail=>{sent.push(mail);return {id:"mock-booking-receipt",provider:"sendgrid",accepted:true};});
+  await processHubTasks(store,db,undefined,undefined,1,[],async()=>null,async()=>transport);
+  assert.equal(sent.length,1);
+  assert.equal(sent[0].to,booking.email);
+  assert.match(sent[0].subject,/Interview confirmed/);
+  const time = new Intl.DateTimeFormat("en-US",{hour:"numeric",minute:"2-digit",timeZoneName:"short",hour12:true,timeZone:zone}).format(new Date(payload.start));
+  assert.ok(sent[0].body.includes(time));
+  assert.ok(sent[0].body.includes(link));
+  assert.match(sent[0].body,/join on time and come prepared/i);
+  assert.equal((await store.getApplication(applicationId)).communications.find(row=>row.subject===sent[0].subject)?.status,"sent");
 });

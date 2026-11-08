@@ -81,3 +81,15 @@ export async function bookedReminderIsCurrent(store: HubStore, task: Task, now: 
     String(p.interviewId), task.applicationId, Number(p.revision), String(p.interviewStart)).first();
   return !!row;
 }
+
+export async function bookingConfirmationIsCurrent(store: HubStore, task: Task, now: number) {
+  const { interviewId, revision, interviewStart, meetUrl, to } = task.payload;
+  const start = Date.parse(String(interviewStart));
+  if (!Number.isFinite(start) || now >= start) return false;
+  const row = await store.stmt(`SELECT 1 WHERE ${currentBookedReminderSql} AND EXISTS (
+    SELECT 1 FROM hub_interviews i JOIN hub_applications a ON a.id=i.application_id
+    WHERE i.id=? AND i.meet_url=? AND a.email=?
+  )`, String(interviewId), task.applicationId, Number(revision), String(interviewStart),
+    String(interviewId), String(meetUrl), String(to)).first();
+  return !!row;
+}

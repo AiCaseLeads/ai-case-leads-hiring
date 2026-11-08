@@ -239,6 +239,7 @@ export type Task = {
   providerStatus?: number;
 };
 export type CandidateView = {
+  locationTimeZone?: string;
   kind: "assessment" | "interview";
   jobTitle: string;
   status?: string;

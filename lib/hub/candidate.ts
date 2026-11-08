@@ -229,8 +229,17 @@ export async function handleCandidateRequest(
         "This private link is unavailable.",
       );
     if (request.method === "GET") {
+      // Cloudflare populates cf.timezone from its own edge metadata. Client-supplied
+      // headers are never trusted on the direct AWS/Caddy deployment.
+      const edgeZone = (request as Request & {cf?: {timezone?: string}}).cf?.timezone;
+      let zoneHint: {locationTimeZone?: string} = {};
+      if (typeof edgeZone === "string" && edgeZone.length <= 80) {
+        try { zoneHint = {locationTimeZone:new Intl.DateTimeFormat("en-US",{timeZone:edgeZone}).resolvedOptions().timeZone}; }
+        catch { /* Unsupported edge metadata falls back to the browser. */ }
+      }
       try {
-        return jsonResponse({data:(await details(token,store,hooks)).public});
+        const detail = (await details(token,store,hooks)).public;
+        return jsonResponse({data:detail.kind === "interview" ? {...detail,...zoneHint} : detail});
       } catch(error) {
         if (!(error instanceof HiringError) || error.code !== 'link_unavailable') throw error;
         const draft = await getBookingDraft(store,await sha256(token));
@@ -240,7 +249,7 @@ export async function handleCandidateRequest(
         const calendar = draft.existingInterviewId ? await interviewCalendar(store,draft.existingInterviewId)
           : draft.organizer ? await personalCalendarSnapshot(store,draft.organizer,(process.env.ADMIN_EMAILS||'').split(',')) : null;
         const slots = await availableSlots(store,hooks,draft.existingInterviewId,calendar?.calendarId,calendar);
-        return jsonResponse({data:{kind:'interview',jobTitle:app.job_title,status:'preview',slots}});
+        return jsonResponse({data:{kind:'interview',jobTitle:app.job_title,status:'preview',slots,...zoneHint}});
       }
     }
     if (request.method !== "POST")

@@ -2005,8 +2005,10 @@ body:has(.hiring-hub .hub-draft-overlay) { overflow: hidden; }
 .interview-days button:disabled { color: #687a76; background: transparent; font-weight: 400; cursor: default; }
 .interview-days button[aria-pressed=true] { background: #164940; color: white; }
 .booking-card :is(button,summary,select,a):focus-visible, .booking-time-choice:has(input:focus-visible) { outline: 2px solid #1d6758; outline-offset: 2px; }
-.booking-zone { display: flex; gap: 8px; align-items: center; margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--booking-rule); color: var(--booking-muted); }
-.booking-zone > span { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 6px; min-width: 0; font-size: 13px; }
+.booking-zone { display: flex; flex-wrap: wrap; gap: 2px 8px; align-items: center; margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--booking-rule); color: var(--booking-muted); }
+.booking-zone > label { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 6px; min-width: 0; font-size: 13px; }
+.booking-zone > button { padding: 4px; font-size: 12px; }
+.booking-zone > small { flex-basis: 100%; }
 .booking-zone select { min-width: 0; width: auto; max-width: 100%; min-height: 36px; margin: 0; padding: 3px; border: 0; background: transparent; font: inherit; font-weight: 600; color: var(--booking-ink); }
 .booking-times { min-width: 0; padding: 7px 0 0 clamp(16px, 3vw, 24px); border-left: 1px solid var(--booking-rule); }
 .booking-card :is(.booking-times,.booking-prep) h2 { margin: 0; font-size: 17px; line-height: 1.35; }

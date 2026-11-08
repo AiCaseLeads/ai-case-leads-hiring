@@ -15,6 +15,7 @@ export function communicationPurpose(taskId: string | null | undefined, applicat
     rejection: "Rejection email",
     assessment: "Assessment invitation",
     interview: "Interview invitation",
+    "booking-confirmation": "Interview booking confirmation",
     "booking-followup": "Booking follow-up",
     manual: "Recruiter email",
   };

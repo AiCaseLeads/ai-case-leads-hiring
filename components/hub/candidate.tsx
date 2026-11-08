@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
+import { candidateTimeZone, useBookingTimeZone } from "./booking-time-zone";
 import {InterviewCalendar,interviewDayLabel} from "./interview-calendar";
 import {
   CalendarDays,
@@ -139,15 +140,6 @@ function AssessmentForm({
     </>
   );
 }
-function candidateTimeZone(preferred?: string) {
-  const local = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
-  try {
-    return new Intl.DateTimeFormat("en-US", { timeZone: preferred || local }).resolvedOptions().timeZone;
-  } catch {
-    return local;
-  }
-}
-
 function supportedZones(selected: string) {
   const zones = typeof Intl.supportedValuesOf === "function"
     ? Intl.supportedValuesOf("timeZone")
@@ -155,10 +147,9 @@ function supportedZones(selected: string) {
   return [...new Set([selected, "UTC", ...zones])];
 }
 
-function TimePicker({ slots, timeZone, changeZone, busy, preview, reschedule, availabilityError, refresh, submit }: {
+function TimePicker({ slots, location, busy, preview, reschedule, availabilityError, refresh, submit }: {
   slots: NonNullable<CandidateView["slots"]>;
-  timeZone: string;
-  changeZone: (value: string) => void;
+  location: ReturnType<typeof useBookingTimeZone>;
   busy: boolean;
   preview: boolean;
   reschedule: boolean;
@@ -168,6 +159,7 @@ function TimePicker({ slots, timeZone, changeZone, busy, preview, reschedule, av
 }) {
   const [day, setDay] = useState("");
   const [start, setStart] = useState("");
+  const timeZone = location.zone;
   const zones = useMemo(() => supportedZones(timeZone), [timeZone]);
   const days = useMemo(() => {
     const dates = new Map<string, string[]>();
@@ -187,6 +179,7 @@ function TimePicker({ slots, timeZone, changeZone, busy, preview, reschedule, av
   const times = visibleSlots.map(value => clock.format(new Date(value)));
   const canBook = !busy && !preview && visibleSlots.includes(start);
   function selectDay(value: string) {
+    location.stopLocating();
     setDay(value);
     setStart("");
   }
@@ -197,12 +190,16 @@ function TimePicker({ slots, timeZone, changeZone, busy, preview, reschedule, av
   return <form className="booking-picker" onSubmit={event => { event.preventDefault(); if (canBook) submit(start); }}>
     <div className="booking-date-column">
       <InterviewCalendar key={timeZone} days={[...days.keys()]} selectedDay={day} onSelect={selectDay}/>
-      <label className="booking-zone">
+      <div className="booking-zone">
         <Globe2 size={17} aria-hidden="true"/>
-        <span>Your time zone<select value={timeZone} onChange={event => { selectDay(""); changeZone(event.target.value); }}>
+        <label>Your time zone<select value={timeZone} onChange={event => location.choose(event.target.value)}>
           {zones.map(zone => <option key={zone} value={zone}>{zone.replaceAll("_", " ")}</option>)}
-        </select></span>
-      </label>
+        </select></label>
+        <button className="hub-text-button" type="button" disabled={location.locating || busy} onClick={() => void location.locate(true)}>
+          {location.locating ? "Finding location…" : "Use my location"}
+        </button>
+        {location.error && <small role="status">{location.error}</small>}
+      </div>
     </div>
     <section className="booking-times" aria-label="Available interview times">
       <h2 aria-live="polite">{visibleSlots.length ? interviewDayLabel(day) : "Available times"}</h2>
@@ -234,7 +231,11 @@ export function InterviewBooking({ token, data, reload }: {
   data: CandidateView;
   reload: () => Promise<void>;
 }) {
-  const [timeZone, setTimeZone] = useState(() => candidateTimeZone(data.interview?.timeZone));
+  const location = useBookingTimeZone(
+    data.interview?.start ? data.interview.timeZone : undefined,
+    data.locationTimeZone,
+    !!data.slots?.length && !data.interview?.start,
+  );
   const [cancelApproved, setCancelApproved] = useState(false);
   const [receipt, setReceipt] = useState<{ snapshot: CandidateView; change: BookingChange } | null>(null);
   const mutation = useHubMutation();
@@ -274,7 +275,7 @@ export function InterviewBooking({ token, data, reload }: {
   async function change(action: "book" | "reschedule" | "cancel", newStart?: string) {
     const result = await mutation.run<BookingChange>(
       "/api/candidate/" + encodeURIComponent(token), "POST",
-      action === "cancel" ? { action } : { action, start:newStart, timeZone }, "",
+      action === "cancel" ? { action } : { action, start:newStart, timeZone:location.zone }, "",
     );
     if (result) {
       setReceipt({ snapshot:data, change:result });
@@ -283,7 +284,7 @@ export function InterviewBooking({ token, data, reload }: {
     }
   }
 
-  const picker = <TimePicker slots={data.slots || []} timeZone={timeZone} changeZone={setTimeZone}
+  const picker = <TimePicker key={location.zone} slots={data.slots || []} location={location}
     busy={mutation.busy} preview={status === "preview"} reschedule={booked}
     availabilityError={data.availabilityError} refresh={() => void reload()}
     submit={value => void change(booked ? "reschedule" : "book", value)}/>;

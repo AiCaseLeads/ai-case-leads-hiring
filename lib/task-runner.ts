@@ -1,4 +1,4 @@
-import { bookedReminderIsCurrent, bookingFollowupIsCurrent } from './hub/interview-reminders';
+import { bookingConfirmationIsCurrent, bookedReminderIsCurrent, bookingFollowupIsCurrent } from './hub/interview-reminders';
 import {workflowNotificationMail} from "./hub/recruiting-workflow";
 import { AUTOMATIC_REPLY_TO } from './email/contracts';
 import { automaticMailTransport, reserveAutomaticMail, isAutomaticMailDeferred, type AutomaticMailResolver } from './email/service';
@@ -83,6 +83,7 @@ async function reconcileUncertain(db:D1Database,store:HubStore,max:number,deadli
 async function sendAutomaticTask(task:Task,mail:MailInput,store:HubStore,db:D1Database,deadline:number,resolve:AutomaticMailResolver){
   const transport=await resolve();transport.setDeadline?.(deadline);
   await transport.verify();
+  if (task.payload.bookingConfirmation === true && !await bookingConfirmationIsCurrent(store, task, Date.now())) return {stale:true};
   if (task.payload.reminder === true && !await bookedReminderIsCurrent(store, task, Date.now())) return {stale:true};
   await reserveAutomaticMail(store);
   const {deliveryAccount:_oldAccount,...payload}=task.payload;void _oldAccount;
@@ -111,6 +112,7 @@ async function taskEffect(task:Task,store:HubStore,db:D1Database,bucket:R2Bucket
       if(!mail||mail.to.trim().toLowerCase()==="sales@aicaseleads.com")return {stale:true};
       return sendAutomaticTask(task,mail,store,db,deadline,automaticResolver);
     }
+    if (task.payload.bookingConfirmation === true && !await bookingConfirmationIsCurrent(store, task, Date.now())) return {stale:true};
     if (task.payload.reminder === true && !await bookedReminderIsCurrent(store, task, Date.now())) return {stale:true};
     if (task.payload.bookingFollowup === true && !await bookingFollowupIsCurrent(store, task, Date.now())) return {stale:true};
     if(task.id===`gmail:${task.applicationId}:rejection`||task.id.startsWith(`gmail:${task.applicationId}:rejection:`)) {

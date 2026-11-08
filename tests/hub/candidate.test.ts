@@ -40,6 +40,27 @@ async function invitation(
   return token;
 }
 const calendar = { busy: async () => [] };
+test("a booking accepts an IP zone from native edge metadata and ignores location headers supplied by the caller", async t => {
+  const {store,database} = createStore();
+  t.after(()=>database.close());
+  const job=await store.saveJob(jobInput());
+  const {id}=await store.acceptApplication(applicationInput(job.id));
+  await approveScheduling(store);
+  const token=await invitation(store,id,"interview");
+  const request=req(token);
+  request.headers.set("cf-timezone","America/Los_Angeles");
+  request.headers.set("CloudFront-Viewer-Time-Zone","America/Los_Angeles");
+  async function hint() {
+    const response=await handleCandidateRequest(request,token,store,calendar);
+    assert.equal(response.status,200);
+    return ((await response.json()) as {data:{locationTimeZone?:string}}).data.locationTimeZone;
+  }
+  assert.equal(await hint(),undefined);
+  Object.defineProperty(request,"cf",{value:{timezone:"Asia/Tokyo"},configurable:true});
+  assert.equal(await hint(),"Asia/Tokyo");
+  Object.defineProperty(request,"cf",{value:{timezone:"Mars/Anywhere"}});
+  assert.equal(await hint(),undefined);
+});
 test("stored bookings stay visible and cancellable when Calendar availability fails", async () => {
   const {store,database} = createStore();
   try {
