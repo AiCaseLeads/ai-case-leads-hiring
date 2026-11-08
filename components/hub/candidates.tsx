@@ -185,7 +185,7 @@ type CandidatesProps = {
 
 type QueueRow = Pick<ApplicationSummary, "id"|"stage"|"revision">;
 type QueueSnapshot = {items:QueueRow[];selectionId:string};
-type GroupInfo = {id:string;name:string};
+type GroupInfo = {id:string;name:string;jobIds:string[]};
 const defaultQueueSort = "screening_newest";
 const sortLabels: Record<string,string> = {
   list_order:"List order", screening_newest:"Requirements met, then newest", newest:"Newest applications", oldest:"Oldest applications",
@@ -229,9 +229,16 @@ export function Candidates({jobs,refresh,changed,reviewerEmail,initialStage="",i
   const initialReview=roleQueue && val("stage")==="Application Review";
   const selectedJob=jobs.find(job=>job.id===jobId);
   const groups=useHubResource<{groups:GroupInfo[]}>("/api/hub/job-groups",refresh);
+  const selectedGroup=groups.data?.groups?.find(group=>group.id===groupId);
+  const inactiveJob=(job:HubJob)=>job.status!=="open" || (!!job.lifecycle && job.lifecycle.state!=="active");
+  const roleClosed=roleQueue && (selectedJob ? inactiveJob(selectedJob) : !!selectedGroup &&
+    selectedGroup.jobIds.every(id=>jobs.some(job=>job.id===id && inactiveJob(job))));
+  const historyFilter = new URLSearchParams({active:"false",sort:defaultQueueSort});
+  if(jobId)historyFilter.set("jobId",jobId);
+  else if(groupId)historyFilter.set("jobGroupId",groupId);
   const owners=useHubResource<{staff:{email:string}[]}>("/api/job-team",refresh);
   const ownerChoices=[...new Set([reviewerEmail,...(owners.data?.staff||[]).map(s=>s.email),val("assignee")].filter(email=>email && email!=="unassigned"))];
-  const scopeName=selectedJob?.title || (jobId?"Unavailable posting":groupId ? groups.data?.groups?.find(g=>g.id===groupId)?.name || "Job group" : listId ? "Candidate list" : "All roles");
+  const scopeName=selectedJob?.title || (jobId?"Unavailable posting":groupId ? selectedGroup?.name || "Job group" : listId ? "Candidate list" : "All roles");
   const path="/api/hub/applications?"+filter+"&page="+page;
   const resource=useHubResource<ApplicationList & {scopeTotal?:number;pageSize?:number}>(path,refresh);
   const data=resource.dataPath===path?resource.data:null;
@@ -378,7 +385,7 @@ export function Candidates({jobs,refresh,changed,reviewerEmail,initialStage="",i
         <button type="button" disabled={blocked||!total} onClick={()=>void download("zip")}>Download {ids.length?"selected":"matching"} ZIP ({ids.length||total})</button>
         <button type="button" disabled={blocked||!total} onClick={()=>void download("csv")}>Export {ids.length?"selected":"matching"} CSV ({ids.length||total})</button>
         <button type="button" onClick={()=>void reload()}>Refresh applications</button>
-        <button type="button" onClick={()=>{const next=new URLSearchParams();for(const key of ["jobId","jobGroupId","openPostings"])if(val(key))next.set(key,val(key));if(!inTrash)next.set("trash","true");applyView(next.toString());}}>{inTrash?"Back to applications":"View Trash"}</button>
+        <button type="button" onClick={()=>{const next=new URLSearchParams();for(const key of ["jobId","jobGroupId","openPostings"])if(val(key))next.set(key,val(key));if(!inTrash)next.set("trash","true");else if(next.has("openPostings"))applyApplicantStageChoice(next,"stage:Application Review");applyView(next.toString());}}>{inTrash?"Back to applications":"View Trash"}</button>
       </JobActionMenu></div>
     {(!roleQueue||showCollections||ids.length>0) && <ApplicantCollections filter={filter} onApply={applyView} selectedIds={ids} selectionId={snapshotId || undefined} allMatching={isAll && ids.length>100} disabled={blocked} onChanged={()=>void reload()}/>}
     <div className={"aq-controls"+(roleQueue?" aq-role-controls":"")}><label className="aq-search">Search applicants<input type="search" value={search} placeholder="Name or email" maxLength={200} onChange={e=>setSearch(e.target.value)}/></label>
@@ -427,6 +434,7 @@ export function Candidates({jobs,refresh,changed,reviewerEmail,initialStage="",i
         selected={ids} togglePage={()=>toggle(data.items)} toggle={id=>{const item=data.items.find(r=>r.id===id);if(item)toggle([item]);}}
         sort={val("sort")} onSort={order=>update({sort:order,top:null})} allowAiSort={!!jobId} busy={blocked}
         screeningConfigured={selectedJob?.rules?.some(rule=>rule.enabled)} shortlist={row=>void setApplicationStage(row,"Screening")} unshortlist={row=>void setApplicationStage(row,"Application Review")}/>
+        :roleClosed?<EmptyState title="This role has no active postings"><NavigationLink className="hub-text-button" href={"/team?view=applications&"+historyFilter} navigate={()=>applyView(historyFilter.toString())}>View past applications</NavigationLink></EmptyState>
         :<EmptyState title={initialReview && !chips.length ? "No applicants awaiting initial review" : "No applications in this view"}><button className="hub-text-button" type="button" onClick={()=>resetFilters(initialReview && !chips.length)}>{initialReview && !chips.length ? "View all stages for this role" : "Reset filters"}</button></EmptyState>}
       {total>0&&<div className="hub-pagination"><button type="button" className="hub-button secondary" disabled={page<=1||blocked} onClick={()=>turnPage(page-1)}>Previous</button>
         <span>Page {page} of {Math.max(1,Math.ceil(total/(data.pageSize||30)))} · {total} matching applicants</span>

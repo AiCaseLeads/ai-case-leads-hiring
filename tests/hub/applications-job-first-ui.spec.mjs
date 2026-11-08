@@ -108,15 +108,16 @@ test('column choices and direct ZIP downloads retain the explicit cross-role sco
 });
 
 
-const roleJobs=[jobs[0],jobs[1],{...jobs[0],id:'job-east',title:'Eastern recruiter'}, {...jobs[0],id:'job-west',title:'Western recruiter'}];
-const roleGroup={id:'recruiting',kind:'role',name:'Recruiter',jobIds:['job-east','job-west']};
-const closedGroup={id:'past-creative',kind:'role',name:'Creative',jobIds:['job-two']};
+const roleJobs=[jobs[0],jobs[1],{...jobs[0],id:'job-east',title:'Eastern recruiter'}, {...jobs[0],id:'job-west',title:'Western recruiter'}, {...jobs[1],id:'old-group-posting',title:'Archived creative role'}];
+const roleGroup={id:'recruiting',kind:'role',name:'Recruiter',jobIds:['job-east','job-west','job-two']};
+const closedGroup={id:'past-creative',kind:'role',name:'Creative',jobIds:['old-group-posting']};
 const roleItems=[
   {...applicant,name:'Initial Engineer'},
   {...applicant,id:'app-screened',name:'Shortlisted Engineer',stage:'Screening'},
   {...applicant,id:'app-east',name:'Eastern Applicant',jobId:'job-east',jobTitle:'Eastern recruiter'},
   {...applicant,id:'app-west',name:'Western Applicant',jobId:'job-west',jobTitle:'Western recruiter'},
   {...applicant,id:'app-closed',name:'Closed Posting Applicant',jobId:'job-two',jobTitle:'Creative Strategist'},
+  {...applicant,id:'app-old-group',name:'Historic Creative Applicant',jobId:'old-group-posting',jobTitle:'Archived creative role'},
 ];
 
 function dashboardFixture(url){
@@ -133,7 +134,7 @@ function dashboardFixture(url){
     case '/api/hub/applications': {
       const items=roleItems.filter(a=>(!filters.has('jobId') || a.jobId===filters.get('jobId'))&&
         (!filters.has('jobGroupId')||[roleGroup,closedGroup].find(group=>group.id===filters.get('jobGroupId'))?.jobIds.includes(a.jobId))&&
-        (filters.get('openPostings')!=='true'||a.jobId!=='job-two')&&(!filters.has('stage')||a.stage===filters.get('stage')));
+        (filters.get('openPostings')!=='true'||roleJobs.some(job=>job.id===a.jobId&&job.status==='open'))&&(!filters.has('stage')||a.stage===filters.get('stage')));
       return {items,total:items.length,scopeTotal:items.length,page:1,pageSize:30};
     }
     case '/api/hub/applications/app-one':
@@ -209,7 +210,7 @@ test('a closed posting or role bookmark can open its own historical applications
     assert.equal(destination.searchParams.has('openPostings'),false);
     assert.equal(destination.searchParams.has('stage'),false);
     await past.click();
-    await page.getByRole('link',{name:'Closed Posting Applicant',exact:true}).waitFor();
+    await page.getByRole('link',{name:key==='jobId'?'Closed Posting Applicant':'Historic Creative Applicant',exact:true}).waitFor();
     assert.equal(await page.getByRole('link',{name:'Initial Engineer'}).count(),0);
     assert.ok(requests.filter(request=>request.pathname==='/api/hub/applications').every(request=>request.searchParams.get(key)===id));
   }
