@@ -73,6 +73,7 @@ function Connection({onSaved}:{onSaved:()=>void}) {
       catch {setMessage("Could not save this connection. Check the key and try again.");}
       finally {setBusy(false);}
     }}>
+      <p>Saving a key enables checks of eligible written answers from past and future applications using your GPTZero plan’s word allowance.</p>
       <label htmlFor={id}>GPTZero API key</label>
       <input id={id} type="password" autoComplete="off" spellCheck={false} value={secret} onChange={e=>setSecret(e.target.value)} disabled={busy} maxLength={512}/>
       <button className="hub-button secondary" type="submit" disabled={busy || !secret.trim()}>{busy?"Saving…":"Save connection"}</button>
@@ -89,7 +90,7 @@ function ReviewPage({status,matches,page,setPage,refresh}:{status:string;matches
     {coverage && <div className="response-check-progress" aria-label="All application checks">
       <p><strong>{coverage.indexed.toLocaleString()} of {coverage.total.toLocaleString()} applications indexed</strong> · {coverage.scannedAnswers.toLocaleString()} answers assessed · {coverage.pendingAnswers.toLocaleString()} awaiting assessment · {coverage.tooShort.toLocaleString()} too short · {coverage.unavailable.toLocaleString()} unavailable</p>
       {coverage.detectorState==="unconfigured" && <p>GPTZero is awaiting an API connection.</p>}
-      {coverage.detectorState==="paused" && <p>GPTZero assessments are paused.{coverage.retryAt ? " Next retry "+displayDate(coverage.retryAt)+"." : " Check the API connection."}</p>}
+      {coverage.detectorState==="paused" && <p>{coverage.pauseReason==="quota"?"Pending answers exceed the remaining GPTZero word allowance.":coverage.pauseReason==="allowance_unavailable"?"GPTZero’s word allowance could not be verified. Assessments are paused.":"GPTZero assessments are paused."}{coverage.retryAt ? " Next retry "+displayDate(coverage.retryAt)+"." : " Check the API connection."}</p>}
     </div>}
     {data && Array.isArray(data.items) && <>
       <p className="hub-muted">{data.total.toLocaleString()} matching {data.total===1?"application":"applications"}</p>

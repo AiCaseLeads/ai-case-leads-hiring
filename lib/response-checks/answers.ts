@@ -17,6 +17,12 @@ export function writtenAnswers(row:Submission):WrittenAnswer[] {
     const value=values.get(f.path);
     if (typeof value==="string" && value.trim().length>=3) known.add(value.trim());
   }
+  // Legacy snapshots may expose just a combined name; applicants often refer
+  // to themselves by their first or last name alone. Do not match initials or
+  // short name particles as ordinary words throughout the answer.
+  for (const part of row.name.match(/[\p{L}\p{M}]+(?:['’-][\p{L}\p{M}]+)*/gu) ?? []) {
+    if (part.length >= 4) known.add(part);
+  }
   const names=[...known].filter(Boolean).sort((a,b)=>b.length-a.length).map(value=>value.replace(/[.*+?^${}()|[\]\\]/g,"\\$&"));
   const personal=names.length?new RegExp("(?<![\\p{L}\\p{N}])(?:"+names.join("|")+")(?![\\p{L}\\p{N}])","giu"):null;
   const answers:WrittenAnswer[]=[];
@@ -27,7 +33,12 @@ export function writtenAnswers(row:Submission):WrittenAnswer[] {
     const title=f.title||f.path;
     if (f.type==="String" && /^(?:(?:your|current|candidate|applicant|first|last|full|preferred)\s+)*(?:name|country(?: of residence)?|city|address|phone(?: number)?|email(?: address)?|employer|zip(?: code)?|postal code|referral code|linkedin(?: profile)?|portfolio(?: link)?)[?\s]*$/i.test(title.trim())) continue;
     const text=value.trim();
-    let sanitized=text.replace(/\b(?:https?:\/\/|www\.)\S+/gi,"[link]").replace(/[^\s@]+@[^\s@]+\.[^\s@]+/g,"[email]")
+    let sanitized=text
+      .replace(/[^\s@]+@[^\s@]+\.[^\s@]+/g,"[email]")
+      .replace(/\b(?:https?:\/\/|www\.)\S+/gi,"[link]")
+      // A bare hostname may itself identify a candidate, including profile
+      // handles in its path, query or fragment.
+      .replace(/(?<![\p{L}\p{N}_@.-])(?:[\p{L}\p{N}](?:[\p{L}\p{N}-]*[\p{L}\p{N}])?\.)+(?:[\p{L}]{2,63}|xn--[a-z\d-]+)(?::\d+)?(?:[/?#][^\s<>]*)?(?![\p{L}\p{N}_-])/giu,"[link]")
       .replace(/(?:\+?\d[\s().-]*){9,}\d/g,"[number]");
     if(personal) sanitized=sanitized.replace(personal,"[redacted]");
     answers.push({path:f.path,title,text,words:countWords(text),sanitized,prompt:title+" "+(f.description||"")});

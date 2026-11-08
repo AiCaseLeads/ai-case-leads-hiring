@@ -90,16 +90,16 @@ test("production response-check routes protect data and return owner-only connec
     const headers={Cookie:"__Host-aicl_staff_session="+staffToken};
     const reportPath="/api/hub/response-checks",profilePath="/api/hub/applications/"+id+"/response-checks";
     for (const pathname of [reportPath,profilePath]) {
-      const guest=await fetch(instance.origin+pathname);
-      assert.equal(guest.status,403);assert.equal((await guest.json()).error.code,"staff_access_required");
+      const guest:Response=await fetch(instance.origin+pathname);
+      assert.equal(guest.status,403);assert.equal(((await guest.json()) as {error:{code:string}}).error.code,"staff_access_required");
     }
     const report=await fetch(instance.origin+reportPath,{headers});
     assert.equal(report.status,200);
-    const {data}=await report.json();
+    const {data}=await report.json() as {data:{total:number;coverage:{total:number};items:{id:string}[]}};
     assert.equal(data.coverage.total,1);assert.equal(data.items[0].id,id);
     const detail=await fetch(instance.origin+profilePath,{headers});
     assert.equal(detail.status,200);
-    const profile=(await detail.json()).data;
+    const {data:profile}=await detail.json() as {data:{entry:unknown;answers:{path:string;text:string}[]}};
     assert.equal(profile.entry,null);
     assert.ok(profile.answers.some((answer:{path:string;text:string})=>answer.path==="story" && answer.text.includes("synthetic answer")));
     const invalidFakeKey="fake example!";

@@ -6,7 +6,7 @@ import { getDetectorAllowance, DetectorError } from "./gptzero";
 const setting = "response_checks_gptzero_connection";
 export async function getDetectorKey(store: HubStore): Promise<string|null> {
   const sealed = await store.setting<string|null>(setting, null);
-  if (!sealed) return process.env.GPTZERO_API_KEY?.trim() || null;
+  if (!sealed) return null;
   const encryption = process.env.GOOGLE_TOKEN_KEY;
   if (!encryption) throw new HiringError("encryption_unavailable",503,"Server encryption is unavailable.");
   return openToken(sealed, encryption);

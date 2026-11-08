@@ -5,7 +5,7 @@ import { writtenAnswers, canScan, type Submission } from "./answers";
 import { appCheckJoinsSql, appCheckStatusSql, type ResponseState } from "./report-status";
 
 export const providerStateKey="response_checks_provider_state";
-export type ProviderState={state:"active"|"unconfigured"|"paused";keyId?:string;retryAt?:number;httpStatus?:number};
+export type ProviderState={state:"active"|"unconfigured"|"paused";keyId?:string;retryAt?:number;reason?:"quota"|"allowance_unavailable";httpStatus?:number};
 type StatusRow={status:ResponseState;total:number};
 type AnswerState="ready"|"pending"|"too_short"|"unavailable";
 type Match={applicationId:string;jobTitle:string;passage:string};
@@ -25,7 +25,7 @@ export async function getResponseCoverage(store:HubStore) {
   return {total:apps.reduce((n,v)=>n+v.total,0),indexed:indexed?.n||0,pending:counts.pending||0,ready:counts.ready||0,
     partial:counts.partial||0,noWritten:counts.no_written_answers||0,tooShort:answers?.tooShort||0,
     unavailable:answers?.unavailable||0,scannedAnswers:answers?.scannedAnswers||0,pendingAnswers:answers?.pendingAnswers||0,
-    detectorState:state.state,retryAt:state.retryAt??null};
+    detectorState:state.state, pauseReason:state.reason??null, retryAt:state.retryAt??null};
 }
 
 export async function getResponseChecks(store:HubStore,id:string):Promise<{status:ResponseState;answers:AnswerDetail[]}> {
