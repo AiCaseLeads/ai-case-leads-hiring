@@ -1,4 +1,5 @@
-import { interviewCalendar,personalScheduling,requireActiveInterviewer } from "../personal-calendar/service";
+import {getBookingDraft} from "./interview-booking-draft";
+import { interviewCalendar,personalScheduling,requireActiveInterviewer,personalCalendarSnapshot, type InterviewCalendar } from "../personal-calendar/service";
 import { jobNotificationStatements } from "../job-team/service";
 import { sha256 } from "../hiring/crypto";
 import { HiringError } from "../hiring/errors";
@@ -14,8 +15,9 @@ export async function availableSlots(
   hooks: CandidateHooks,
   excludeInterviewId?: string,
   pinnedCalendarId?: string | null,
+  draftCalendar?: InterviewCalendar | null,
 ): Promise<CandidateSlot[]> {
-  const personal = await interviewCalendar(store,excludeInterviewId);
+  const personal = draftCalendar ?? await interviewCalendar(store,excludeInterviewId);
   if(personal)await requireActiveInterviewer(store,personal.ownerEmail);
   const policy = personal ? personalScheduling(personal) : await store.scheduling();
   if (!policy.configured || (personal ? !hooks.personalBusy : !hooks.busy) || !store.options.integrations?.google)
@@ -227,10 +229,21 @@ export async function handleCandidateRequest(
         404,
         "This private link is unavailable.",
       );
-    if (request.method === "GET")
-      return jsonResponse({
-        data: (await details(token, store, hooks)).public,
-      });
+    if (request.method === "GET") {
+      try {
+        return jsonResponse({data:(await details(token,store,hooks)).public});
+      } catch(error) {
+        if (!(error instanceof HiringError) || error.code !== 'link_unavailable') throw error;
+        const draft = await getBookingDraft(store,await sha256(token));
+        if (!draft) throw error;
+        const app = await store.applicationRow(draft.applicationId);
+        if(app.revision !== draft.revision || ['Rejected','Withdrawn','Hired'].includes(app.stage)) throw error;
+        const calendar = draft.existingInterviewId ? await interviewCalendar(store,draft.existingInterviewId)
+          : draft.organizer ? await personalCalendarSnapshot(store,draft.organizer,(process.env.ADMIN_EMAILS||'').split(',')) : null;
+        const slots = await availableSlots(store,hooks,draft.existingInterviewId,calendar?.calendarId,calendar);
+        return jsonResponse({data:{kind:'interview',jobTitle:app.job_title,status:'preview',slots}});
+      }
+    }
     if (request.method !== "POST")
       throw new HiringError(
         "method_not_allowed",

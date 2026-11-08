@@ -1,5 +1,6 @@
 "use client";
 import { useState } from "react";
+import {InterviewCalendar,interviewDayLabel} from "./interview-calendar";
 import {
   CalendarDays,
   ClipboardCheck,
@@ -182,17 +183,12 @@ export function InterviewBooking({
   } catch {
     zones = Array.from(new Set(zones));
   }
+  const dateFormatter = validZone ? new Intl.DateTimeFormat("en-US",{timeZone,year:"numeric",month:"2-digit",day:"2-digit"}) : null;
+  const timeFormatter = validZone ? new Intl.DateTimeFormat("en-US",{hour:"numeric",minute:"2-digit",timeZone,timeZoneName:"short"}) : null;
   function slotDay(value: string) {
-    try {
-      return new Intl.DateTimeFormat("en-CA", {
-        timeZone,
-        year: "numeric",
-        month: "2-digit",
-        day: "2-digit",
-      }).format(new Date(value));
-    } catch {
-      return "";
-    }
+    if(!dateFormatter) return "";
+    const parts=Object.fromEntries(dateFormatter.formatToParts(new Date(value)).map(part=>[part.type,part.value]));
+    return parts.year+"-"+parts.month+"-"+parts.day;
   }
   const days = Array.from(
     new Set(
@@ -201,14 +197,14 @@ export function InterviewBooking({
       ),
     ),
   );
-  const selectedDay = days.includes(day) ? day : days[0];
+  const selectedDay = days.includes(day) ? day : "";
   const visibleSlots = slots.filter(
     (slot) =>
       slotDay(typeof slot === "string" ? slot : slot.start) === selectedDay,
   );
   function slotLabel(value: string) {
     try {
-      return new Intl.DateTimeFormat(undefined, {
+      return new Intl.DateTimeFormat("en-US", {
         dateStyle: "full",
         timeStyle: "short",
         timeZone,
@@ -219,7 +215,7 @@ export function InterviewBooking({
   }
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    if (!validZone || !start) return;
+    if (status === "preview" || !validZone || !start) return;
     const result = await mutation.run(
       "/api/candidate/" + encodeURIComponent(token),
       "POST",
@@ -258,6 +254,7 @@ export function InterviewBooking({
         </h1>
         <Badge>{status}</Badge>
       </div>
+      {status === "preview" && <p className="hub-notice">Available times are live. Booking opens when the invitation is sent.</p>}
       {hasBooking && (
         <section className="hub-card">
           <h2>{pending ? "Calendar update in progress" : failed ? "Calendar update needs attention" : "Current booking"}</h2>
@@ -337,44 +334,27 @@ export function InterviewBooking({
               className="candidate-slots"
               disabled={mutation.busy || !validZone}
             >
-              <legend>Select one available interview time</legend>
-              <Field label="Interview day">
-                <select
-                  value={selectedDay}
-                  onChange={(e) => {
-                    setDay(e.target.value);
-                    setStart("");
-                  }}
-                >
-                  {days.map((value) => (
-                    <option key={value}>{value}</option>
-                  ))}
-                </select>
-              </Field>
-              {visibleSlots.map((slot) => {
-                const value = typeof slot === "string" ? slot : slot.start;
-                return (
-                  <label
-                    className={
-                      "candidate-slot " + (start === value ? "selected" : "")
-                    }
-                    key={value}
-                  >
-                    <input
-                      type="radio"
-                      name="interview-time"
-                      value={value}
-                      checked={start === value}
-                      onChange={() => setStart(value)}
-                      required
-                    />
-                    <span>{slotLabel(value)}</span>
-                  </label>
-                );
-              })}
+              <legend>Choose a date and time</legend>
+              <div className="interview-picker">
+                <InterviewCalendar key={timeZone} days={days} selectedDay={selectedDay} onSelect={value=>{setDay(value);setStart("");}}/>
+                <section className="interview-times" aria-label="Available interview times">
+                  {selectedDay ? <>
+                    <h3 aria-live="polite">{interviewDayLabel(selectedDay)}</h3>
+                    <div className="interview-time-options">
+                      {visibleSlots.map(slot=>{
+                        const value=typeof slot==="string" ? slot : slot.start;
+                        return <label className="interview-time-option" key={value}>
+                          <input type="radio" name="interview-time" value={value} checked={start===value} onChange={()=>setStart(value)} required/>
+                          <span>{timeFormatter?.format(new Date(value))}</span>
+                        </label>;
+                      })}
+                    </div>
+                  </> : <p>Select an available date to see times.</p>}
+                </section>
+              </div>
               <button
                 className="hub-button"
-                disabled={mutation.busy || !start || !validZone}
+                disabled={status === "preview" || mutation.busy || !start || !validZone}
                 type="submit"
               >
                 {mutation.busy

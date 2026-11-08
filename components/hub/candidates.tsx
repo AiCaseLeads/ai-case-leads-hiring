@@ -886,12 +886,21 @@ export function CandidateDetail({
     }
     const payload = action === "email" ? emailRequest.current : draft;
     if(action==="interview")interviewBusyRef.current=true;
-    const result = await mutation.run(
+    const result = await mutation.run<{interviewDelivery?: {status:string;cc:string[]}}>(
       action==="interview"?"/api/interview-invitations":"/api/hub/applications/" + encodeURIComponent(id) + "/action",
       "POST",
       action==="interview"?{...payload,applicationId:id}:payload,
       ["reject", "assessment", "interview", "email"].includes(action)
-        ? action==="interview"?"Interview invitation queued. Sending status is in Activity.":"Decision saved. Delivery status appears in communication history."
+        ? action==="interview"?(result)=>{
+          const delivery=result.interviewDelivery;
+          switch(delivery?.status) {
+            case "sent": return {success:"Interview invitation sent." + (delivery.cc.length ? " CC: "+delivery.cc.join(", ")+".":"")};
+            case "failed": return {error:"The invitation could not be sent. Check Activity for the delivery error."};
+            case "uncertain": return {error:"Gmail has not confirmed this invitation. Check Activity before sending again."};
+            case "cancelled": return {error:"The interview invitation was cancelled before sending."};
+            default: return {success:"Invitation saved. Delivery is pending in Activity."};
+          }
+        }:"Decision saved. Delivery status appears in communication history."
         : "Saved to this application.",
     );
     if(action==="interview")interviewBusyRef.current=false;
@@ -954,7 +963,7 @@ export function CandidateDetail({
             {!detail.trashed && actionOpen && <InterviewActionFrame interview={action==="interview"} panelRef={actionPanel} cancel={cancelInterview} busy={mutation.busy||decisionBusy}>
               <ApplicantActionCard interview={action==="interview"} open={actionOpen} toggle={open=>{setActionOpen(open);if(!open)profileTop.current?.querySelector<HTMLElement>('summary[aria-label="More applicant actions"]')?.focus({preventScroll:true});}}>
               {action==="interview"?<h3 id="hub-invitation-title">Invite to interview</h3>:<summary>Applicant actions</summary>}
-              <p className="hub-muted">{action==="interview"?"Invite this applicant to choose a time. Review setup and preview the email before sending.":"Choose an action for this application."}</p>
+              <p className="hub-muted">{action==="interview"?"Choose the interviewer and send the applicant a booking link.":"Choose an action for this application."}</p>
               {action==="interview"&&confirmInterviewDiscard&&<InterviewDiscardConfirmation busy={mutation.busy||decisionBusy} keep={keepInterview} discard={resetInterview}/>}
               <form onSubmit={submit}>
                 <fieldset disabled={mutation.busy||decisionBusy||detail.trashed||confirmInterviewDiscard}>
@@ -1290,6 +1299,10 @@ export function CandidateDetail({
                     Booking and changes are controlled through the candidate’s
                     secure email link.
                   </p>
+                  {index === 0 && interview.linkActive && interview.hasSentBookingLink && (
+                    <a className="hub-text-button" target="_blank" rel="noopener noreferrer"
+                      href={`/api/interview-sent-link?applicationId=${encodeURIComponent(detail.id)}&interviewId=${encodeURIComponent(interview.id)}`}>Open sent booking link <ExternalLink size={14}/></a>
+                  )}
                   {interview.linkExpiresAt && <p className="hub-muted">Secure link {interview.linkActive ? "active" : "unavailable"} · expires {displayDate(interview.linkExpiresAt)}. {isHistoricalInterview(interview) ? "This interview is in history." : "Use Request interview to manage the link."}</p>}
                 </section>
               ))}

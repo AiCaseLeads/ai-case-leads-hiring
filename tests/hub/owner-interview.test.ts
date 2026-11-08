@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {createStore,jobInput,applicationInput,MANAGER} from './fixtures';
 import {DEFAULT_INTERVIEW,interviewMessage} from '../../lib/hub/interview-template';
 import {interviewReadiness} from '../../lib/hub/interview-readiness';
+import {sendInterviewInvitation} from '../../lib/hub/interview-delivery';
 import {submitInterviewInvitation} from '../../lib/hub/interview-submit';
 import {mailGrantKey,personalMailWorkspace} from '../../lib/personal-mail/service';
 import {grantKey,availabilityKey,defaultAvailability} from '../../lib/personal-calendar/service';
@@ -32,11 +33,6 @@ test('owner without a member row previews and sends a valid booking link using t
   const ready=await interviewReadiness(f.store,owner,app.id,env);assert.equal(ready.mailReady,true);assert.deepEqual(ready.cc,[owner.email]);assert.deepEqual(ready.replyTo,[owner.email]);
   f.database.prepare("UPDATE hub_tasks SET status='done'").run();
   const approved=await interviewMessage(f.store,owner,app.id,input);
-  await submitInterviewInvitation(f.store,owner,app.id,{...input,previewFingerprint:approved.fingerprint,internalNote:'Private owner interview note.'},env);
-  const task=(await f.store.tasks()).find(item=>item.id.includes(':interview:'))!;
-  const token=String(task.payload.body).match(/\/interview\/([a-f0-9]{64})/)![1];
-  const link=await f.store.stmt("SELECT application_id,expires_at FROM hub_links WHERE token_hash=? AND kind='interview'",await sha256(token)).first<{application_id:string;expires_at:number}>();
-  assert.equal(link?.application_id,app.id);assert.ok(link!.expires_at>Date.now()+13*86400000);
   let sent=0,mime='';
   const provider:typeof fetch=async(url,init={})=>{
    const target=new URL(String(url));
@@ -49,7 +45,12 @@ test('owner without a member row previews and sends a valid booking link using t
    throw new Error('Unexpected synthetic provider request');
   };
   const resolve=async(account:string)=>{assert.equal(account,owner.email);return personalMailWorkspace(f.store,account,env,provider);};
-  await processHubTasks(f.store,f.db,undefined,undefined,3,[owner.email],resolve);
+  const response=await sendInterviewInvitation(f.store,owner,app.id,{...input,previewFingerprint:approved.fingerprint,internalNote:'Private owner interview note.'},env,resolve);
+  assert.deepEqual(response.interviewDelivery,{status:"sent",cc:[owner.email]});
+  const task=(await f.store.tasks()).find(item=>item.id.includes(':interview:'))!;
+  const token=String(task.payload.body).match(/\/interview\/([a-f0-9]{64})/)![1];
+  const link=await f.store.stmt("SELECT application_id,expires_at FROM hub_links WHERE token_hash=? AND kind='interview'",await sha256(token)).first<{application_id:string;expires_at:number}>();
+  assert.equal(link?.application_id,app.id);assert.ok(link!.expires_at>Date.now()+13*86400000);
   assert.equal(sent,1);assert.match(mime,/From: sales@aicaseleads.com\r\n/);assert.match(mime,/Cc: sales@aicaseleads.com\r\n/);assert.match(mime,/Reply-To: sales@aicaseleads.com\r\n/);
   const deliveredBody=Buffer.from(mime.split('\r\n\r\n')[1].replaceAll('\r\n',''),'base64').toString();assert.ok(deliveredBody.includes('/interview/'+token));assert.ok(!deliveredBody.includes('Private owner interview note.'));
   const delivery=(await f.store.tasks()).find(item=>item.id===task.id)!;assert.equal(delivery.status,'done');assert.equal(delivery.payload.deliveryAccount,owner.email);
@@ -148,4 +149,30 @@ test('explicitly revoked owner membership blocks mailbox access and queued routi
   await assert.rejects(()=>candidateMail(f.store,{to:'candidate@example.invalid',subject:'Interview',body:'Choose a time',messageId:'revoked@example.invalid'},[owner.email],{applicationId:app.id,actor:owner.email,mailMode:'recruiter',interview:true}),{code:'recruiter_reply_contact_required'});
   const readiness=await interviewReadiness(f.store,owner,app.id,env);assert.equal(readiness.mailReady,false);assert.equal(readiness.mailIssue,'recruiter_reply_contact_required');assert.ok(!readiness.interviewers.some(person=>person.email===owner.email));
  }finally{f.database.close();}
+});
+
+test('immediate interview dispatch preserves uncertain Gmail delivery and prevents duplicate sends on retry', async t => {
+ const previous=process.env.ADMIN_EMAILS;
+ process.env.ADMIN_EMAILS=owner.email;
+ t.after(()=>{if(previous===undefined)delete process.env.ADMIN_EMAILS;else process.env.ADMIN_EMAILS=previous;});
+ const f=createStore();
+ t.after(()=>f.database.close());
+ const job=await f.store.saveJob(jobInput()), app=await f.store.acceptApplication(applicationInput(job.id));
+ const fingerprint=await configurationFingerprint(env);
+ await f.store.setSetting(grantKey(owner.email),{email:owner.email,calendarId:owner.email,sealedToken:'calendar',revision:0,fingerprint,connectedAt:1});
+ await f.store.setSetting(availabilityKey(owner.email),defaultAvailability);
+ await f.store.setSetting(mailGrantKey(owner.email),{email:owner.email,sealedToken:'synthetic',revision:0,fingerprint,connectedAt:1});
+ const input={action:'interview' as const,...DEFAULT_INTERVIEW,templateVersion:1,interviewerEmail:owner.email,expectedRevision:(await f.store.applicationRow(app.id)).revision};
+ const preview=await interviewMessage(f.store,owner,app.id,input);
+ const send={...input,previewFingerprint:preview.fingerprint};
+ let sends=0;
+ const transport={sendMail:async()=>{sends++;throw Object.assign(new Error('Gmail response lost'),{code:'gmail_response_lost',uncertain:true});}};
+ const resolve=async()=>transport as unknown as import('../../lib/google/workspace').GoogleWorkspace;
+ const result=await sendInterviewInvitation(f.store,owner,app.id,send,env,resolve);
+ assert.equal(result.interviewDelivery.status,'uncertain');
+ assert.equal(sends,1);
+ const task=(await f.store.tasks()).find(item=>item.id.includes(':interview:'))!;
+ assert.equal(await f.store.claimInterviewMail(task.id,app.id,Date.now()),null);
+ assert.equal(task.status,'uncertain');
+ assert.equal(sends,1);
 });

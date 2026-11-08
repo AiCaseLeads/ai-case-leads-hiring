@@ -1,4 +1,4 @@
-import {submitInterviewInvitation} from './interview-submit';
+import {sendInterviewInvitation} from './interview-delivery';
 import type {PersonalMailEnv} from '../personal-mail/service';
 import {getRecruiterReview,saveRecruiterReview,workflowOverview,listRoleInterviews,workflowSettings,saveWorkflowSettings} from "./recruiting-workflow";
 import {markNotesReviewed} from "./note-review";
@@ -200,7 +200,7 @@ export async function handleHubRequest(
       if(input.action==='interview') {
         if(!input.templateVersion||!input.previewFingerprint)throw new HiringError('preview_required',422,'Preview the invitation before sending.');
         if(!interviewEnv)throw new HiringError('interview_setup_unavailable',503,'Interview setup could not be checked. Refresh and retry.');
-        data=await submitInterviewInvitation(store,member,id,input,await interviewEnv());
+        data=await sendInterviewInvitation(store,member,id,input,await interviewEnv());
       } else data=await store.action(id,input,member);
     }
     else if(section === "bulk-rejection" && request.method === "POST") {

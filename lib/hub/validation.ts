@@ -84,6 +84,7 @@ export const actionInput = z
     actionId: z.string().uuid().optional(),
     renew: z.boolean().optional(),
     templateVersion: z.number().int().positive().optional(),
+    bookingToken: z.string().regex(/^[a-f0-9]{64}$/).optional(),
     previewFingerprint: z.string().regex(/^[a-f0-9]{64}$/).optional(),
     internalNote: z.string().trim().max(20000).optional(),
     interviewerEmail: z.string().trim().email().transform(value=>value.toLowerCase()).optional(),

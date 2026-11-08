@@ -1,3 +1,4 @@
+import {newBookingLink,saveBookingDraft} from './interview-booking-draft';
 import {interviewReplyContact} from './interview-routing';
 import type {HubStore} from './store';
 import type {HubMember} from './auth';
@@ -27,7 +28,7 @@ export async function saveInterviewTemplate(store:HubStore,input:unknown,member:
  const saved=await store.stmt('INSERT INTO hub_settings(key,value,updated_at) VALUES(?,?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_at=excluded.updated_at WHERE hub_settings.value=? RETURNING key','interview_email_template',JSON.stringify(next),next.updatedAt,row?.value||'').first();
  if(!saved)throw new HiringError('template_changed',409,'The default changed. Reload before saving.');return next;
 }
-export async function interviewMessage(store:HubStore,member:HubMember,applicationId:string,input:{subject?:string;body?:string;templateVersion?:number;interviewerEmail?:string;renew?:boolean},bookingLink='https://jobs.aicaseleads.com/interview/preview-example',expiry='Fourteen days after sending'){
+export async function interviewMessage(store:HubStore,member:HubMember,applicationId:string,input:{subject?:string;body?:string;templateVersion?:number;interviewerEmail?:string;renew?:boolean},bookingLink='[Booking link]',expiry='Fourteen days after sending'){
  const app=await store.applicationRow(applicationId),template=await getInterviewTemplate(store);
  if(input.templateVersion!==undefined&&input.templateVersion!==template.version)throw new HiringError('template_changed',409,'The default invitation changed. Refresh your preview before sending.');
  const source=validateInterviewTemplate(input.subject??template.subject,input.body??template.body);
@@ -39,4 +40,12 @@ export async function interviewMessage(store:HubStore,member:HubMember,applicati
  const envelope={sender:mail.sender,to:mail.to,cc:mail.cc||[],replyTo:mail.replyTo||[]};
  const fingerprint=await sha256(JSON.stringify({applicationId,revision:app.revision,actor:member.email,source,templateVersion:template.version,organizer:interviewerEmail||'',renew:!!input.renew,envelope}));
  return {source,interviewerEmail,applicationRevision:app.revision,templateVersion:template.version,subject:mail.subject,body:mail.body,envelope,fingerprint};
+}
+
+export async function prepareInterviewPreview(store:HubStore,member:HubMember,applicationId:string,input:Parameters<typeof interviewMessage>[3]){
+ const link=newBookingLink(store);
+ const message=await interviewMessage(store,member,applicationId,input,link.bookingUrl);
+ const current=input.renew ? await store.currentInterviewForInvitation(applicationId) : null;
+ await saveBookingDraft(store,link.bookingToken,{applicationId,revision:message.applicationRevision,actor:member.email,fingerprint:message.fingerprint,organizer:message.interviewerEmail,existingInterviewId:current?.id});
+ return {...message,...link};
 }

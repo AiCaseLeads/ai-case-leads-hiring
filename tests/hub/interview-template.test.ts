@@ -13,7 +13,7 @@ test('edited booking URL punctuation still sends once using pinned invitation id
 
 test('legacy HTTP invitation cannot bypass preview and an existing invitation cannot falsely report queued',async()=>{const {handleHubRequest}=await import('../../lib/hub/http');const f=createStore();try{const job=await f.store.saveJob(jobInput()),app=await f.store.acceptApplication(applicationInput(job.id));const response=await handleHubRequest(new Request('https://jobs.test/api/hub/applications/'+app.id+'/action',{method:'POST',headers:{origin:'https://jobs.test','content-type':'application/json'},body:JSON.stringify({action:'interview',expectedRevision:1})}),['applications',app.id,'action'],RECRUITER,f.store);assert.equal(response.status,422);assert.equal((await response.json() as {error:{code:string}}).error.code,'preview_required');await f.store.stmt("INSERT INTO hub_members(id,email,role,active,created_at,updated_at) VALUES(?,?,?,1,0,0)",'recruiter',RECRUITER.email,'recruiter').run();await approveScheduling(f.store);const input={...DEFAULT_INTERVIEW,templateVersion:1};const preview=await interviewMessage(f.store,RECRUITER,app.id,input);await currentAction(f.store,app.id,{action:'interview',...input,previewFingerprint:preview.fingerprint},RECRUITER);const next=await interviewMessage(f.store,RECRUITER,app.id,input);await assert.rejects(currentAction(f.store,app.id,{action:'interview',...input,previewFingerprint:next.fingerprint},RECRUITER),{code:'interview_already_invited'});assert.equal((await f.store.stmt("SELECT count(*) n FROM hub_links WHERE application_id=? AND kind='interview'",app.id).first<{n:number}>())!.n,1)}finally{f.database.close()}});
 
-test('default renders one signature and link expiry remains identical between preview and send render',async()=>{const f=createStore();try{const job=await f.store.saveJob(jobInput()),app=await f.store.acceptApplication(applicationInput(job.id));await f.store.stmt("INSERT INTO hub_members(id,email,role,active,created_at,updated_at) VALUES(?,?,?,1,0,0)",'recruiter',RECRUITER.email,'recruiter').run();const source={...DEFAULT_INTERVIEW,body:DEFAULT_INTERVIEW.body+'\nExpires {{linkExpiry}}',templateVersion:1};const preview=await interviewMessage(f.store,RECRUITER,app.id,source),sent=await interviewMessage(f.store,RECRUITER,app.id,source,'https://jobs.test/interview/'+'a'.repeat(64),'Fourteen days after sending');assert.equal((preview.body.match(/AI Case Leads Hiring Team/g)||[]).length,1);assert.ok(preview.body.includes('Expires Fourteen days after sending'));assert.equal(preview.body.replace('https://jobs.aicaseleads.com/interview/preview-example','[link]'),sent.body.replace('https://jobs.test/interview/'+'a'.repeat(64),'[link]'))}finally{f.database.close()}});
+test('default renders one signature and link expiry remains identical between preview and send render',async()=>{const f=createStore();try{const job=await f.store.saveJob(jobInput()),app=await f.store.acceptApplication(applicationInput(job.id));await f.store.stmt("INSERT INTO hub_members(id,email,role,active,created_at,updated_at) VALUES(?,?,?,1,0,0)",'recruiter',RECRUITER.email,'recruiter').run();const source={...DEFAULT_INTERVIEW,body:DEFAULT_INTERVIEW.body+'\nExpires {{linkExpiry}}',templateVersion:1};const preview=await interviewMessage(f.store,RECRUITER,app.id,source),sent=await interviewMessage(f.store,RECRUITER,app.id,source,'https://jobs.test/interview/'+'a'.repeat(64),'Fourteen days after sending');assert.equal((preview.body.match(/AI Case Leads Hiring Team/g)||[]).length,1);assert.ok(preview.body.includes('Expires Fourteen days after sending'));assert.equal(preview.body.replace('[Booking link]','[link]'),sent.body.replace('https://jobs.test/interview/'+'a'.repeat(64),'[link]'))}finally{f.database.close()}});
 
 test('template refresh retains one-off edits and organizer default is initial-only safe',async()=>{const {refreshedInterviewDraft,defaultInterviewOrganizer}=await import('../../components/hub/interview-draft-state');const draft={subject:'Personal subject',body:'Personal message {{bookingLink}}'};const refreshed=refreshedInterviewDraft(draft,{subject:'Changed global',body:'Different global {{bookingLink}}',version:7});assert.deepEqual(refreshed,{...draft,templateVersion:7});assert.equal(defaultInterviewOrganizer('',false,RECRUITER.email,[{email:RECRUITER.email,ready:true}]),RECRUITER.email);assert.equal(defaultInterviewOrganizer('chosen@example.invalid',false,RECRUITER.email,[{email:RECRUITER.email,ready:true}]),'chosen@example.invalid');assert.equal(defaultInterviewOrganizer('',true,RECRUITER.email,[{email:RECRUITER.email,ready:true}]),'');assert.equal(defaultInterviewOrganizer('',false,RECRUITER.email,[{email:RECRUITER.email,ready:false}]),'');});
 
@@ -31,3 +31,30 @@ test('known send conflicts require preview recovery while unrelated failures kee
 
 test('stale template cannot be previewed until its latest default is explicitly adopted',async()=>{const {canPreviewInterview}=await import('../../components/hub/interview-draft-state');assert.equal(canPreviewInterview(false,true,true),false);assert.equal(canPreviewInterview(false,true,false),true);assert.equal(canPreviewInterview(true,true,false),false);assert.equal(canPreviewInterview(false,false,false),false);});
 test('navigation while invitation sends is blocked without queuing a discard dialog',async()=>{const {interviewNavigationOutcome}=await import('../../components/hub/interview-draft-state');assert.equal(interviewNavigationOutcome(true,true,true),'blocked');assert.equal(interviewNavigationOutcome(true,false,true),'blocked');assert.equal(interviewNavigationOutcome(true,true,false),'modal');assert.equal(interviewNavigationOutcome(false,false,false),'leave');});
+
+test('the prepared link shows availability before sending and becomes the exact booking URL in the email',async()=>{
+ const {prepareInterviewPreview}=await import('../../lib/hub/interview-template');
+ const {handleCandidateRequest}=await import('../../lib/hub/candidate');
+ const f=createStore();
+ try {
+  const job=await f.store.saveJob(jobInput()), app=await f.store.acceptApplication(applicationInput(job.id));
+  await f.store.stmt("INSERT INTO hub_members(id,email,role,active,created_at,updated_at) VALUES(?,?,?,1,0,0)",'recruiter',RECRUITER.email,'recruiter').run();
+  await approveScheduling(f.store);
+  const input={...DEFAULT_INTERVIEW,templateVersion:1};
+  const preview=await prepareInterviewPreview(f.store,RECRUITER,app.id,input);
+  const view=()=>handleCandidateRequest(new Request(preview.bookingUrl),preview.bookingToken,f.store,{busy:async()=>[]});
+  const before=await (await view()).json() as {data:{status:string;slots:{start:string}[]}};
+  assert.equal(before.data.status,'preview');
+  assert.ok(before.data.slots.length);
+  assert.equal(await f.store.latestInterview(app.id),null);
+  const attempt=await handleCandidateRequest(new Request(preview.bookingUrl,{method:'POST',headers:{origin:new URL(preview.bookingUrl).origin,'content-type':'application/json'},body:JSON.stringify({action:'book',start:before.data.slots[0].start,timeZone:'UTC'})}),preview.bookingToken,f.store,{busy:async()=>[]});
+  assert.equal(attempt.status,404);
+  await assert.rejects(currentAction(f.store,app.id,{action:'interview',...input,bookingToken:'a'.repeat(64),previewFingerprint:preview.fingerprint},RECRUITER),{code:'preview_changed'});
+  await currentAction(f.store,app.id,{action:'interview',...input,bookingToken:preview.bookingToken,previewFingerprint:preview.fingerprint},RECRUITER);
+  const after=await (await view()).json() as {data:{status:string}};
+  assert.equal(after.data.status,'invited');
+  const task=await f.store.stmt("SELECT payload_json FROM hub_tasks WHERE id LIKE ?",`gmail:${app.id}:interview:%`).first<{payload_json:string}>();
+  assert.equal(JSON.parse(task!.payload_json).body,preview.body);
+  assert.ok(preview.body.includes(preview.bookingUrl));
+ } finally { f.database.close(); }
+});

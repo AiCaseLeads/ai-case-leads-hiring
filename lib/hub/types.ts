@@ -77,6 +77,7 @@ export type HistoryEntry = {
   createdAt: number;
 };
 export type Communication = {
+  cc?: string[];
   id: string;
   purpose?: string;
   subject: string;
@@ -112,6 +113,7 @@ export type Interview = {
   bookingUrl?: string;
   linkExpiresAt?: number;
   linkActive?: boolean;
+  hasSentBookingLink?: boolean;
 };
 export type ApplicationDetail = ApplicationSummary & {
   archiveProject?: string;
