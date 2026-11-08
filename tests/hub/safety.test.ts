@@ -21,10 +21,10 @@ test("a stale settings screen cannot restore a revoked recruiter, and successful
   await currentSettings(store,{members:[{email:MANAGER.email,role:"admin"},{email:RECRUITER.email,role:"recruiter"}]},MANAGER);
   const stale=await store.settings();
   await currentSettings(store,{members:[{email:MANAGER.email,role:"admin"}]},MANAGER);
-  await assert.rejects(store.saveSettings({settingsVersion:stale.settingsVersion,members:stale.members.map(({email,role})=>({email,role})),interviewRemindersEnabled:true},MANAGER),{code:"settings_changed"});
+  await assert.rejects(store.saveSettings({settingsVersion:stale.settingsVersion,members:stale.members.map(({email,role})=>({email,role})),interviewRemindersEnabled:false},MANAGER),{code:"settings_changed"});
   const current=await store.settings();
   assert.equal(current.members.find((member)=>member.email===RECRUITER.email)!.active,false);
-  assert.equal(current.scheduling.remindersEnabled,false);
+  assert.equal(current.scheduling.remindersEnabled,true);
   assert.equal(current.accessAudit.length,2);
   assert.ok(current.accessAudit.every((entry)=>entry.actor===MANAGER.email));
   assert.equal(current.accessAudit[0].after.members instanceof Array,true);

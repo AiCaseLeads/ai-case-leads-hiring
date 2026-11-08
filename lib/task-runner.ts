@@ -1,3 +1,4 @@
+import { bookedReminderIsCurrent, bookingFollowupIsCurrent } from './hub/interview-reminders';
 import {workflowNotificationMail} from "./hub/recruiting-workflow";
 import { AUTOMATIC_REPLY_TO } from './email/contracts';
 import { automaticMailTransport, reserveAutomaticMail, isAutomaticMailDeferred, type AutomaticMailResolver } from './email/service';
@@ -13,6 +14,7 @@ import { sha256 } from "./hiring/crypto";
 import { cleanupExpiredUploads } from "./hiring/upload-cleanup";
 import { withinDeadline } from "./hiring/deadline";
 import { syncConnectedHiringReplies } from "./personal-mail/reply-sync";
+import { backfillInterviewEmails } from "./hub/interview-email-backfill";
 import { enqueueReviewReminders, reviewReminderMail } from "./review-reminders/service";
 import { DriveArchiveContinuation, DriveArchiveFailure, type DriveArchiveProgress } from "./google/drive";
 
@@ -81,6 +83,7 @@ async function reconcileUncertain(db:D1Database,store:HubStore,max:number,deadli
 async function sendAutomaticTask(task:Task,mail:MailInput,store:HubStore,db:D1Database,deadline:number,resolve:AutomaticMailResolver){
   const transport=await resolve();transport.setDeadline?.(deadline);
   await transport.verify();
+  if (task.payload.reminder === true && !await bookedReminderIsCurrent(store, task, Date.now())) return {stale:true};
   await reserveAutomaticMail(store);
   const {deliveryAccount:_oldAccount,...payload}=task.payload;void _oldAccount;
   const pinned=await db.prepare("UPDATE hub_tasks SET payload_json=? WHERE id=? AND lease_token=? AND status='running' AND lease_until>? RETURNING id").bind(JSON.stringify({...payload,deliveryProvider:'sendgrid',deliveryFingerprint:transport.fingerprint,deliveryTo:mail.to,deliveryStartedAt:Date.now()}),task.id,task.leaseToken,Date.now()).first();
@@ -108,10 +111,8 @@ async function taskEffect(task:Task,store:HubStore,db:D1Database,bucket:R2Bucket
       if(!mail||mail.to.trim().toLowerCase()==="sales@aicaseleads.com")return {stale:true};
       return sendAutomaticTask(task,mail,store,db,deadline,automaticResolver);
     }
-    if(task.payload.reminder===true){
-      const current=await db.prepare("SELECT revision,status,start FROM hub_interviews WHERE id=? AND application_id=?").bind(String(task.payload.interviewId||""),task.applicationId).first<{revision:number;status:string;start:string|null}>();
-      if(!await store.setting("interview_reminders_enabled",false)||!current||current.status!=="booked"||current.revision!==Number(task.payload.revision)||current.start!==task.payload.interviewStart||!current.start||!Number.isFinite(Date.parse(current.start))||Date.parse(current.start)<=Date.now()||["Rejected","Withdrawn","Hired"].includes((await store.applicationRow(task.applicationId)).stage))return {stale:true};
-    }
+    if (task.payload.reminder === true && !await bookedReminderIsCurrent(store, task, Date.now())) return {stale:true};
+    if (task.payload.bookingFollowup === true && !await bookingFollowupIsCurrent(store, task, Date.now())) return {stale:true};
     if(task.id===`gmail:${task.applicationId}:rejection`||task.id.startsWith(`gmail:${task.applicationId}:rejection:`)) {
       const decision=await store.applicationRow(task.applicationId);
       if(decision.stage!=="Rejected"||task.createdAt<decision.stage_entered_at)return {stale:true,supersededRejection:true};
@@ -124,11 +125,12 @@ async function taskEffect(task:Task,store:HubStore,db:D1Database,bucket:R2Bucket
       const link=linkHash?await db.prepare("SELECT expires_at,used_at FROM hub_links WHERE token_hash=? AND application_id=? AND kind=?").bind(linkHash,task.applicationId,linkKind).first<{expires_at:number;used_at:number|null}>():null;
       if(!link||link.used_at!==null||link.expires_at<=Date.now())return {stale:true,expiredInvitation:true};
     }
-    const mail=await candidateMail(store,task.payload as unknown as MailInput,owners,{mailMode:candidateTaskMailMode(task.id,task.applicationId,task.payload),actor:task.payload.actor,applicationId:task.applicationId,rejection:isRejectionTask(task.id,task.applicationId),interview:isInterviewInvitationTask(task.id,task.applicationId),interviewerEmail:task.payload.interviewerEmail});
+    const mail=await candidateMail(store,task.payload as unknown as MailInput,owners,{mailMode:candidateTaskMailMode(task.id,task.applicationId,task.payload),actor:task.payload.actor,applicationId:task.applicationId,rejection:isRejectionTask(task.id,task.applicationId),interview:isInterviewInvitationTask(task.id,task.applicationId) || task.payload.bookingFollowup === true,interviewerEmail:task.payload.interviewerEmail});
     if(task.payload.approvedEnvelope && JSON.stringify(task.payload.approvedEnvelope)!==JSON.stringify({sender:mail.sender,to:mail.to,cc:mail.cc||[],replyTo:mail.replyTo||[]}))throw {code:'interview_sender_changed'};
     if(mail.sender===CANDIDATE_SENDER)return sendAutomaticTask(task,mail,store,db,deadline,automaticResolver);
     const transport=await candidateTransport(store,mail.candidateAccount,resolver);
     transport.setDeadline?.(deadline);
+    if (task.payload.bookingFollowup === true && !await bookingFollowupIsCurrent(store, task, Date.now())) return {stale:true};
     // Pin transport before the irreversible send so an uncertain response is reconciled in the same mailbox.
     const pinned=await db.prepare("UPDATE hub_tasks SET payload_json=? WHERE id=? AND lease_token=? AND status='running' RETURNING id").bind(JSON.stringify({...task.payload,deliveryProvider:"gmail",deliveryAccount:mail.candidateAccount,deliveryEnvelope:{sender:mail.sender,to:[mail.to],cc:mail.cc||[],replyTo:mail.replyTo||[]}}),task.id,task.leaseToken).first();
     if(!pinned)throw {code:"task_lease_expired"};
@@ -229,6 +231,7 @@ export async function processHubTasks(store:HubStore,db:D1Database,bucket:R2Buck
     try{recruitingMail=await candidateTransport(store,process.env.CANDIDATE_MAIL_ACCOUNT,candidateResolver);recruitingMail.setDeadline?.(deadline);}catch{/* Individual queued mail exposes setup errors below. */}
     await processStaffInvites(store,recruitingMail||undefined,owners,3,resolveAutomatic);
     await enqueueReviewReminders(store,owners);
+    await backfillInterviewEmails(store);
     await reconcileArchives(db,store);
   await reconcileLegacyPdfArchives(db,store);
     reconciled=await reconcileUncertain(db,store,Math.min(max,5),deadline,candidateResolver,resolveAutomatic);

@@ -670,9 +670,10 @@ test("a failed provider-result archive insertion rolls back delivery and revisio
   database.close();
 });
 
-test("interview reminders default off and never queue before a confirmed Calendar booking", async () => {
+test("reminders default on; an explicit opt-out suppresses confirmed booking reminders", async () => {
   const { store, database, taskId } = await calendarFixture(48);
-  assert.equal((await store.settings()).scheduling.remindersEnabled, false);
+  assert.equal((await store.settings()).scheduling.remindersEnabled, true);
+  await currentSettings(store, { interviewRemindersEnabled: false }, MANAGER);
   assert.equal(
     (await store.tasks()).filter((t) => t.payload.reminder).length,
     0,
@@ -691,7 +692,7 @@ test("interview reminders default off and never queue before a confirmed Calenda
   );
   database.close();
 });
-test("explicitly enabled reminders queue at future24h and1h offsets with the confirmed Meet link and interview revision", async () => {
+test("explicitly enabled reminders queue at the three future offsets with the confirmed Meet link and interview revision", async () => {
   const { store, database, applicationId, interviewId, taskId, payload } =
     await calendarFixture(48);
   await currentSettings(store, { interviewRemindersEnabled: true }, MANAGER);
@@ -709,10 +710,11 @@ test("explicitly enabled reminders queue at future24h and1h offsets with the con
     },
   });
   const reminders = (await store.tasks()).filter((t) => t.payload.reminder);
-  assert.equal(reminders.length, 2);
+  assert.equal(reminders.length, 3);
   for (const [hours, label] of [
     [24, "24h"],
     [1, "1h"],
+    [1/12, "5m"],
   ] as const) {
     const reminder = reminders.find((t) => t.id.endsWith(`:${label}`))!;
     assert.equal(
@@ -731,7 +733,7 @@ test("explicitly enabled reminders queue at future24h and1h offsets with the con
         "https://meet.google.com/synthetic-test",
       ),
     );
-    assert.ok(String(reminder.payload.body).includes("Time zone: UTC"));
+    assert.ok(String(reminder.payload.body).includes("UTC"));
     assert.ok(!String(reminder.payload.body).includes("/interview/"));
     assert.equal(reminder.status, "pending");
   }
@@ -755,8 +757,7 @@ test("late bookings schedule only remaining future reminder times", async () => 
   const reminders = (await first.store.tasks()).filter(
     (t) => t.payload.reminder,
   );
-  assert.equal(reminders.length, 1);
-  assert.ok(reminders[0].id.endsWith(":1h"));
+  assert.deepEqual(reminders.map(t=>t.id.split(":").pop()).sort(), ["1h","5m"]);
   first.database.close();
   const second = await calendarFixture(0.5);
   await currentSettings(second.store, { interviewRemindersEnabled: true }, MANAGER);
@@ -768,13 +769,13 @@ test("late bookings schedule only remaining future reminder times", async () => 
       meetUrl: "https://meet.google.com/synthetic-test",
     },
   });
-  assert.equal(
-    (await second.store.tasks()).filter((t) => t.payload.reminder).length,
-    0,
+  assert.deepEqual(
+    (await second.store.tasks()).filter((t) => t.payload.reminder).map(t=>t.id.split(":").pop()),
+    ["5m"],
   );
   second.database.close();
 });
-test("conflicting Calendar completions create one reminder pair reflecting the winning result", async () => {
+test("conflicting Calendar completions create one set of reminders reflecting the winning result", async () => {
   const { store, database, taskId, applicationId } = await calendarFixture(48);
   await currentSettings(store, { interviewRemindersEnabled: true }, MANAGER);
   const initial = await store.getApplication(applicationId),
@@ -800,7 +801,7 @@ test("conflicting Calendar completions create one reminder pair reflecting the w
   const current = await store.getApplication(applicationId);
   assert.equal(current.revision, initial.revision + 1);
   const reminders = (await store.tasks()).filter((t) => t.payload.reminder);
-  assert.equal(reminders.length, 2);
+  assert.equal(reminders.length, 3);
   assert.ok(
     reminders.every((t) =>
       String(t.payload.body).includes(current.interview!.meetUrl!),
@@ -808,7 +809,7 @@ test("conflicting Calendar completions create one reminder pair reflecting the w
   );
   database.close();
 });
-test("turning reminders off before the result commits atomically suppresses both tasks and communications", async () => {
+test("turning reminders off before the result commits atomically suppresses reminder tasks and communications", async () => {
   const { store, database, taskId, applicationId } = await calendarFixture(48);
   await currentSettings(store, { interviewRemindersEnabled: true }, MANAGER);
   const booking = await store.claimTask(Date.now()),
@@ -889,19 +890,19 @@ test("rescheduling queues a new reminder generation without rewriting old payloa
     },
   });
   const reminders = (await store.tasks()).filter((t) => t.payload.reminder);
-  assert.equal(reminders.length, 4);
+  assert.equal(reminders.length, 6);
   assert.equal(
     reminders.filter(
       (t) =>
         t.payload.revision === 2 && t.payload.interviewStart === payload.start,
     ).length,
-    2,
+    3,
   );
   assert.equal(
     reminders.filter(
       (t) => t.payload.revision === 3 && t.payload.interviewStart === start,
     ).length,
-    2,
+    3,
   );
   database.close();
 });

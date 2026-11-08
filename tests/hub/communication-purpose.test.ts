@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {communicationPurpose} from '../../lib/hub/communication-purpose';
 import {createStore,jobInput,applicationInput} from './fixtures';
 test('purpose uses durable scoped task identity and never a subject guess',()=>{
- for(const [suffix,label] of [['confirmation','Acknowledgment email'],['rejection:2','Rejection email'],['assessment:id:invitation:3','Assessment invitation'],['interview:id:invitation:2','Interview invitation'],['reminder:id:2:24h','Interview reminder'],['manual:id','Recruiter email']])assert.equal(communicationPurpose(`gmail:app:${suffix}`,'app'),label);
+ for(const [suffix,label] of [['confirmation','Acknowledgment email'],['rejection:2','Rejection email'],['assessment:id:invitation:3','Assessment invitation'],['interview:id:invitation:2','Interview invitation'],['reminder:id:2:24h','24-hour interview reminder'],['reminder:id:2:5m','5-minute interview reminder'],['booking-followup:id:1','Booking follow-up'],['manual:id','Recruiter email']])assert.equal(communicationPurpose(`gmail:app:${suffix}`,'app'),label);
  assert.equal(communicationPurpose('gmail:other:confirmation','app'),'Email');
  assert.equal(communicationPurpose('gmail:app:unexpected','app'),'Email');
 });

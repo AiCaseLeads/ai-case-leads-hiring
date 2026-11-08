@@ -67,6 +67,35 @@ test("stored bookings stay visible and cancellable when Calendar availability fa
   } finally {database.close();}
 });
 
+test("candidate links show closed or unverified slots without offering a new booking or changing their history", async () => {
+  const {store, database} = createStore();
+  try {
+    const job = await store.saveJob(jobInput());
+    const app = await store.acceptApplication(applicationInput(job.id));
+    await approveScheduling(store);
+    const token = await invitation(store,app.id,"interview");
+    const row = await store.latestInterview(app.id);
+    assert.ok(row);
+    const event = database.prepare("UPDATE hub_interviews SET status='booked',provider_id=?,start=?,end=?,meet_url='https://meet.google.com/obsolete' WHERE id=?");
+    for (const [provider, start, end, expected] of [
+      [null, "2030-12-01T15:00:00Z", "2030-12-01T15:30:00Z", "unlinked"],
+      ["synthetic-event", "bad date", null, "unlinked"],
+      ["synthetic-event", "2000-12-01T15:00:00Z", "2000-12-01T15:30:00Z", "past"],
+    ] as const) {
+      event.run(provider, start, end, row.id);
+      const response = await handleCandidateRequest(req(token), token, store);
+      assert.equal(response.status, 200);
+      const body = await response.json() as {data:{status:string;slots:unknown[];interview:{meetUrl?:string}}};
+      assert.equal(body.data.status, expected);
+      assert.deepEqual(body.data.slots, []);
+      assert.equal(body.data.interview.meetUrl, undefined);
+      const cancel = await handleCandidateRequest(req(token,{ action:"cancel" }), token, store);
+      assert.equal(cancel.status, 409);
+      assert.equal((await store.latestInterview(app.id))?.status, "booked");
+    }
+  } finally { database.close(); }
+});
+
 test("rescheduling keeps the original Calendar destination and extends the private link through the booking", async () => {
   const {store,database} = createStore();
   try {

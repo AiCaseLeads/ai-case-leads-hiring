@@ -1,5 +1,5 @@
 "use client";
-import type { InterviewProgress } from '../../lib/hub/interview-progress';
+import { INTERVIEW_VIEW_LABELS, type InterviewProgress } from '../../lib/hub/interview-progress';
 import { interviewProgressLabels } from './interview-progress';
 import {useState} from 'react';
 import {useHubResource,useHubMutation,displayDate} from './api';
@@ -16,15 +16,12 @@ type InterviewItem = {
   start?: string; interviewProgress: InterviewProgress; meetUrl?: string; recordingUrl?: string;
 };
 type WorkspaceProps = {
-  jobId?: string; refresh?: number; changed?: () => void;
+  role: string; progress: string; page: number; refresh?: number;
+  select: (role: string, progress: string, page: number) => void;
   jobs?: {id: string; title: string}[]; openApplicant?: (id: string) => void;
 };
 
-export function InterviewWorkspace({jobId, refresh=0, openApplicant, jobs}: WorkspaceProps) {
-  const initial = {jobId, role:jobId || '', progress:'', page:1};
-  const [selection,setSelection] = useState(initial);
-  const current = selection.jobId === jobId ? selection : initial;
-  const {role, progress, page} = current;
+export function InterviewWorkspace({role, progress, page, select, refresh=0, openApplicant, jobs}: WorkspaceProps) {
   const params = new URLSearchParams({page:String(page),pageSize:'50'});
   if (role) params.set('jobId',role);
   if (progress) params.set('progress',progress);
@@ -33,17 +30,20 @@ export function InterviewWorkspace({jobId, refresh=0, openApplicant, jobs}: Work
   return <section className="hub-card">
     <div className="hub-section-heading compact">
       <h2>Interviews</h2>
-      {jobs && <label>Role<select aria-label="Role" value={role} onChange={event=>setSelection({...current,role:event.target.value,page:1})}>
+      {jobs && <label>Role<select aria-label="Role" value={role} onChange={event=>select(event.target.value,progress,1)}>
         <option value="">All roles</option>
         {jobs.map(job=><option value={job.id} key={job.id}>{job.title}</option>)}
       </select></label>}
-      <label>Interview status<select aria-label="Interview status" value={progress} onChange={event=>setSelection({...current,progress:event.target.value,page:1})}>
+      <label>Interview status<select aria-label="Interview status" value={progress} onChange={event=>select(role,event.target.value,1)}>
+        {Object.entries(INTERVIEW_VIEW_LABELS).map(([value,label])=><option key={value} value={value}>{label}</option>)}
         <option value="">All interviews</option>
-        {Object.entries(interviewProgressLabels).filter(([value])=>value!=='none').map(([value,label])=><option key={value} value={value}>{label}</option>)}
+        <optgroup label="Interview status">
+          {Object.entries(interviewProgressLabels).filter(([value])=>value!=='none' && value!=='requested').map(([value,label])=><option key={value} value={value}>{label}</option>)}
+        </optgroup>
       </select></label>
     </div>
     <ResourceState loading={resource.loading} error={resource.error} retry={resource.reload}/>
-    {resource.data?.items.length===0 && <p>No matching interviews.</p>}
+    {resource.data?.items.length===0 && <p>{progress === 'upcoming' ? 'No upcoming confirmed interviews.' : 'No matching interviews.'}</p>}
     <div className="hub-interview-list">
       {resource.data?.items.map(item=><article key={item.id} style={{display:'flex',gap:16,alignItems:'center',flexWrap:'wrap',borderTop:'1px solid #dce6e7',padding:'12px 0'}}>
         <div style={{flex:1,minWidth:180}}>
@@ -61,8 +61,8 @@ export function InterviewWorkspace({jobId, refresh=0, openApplicant, jobs}: Work
     </div>
     {resource.data && <nav className="hub-button-row" aria-label="Interview pages">
       <span className="hub-muted">{resource.data.total===0?'0 interviews':`${(page-1)*resource.data.pageSize+1}–${Math.min(page*resource.data.pageSize,resource.data.total)} of ${resource.data.total} interviews`}</span>
-      <button className="hub-button secondary" disabled={resource.loading || page<=1} onClick={()=>setSelection({...current,page:page-1})}>Previous</button>
-      <button className="hub-button secondary" disabled={resource.loading || page*resource.data.pageSize>=resource.data.total} onClick={()=>setSelection({...current,page:page+1})}>Next</button>
+      <button className="hub-button secondary" disabled={resource.loading || page<=1} onClick={()=>select(role,progress,page-1)}>Previous</button>
+      <button className="hub-button secondary" disabled={resource.loading || page*resource.data.pageSize>=resource.data.total} onClick={()=>select(role,progress,page+1)}>Next</button>
     </nav>}
   </section>;
 }

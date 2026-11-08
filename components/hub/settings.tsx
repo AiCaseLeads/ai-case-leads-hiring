@@ -32,9 +32,34 @@ import { InterviewTemplateSettings } from "./interview-composer";
 export type SettingsSection = "personal" | "team" | "integrations" | "templates" | "scorecards" | "help" | "diagnostics";
 export function HubSettings({member,refresh,changed,jobs=[],startSection,onDeliveryActivity}:{member:Member;refresh:number;changed:()=>void;jobs?:HubJob[];startSection?:SettingsSection;onDeliveryActivity?:()=>void}) {
   const owner=member.isOwner===true, managesTeam=member.role==="admin";
-  const [section,setSection]=useState<SettingsSection>(startSection||"personal");
-  useEffect(()=>{function readSection(){const requested=new URLSearchParams(window.location.search).get("section");const next=requested==="company"?"integrations":["calendar","email"].includes(requested||"")?"personal":requested||startSection||"personal"; if(["personal","templates","scorecards","help","team","integrations","diagnostics"].includes(next||""))setSection(next as SettingsSection);}queueMicrotask(readSection);window.addEventListener("hub:navigate",readSection);window.addEventListener("popstate",readSection);return()=>{window.removeEventListener("hub:navigate",readSection);window.removeEventListener("popstate",readSection)};},[startSection]);
-  function choose(next:SettingsSection){setSection(next);const url=new URL(window.location.href);url.searchParams.set("section",next);window.history.replaceState(window.history.state,"",url);}
+  const [section,setSection] = useState<SettingsSection>("personal");
+  const [openAutomaticMail,setOpenAutomaticMail] = useState(false);
+  useEffect(() => {
+    function readSection() {
+      const requested = new URLSearchParams(window.location.search).get("section") || startSection;
+      let next: SettingsSection = "personal";
+      if (requested === "templates" || requested === "scorecards" || requested === "help") next = requested;
+      if (requested === "team" && managesTeam) next = "team";
+      if ((requested === "integrations" || requested === "company") && (owner || managesTeam)) next = "integrations";
+      if (requested === "diagnostics" && owner) next = "diagnostics";
+      setSection(next);
+      setOpenAutomaticMail(next === "integrations" && requested === "company");
+    }
+    queueMicrotask(readSection);
+    window.addEventListener("hub:navigate",readSection);
+    window.addEventListener("popstate",readSection);
+    return () => {
+      window.removeEventListener("hub:navigate",readSection);
+      window.removeEventListener("popstate",readSection);
+    };
+  },[startSection,owner,managesTeam]);
+  function choose(next:SettingsSection) {
+    setSection(next);
+    setOpenAutomaticMail(false);
+    const url = new URL(window.location.href);
+    url.searchParams.set("section",next);
+    window.history.replaceState(window.history.state,"",url);
+  }
   const sections=[{id:"personal" as const,label:"My calendar & email"},{id:"templates" as const,label:"Email templates"},...(managesTeam?[{id:"team" as const,label:"Team & permissions"}]:[]),...(owner||managesTeam?[{id:"integrations" as const,label:"Integrations"}]:[]),{id:"scorecards" as const,label:"Scorecards"},{id:"help" as const,label:"Help requests"},...(owner?[{id:"diagnostics" as const,label:"Diagnostics"}]:[])];
   return <section className="hub-settings hub-settings-v3" aria-labelledby="settings-title">
     <div className="hub-section-heading"><div><p className="hub-kicker">WORKSPACE</p><h2 id="settings-title">Settings</h2><p>Connections, communication defaults, and team access.</p></div><a className="hub-text-button hub-inline-guide" href="/recruiter-guide.pdf" target="_blank" rel="noopener noreferrer">Recruiter guide <ExternalLink size={15}/></a></div>
@@ -45,7 +70,7 @@ export function HubSettings({member,refresh,changed,jobs=[],startSection,onDeliv
     {section==="templates"&&<><div className="hub-setting-intro"><h3>Email templates</h3><p>Default messages are separate from edits to an individual invitation.</p></div><InterviewTemplateSettings isOwner={owner}/>{owner?<CompanySettings member={member} refresh={refresh} changed={changed} jobs={jobs} initialArea="notifications" onDeliveryActivity={onDeliveryActivity}/>:<p className="hub-muted">The account owner manages company rejection defaults. Individual invitations can be personalized before sending.</p>}</>}
     {section==="scorecards"&&<section className="hub-card" id="scorecard-settings"><ScorecardTemplates jobs={jobs}/></section>}
     {section==="help"&&<RecruitingRequests/>}
-    {section==="integrations"&&(owner||managesTeam)&&<><div className="hub-setting-intro"><h3>Integrations</h3><p>Open a connection to review its account, status, and setup.</p></div><details className="hub-integration-disclosure"><summary><strong>MeetGeek</strong><span>Interview recordings, transcripts and summaries</span></summary><MeetGeekSettings/></details>{owner&&<><details className="hub-integration-disclosure"><summary><strong>Codex & Claude</strong><span>Assistant access and permissions</span></summary><AgentAccess isOwner={owner}/></details><details className="hub-integration-disclosure"><summary><strong>Google Workspace & files</strong><span>Company archive and optional shared calendar</span></summary><CompanySettings member={member} refresh={refresh} changed={changed} jobs={jobs} initialArea="storage" onDeliveryActivity={onDeliveryActivity}/></details><details className="hub-integration-disclosure"><summary><strong>AI provider</strong><span>Applicant evidence comparison</span></summary><AiReviewSettings/></details></>}<details className="hub-integration-disclosure"><summary><strong>Automatic email</strong><span>Receipts, rejections and reminders</span></summary><AutomaticMailSetup refresh={refresh}/></details></>}
+    {section==="integrations"&&(owner||managesTeam)&&<><div className="hub-setting-intro"><h3>Integrations</h3><p>Open a connection to review its account, status, and setup.</p></div><details className="hub-integration-disclosure"><summary><strong>MeetGeek</strong><span>Interview recordings, transcripts and summaries</span></summary><MeetGeekSettings/></details>{owner&&<><details className="hub-integration-disclosure"><summary><strong>Codex & Claude</strong><span>Assistant access and permissions</span></summary><AgentAccess isOwner={owner}/></details><details className="hub-integration-disclosure"><summary><strong>Google Workspace & files</strong><span>Company archive and optional shared calendar</span></summary><CompanySettings member={member} refresh={refresh} changed={changed} jobs={jobs} initialArea="storage" onDeliveryActivity={onDeliveryActivity}/></details><details className="hub-integration-disclosure"><summary><strong>AI provider</strong><span>Applicant evidence comparison</span></summary><AiReviewSettings/></details></>}<details className="hub-integration-disclosure" open={openAutomaticMail || undefined}><summary><strong>Automatic email</strong><span>Receipts, rejections and reminders</span></summary><AutomaticMailSetup refresh={refresh}/></details></>}
     {section==="diagnostics"&&owner&&<><div className="hub-setting-intro"><h3>Diagnostics</h3><p>Delivery recovery and technical configuration for workspace administrators.</p></div>{onDeliveryActivity&&<button type="button" className="hub-button secondary" onClick={onDeliveryActivity}>Open delivery activity</button>}<CompanySettings member={member} refresh={refresh} changed={changed} jobs={jobs} initialArea="advanced" onDeliveryActivity={onDeliveryActivity}/></>}
     </div></div>
   </section>;
@@ -93,7 +118,7 @@ function SettingsForm({
       initial.scheduling?.weekdays || [1, 2, 3, 4, 5],
     ),
     [remindersEnabled, setRemindersEnabled] = useState(
-      initial.scheduling?.remindersEnabled ?? false,
+      initial.scheduling?.remindersEnabled ?? true,
     );
   const mutation = useHubMutation(),
     connection = useHubMutation();
@@ -108,7 +133,7 @@ function SettingsForm({
   async function save(e: React.FormEvent) {
     e.preventDefault();
     const folderId = driveFolderId(driveRootId);
-    if (folderId === null) {
+    if (area === "storage" && folderId === null) {
       setValidationError("Paste a Google Drive folder link (https://drive.google.com/drive/folders/…) or its folder ID.");
       return;
     }
@@ -118,15 +143,18 @@ function SettingsForm({
       "PATCH",
       {
         settingsVersion: initial.settingsVersion,
-        calendarId: calendarId.trim(),
-        driveRootId: folderId,
-        rejectionTemplate,
-        interviewTimeZone: timeZone,
-        interviewStartHour: Number(startHour),
-        interviewEndHour: Number(endHour),
-        interviewDurationMinutes: Number(duration),
-        interviewWeekdays: weekdays,
-        interviewRemindersEnabled: remindersEnabled,
+        ...(area === "storage" ? {
+          calendarId: calendarId.trim(),
+          driveRootId: folderId,
+          interviewTimeZone: timeZone,
+          interviewStartHour: Number(startHour),
+          interviewEndHour: Number(endHour),
+          interviewDurationMinutes: Number(duration),
+          interviewWeekdays: weekdays,
+        } : {
+          ...(rejectionTemplate !== (initial.templates.rejection || "") ? {rejectionTemplate} : {}),
+          interviewRemindersEnabled: remindersEnabled,
+        }),
       },
       "Settings saved.",
     );
@@ -179,7 +207,15 @@ function SettingsForm({
       </>}
       {area === "notifications" && <>
         <details className="hub-card hub-setup-details"><summary>Default rejection message <span className="hub-muted">· {rejectionTemplate.trim() ? "Message ready" : "Using built-in message"}</span></summary><p className="hub-muted">Used when creating new jobs. Existing jobs keep their saved message and screening rules.</p><Field label="Approved template"><textarea rows={6} value={rejectionTemplate} onChange={e => setRejectionTemplate(e.target.value)} /></Field></details>
-        <section className="hub-card"><h3>Interview reminders</h3><label className="hub-checkbox"><input type="checkbox" checked={remindersEnabled} onChange={e => setRemindersEnabled(e.target.checked)} />Send reminders for confirmed interviews</label><p className="hub-muted">24 hours and 1 hour before a future booking. Requires the verified automatic email connection. Cancelled and replaced bookings are skipped.</p></section>
+        <section className="hub-card">
+          <h3>Interview emails</h3>
+          <label className="hub-checkbox">
+            <input type="checkbox" checked={remindersEnabled} onChange={e => setRemindersEnabled(e.target.checked)} />
+            Send booking follow-ups and interview reminders
+          </label>
+          <p className="hub-muted"><strong>Awaiting booking</strong> · One follow-up if the candidate hasn’t booked after two business days.</p>
+          <p className="hub-muted"><strong>Confirmed</strong> · Reminders 24 hours, 1 hour, and 5 minutes before the interview.</p>
+        </section>
       </>}
       <div className="hub-settings-save" role="group" aria-label="Save company settings"><button className="hub-button" type="submit" disabled={mutation.busy}>{mutation.busy ? "Saving…" : "Save company settings"}</button><Feedback error={validationError || mutation.error} success={validationError ? "" : mutation.success} /></div>
     </fieldset></form>}

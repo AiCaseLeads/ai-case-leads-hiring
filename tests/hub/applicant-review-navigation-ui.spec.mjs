@@ -301,3 +301,35 @@ test('confirmed interview filter survives opening a profile and records attendan
  await select.selectOption('stage:Screening');
  assert.equal(new URL(page.url()).searchParams.has('interviewProgress'),false);
 });
+
+test('interview schedule defaults to upcoming and retains the past or missing booking view on return', async t => {
+  const {page}=await setup(t,{width:1280});
+  await page.route('**/api/hub/interviews?**',route=>{
+    const selected=new URL(route.request().url()).searchParams.get('progress');
+    const row={id:'session',applicationId:'app-1',jobTitle:'Synthetic Engineer',name:'Interview candidate',
+      interviewProgress:selected==='upcoming'?'booked':selected==='past'?'attendance_due':'unlinked'};
+    return route.fulfill({json:{data:{items:[row],total:1,page:1,pageSize:50}}});
+  });
+  await page.route('**/api/hub/applications/app-1/recruiter-review',route=>route.fulfill({json:{data:{version:0,recommendation:'',notes:'',summary:'',recordingUrl:'',salaryExpectation:'',availability:'',concerns:'',canApprove:false,readiness:{ready:false,missing:[]}}}}));
+  await page.route('**/api/hub/meetgeek/meetings',route=>route.fulfill({json:{data:[]}}));
+  await page.route('**/api/hub/interview-recordings?**',route=>route.fulfill({json:{data:[]}}));
+  const url=new URL(page.url());
+  url.search='?view=interviews';
+  await page.goto(url.href);
+  const schedule=page.getByLabel('Interview status',{exact:true});
+  assert.equal(await schedule.inputValue(),'upcoming');
+  await page.getByRole('article').getByText('Interview confirmed',{exact:true}).waitFor();
+  await schedule.selectOption({label:'Past interviews'});
+  await page.getByRole('article').getByText('Attendance unrecorded',{exact:true}).waitFor();
+  await page.getByRole('link',{name:'Interview candidate'}).click();
+  await page.getByText('Needs evidence',{exact:true}).waitFor();
+  await page.getByRole('button',{name:'Back to interviews',exact:true}).click();
+  await schedule.waitFor();
+  assert.equal(await schedule.inputValue(),'past');
+  await schedule.selectOption({label:'Missing booking details'});
+  await page.getByRole('article').getByText('No linked booking',{exact:true}).waitFor();
+  await page.reload();
+  await schedule.waitFor();
+  assert.equal(await schedule.inputValue(),'needs_review');
+  await page.getByRole('article').getByText('No linked booking',{exact:true}).waitFor();
+});
