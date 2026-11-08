@@ -141,3 +141,47 @@ test("archive migration preserves existing applications and legacy Drive identit
     assert.equal(app.jobId,'old-job');
   }finally{db.close();rmSync(root,{recursive:true,force:true});}
 });
+
+test("the previous image can receive applications with the exact next response-check schema and rejects other migration drift",async()=>{
+  const root=temporary(), filename=path.join(root,"test.sqlite");
+  const base=path.join(root,"baseline"),next=path.join(root,"next");
+  const journalFile=path.join(migrations,"meta","_journal.json");
+  const baselineJournal=JSON.parse(readFileSync(journalFile,"utf8")) as {entries:{tag:string}[]};
+  const oldEntries=baselineJournal.entries.slice(0,14);
+  const initial=oldEntries.map(e=>[e.tag,readFileSync(path.join(migrations,e.tag+".sql"),"utf8")] as [string,string]);
+  const name="0015_response_checks.sql";
+  const sql=readFileSync(path.join("tests","railway","fixtures",name),"utf8");
+  let db=new SQLiteD1Database(filename);
+  try {
+    journal(base,initial);journal(next,[...initial,["0015_response_checks",sql]]);
+    db.migrate(base);
+    const options={sessionHash:"a".repeat(64),origin:"https://jobs.example.invalid"};
+    const original=new HubStore(db.asD1(),options);
+    const job=await original.saveJob(jobInput());
+    const first=await original.acceptApplication(applicationInput(job.id));
+    db.migrate(next);
+    const observed='{"version":1}';
+    db.connection.prepare("UPDATE hub_applications SET response_entry_json=? WHERE id=?").run(observed,first.id);
+    const history=()=>db.connection.prepare("SELECT * FROM railway_migrations ORDER BY position").all();
+    const expected=history();
+    db.close();db=new SQLiteD1Database(filename);
+    db.migrate(base);
+    assert.deepEqual(history(),expected);
+    assert.equal(db.connection.prepare("SELECT response_entry_json FROM hub_applications WHERE id=?").get(first.id)?.response_entry_json,observed);
+    const second=await new HubStore(db.asD1(),options).acceptApplication(applicationInput(job.id));
+    assert.equal(db.connection.prepare("SELECT response_entry_json FROM hub_applications WHERE id=?").get(second.id)?.response_entry_json,null);
+    for (const tamper of [
+      "UPDATE railway_migrations SET sha256='changed' WHERE position=14",
+      "UPDATE railway_migrations SET name='0015_unrelated.sql' WHERE position=14",
+      "UPDATE railway_migrations SET position=15 WHERE position=14",
+      "UPDATE railway_migrations SET sha256='changed' WHERE position=5",
+      "INSERT INTO railway_migrations(name,position,sha256,applied_at) VALUES('0016_other.sql',15,'unexpected',1)",
+    ]) {
+      db.connection.exec(tamper);
+      assert.throws(()=>db.migrate(base),/migration_hash_drift/);
+      db.connection.exec("DELETE FROM railway_migrations");
+      const restore=db.connection.prepare("INSERT INTO railway_migrations(name,position,sha256,applied_at) VALUES(?,?,?,?)");
+      for(const row of expected)restore.run(row.name,row.position,row.sha256,row.applied_at);
+    }
+  } finally {db.close();rmSync(root,{recursive:true,force:true});}
+});
