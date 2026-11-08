@@ -26,6 +26,7 @@ import {
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import type { CareerJob, CareerField } from "./types";
 import { isWebsiteField, websiteLinkError } from "@/lib/hiring/website-links";
+import { countWords } from "@/lib/hiring/word-count";
 import { internationalPhoneError } from "@/lib/hiring/contact-fields";
 
 type Value = string | number | boolean | string[] | { score: number };
@@ -172,6 +173,10 @@ export function ApplicationForm({
             (Array.isArray(value) && value.length === 0))
       )
         invalid[field.path] = "Please complete this field.";
+      if (field.type === "LongText" && field.minWords && typeof value === "string"
+        && (field.required || value.trim()) && countWords(value) < field.minWords) {
+        invalid[field.path] = `Write at least ${field.minWords} ${field.minWords === 1 ? "word" : "words"}.`;
+      }
       if(field.type === "Number" && value !== undefined && value !== "" && (typeof value !== "number" || !Number.isFinite(value) || Math.abs(value)>Number.MAX_SAFE_INTEGER/(field.numberFormat === "currency"?100:1) || (field.numberFormat === "currency" && value!==Number(value.toFixed(2))))){invalid[field.path]=field.numberFormat === "currency"?"Enter a valid USD amount with up to 2 decimal places.":"Enter a valid number.";}
       if (isWebsiteField(field) && value !== undefined && value !== "") {
         const linkError = websiteLinkError(value, field);
@@ -467,22 +472,31 @@ export function ApplicationForm({
                 )}
               </div>
             ) : field.type === "LongText" ? (
-              <Textarea
-                id={field.path}
-                value={String(values[field.path] ?? "")}
-                onChange={(e) => change(field.path, e.target.value)}
-                rows={4}
-                maxLength={20000}
-                aria-invalid={!!errors[field.path]}
-                aria-describedby={
-                  [
-                    field.description && `${field.path}-help`,
-                    errors[field.path] && `${field.path}-error`,
-                  ]
-                    .filter(Boolean)
-                    .join(" ") || undefined
-                }
-              />
+              <>
+                <Textarea
+                  id={field.path}
+                  value={String(values[field.path] ?? "")}
+                  onChange={(e) => change(field.path, e.target.value)}
+                  aria-required={field.required}
+                  rows={4}
+                  maxLength={20000}
+                  aria-invalid={!!errors[field.path]}
+                  aria-describedby={
+                    [
+                      field.minWords && `${field.path}-word-count`,
+                      field.description && `${field.path}-help`,
+                      errors[field.path] && `${field.path}-error`,
+                    ]
+                      .filter(Boolean)
+                      .join(" ") || undefined
+                  }
+                />
+                {field.minWords && (
+                  <small id={`${field.path}-word-count`}>
+                    Word count: {countWords(String(values[field.path] ?? ""))} · Minimum: {field.minWords}
+                  </small>
+                )}
+              </>
             ) : field.type === "Boolean" ? (
               <RadioGroup
                 id={field.path}

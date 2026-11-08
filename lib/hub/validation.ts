@@ -1,4 +1,5 @@
 import { englishProficiencyPath, englishOptions, isEnglishProficiency, englishMinimum } from "../english-proficiency";
+import { MAX_MIN_WORDS } from "../hiring/word-count";
 import { validNumericAnswer } from "../hiring/validation";
 import { countryOptions, isCountryResidence, residencePath } from "../countries";
 import { hasDescriptionText } from "../job-description";
@@ -26,6 +27,7 @@ const field = z
       "Url",
     ]),
     required: z.boolean(),
+    minWords: z.number().int().min(1).max(MAX_MIN_WORDS).optional(),
     numberFormat: z.enum(["number", "currency"]).optional(),
     currency: z.literal("USD").optional(),
     options: z
@@ -206,6 +208,9 @@ export function validateJob(input: JobInput): void {
         "Select fields need unique answer options.",
       );
   for (const field of input.fields) {
+    if (field.minWords !== undefined && field.type !== "LongText") {
+      throw new HiringError("invalid_job", 422, "Minimum words can only be set on a long written answer.");
+    }
     if ((field.numberFormat || field.currency) && (field.type !== "Number" || (field.currency && field.numberFormat !== "currency") || (field.numberFormat === "currency" && field.currency !== "USD"))) throw new HiringError("invalid_job",422,"Currency fields must be numeric and use USD.");
     if (field.path === englishProficiencyPath && (!isEnglishProficiency(field) || field.options?.length !== englishOptions.length || englishOptions.some((option,index)=>field.options?.[index]?.value!==option.value || field.options?.[index]?.label!==option.label))) throw new HiringError("invalid_job",422,"English proficiency must use the complete built-in CEFR levels in order.");
     if (field.path === residencePath && (!isCountryResidence(field) || field.options?.length !== countryOptions.length || countryOptions.some(option => !field.options?.some(candidate=>candidate.value===option.value)))) throw new HiringError("invalid_job",422,"Country of residence must use the complete built-in country list.");
