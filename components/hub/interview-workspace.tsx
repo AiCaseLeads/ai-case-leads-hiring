@@ -33,11 +33,11 @@ export function InterviewWorkspace({jobId, refresh=0, openApplicant, jobs}: Work
   return <section className="hub-card">
     <div className="hub-section-heading compact">
       <h2>Interviews</h2>
-      {jobs && <label>Role<select value={role} onChange={event=>setSelection({...current,role:event.target.value,page:1})}>
+      {jobs && <label>Role<select aria-label="Role" value={role} onChange={event=>setSelection({...current,role:event.target.value,page:1})}>
         <option value="">All roles</option>
         {jobs.map(job=><option value={job.id} key={job.id}>{job.title}</option>)}
       </select></label>}
-      <label>Interview status<select value={progress} onChange={event=>setSelection({...current,progress:event.target.value,page:1})}>
+      <label>Interview status<select aria-label="Interview status" value={progress} onChange={event=>setSelection({...current,progress:event.target.value,page:1})}>
         <option value="">All interviews</option>
         {Object.entries(interviewProgressLabels).filter(([value])=>value!=='none').map(([value,label])=><option key={value} value={value}>{label}</option>)}
       </select></label>
