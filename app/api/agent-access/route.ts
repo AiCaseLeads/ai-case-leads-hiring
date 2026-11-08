@@ -14,8 +14,9 @@ export async function GET(r:Request){try{
 export async function POST(r:Request){try{
  const m=await requireHubMember(r);requireHubOwner(m);assertSameOrigin(r);const i=await readBody(r);
  if(!i||typeof i!=='object'||Array.isArray(i)||typeof i.name!=='string'||!i.name.trim()||i.name.trim().length>100||!Array.isArray(i.scopes)||!i.scopes.length||i.scopes.some((s:unknown)=>typeof s!=='string'||!allowed.includes(s)))throw new HiringError('invalid_access',422,'Name the connection and choose its permissions.');
+ if(i.noExpiry!==undefined&&typeof i.noExpiry!=='boolean')throw new HiringError('invalid_access',422,'Choose a valid connection expiry.');
  if(i.scopes.includes('files:read')&&!i.scopes.includes('applicants:read'))throw new HiringError('invalid_access',422,'Applicant access is required for résumé and file access.');
- return jsonResponse({data:await issueAccess(await getHubStore(r),i.name.trim(),i.scopes as AgentScope[],m.email)});
+ return jsonResponse({data:await issueAccess(await getHubStore(r),i.name.trim(),i.scopes as AgentScope[],m.email,i.noExpiry!==false)});
 }catch(e){return errorResponse(e);}}
 export async function DELETE(r:Request){try{
  const m=await requireHubMember(r);requireHubOwner(m);assertSameOrigin(r);const i=await readBody(r);

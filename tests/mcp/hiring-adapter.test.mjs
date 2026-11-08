@@ -31,3 +31,10 @@ test('missing token scopes unknown tools and oversized responses fail without cr
  assert.equal((await run([call('anything')]))[0].error.message,'Unknown tool');
  assert.match((await run([call('get_applicant_file',{applicationId:'a',fileId:'f'})],'large'))[0].error.message,/2 MB/);
 });
+
+test('single multi-country mode is forwarded by draft and validate, and full jobInput is published unchanged',async()=>{
+ const draft={title:'Media Buyer',description:'Manage campaigns',questions:[{title:'Experience?',type:'ValueSelect',options:[{value:'none',label:'None'}],rules:[{operator:'not_equals',value:'none'}]}]};
+ const jobs=[{title:'Written title',status:'open',fields:[{path:'country_of_residence',type:'ValueSelect'}],rules:[{operator:'in',value:['US','IN']}]}];
+ const [d,v,p]=await run([call('draft_jobs',{text:'Supplied complete job description.',countries:['US','IN'],countryMode:'single'}),call('validate_jobs',{draft,countries:['US','IN'],countryMode:'single'}),call('publish_jobs',{jobs,confirm:true,replaceExisting:true})]);
+ assert.equal(JSON.parse(d.result.content[0].text).data.body.input.countryMode,'single');assert.equal(JSON.parse(v.result.content[0].text).data.body.countryMode,'single');assert.deepEqual(JSON.parse(v.result.content[0].text).data.body.draft,draft);assert.deepEqual(JSON.parse(p.result.content[0].text).data.body.jobs,jobs);assert.equal(JSON.parse(p.result.content[0].text).data.body.replaceExisting,true);
+});
