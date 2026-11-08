@@ -19,6 +19,8 @@ jobs:
           cache: npm
       - run: npm ci --include=dev --include=optional --no-audit --no-fund
       - run: npm run typecheck
+      - name: Install browser for interview submission regression tests
+        run: npx playwright install --with-deps --only-shell chromium
       - run: npm test
       - run: npm run test:mcp
       - run: npm run test:railway
