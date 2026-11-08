@@ -7,7 +7,7 @@ type Finding = AiMatchDetail["criteria"][number];
 // summary nor its fallback.
 function usableProse(text: string) {
   if (/^(?:r[eé]sum[eé]|linkedin|application)(?:\s+(?:excerpt|quote))?\s*:/iu.test(text)) return false;
-  return text.length > 0 && !/[{}]|\\["nrt]|"(?:answer|question|quote|source)"\s*:|@|https?:\/\/|www\.|(?:\+?\d[ ().-]*){10,}\d?|\s\|\s/u.test(text);
+  return text.length > 0 && !/[{}]|\\["nrt]|"(?:answer|question|quote|source)"\s*:|@|https?:\/\/|www\.|\b(?:linkedin|github)\.com\/|[•]|(?:\+?\d[ ().-]*){10,}\d?|\s\|\s/u.test(text);
 }
 
 function removeApplicantName(text: string, name: string) {
@@ -22,7 +22,7 @@ export function summarizeClaim(finding: Finding, applicantName: string): string 
   const explanation = (finding.explanation || "").trim();
   // Keep the narrative ahead of any old appended source blocks. Citations are
   // independently available in the AI review and never supply display copy here.
-  const narrative = explanation.split(/\n\s*(?:r[eé]sum[eé]|application|linkedin)(?:\s+(?:excerpt|quote))?\s*:/iu)[0];
+  const narrative = explanation.split(/(?:^|\s)(?:r[eé]sum[eé]|application|linkedin)(?:\s+(?:excerpt|quote))?\s*:/iu)[0];
   const sentences = narrative.split(/(?:\n+|(?<=[.!?])\s+(?=[\p{Lu}]))/u)
     .map(line => line.replace(/\s+/gu, " ").trim());
   const usable = sentences.filter(usableProse);
@@ -33,9 +33,8 @@ export function summarizeClaim(finding: Finding, applicantName: string): string 
     const distinct = [...new Set(usable)].filter((line, index) => index === 0 || !genericFollowUp.test(line));
     const summary = distinct.join(" ")
       .replace(/^(?:the )?r[eé]sum[eé] summary (?:claims|states|lists|reports)\s+/iu, "The résumé lists ")
-      .replace(/,?\s+(?:while|whereas) (?:the )?application answers? lists? ["“]([^"“”]+)["”] as ["“]([^"“”]+)["”]/iu,
-        ". The application gives “$2” for “$1”")
-      .replace(/which is the correct total years and how many of those/iu, "How many years in total, and how many of those");
+      .replace(/,?\s+(?:while|whereas) (?:the )?application answers? lists?\s+/iu, ". The application lists ")
+      .replace(/([.!?]\s+)which is the correct total years and how many of those/iu, "$1How many years in total, and how many of those");
     return removeApplicantName(summary, applicantName);
   }
 

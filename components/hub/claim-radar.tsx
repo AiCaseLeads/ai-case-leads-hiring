@@ -15,7 +15,7 @@ function relatedClaimSummaries(detail: ApplicationDetail): string[] {
     const values = Array.from(others).sort((a, b) => a - b);
     const label = question.charAt(0).toUpperCase() + question.slice(1);
     const history = new Intl.ListFormat("en-US").format(values.map(String));
-    return `For “${label}”, this application lists ${current} ${current === 1 ? "year" : "years"}. Linked applications list ${history}.`;
+    return `For “${label}”, this application lists ${current} ${current === 1 ? "year" : "years"}. ${values.length === 1 ? "A linked application lists" : "Linked applications list"} ${history}.`;
   });
 }
 
@@ -37,7 +37,7 @@ export function ClaimRadar({ detail }: { detail: ApplicationDetail }) {
   return <section key={detail.id} className="hub-claim-review" aria-label="Claim review">
     <div className="hub-claim-review-heading">
       <strong>Claim review</strong>
-      {summaries.length > 0 ? <span>{priority} priority</span> : <span>{status}</span>}
+      {summaries.length > 0 ? <span>{priority} priority for follow-up</span> : <span>{status}</span>}
     </div>
     {summaries.length > 0 && <SummaryLines lines={summaries.slice(0, 2)}/>}
     {summaries.length > 2 && <details><summary>Show {summaries.length - 2} more</summary>
