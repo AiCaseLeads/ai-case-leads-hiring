@@ -204,8 +204,18 @@ export function HiringDashboard({
   function closeApplication() {
     const url = new URL(window.location.href); url.searchParams.delete("application"); url.searchParams.delete("candidateAction"); url.searchParams.delete("candidateSection");
     // Only traverse a predecessor that this dashboard created. A direct link stays here.
-    if (window.history.state?.aiclHub && window.history.state?.candidateFrom === url.href) window.history.back();
-    else {if (!url.searchParams.has("view")) url.searchParams.set("view", "applications"); navigate(url, true);}
+    const from = window.history.state?.aiclHub && window.history.state.candidateFrom;
+    if (typeof from === "string" && URL.canParse(from)) {
+      const origin = new URL(from);
+      const queue = new URL(url);
+      // The profile serializes queue filters in key order. Compare their values
+      // so Back traverses the original list entry even when its URL was unsorted.
+      origin.searchParams.sort();
+      queue.searchParams.sort();
+      if (origin.href === queue.href) { window.history.back(); return; }
+    }
+    if (!url.searchParams.has("view")) url.searchParams.set("view", "applications");
+    navigate(url, true);
   }
   function applyFilters(filter: string, page: number, replace = false) {
     const url = viewUrl("applications");

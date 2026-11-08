@@ -164,6 +164,12 @@ test('Applicants opens active roles before loading people and preserves role and
     const initial=applicantQueries().at(-1).searchParams;
     assert.equal(initial.get('jobId'),'job-one');assert.equal(initial.get('stage'),'Application Review');
     assert.equal(await page.getByRole('link',{name:'Shortlisted Engineer',exact:true}).count(),0);
+    const directoryQueueUrl=page.url();
+    await page.getByRole('link',{name:'Initial Engineer',exact:true}).click();
+    await page.getByRole('button',{name:'Back to applications',exact:true}).click();
+    await page.waitForURL(directoryQueueUrl);
+    await page.goBack();await roleDirectory.waitFor();
+    await page.goForward();await page.waitForURL(directoryQueueUrl);
     const stage=page.getByLabel('Stage',{exact:true});await stage.selectOption('stage:Screening');
     await page.getByRole('link',{name:'Shortlisted Engineer',exact:true}).waitFor();
     assert.equal(await page.getByRole('link',{name:'Initial Engineer',exact:true}).count(),0);
