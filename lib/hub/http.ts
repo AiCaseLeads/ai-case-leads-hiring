@@ -1,3 +1,4 @@
+import {claimHistory} from './claim-history';
 import {sendInterviewInvitation} from './interview-delivery';
 import type {PersonalMailEnv} from '../personal-mail/service';
 import {getRecruiterReview,saveRecruiterReview,workflowOverview,listRoleInterviews,workflowSettings,saveWorkflowSettings} from "./recruiting-workflow";
@@ -184,7 +185,7 @@ export async function handleHubRequest(
       request.method === "GET" &&
       !operation
     )
-      data = await store.getApplication(id,member.email);
+      { const detail=await store.getApplication(id,member.email); data={...detail,relatedApplications:detail.duplicateEmail?await claimHistory(store,detail):[]}; }
     else if(section==='applications' && id && operation==='lifecycle' && request.method==='POST') {
       const input=await json(request) as {action?:unknown;expectedRevision?:unknown};
       if(!input || !['trash','restore'].includes(String(input.action)) || !Number.isSafeInteger(input.expectedRevision)) throw new HiringError('invalid_application_action',422,'Choose Delete or Restore and refresh the application.');
