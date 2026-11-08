@@ -2108,7 +2108,7 @@ body:has(.hiring-hub .hub-draft-overlay) { overflow: hidden; }
 }
 .response-check-verdict {display:flex; flex-wrap:wrap; align-items:baseline; gap:0 .4rem;}
 .response-check-inline strong {color:#254950;}
-.response-check-qualifier::before {content:"· ";}
+.response-check-qualifier {border-inline-start:1px solid #b4c7c8; padding-inline-start:.45rem; line-height:1.15;}
 .response-check-inline details {margin-block-start:.2rem;}
 .response-check-inline summary,.response-check-summary-detail summary {cursor:pointer;}
 .response-check-inline p,.response-check-summary-detail p {margin:.3rem 0;}
