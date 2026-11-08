@@ -57,6 +57,66 @@ test('owner without a member row previews and sends a valid booking link using t
   await processHubTasks(f.store,f.db,undefined,undefined,3,[owner.email],resolve);assert.equal(sent,1);
  }finally{f.database.close();}
 });
+test('owner can send for a selected interviewer with that interviewer as Reply-To and owner in CC',async(t)=>{
+ const previous=process.env.ADMIN_EMAILS;process.env.ADMIN_EMAILS=owner.email;t.after(()=>{if(previous===undefined)delete process.env.ADMIN_EMAILS;else process.env.ADMIN_EMAILS=previous;});
+ const f=createStore();try{
+  const job=await f.store.saveJob(jobInput()),app=await f.store.acceptApplication(applicationInput(job.id)),fingerprint=await configurationFingerprint(env);
+  const interviewer='maria@aicaseleads.com';
+  await f.store.stmt("INSERT INTO hub_members(id,email,role,active,created_at,updated_at) VALUES(?,?,?,1,0,0)",'maria',interviewer,'recruiter').run();
+  await f.store.setSetting(grantKey(interviewer),{email:interviewer,calendarId:interviewer,sealedToken:'calendar-maria',revision:0,fingerprint,connectedAt:1});
+  await f.store.setSetting(availabilityKey(interviewer),defaultAvailability);
+  assert.equal(await f.store.stmt('SELECT 1 FROM hub_members WHERE email=?',owner.email).first(),null);
+  await f.store.setSetting(grantKey(owner.email),{email:owner.email,calendarId:owner.email,sealedToken:'calendar-separate',revision:0,fingerprint,connectedAt:1});
+  await f.store.setSetting(availabilityKey(owner.email),defaultAvailability);
+  const input={action:'interview' as const,...DEFAULT_INTERVIEW,templateVersion:1,interviewerEmail:interviewer,body:DEFAULT_INTERVIEW.body+'\nContact '+interviewer+'.',expectedRevision:(await f.store.applicationRow(app.id)).revision};
+  const missing=await interviewReadiness(f.store,owner,app.id,env,input);assert.equal(missing.sender,owner.email);assert.equal(missing.mailIssue,'recruiter_email_not_connected');assert.equal(missing.interviewers.find(person=>person.email===interviewer)?.ready,true);
+  const preview=await interviewMessage(f.store,owner,app.id,input);
+  await assert.rejects(()=>submitInterviewInvitation(f.store,owner,app.id,{...input,previewFingerprint:preview.fingerprint},env),{code:'interview_email_setup_required'});
+  assert.equal((await f.store.getApplication(app.id)).interviews.length,0);
+  await f.store.setSetting(mailGrantKey(owner.email),{email:owner.email,sealedToken:await sealToken('synthetic-owner-refresh',env.GOOGLE_TOKEN_KEY),revision:0,fingerprint,connectedAt:1});
+  const ready=await interviewReadiness(f.store,owner,app.id,env,input);assert.equal(ready.mailReady,true);assert.deepEqual(ready.cc,[owner.email]);assert.deepEqual(ready.replyTo,[interviewer]);
+  f.database.prepare("UPDATE hub_tasks SET status='done'").run();
+  const approved=await interviewMessage(f.store,owner,app.id,input);
+  await submitInterviewInvitation(f.store,owner,app.id,{...input,previewFingerprint:approved.fingerprint,internalNote:'Private owner interview note.'},env);
+  const task=(await f.store.tasks()).find(item=>item.id.includes(':interview:'))!;
+  assert.equal(task.payload.interviewerEmail,interviewer);
+  assert.deepEqual(task.payload.approvedEnvelope,{sender:owner.email,to:(await f.store.applicationRow(app.id)).email,cc:[owner.email],replyTo:[interviewer]});
+  const token=String(task.payload.body).match(/\/interview\/([a-f0-9]{64})/)![1];
+  const link=await f.store.stmt("SELECT application_id,expires_at FROM hub_links WHERE token_hash=? AND kind='interview'",await sha256(token)).first<{application_id:string;expires_at:number}>();
+  assert.equal(link?.application_id,app.id);assert.ok(link!.expires_at>Date.now()+13*86400000);
+  let sent=0,mime='';
+  const provider:typeof fetch=async(url,init={})=>{
+   const target=new URL(String(url));
+   if(target.hostname==='oauth2.googleapis.com')return Response.json({access_token:'synthetic-access',token_type:'Bearer',expires_in:3600});
+   if(target.pathname.endsWith('/profile'))return Response.json({emailAddress:owner.email,historyId:'1'});
+   if(target.pathname.endsWith('/messages/send')){sent++;mime=Buffer.from(JSON.parse(String(init.body)).raw,'base64url').toString();return Response.json({id:'owner-sent',threadId:'owner-thread'});}
+   if(target.pathname.endsWith('/messages'))return Response.json({messages:[]});
+   if(target.pathname.includes('/threads/'))return Response.json({messages:[]});
+   if(target.pathname.endsWith('/history'))return Response.json({historyId:'1',history:[]});
+   throw new Error('Unexpected synthetic provider request');
+  };
+  const resolve=async(account:string)=>{assert.equal(account,owner.email);return personalMailWorkspace(f.store,account,env,provider);};
+  await processHubTasks(f.store,f.db,undefined,undefined,3,[owner.email],resolve);
+  assert.equal(sent,1);assert.match(mime,/From: sales@aicaseleads.com\r\n/);assert.match(mime,/Cc: sales@aicaseleads.com\r\n/);assert.match(mime,/Reply-To: maria@aicaseleads.com\r\n/);
+  const deliveredBody=Buffer.from(mime.split('\r\n\r\n')[1].replaceAll('\r\n',''),'base64').toString();assert.ok(deliveredBody.includes('/interview/'+token));assert.ok(!deliveredBody.includes('Private owner interview note.'));
+  const delivery=(await f.store.tasks()).find(item=>item.id===task.id)!;assert.equal(delivery.status,'done');assert.equal(delivery.payload.deliveryAccount,owner.email);
+  const communication=(await f.store.getApplication(app.id)).communications.find(item=>item.purpose==='Interview invitation') as unknown as {status:string;cc:string[];replyTo:string[]};assert.equal(communication.status,'sent');assert.deepEqual(communication.cc,[owner.email]);assert.deepEqual(communication.replyTo,[interviewer]);
+  await processHubTasks(f.store,f.db,undefined,undefined,3,[owner.email],resolve);assert.equal(sent,1);
+  const replacement={action:'interview' as const,...DEFAULT_INTERVIEW,templateVersion:1,renew:true,expectedRevision:(await f.store.applicationRow(app.id)).revision};
+  const renewed=await interviewMessage(f.store,owner,app.id,replacement);
+  assert.deepEqual(renewed.envelope.replyTo,[interviewer]);assert.equal(renewed.interviewerEmail,interviewer);
+  await submitInterviewInvitation(f.store,owner,app.id,{...replacement,previewFingerprint:renewed.fingerprint},env);
+  const replacementTask=(await f.store.tasks()).find(item=>item.id.includes(':interview:')&&item.id!==task.id)!;
+  assert.equal(replacementTask.payload.interviewerEmail,interviewer);
+  f.database.prepare("UPDATE hub_tasks SET status='failed' WHERE id=?").run(replacementTask.id);f.database.prepare("UPDATE hub_communications SET status='failed' WHERE task_id=?").run(replacementTask.id);
+  const recovery=await previewMailRecovery(f.store,owner,{from:Date.now()-60000,to:Date.now()+60000},{env,resolve:async(account)=>({verifyMailSender:async(sender,required)=>{assert.equal(account,owner.email);assert.equal(sender,owner.email);assert.equal(required,owner.email);}})});
+  const recovered=recovery.messages.find(item=>item.kind==='Interview invitation')!;assert.ok(recovered);assert.deepEqual(recovered.replyTo,[interviewer]);assert.deepEqual(recovered.cc,[owner.email]);
+  await f.store.stmt('UPDATE hub_members SET active=0 WHERE email=?',interviewer).run();
+  await assert.rejects(()=>candidateMail(f.store,replacementTask.payload as never,[owner.email],{applicationId:app.id,mailMode:'recruiter',actor:owner.email,interview:true,interviewerEmail:replacementTask.payload.interviewerEmail}),{code:'interviewer_not_active'});
+  const blocked=await previewMailRecovery(f.store,owner,{from:Date.now()-60000,to:Date.now()+60000},{env,resolve:async()=>{assert.fail('inactive interviewer must fail before transport verification');}});
+  assert.equal(blocked.eligible,0);
+ }finally{f.database.close();}
+});
 test('owners are valid job reply contacts and manual message copies; automatic mail never gains staff copies',async()=>{
  const f=createStore();try{
   const job=await f.store.saveJob(jobInput()),app=await f.store.acceptApplication(applicationInput(job.id));

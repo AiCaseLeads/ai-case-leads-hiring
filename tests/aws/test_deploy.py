@@ -34,6 +34,9 @@ class Tests(unittest.TestCase):
     cid=next((i for i,v in state.items() if v['name']==a[2]),a[2]);state[cid]['running']=True;return
    raise AssertionError(a)
   def subrun(a,**kw):
+   if 'scripts/aws/verify-release.mjs' in a:
+    report={'schemaVersion':1,'storageReady':True,'backgroundReady':True,'backgroundEnabled':True,'cacheSchemaReady':True,'fileTextBackfill':{'totalFiles':2,'undiscovered':0,'pending':1,'running':0,'ready':1,'partial':0,'failed':0,'state':'in_progress'}}
+    return types.SimpleNamespace(returncode=1 if fail=='verification' else 0,stdout=json.dumps(report))
    if a[:3]==['docker','rm','-f']:
     state.pop(a[3],None);return types.SimpleNamespace(returncode=0)
    return types.SimpleNamespace(returncode=1 if fail=='health' else 0)
@@ -62,4 +65,15 @@ class Tests(unittest.TestCase):
  def test_health_failure(self):self.checkcase('health')
  def test_stop_failure(self):self.checkcase('stop')
  def test_rename_failure(self):self.checkcase('rename')
+ def test_verification_failure(self):self.checkcase('verification')
+class VerifyReportTests(unittest.TestCase):
+ def test_only_allowlisted_aggregates_leave_the_container(self):
+  report={'schemaVersion':1,'storageReady':True,'backgroundReady':True,'backgroundEnabled':True,'cacheSchemaReady':True,'secret':'PRIVATE','fileTextBackfill':{'totalFiles':0,'undiscovered':0,'pending':0,'running':0,'ready':0,'partial':0,'failed':0,'state':'complete','secret':'PRIVATE'}}
+  with patch.object(m.subprocess,'run',return_value=types.SimpleNamespace(returncode=0,stdout=json.dumps(report))):
+   safe=m.verify_release('container')
+  self.assertNotIn('PRIVATE',json.dumps(safe));self.assertEqual(safe['fileTextBackfill']['state'],'complete')
+ def test_invalid_container_output_has_fixed_failure_without_raw_content(self):
+  for output in ['PRIVATE SQL ERROR',json.dumps({'secret':'PRIVATE'})]:
+   with patch.object(m.subprocess,'run',return_value=types.SimpleNamespace(returncode=0,stdout=output)):
+    with self.assertRaisesRegex(RuntimeError,'^Release verification report invalid$'):m.verify_release('container')
 if __name__=='__main__':unittest.main()

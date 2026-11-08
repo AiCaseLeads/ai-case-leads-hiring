@@ -6,7 +6,27 @@ REGISTRY = '286853118669.dkr.ecr.us-east-1.amazonaws.com'
 REGION = 'us-east-1'
 BASE = pathlib.Path('/opt/hiring')
 def run(*args, capture=False):
-    return subprocess.check_output(args, text=True, timeout=120).strip() if capture else subprocess.run(args, check=True, timeout=120)
+    return subprocess.check_output(args, text=True, timeout=120).strip() if capture else subprocess.run(args, check=True, timeout=120, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+def verify_release(container):
+    # The image contains this read-only verifier. Suppress raw stderr and never
+    # forward arbitrary container output to CI; only allowlisted aggregates leave.
+    result = subprocess.run(['docker', 'exec', container, 'node', 'scripts/aws/verify-release.mjs'], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, timeout=20)
+    if result.returncode or not isinstance(result.stdout, str) or len(result.stdout) > 8192:
+        raise RuntimeError('Release verification failed')
+    try:
+        report = json.loads(result.stdout)
+        if type(report.get('schemaVersion')) is not int or report['schemaVersion'] != 1 or any(report.get(key) is not True for key in ('storageReady', 'backgroundReady', 'backgroundEnabled', 'cacheSchemaReady')):
+            raise ValueError()
+        counts = report['fileTextBackfill']
+        fields = ('totalFiles', 'undiscovered', 'pending', 'running', 'ready', 'partial', 'failed')
+        if any(type(counts.get(key)) is not int or not 0 <= counts[key] <= 10**9 for key in fields): raise ValueError()
+        if counts['totalFiles'] != sum(counts[key] for key in fields[1:]): raise ValueError()
+        expected_state = 'in_progress' if counts['undiscovered'] + counts['pending'] + counts['running'] else 'finished_with_exceptions' if counts['partial'] + counts['failed'] else 'complete'
+        if counts.get('state') != expected_state: raise ValueError()
+        return {'schemaVersion': 1, 'storageReady': True, 'backgroundReady': True, 'backgroundEnabled': True, 'cacheSchemaReady': True, 'fileTextBackfill': {**{key: counts[key] for key in fields}, 'state': expected_state}}
+    except (ValueError, KeyError, TypeError, AttributeError):
+        raise RuntimeError('Release verification report invalid') from None
+
 def main():
     if os.geteuid() != 0: raise RuntimeError('Run as root')
     sha = sys.argv[1] if len(sys.argv) == 2 else ''
@@ -27,7 +47,7 @@ def main():
         if current['HostConfig'].get('Privileged'): raise RuntimeError('Unexpected privileged container')
         image = f'{REGISTRY}/hiring:{sha}'
         login = subprocess.Popen(['aws', 'ecr', 'get-login-password', '--region', REGION], stdout=subprocess.PIPE)
-        subprocess.run(['docker', 'login', '--username', 'AWS', '--password-stdin', REGISTRY], stdin=login.stdout, check=True, timeout=60)
+        subprocess.run(['docker', 'login', '--username', 'AWS', '--password-stdin', REGISTRY], stdin=login.stdout, check=True, timeout=60, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         login.stdout.close()
         if login.wait(timeout=10): raise RuntimeError('ECR authentication failed')
         run('docker', 'pull', image)
@@ -80,14 +100,15 @@ def main():
             if not healthy: raise RuntimeError('Health check failed')
             deployed = json.loads(run('docker', 'inspect', 'hiring', capture=True))[0]
             if deployed['Image'] != info['Id']: raise RuntimeError('Running image differs from requested digest')
-            record = {'sha': sha, 'image': image, 'previousContainer': previous, 'databaseBackup': backup, 'deployedAt': int(time.time())}
+            verification = verify_release(new_id)
+            record = {'verification': verification, 'sha': sha, 'image': image, 'previousContainer': previous, 'databaseBackup': backup, 'deployedAt': int(time.time())}
             temporary = BASE / 'release.json.tmp'
             temporary.write_text(json.dumps(record) + '\n')
             os.chmod(temporary, 0o600)
             temporary.replace(BASE / 'release.json')
-            print(json.dumps({'status': 'deployed', 'sha': sha}))
+            print(json.dumps({'status': 'deployed', 'sha': sha, 'verification': verification}))
         except Exception:
-            cleanup = subprocess.run(['docker', 'rm', '-f', new_id], check=False, timeout=60)
+            cleanup = subprocess.run(['docker', 'rm', '-f', new_id], check=False, timeout=60, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             if cleanup.returncode:
                 # Never start two workers against the live database. If cleanup
                 # cannot prove the new writer stopped, leave recovery to an operator.
