@@ -22,6 +22,7 @@ jobs:
       - name: Install browser for interview submission regression tests
         run: npx playwright install --with-deps --only-shell chromium
       - run: npm test
+      - run: node --test tests/hub/interview-calendar-ui.spec.mjs
       - run: npm run test:mcp
       - run: npm run test:railway
       - run: python3 -m py_compile scripts/aws/deploy-hiring.py

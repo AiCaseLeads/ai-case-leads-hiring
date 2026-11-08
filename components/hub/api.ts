@@ -131,7 +131,7 @@ export function useHubMutation() {
     path: string,
     method: string,
     body?: unknown,
-    message = "Saved.",
+    message: string | ((result: T) => {success?: string; error?: string}) = "Saved.",
     retryJobSave = false,
   ): Promise<T | undefined> {
     if (active.current) return undefined;
@@ -145,7 +145,9 @@ export function useHubMutation() {
       const result = retryJobSave && path === "/api/job-setup" && method === "POST"
         ? await jobSaveRequest<T>(body,()=>setRetrying(true))
         : await hubRequest<T>(path, method, body);
-      setSuccess(message);
+      const feedback = typeof message === "function" ? message(result) : {success: message};
+      setSuccess(feedback.success || "");
+      setError(feedback.error || "");
       return result;
     } catch (e) {
       setErrorCode(e instanceof HubError ? e.code ?? "" : "");

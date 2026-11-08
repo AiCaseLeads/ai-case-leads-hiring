@@ -182,6 +182,39 @@ async function taskEffect(task:Task,store:HubStore,db:D1Database,bucket:R2Bucket
   };
   return {...await google.archiveApplication(detail,files,existing?.drive_folder_id||undefined,continuation),archivedRevision:detail.revision};
 }
+async function runClaimedTask(task:Task,store:HubStore,db:D1Database,bucket:R2Bucket|undefined,google:GoogleWorkspace|undefined,deadline:number,owners:string[],candidateResolver?:CandidateMailResolver,automaticResolver?:AutomaticMailResolver) {
+  if(!task.leaseToken)throw new Error("task_lease_missing");
+  let providerCompleted=false;
+  try{
+    const result=await taskEffect(task,store,db,bucket,google,deadline,owners,candidateResolver,automaticResolver);
+    providerCompleted=true;
+    await store.finishTask(task.id,task.leaseToken,{status:"done",result});return "done";
+  }catch(error){
+    if(task.kind==="drive"&&error instanceof DriveArchiveContinuation){
+      await store.finishTask(task.id,task.leaseToken,{status:"pending",error:error.code,runAfter:Date.now()+30_000,continuation:true,result:{continuation:true,phase:error.phase,...(error.diagnostics?{diagnostics:error.diagnostics}:{})}});
+      return "deferred";
+    }
+    const ambiguous=["gmail","calendar"].includes(task.kind)&&(providerCompleted||!!(error&&typeof error==="object"&&"uncertain"in error&&error.uncertain));
+    const code=safeCode(error);
+    if(task.kind==='gmail'&&!ambiguous&&isAutomaticMailDeferred(code)){
+      const requested=error&&typeof error==='object'&&'retryAt'in error?Number(error.retryAt):0;
+      const retryAt=Number.isFinite(requested)&&requested>Date.now()?Math.min(requested,Date.now()+25*3600_000):Date.now()+3600_000;
+      await store.finishTask(task.id,task.leaseToken,{status:'pending',error:code,runAfter:retryAt,mailDeferred:true});
+      return "deferred";
+    }
+    const status=ambiguous?"uncertain":"failed";
+    const setupHold=task.kind==="gmail"&&!ambiguous&&isMailSetupError(code);
+    const delay=Math.min(6*60*60*1000,5000*2**Math.min(task.attempts,12));
+    await store.finishTask(task.id,task.leaseToken,{status,error:code,runAfter:setupHold?Number.MAX_SAFE_INTEGER:Date.now()+delay,setupHold,...(error instanceof DriveArchiveFailure?{result:{phase:error.phase,diagnostics:error.diagnostics}}:{}),...(setupHold?{result:{setupRequired:true,retryRequiresReview:true,instructions:"Connect and verify the appropriate email service. Review this queued message before explicitly retrying; connecting an account alone will not send it."}}:{})});
+    return status;
+  }
+}
+
+export async function dispatchInterviewMail(store:HubStore, taskId:string, applicationId:string, owners:string[], resolver?:CandidateMailResolver) {
+  const task = await store.claimInterviewMail(taskId, applicationId, Date.now());
+  if (task) await runClaimedTask(task, store, store.db, undefined, undefined, Date.now()+10_000, owners, resolver);
+}
+
 export async function processHubTasks(store:HubStore,db:D1Database,bucket:R2Bucket|undefined,google:GoogleWorkspace|undefined,max=5,owners:string[]=(process.env.ADMIN_EMAILS||"").split(","),candidateResolver?:CandidateMailResolver,automaticResolver?:AutomaticMailResolver){
   const began=Date.now(),deadline=began+40_000;
   const resolveAutomatic=automaticResolver||(()=>automaticMailTransport(store));
@@ -202,31 +235,10 @@ export async function processHubTasks(store:HubStore,db:D1Database,bucket:R2Buck
     for(let index=0;index<Math.max(1,Math.min(max,10));index++){
       if(Date.now()>=deadline-1000)break;
       const task=await store.claimTask(Date.now(),deadline-Date.now()<30_000);if(!task)break;
-      if(!task.leaseToken)throw new Error("task_lease_missing");
-      let providerCompleted=false;
-      try{
-        const result=await taskEffect(task,store,db,bucket,google,deadline,owners,candidateResolver,automaticResolver);
-        providerCompleted=true;
-        await store.finishTask(task.id,task.leaseToken,{status:"done",result});processed++;
-      }catch(error){
-        if(task.kind==="drive"&&error instanceof DriveArchiveContinuation){
-          await store.finishTask(task.id,task.leaseToken,{status:"pending",error:error.code,runAfter:Date.now()+30_000,continuation:true,result:{continuation:true,phase:error.phase,...(error.diagnostics?{diagnostics:error.diagnostics}:{})}});
-          continue;
-        }
-        const ambiguous=["gmail","calendar"].includes(task.kind)&&(providerCompleted||!!(error&&typeof error==="object"&&"uncertain"in error&&error.uncertain));
-        const code=safeCode(error);
-        if(task.kind==='gmail'&&!ambiguous&&isAutomaticMailDeferred(code)){
-          const requested=error&&typeof error==='object'&&'retryAt'in error?Number(error.retryAt):0;
-          const retryAt=Number.isFinite(requested)&&requested>Date.now()?Math.min(requested,Date.now()+25*3600_000):Date.now()+3600_000;
-          await store.finishTask(task.id,task.leaseToken,{status:'pending',error:code,runAfter:retryAt,mailDeferred:true});
-          continue;
-        }
-        const status=ambiguous?"uncertain":"failed";
-        const setupHold=task.kind==="gmail"&&!ambiguous&&isMailSetupError(code);
-        const delay=Math.min(6*60*60*1000,5000*2**Math.min(task.attempts,12));
-        await store.finishTask(task.id,task.leaseToken,{status,error:code,runAfter:setupHold?Number.MAX_SAFE_INTEGER:Date.now()+delay,setupHold,...(error instanceof DriveArchiveFailure?{result:{phase:error.phase,diagnostics:error.diagnostics}}:{}),...(setupHold?{result:{setupRequired:true,retryRequiresReview:true,instructions:"Connect and verify the appropriate email service. Review this queued message before explicitly retrying; connecting an account alone will not send it."}}:{})});
-        if(ambiguous)uncertain++;else failed++;
-      }
+      const outcome = await runClaimedTask(task, store, db, bucket, google, deadline, owners, candidateResolver, automaticResolver);
+      if (outcome === "done") processed++;
+      else if (outcome === "uncertain") uncertain++;
+      else if (outcome === "failed") failed++;
     }
     if(Date.now()<deadline-1000)replies=await syncConnectedHiringReplies(store,db,bucket,deadline,account=>candidateTransport(store,account,candidateResolver));
     const cleanup=Date.now()<deadline-1000?await cleanupExpiredUploads(db,bucket,deadline,2):{deleted:0,failed:0};

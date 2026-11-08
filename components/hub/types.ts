@@ -108,6 +108,7 @@ export type Interview = {
   attended?: boolean;
   linkExpiresAt?: number;
   linkActive?: boolean;
+  hasSentBookingLink?: boolean;
 };
 export type ApplicationDetail = ApplicationSummary & {
   answers: FieldSubmission[];

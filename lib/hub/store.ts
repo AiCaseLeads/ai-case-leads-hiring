@@ -1,3 +1,4 @@
+import {draftKey,verifyBookingDraft} from './interview-booking-draft';
 import {isHistoricalInterview} from './interview-history';
 import {interviewMessage} from './interview-template';
 import {assertHiringTransition,workflowNotificationStatements} from "./recruiting-workflow";
@@ -940,14 +941,16 @@ export class HubStore {
       this.rows<{id:string;status:"invited"|"submitted";prompt:string;answer:string|null;submitted_at:number|null}>("SELECT * FROM hub_assessments WHERE application_id=? ORDER BY created_at DESC,id DESC",id),
       this.rows<InterviewRow>("SELECT * FROM hub_interviews WHERE application_id=? ORDER BY created_at DESC,id DESC",id),
       this.rows<{id:string;actor:string;score:number;criteria:string;text:string;created_at:number}>("SELECT * FROM hub_scorecards WHERE application_id=? ORDER BY created_at DESC,id",id),
-      this.rows<{kind:string;payload_json:string;expires_at:number;used_at:number|null}>("SELECT kind,payload_json,expires_at,used_at FROM hub_links WHERE application_id=?",id),
+      this.rows<{kind:string;token_hash:string;payload_json:string;expires_at:number;used_at:number|null}>("SELECT kind,token_hash,payload_json,expires_at,used_at FROM hub_links WHERE application_id=?",id),
     ]);
     const noteState=viewerEmail?(await notesReviews(this,[id],viewerEmail)).get(id):undefined;
     const events = history.map((h) => ({id:h.id,type:h.type,text:h.text,actor:h.actor,createdAt:h.created_at}));
+    const sentInterviewHashes = new Set(communications.filter(item => item.status === "sent" && isInterviewInvitationTask(item.task_id,id))
+      .map(item => decode<{invitationHash?:string}>(item.payload_json || "{}", {}).invitationHash));
     const linkInfo = (kind:"assessment"|"interview",itemId:string) => {
       const matching = links.filter((link) => link.kind === kind && decode<Record<string,unknown>>(link.payload_json,{})[`${kind}Id`] === itemId);
       const current = matching.sort((a,b) => Number(b.used_at === null)-Number(a.used_at === null) || b.expires_at-a.expires_at)[0];
-      return current ? {linkExpiresAt:current.expires_at,linkActive:current.used_at === null && current.expires_at > Date.now()} : {};
+      return current ? {...(kind==="interview" && sentInterviewHashes.has(current.token_hash) ? {hasSentBookingLink:true} : {}),linkExpiresAt:current.expires_at,linkActive:current.used_at === null && current.expires_at > Date.now()} : {};
     };
     const allAssessments:Assessment[] = assessments.map((item) => ({id:item.id,status:item.status,prompt:item.prompt,...(item.answer !== null?{answer:item.answer}:{}),...(item.submitted_at?{submittedAt:item.submitted_at}:{}),...linkInfo("assessment",item.id)}));
     const allInterviews:Interview[] = interviews.map((item) => ({id:item.id,revision:item.revision,status:item.status as Interview["status"],...(item.start?{start:item.start}:{}),...(item.end?{end:item.end}:{}),...(item.time_zone?{timeZone:item.time_zone}:{}),...(item.calendar_id?{calendarId:item.calendar_id}:{}),...(item.meet_url?{meetUrl:item.meet_url}:{}),...(item.attended !== null?{attended:!!item.attended}:{}),linkActive:false,...linkInfo("interview",item.id)}));
@@ -1603,13 +1606,15 @@ export class HubStore {
         const preview = input.templateVersion !== undefined ? await interviewMessage(this,member,app.id,input) : null;
         if(preview && preview.fingerprint!==input.previewFingerprint)throw new HiringError('preview_changed',409,'Refresh the invitation preview before sending.');
         const interviewId = renewing ? existing.id : crypto.randomUUID(),
-          token = privateToken(),
+          token = input.bookingToken ?? privateToken(),
           hash = await sha256(token),
           calendarId = personal?.calendarId || (renewing ? existing.calendar_id : null) || await this.setting("google_calendar_id", "");
+        if (input.bookingToken) await verifyBookingDraft(this,hash,app.id,member.email,preview?.fingerprint ?? "");
         const url = `${this.options.origin}/interview/${token}`;
         const message = preview ? await interviewMessage(this,member,app.id,input,url,"Fourteen days after sending") : {subject:`Interview invitation: ${app.job_title}`,body:`Hi ${app.name},\n\nYou are invited to interview for ${app.job_title}. Choose a time using your private link within fourteen days:\n${url}\n\nAI Case Leads Hiring Team`,templateVersion:undefined,envelope:undefined,interviewerEmail:personal?.ownerEmail};
         if(preview && "fingerprint" in message && message.fingerprint!==input.previewFingerprint)throw new HiringError("preview_changed",409,"The invitation sender changed. Refresh your preview before sending.");
         statements.push(
+          ...(input.bookingToken ? [this.stmt("DELETE FROM hub_settings WHERE key=?",draftKey(hash))] : []),
           ...(input.internalNote?.trim()?[this.stmt("INSERT INTO hub_history(id,application_id,type,text,actor,created_at) VALUES(?,?,?,?,?,?)",crypto.randomUUID(),app.id,"note",input.internalNote.trim(),member.email,now)]:[]),
           ...this.cancelInvitationStatements(app.id,"interview",now),
           this.stmt(
@@ -1852,6 +1857,19 @@ export class HubStore {
         (selected - 1) * 200,
       )
     ).map(task);
+  }
+  async claimInterviewMail(taskId:string, applicationId:string, now:number):Promise<Task|null> {
+    if (!isInterviewInvitationTask(taskId, applicationId)) return null;
+    // Race the worker for this invitation's first attempt only. After a crash
+    // the normal lease expiry and Gmail reconciliation path owns recovery.
+    const row = await this.stmt(
+      `UPDATE hub_tasks SET status='running',attempts=1,lease_token=?,lease_until=?,updated_at=?
+       WHERE id=? AND application_id=? AND kind='gmail' AND status='pending' AND attempts=0 AND run_after<=?
+       AND NOT EXISTS (SELECT 1 FROM hub_tasks active WHERE active.application_id=? AND active.status='running' AND active.lease_until>?)
+       RETURNING *`,
+      privateToken(), now+60000, now, taskId, applicationId, now, applicationId, now,
+    ).first<TaskRow>();
+    return row ? task(row) : null;
   }
   async claimTask(now: number, excludeDrive = false): Promise<Task | null> {
     // An expired mail lease means the provider may have sent it. Only explicit reconciliation may resolve it.
