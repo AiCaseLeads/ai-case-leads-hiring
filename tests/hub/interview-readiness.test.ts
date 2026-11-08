@@ -39,6 +39,7 @@ test('replacement invitation requires the pinned organizer to remain active and 
  await f.store.setSetting(`personal_calendar_grant:${RECRUITER.email}`,calendar);
  await f.store.setSetting(`personal_calendar_availability:${RECRUITER.email}`,{timeZone:'UTC',weekdays:[1],startHour:10,endHour:16,durationMinutes:30,minimumNoticeHours:2,horizonDays:14});
  await f.store.stmt("INSERT INTO hub_interviews(id,application_id,status,created_at,updated_at) VALUES (?,?,'invited',1,1)",'interview1',f.id).run();
+ await f.store.stmt("INSERT INTO hub_links(token_hash,application_id,kind,expires_at,payload_json) VALUES (?,?,'interview',?,?)",'live-interview-link',f.id,Date.now()+86400000,JSON.stringify({interviewId:'interview1'})).run();
  await f.store.setSetting('interview_calendar:interview1',{ownerEmail:RECRUITER.email,calendarId:calendar.calendarId,availability:{}});
  assert.equal((await interviewReadiness(f.store,RECRUITER,f.id,env)).renewCalendarReady,true);
  await f.store.setSetting(`personal_calendar_grant:${RECRUITER.email}`,null);

@@ -6,7 +6,7 @@ import {HiringError} from '../hiring/errors';
 /** Personal invitations keep the same organizer when replaced. The sending
  * mailbox remains the acting recruiter's Gmail; only candidate replies route here. */
 export async function interviewReplyContact(store:HubStore,applicationId:string,input:{interviewerEmail?:string},owners:string[]){
- const current=await store.latestInterview(applicationId);
+ const current=await store.currentInterviewForInvitation(applicationId);
  const pinned=current&&current.status!=='cancelled'?await interviewCalendar(store,current.id):null;
  if(current&&current.status!=='cancelled'&&input.interviewerEmail&&input.interviewerEmail!==pinned?.ownerEmail)throw new HiringError('interview_owner_pinned',409,'Cancel this interview before choosing a different interviewer.');
  const selected=pinned?.ownerEmail||input.interviewerEmail;
