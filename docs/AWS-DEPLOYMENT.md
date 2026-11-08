@@ -33,3 +33,9 @@ Successful releases record the previous container in root-only release.json. To 
 Protect main with required checks/review: permission to merge main is permission to change production app code. The root deployment script is not automatically replaced by CI. Its updates require separate administrator review. Do not log env values or applicant data. Do not prune old backups/images until retention and recovery are agreed.
 
 If Docker removal or inspection times out during rollback, the deployer fails closed rather than risking two active workers. An operator must inspect running containers, stop the failed replacement, restore the recorded previous container name to `hiring`, start it, and verify health. Do not start the previous app while the replacement's writer state is unknown. This exceptional recovery is manual; no database restore is part of it.
+
+## Inspect production storage and hiring service readiness
+
+Run `gh workflow run hiring-host-check.yml -R AiCaseLeads/ai-case-leads-hiring --ref main` with a GitHub login authorized to dispatch workflows. Open the run's summary to see hiring service readiness, free space, capacity and available inodes for root, Docker and applicant storage. A failed service check returns a failing job and reports storage metrics. The operation has no command or host inputs. The workflow obtains short-lived AWS credentials for each run.
+
+Once per production account, an administrator runs `bash infra/aws/bootstrap-host-check.sh` from this checkout with the existing deployment role already set up. This installs version 1 of the fixed `HiringHostCheck` SSM document and adds its document ARN in a separate inline policy. Instance access comes from the deployment role's existing production instance permission. Re-running compares existing configuration and stops on a mismatch. The command reads aggregate host metrics only.

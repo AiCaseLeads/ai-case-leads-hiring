@@ -1,0 +1,25 @@
+name: Check hiring production host
+on: workflow_dispatch
+permissions:
+  contents: read
+jobs:
+  check:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a
+        with:
+          role-to-assume: arn:aws:iam::286853118669:role/hiring-github-actions-deploy
+          aws-region: us-east-1
+      - name: Production disk space and service health
+        run: |
+          set -euo pipefail
+          instance=i-04bbe6b1c7d2d0451
+          command_id=$(aws ssm send-command --document-name HiringHostCheck --document-version 1 --instance-ids "$instance" --timeout-seconds 60 --query Command.CommandId --output text)
+          aws ssm wait command-executed --command-id "$command_id" --instance-id "$instance"
+          aws ssm get-command-invocation --command-id "$command_id" --instance-id "$instance" --query StandardOutputContent --output text | python3 scripts/aws/host-check-summary.py

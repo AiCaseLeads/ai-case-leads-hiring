@@ -25,8 +25,18 @@ if aws iam get-role --role-name hiring-github-actions-deploy >/dev/null 2>&1; th
   python3 -c 'import json,sys; assert json.load(open(sys.argv[1])) == json.load(open(sys.argv[2])), "Existing trust differs; refusing overwrite"' "$folder/trust.json" "$folder/existing-trust.json"
   [[ $(aws iam list-attached-role-policies --role-name hiring-github-actions-deploy --query 'length(AttachedPolicies)' --output text) == 0 ]] || { echo 'Existing role has attached policies; review manually'; exit 1; }
   inline=$(aws iam list-role-policies --role-name hiring-github-actions-deploy --query 'PolicyNames' --output text)
-  [[ -z "$inline" || "$inline" == HiringDeployment || "$inline" == None ]] || { echo 'Existing role has unexpected inline policies'; exit 1; }
-  if [[ "$inline" == HiringDeployment ]]; then
+  deployment_policy_exists=false
+  for policy_name in $inline; do
+    case "$policy_name" in
+      None) ;;
+      HiringDeployment) deployment_policy_exists=true ;;
+      HiringHostCheck)
+        aws iam get-role-policy --role-name hiring-github-actions-deploy --policy-name HiringHostCheck --query PolicyDocument --output json > "$folder/existing-host-check-policy.json"
+        python3 -c 'import json,sys; assert json.load(open(sys.argv[1])) == json.load(open(sys.argv[2])), "Unexpected host check permissions"' "$(dirname "$0")/hiring-host-check-policy.json" "$folder/existing-host-check-policy.json" ;;
+      *) echo 'Existing role has unexpected inline policies'; exit 1 ;;
+    esac
+  done
+  if [[ "$deployment_policy_exists" == true ]]; then
     aws iam get-role-policy --role-name hiring-github-actions-deploy --policy-name HiringDeployment --query PolicyDocument --output json > "$folder/existing-policy.json"
     python3 -c 'import json,sys; assert json.load(open(sys.argv[1])) == json.load(open(sys.argv[2])), "Existing policy differs; refusing overwrite"' "$folder/policy.json" "$folder/existing-policy.json"
   fi
