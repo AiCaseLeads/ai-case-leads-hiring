@@ -52,6 +52,7 @@ export type HubJob = Job & {
   assessmentPrompt?: string;
 };
 export type ApplicationSummary = {
+  interviewProgress?: import("../../lib/hub/interview-progress").InterviewProgress;
   notesReview?: {version:string;hasUnread:boolean;count:number;reviewedAt:number|null};
   viewedAt?: number | null;
   trashed?: boolean;
@@ -98,6 +99,7 @@ export type Assessment = {
   linkActive?: boolean;
 };
 export type Interview = {
+  interviewProgress?: import("../../lib/hub/interview-progress").InterviewProgress;
   id: string;
   status: string;
   start?: number | string;
