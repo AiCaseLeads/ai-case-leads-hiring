@@ -184,7 +184,7 @@ export function InterviewBooking({
     zones = Array.from(new Set(zones));
   }
   const dateFormatter = validZone ? new Intl.DateTimeFormat("en-US",{timeZone,year:"numeric",month:"2-digit",day:"2-digit"}) : null;
-  const timeFormatter = validZone ? new Intl.DateTimeFormat("en-US",{hour:"numeric",minute:"2-digit",timeZone,timeZoneName:"short"}) : null;
+  const timeFormatter = validZone ? new Intl.DateTimeFormat("en-US",{hour:"numeric",hour12:true,minute:"2-digit",timeZone,timeZoneName:"short"}) : null;
   function slotDay(value: string) {
     if(!dateFormatter) return "";
     const parts=Object.fromEntries(dateFormatter.formatToParts(new Date(value)).map(part=>[part.type,part.value]));
@@ -207,6 +207,7 @@ export function InterviewBooking({
       return new Intl.DateTimeFormat("en-US", {
         dateStyle: "full",
         timeStyle: "short",
+        hour12: true,
         timeZone,
       }).format(new Date(value));
     } catch {

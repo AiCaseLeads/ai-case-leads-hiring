@@ -266,3 +266,38 @@ for(const width of [390,1280])test(`founder handoff requires saved notes and exp
  await page.getByRole('button',{name:'Move to second-round interview',exact:true}).click();await page.getByText('Ready for the second round.',{exact:false}).waitFor();assert.deepEqual(actions[1],{action:'stage',stage:'Second Round Interview',expectedRevision:6});await page.getByText('Outside current filters · 2 applicants',{exact:true}).waitFor();assert.ok(cohortRequests.length>=3);assert.ok(cohortRequests.every(url=>url.searchParams.get('stage')==='Interview'));assert.equal(await page.getByRole('button',{name:'Next applicant',exact:true}).isEnabled(),true);assert.ok(actions.every(a=>a.action==='stage'));assert.ok(writes.every(path=>path.endsWith('/viewed')),'no mail endpoint used');assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),true);
  const notesAction=page.getByRole('button',{name:'View recruiter notes',exact:true});assert.ok((await notesAction.boundingBox()).width>=100,'Guidance action must not collapse into a broken-word column');mkdirSync('/tmp/founder-review-audit',{recursive:true});await page.screenshot({path:`/tmp/founder-review-audit/activity-${width}.png`,fullPage:true});
 });
+
+test('confirmed interview filter survives opening a profile and records attendance', async t => {
+ const {page}=await setup(t,{width:390});
+ let progress='booked';
+ const interview={id:'interview-1',status:'booked',timeZone:'America/New_York',start:Date.now()-3600000};
+ const detail=()=>({...record('app-1'),stage:'Interview',interviewProgress:progress,interview,files:[]});
+ const requests=[];
+ await page.route('**/api/hub/applications?**',route=>{
+  const params=new URL(route.request().url()).searchParams;
+  requests.push(params);
+  const items=!params.has('interviewProgress') || params.get('interviewProgress')===progress?[detail()]:[];
+  return route.fulfill({json:{data:{items,total:items.length,page:1,pageSize:25}}});
+ });
+ await page.route('**/api/hub/applications/app-1',route=>route.fulfill({json:{data:detail()}}));
+ await page.route('**/api/hub/applications/app-1/action',route=>{
+  assert.deepEqual(route.request().postDataJSON(),{action:'attendance',attended:true,expectedRevision:1});
+  progress='completed';return route.fulfill({json:{data:detail()}});
+ });
+ const select=page.getByLabel('Stage',{exact:true});
+ await select.selectOption('interview:booked');
+ const legacy=new URL(page.url());legacy.searchParams.set('stage','Rejected');legacy.searchParams.set('excludeStage','Screening');legacy.searchParams.set('active','true');await page.goto(legacy.href);
+ await page.locator('.hub-badge').filter({hasText:/^Interview confirmed$/}).first().waitFor();
+ assert.equal(requests.at(-1).get('interviewProgress'),'booked');
+ for (const key of ['stage','excludeStage']) {assert.equal(requests.at(-1).has(key),false);assert.equal(new URL(page.url()).searchParams.has(key),false);}
+ await page.getByRole('link',{name:'Applicant app-1',exact:true}).click();
+ await page.getByRole('button',{name:'Record attendance',exact:true}).click();
+ assert.equal(await page.getByRole('button',{name:'Save attendance',exact:true}).isDisabled(),true);
+ await page.getByLabel('Candidate attended',{exact:true}).selectOption('true');
+ await page.getByRole('button',{name:'Save attendance',exact:true}).click();
+ await page.locator('.hub-profile-name-row .hub-badge').filter({hasText:/^Interview completed$/}).waitFor();
+ await page.getByRole('button',{name:'Back to applications',exact:true}).click();
+ assert.equal(await select.inputValue(),'interview:booked');
+ await select.selectOption('stage:Screening');
+ assert.equal(new URL(page.url()).searchParams.has('interviewProgress'),false);
+});

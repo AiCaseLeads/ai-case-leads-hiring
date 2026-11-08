@@ -40,6 +40,7 @@ export type QualificationEvidence = {
   value: unknown;
 };
 export type ApplicationSummary = {
+  interviewProgress?: import("./interview-progress").InterviewProgress;
   viewedAt?: number | null;
   trashed?: boolean;
   id: string;
@@ -95,6 +96,7 @@ export type Assessment = {
   linkActive?: boolean;
 };
 export type Interview = {
+  interviewProgress?: import("./interview-progress").InterviewProgress;
   id: string;
   revision: number;
   calendarId?: string;

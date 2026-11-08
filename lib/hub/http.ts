@@ -1,3 +1,4 @@
+import { INTERVIEW_PROGRESS_VALUES, type InterviewProgress } from './interview-progress';
 import {claimHistory} from './claim-history';
 import {sendInterviewInvitation} from './interview-delivery';
 import type {PersonalMailEnv} from '../personal-mail/service';
@@ -68,12 +69,16 @@ function applicationFilters(request: Request) {
           (sort && !APPLICATION_SORTS.includes(sort as typeof APPLICATION_SORTS[number])) || (duplicate && duplicate !== "true") ||
           ((grade || (sort && ["grade_desc","ai_match_desc","ai_match_asc"].includes(sort))) && !jobId))
         throw new HiringError("invalid_filter", 422, "Choose one role before comparing reviewer grades, and check the application filters.");
+      const interviewProgress=params.get("interviewProgress")||undefined;
+      if(interviewProgress && !INTERVIEW_PROGRESS_VALUES.includes(interviewProgress as InterviewProgress))
+        throw new HiringError("invalid_filter",422,"Choose a valid interview status.");
       const stage=params.get("stage")||undefined,excludeStage=params.get("excludeStage")||undefined;
       if([stage,excludeStage].some(value=>value&&!STAGES.includes(value as typeof STAGES[number])))throw new HiringError("invalid_filter",422,"Choose a valid application stage.");
       const dates={appliedFrom:params.get('appliedFrom')||undefined,appliedTo:params.get('appliedTo')||undefined,timeZone:params.get('timeZone')||undefined};
       applicationDateBounds(dates);
       return {
         ...dates,
+        interviewProgress:interviewProgress as InterviewProgress|undefined,
         q,
         top: params.get("top") === "10" ? 10 as const : undefined,
         jobId,
@@ -106,7 +111,7 @@ export async function handleHubRequest(
     if(section==='workflow'&&id==='overview'&&request.method==='GET')data=await workflowOverview(store,member);
     else if(section==='workflow'&&id==='settings'&&request.method==='GET')data=await workflowSettings(store);
     else if(section==='workflow'&&id==='settings'&&request.method==='PATCH')data=await saveWorkflowSettings(store,await json(request),member);
-    else if(section==='interviews'&&!id&&request.method==='GET'){const params=new URL(request.url).searchParams;data=await listRoleInterviews(store,{jobId:params.get('jobId')||undefined,owner:params.get('owner')||undefined,status:params.get('status')||undefined,page:params.has('page')?Number(params.get('page')):undefined,pageSize:params.has('pageSize')?Number(params.get('pageSize')):undefined});}
+    else if(section==='interviews'&&!id&&request.method==='GET'){const params=new URL(request.url).searchParams;data=await listRoleInterviews(store,{jobId:params.get('jobId')||undefined,owner:params.get('owner')||undefined,status:params.get('status')||undefined,progress:params.get('progress')||undefined,page:params.has('page')?Number(params.get('page')):undefined,pageSize:params.has('pageSize')?Number(params.get('pageSize')):undefined});}
     else if(section==='applications'&&id&&operation==='recruiter-review'&&request.method==='GET')data=await getRecruiterReview(store,id,member);
     else if(section==='applications'&&id&&operation==='recruiter-review'&&['PUT','PATCH'].includes(request.method))data=await saveRecruiterReview(store,id,await json(request),member);
     else if (section === "overview" && request.method === "GET")

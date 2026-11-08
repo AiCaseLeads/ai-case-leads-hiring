@@ -26,6 +26,13 @@ async function setup(t,{mode='settings',member=owner}={}){
 test('settings opens focused personal connections and loads help requests only when requested',async t=>{
  const{page,reads,writes,errors}=await setup(t,{member:{email:'recruiter@example.invalid',role:'recruiter'}});
  await page.getByRole('heading',{name:'My interview calendar'}).waitFor();
+ const firstHour=page.getByLabel('First available hour');
+ await firstHour.selectOption({label:'4 PM'});
+ assert.equal(await firstHour.inputValue(),'16');
+ assert.equal(await firstHour.locator('option[value="0"]').innerText(),'12 AM');
+ assert.equal(await firstHour.locator('option[value="12"]').innerText(),'12 PM');
+ assert.equal(await page.getByLabel('Finish by').locator('option[value="24"]').innerText(),'12 AM (end of day)');
+
  assert.equal(await page.getByRole('heading',{name:/Welcome/}).count(),0);
  assert.equal(await page.getByRole('button',{name:'Company',exact:true}).count(),0);
  assert.equal(await page.getByRole('button',{name:'Team',exact:true}).count(),0);

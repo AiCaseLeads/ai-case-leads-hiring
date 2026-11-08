@@ -3,6 +3,7 @@ import {isHistoricalInterview} from "../../lib/hub/interview-history";
 import {ApplicantFilterDisclosure} from "./applicant-filter-disclosure";
 import {interviewCancelOutcome,interviewNavigationOutcome} from "./interview-draft-state";
 import {InterviewComposer,InterviewDiscardConfirmation,type InterviewDraftPayload} from "./interview-composer";
+import { ApplicantStageBadges, interviewProgressLabels } from "./interview-progress";
 import { normalizeApplicantScope, applicantStageChoice, applyApplicantStageChoice } from "./applicant-stage-filter";
 import { ClaimRadar } from "./claim-radar";
 import { NavigationLink, applicantHref } from "./navigation-link";
@@ -148,7 +149,7 @@ export function CandidateTable({
               </td>
               {showRole && <td role="cell" data-label="Role">{item.jobTitle}</td>}
               <td role="cell" data-label="Stage">
-                <Badge>{item.trashed?"In Trash":stageLabel(item.stage)}</Badge>
+                <ApplicantStageBadges application={item}/>
                 {!!item.notesReview?.hasUnread&&<Badge tone="warning">New notes</Badge>}
               </td>
               <td role="cell" data-label="Screening">
@@ -301,6 +302,8 @@ function JobCandidates({
   function draftQuery() {
     const search = new URLSearchParams();
     if (inTrash) search.set("trash", "true");
+    const interviewProgress = new URLSearchParams(filter).get("interviewProgress");
+    if (interviewProgress) search.set("interviewProgress", interviewProgress);
     for (const [key, value] of Object.entries({q, jobId, stage, excludeStage, assignee, qualification, grade, sort, appliedFrom, appliedTo})) {
       if (value) search.set(key, value);
     }
@@ -308,7 +311,7 @@ function JobCandidates({
     if (duplicate) search.set("duplicate", "true");
     if (isTopTen && sort === "ai_match_desc") search.set("top", "10");
     if(!inTrash)search.set("active",new URLSearchParams(filter).get("active")||(stage?"false":"true"));
-    return search;
+    return reviewQueue(search);
   }
   const draft = draftQuery();
   const applied = new URLSearchParams(filter);
@@ -471,6 +474,7 @@ function JobCandidates({
         <Field label="Stage"><select disabled={invalidDates} value={applicantStageChoice(new URLSearchParams(filter))} onChange={event=>applyView(applyApplicantStageChoice(draftQuery(),event.target.value).toString())}>
           <option value="active">In progress</option><option value="all">All stages</option>
           <option value="active:exclude:Screening">In progress — not shortlisted</option>
+          <optgroup label="Interview progress">{Object.entries(interviewProgressLabels).map(([value,label])=><option key={value} value={`interview:${value}`}>{label}</option>)}</optgroup>
           <optgroup label="Only this stage">{stages.map(value=><option key={value} value={`stage:${value}`}>{stageLabel(value)}</option>)}</optgroup>
           {excludeStage&&applicantStageChoice(new URLSearchParams(filter))!=="active:exclude:Screening"&&<option value={applicantStageChoice(new URLSearchParams(filter))}>{new URLSearchParams(filter).get("active")==="false"?"All":"Active"} — not {stageLabel(excludeStage).toLowerCase()}</option>}
         </select></Field>
@@ -739,7 +743,7 @@ export function CandidateDetail({
     [body, setBody] = useState(""),
     [score, setScore] = useState(""),
     [criteria, setCriteria] = useState(""),
-    [attendance, setAttendance] = useState("true"),
+    [attendance, setAttendance] = useState(""),
     [renew, setRenew] = useState(false),
     [interviewerEmail, setInterviewerEmail] = useState(""),
     [emailPending, setEmailPending] = useState(false),
@@ -769,7 +773,7 @@ export function CandidateDetail({
   useLayoutEffect(()=>{if(leaveRequest)leaveDialog.current?.focus();},[leaveRequest]);
   const evidenceDraft = useEvidenceDraft();
   const scorecardDraft = useScorecardDraft();
-  const dirty = !!(interviewDirty || reviewDirty || evidenceDraft.notes.trim() || scorecardDraft[0].ratings.length || text.trim() || subject.trim() || body.trim() || reason.trim() || score || criteria.trim() || assignee.trim() || renew || emailPending || (actionOpen && ((action==="stage" && stage!=="Screening") || (action==="attendance" && attendance!=="true"))));
+  const dirty = !!(interviewDirty || reviewDirty || evidenceDraft.notes.trim() || scorecardDraft[0].ratings.length || text.trim() || subject.trim() || body.trim() || reason.trim() || score || criteria.trim() || assignee.trim() || renew || emailPending || (actionOpen && ((action==="stage" && stage!=="Screening") || (action==="attendance" && attendance!==""))));
   const dirtyRef=useRef(dirty);useLayoutEffect(()=>{dirtyRef.current=dirty;},[dirty]);
   function resetInterview(){if(mutation.busy||decisionBusy)return;setConfirmInterviewDiscard(false);setActionOpen(false);setInterviewerEmail("");setRenew(false);setInterviewDraft(null);setInterviewDirty(false);setInterviewReady(false);mutation.clear();const leave=interviewLeave.current;interviewLeave.current=null;if(leave){dirtyRef.current=false;leave();}}
   function keepInterview(){interviewLeave.current=null;setConfirmInterviewDiscard(false);queueMicrotask(()=>actionPanel.current?.querySelector<HTMLElement>('select')?.focus({preventScroll:true}));}
@@ -858,6 +862,7 @@ export function CandidateDetail({
     if(decisionBusy)return;
     if (action === "reject" && !approve) return;
     if (action === "interview" && !interviewReady) return;
+    if (action === "attendance" && (!canRecordAttendance || !attendance)) return;
     if (!resource.data || (action === "scorecard" && (!score || !criteria.trim() || !text.trim()))) return;
     const draft = {
       action,
@@ -906,17 +911,21 @@ export function CandidateDetail({
     );
     if(action==="interview")interviewBusyRef.current=false;
     if (result !== undefined) {
+      if (action === "attendance") setActionOpen(false);
       if(action==="interview"){interviewLeave.current=null;setConfirmInterviewDiscard(false);setInterviewReady(false);setInterviewDraft(null);setInterviewDirty(false);setActionOpen(false);}
       setText("");
       setApprove(false);
       setRenew(false);
-      setScore(""); setCriteria(""); setReason(""); setAssignee(""); setInterviewerEmail(""); setStage("Screening"); setAttendance("true");
+      setScore(""); setCriteria(""); setReason(""); setAssignee(""); setInterviewerEmail(""); setStage("Screening"); setAttendance("");
       if (action === "email") { emailRequest.current = null; setEmailPending(false); setNewEmailApproved(false); setSubject(""); setBody(""); }
       await resource.reload();
       changed();
     }
   }
   const detail = resource.data;
+  const canRecordAttendance = !!detail?.interview?.start &&
+    (detail.interviewProgress === "booked" || detail.interviewProgress === "attendance_due") &&
+    new Date(detail.interview.start).getTime() <= Date.now();
   return (
     <section ref={profileTop} className="hub-applicant-profile" aria-labelledby="candidate-title">
       {leaveRequest && <div className="hub-card" role="alertdialog" ref={leaveDialog} tabIndex={-1} aria-labelledby="leave-applicant-title"><h3 id="leave-applicant-title">Leave this applicant without saving?</h3><p>Your unsaved note or action will be discarded. Leaving does not send a new message. Check Activity for any email already pending.</p><div className="hub-button-row"><button type="button" className="hub-button" onClick={()=>{setLeaveRequest(null);leaveOrigin.current?.focus();}}>Keep editing</button><button type="button" className="hub-button secondary" onClick={()=>{const leave=leaveRequest;dirtyRef.current=false;setLeaveRequest(null);leave();}}>Discard changes and leave</button></div></div>}
@@ -933,11 +942,12 @@ export function CandidateDetail({
         <>
           <header className="hub-profile-header">
             <div className="hub-profile-identity">
-              <div className="hub-profile-name-row"><h2 id="candidate-title" tabIndex={-1}>{answerContactName(detail)}</h2><div className="hub-status-line"><Badge>{detail.trashed?"In Trash":stageLabel(detail.stage)}</Badge><Badge tone={qualificationTone(detail.qualification)}>{qualificationLabel(detail.qualification,detail.qualificationEvidence.length>0)}</Badge></div></div>
+              <div className="hub-profile-name-row"><h2 id="candidate-title" tabIndex={-1}>{answerContactName(detail)}</h2><div className="hub-status-line"><ApplicantStageBadges application={detail}/><Badge tone={qualificationTone(detail.qualification)}>{qualificationLabel(detail.qualification,detail.qualificationEvidence.length>0)}</Badge></div></div>
               <p className="hub-profile-job">{detail.jobTitle}</p>
               {!!detail.relatedApplications?.length && <details key={detail.id}><summary>{detail.relatedApplications.length} other application{detail.relatedApplications.length===1?'':'s'} with this email{detail.relatedApplications.some(a=>a.differences.length)?' · Experience answers differ':''}</summary><ul>{detail.relatedApplications.map(a=><li key={a.id}><a href={applicantHref(a.id,"",a.jobId)}>{a.jobTitle}</a> · {displayDate(a.createdAt)} · {stageLabel(a.stage)}
                 {a.differences.map(d=><p key={d.question}>{d.question} — This application: <strong>{d.current}</strong>; linked application: <strong>{d.other}</strong>.</p>)}</li>)}</ul></details>}
               <ClaimRadar detail={detail}/>
+              {detail.interview?.start && (detail.interviewProgress === "booked" || detail.interviewProgress === "attendance_due") && <p className="hub-profile-contact">Interview · {displayDate(detail.interview.start, detail.interview.timeZone)} {detail.interview.timeZone}</p>}
               <p className="hub-profile-contact"><a href={"mailto:"+detail.email}>{detail.email}</a><span>Applied {displayDate(detail.createdAt)}</span><span>Assigned to {detail.assignee||"no recruiter"}</span></p>
             </div>
             <div className="hub-candidate-quick-actions" aria-label="Applicant actions">
@@ -945,6 +955,7 @@ export function CandidateDetail({
               {!detail.trashed && detail.stage==="Screening" && <button type="button" className="hub-button secondary" disabled={mutation.busy||decisionBusy||dirty} title={dirty?"Save or clear unsaved changes first.":"Return to initial review without sending an email."} onClick={()=>void unshortlist()}>Remove from shortlist</button>}
               {!detail.trashed&&!['Rejected','Withdrawn','Hired'].includes(detail.stage)&&<button type="button" className="hub-button secondary" disabled={mutation.busy||decisionBusy||dirty} title={dirty?"Save or clear your unsaved note or action before rejecting.":"Reject and queue this job’s rejection email, then open the next active applicant."} onClick={()=>void rejectAndContinue()}>{rejectBusy?"Rejecting…":"Reject"}</button>}
               {detail.trashed && <button type="button" className="hub-button secondary" disabled={mutation.busy||decisionBusy} onClick={()=>void lifecycle("restore")}>Restore application</button>}
+              {!detail.trashed && canRecordAttendance && <button type="button" className="hub-button secondary" disabled={mutation.busy||decisionBusy||dirty} onClick={()=>{setAction("attendance");setAttendance("");setActionOpen(true);mutation.clear();}}>Record attendance</button>}
               {!detail.trashed&&detail.stage==="Interview"&&<button type="button" className="hub-button secondary" disabled={mutation.busy||decisionBusy||dirty||!detail.notes.length} title={!detail.notes.length?"Save interview feedback in Recruiter notes first.":"Send a complete interview handoff and notify the hiring approvers."} onClick={()=>void founderTransition("Awaiting Founder Review")}>Send for founder review</button>}
               {!detail.trashed&&detail.stage==="Awaiting Founder Review"&&approval.data?.canApprove&&<button type="button" className="hub-button" disabled={mutation.busy||decisionBusy||dirty} onClick={()=>void founderTransition("Second Round Interview")}>Move to second-round interview</button>}
               {!detail.trashed&&<ShareApplicant key={detail.id} id={detail.id}/>}
@@ -979,6 +990,7 @@ export function CandidateDetail({
                         if(e.target.value === "scorecard") setSection("review");
                         setText("");
                         setApprove(false);
+                        setAttendance("");
                         setRenew(false);
                         setNewEmailApproved(false);
                         mutation.clear();
@@ -992,9 +1004,7 @@ export function CandidateDetail({
                         Send interview booking link
                       </option>
                       <option value="scorecard">Record an overall grade</option>
-                      <option value="attendance">
-                        Record interview attendance
-                      </option>
+                      {canRecordAttendance && <option value="attendance">Record interview attendance</option>}
                       <option value="email">Send email</option>
                       <option value="reject">Reject application</option>
                     </select>
@@ -1130,8 +1140,9 @@ export function CandidateDetail({
                         value={attendance}
                         onChange={(e) => setAttendance(e.target.value)}
                       >
-                        <option value="true">Yes</option>
-                        <option value="false">No</option>
+                        <option value="">Choose attendance</option>
+                        <option value="true">Attended</option>
+                        <option value="false">No-show</option>
                       </select>
                     </Field>
                   )}
@@ -1141,7 +1152,7 @@ export function CandidateDetail({
                       "hub-button " + (action === "reject" ? "danger" : "")
                     }
                     type="submit"
-                    disabled={mutation.busy || (action === "reject" && !approve) || (action === "interview" && !interviewReady)}
+                    disabled={mutation.busy || (action === "reject" && !approve) || (action === "interview" && !interviewReady) || (action === "attendance" && (!attendance || !canRecordAttendance))}
                   >
                     {mutation.busy
                       ? "Saving…"
@@ -1153,7 +1164,7 @@ export function CandidateDetail({
                             ? emailPending ? "Check previous email" : "Send email"
                             : action === "reject"
                               ? "Reject application"
-                              : "Save action"}
+                              : action === "attendance" ? "Save attendance" : "Save action"}
                   </button>{action==="interview"&&<button type="button" className="hub-button secondary" disabled={mutation.busy} onClick={cancelInterview}>Cancel invitation</button>}</div>
                 </fieldset>
               </form>
@@ -1282,7 +1293,7 @@ export function CandidateDetail({
                 <section className="hub-card" key={interview.id}>
                   <div className="hub-section-heading compact">
                     <h3>Interview {index === 0 ? "· latest" : "· previous"}</h3>
-                    <Badge>{interview.status}</Badge>
+                    <Badge>{interview.interviewProgress ? interviewProgressLabels[interview.interviewProgress] : interview.status}</Badge>
                   </div>
                   <p>
                     {interview.start?displayDate(interview.start, interview.timeZone):"No interview time selected yet"}

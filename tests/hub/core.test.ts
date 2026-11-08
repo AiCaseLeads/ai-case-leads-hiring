@@ -583,7 +583,7 @@ test("manual rejection queues once per decision and a reopened application may r
   database.close();
 });
 
-test("source quality measures distinct actual stage visits and uses applications as every rate denominator", async () => {
+test("source quality counts distinct applicants with recorded attendance and uses applications as every rate denominator", async () => {
   const { store, database } = createStore(),
     definition = jobInput();
   definition.rules = [
@@ -629,6 +629,11 @@ test("source quality measures distinct actual stage visits and uses applications
       "DELETE FROM hub_history WHERE application_id=? AND to_stage='Interview'",
     )
     .run(a2.id);
+  const meeting = database.prepare("INSERT INTO hub_interviews(id,application_id,status,attended,created_at,updated_at) VALUES(?,?,'booked',?,0,0)");
+  meeting.run('first-round', a1.id, 1);
+  meeting.run('second-round', a1.id, 1);
+  meeting.run('no-show', a2.id, 0);
+  meeting.run('unconfirmed', b2.id, null);
   const report = await store.reports();
   assert.equal(report.applications, 5);
   assert.deepEqual(
@@ -637,10 +642,10 @@ test("source quality measures distinct actual stage visits and uses applications
       source: "alpha",
       count: 3,
       qualified: 2,
-      interviewed: 2,
+      interviewed: 1,
       hired: 1,
       qualificationRate: 2 / 3,
-      interviewRate: 2 / 3,
+      interviewRate: 1 / 3,
       hireRate: 1 / 3,
     },
   );

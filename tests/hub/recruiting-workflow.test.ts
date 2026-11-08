@@ -66,6 +66,13 @@ test('interview workspace filters by role and owner and recruiter-review endpoin
  const f=await fixture();try{
  const {store,database,job,app}=f;database.prepare("INSERT INTO hub_interviews(id,application_id,status,start,end,revision,created_at,updated_at) VALUES('interview',?,'booked','2025-01-01T12:00:00.000Z','2025-01-01T12:30:00.000Z',1,0,0)").run(app.id);
  await saveRecruiterReview(store,app.id,{expectedVersion:0,...complete},RECRUITER);
+ assert.equal((await listRoleInterviews(store,{jobId:job.id,status:'completed'})).total,0,'a past appointment alone does not establish attendance');
+ assert.equal((await listRoleInterviews(store,{progress:'attendance_due'})).total,1);
+ database.prepare("UPDATE hub_interviews SET attended=0 WHERE id='interview'").run();
+ assert.equal((await listRoleInterviews(store,{progress:'no_show'})).total,1);
+ assert.equal((await listRoleInterviews(store,{status:'completed'})).total,0);
+ database.prepare("UPDATE hub_interviews SET attended=1 WHERE id='interview'").run();
+ assert.equal((await listRoleInterviews(store,{jobId:job.id,progress:'completed'})).items[0].interviewProgress,'completed');
  assert.equal((await listRoleInterviews(store,{jobId:job.id,status:'completed'})).items[0].recordingUrl,null,'application recording cannot be attributed to every interview');
  await attachInterviewEvidence(store,app.id,{providerMeetingId:'recorded-interview',interviewId:'interview',recordingUrl:complete.recordingUrl,summary:'This interview'},'meetgeek');
  assert.equal((await listRoleInterviews(store,{jobId:job.id})).items[0].recordingUrl,complete.recordingUrl);

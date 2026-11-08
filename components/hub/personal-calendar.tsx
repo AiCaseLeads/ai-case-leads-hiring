@@ -1,4 +1,5 @@
 "use client";
+import { calendarHourLabel } from "./calendar-hour";
 import { useState } from "react";
 import { ExternalLink } from "lucide-react";
 import { safeNavigation, useHubMutation, useHubResource } from "./api";
@@ -34,8 +35,8 @@ function PersonalCalendarForm({initial,reload,saved}:{initial:PersonalCalendarSt
       <div className="hub-form-grid">
         <Field label="My time zone" hint="For example America/Bogota, Europe/Madrid, or America/New_York."><input required value={availability.timeZone} onChange={e=>change("timeZone",e.target.value)} list="personal-time-zones"/><datalist id="personal-time-zones">{["America/Bogota","America/New_York","America/Chicago","America/Denver","America/Los_Angeles","Europe/Madrid","Europe/London","UTC"].map(zone=><option value={zone} key={zone}/>)}</datalist></Field>
         <Field label="Interview length"><select value={availability.durationMinutes} onChange={e=>change("durationMinutes",Number(e.target.value))}>{[15,30,45,60].map(value=><option key={value} value={value}>{value} minutes</option>)}</select></Field>
-        <Field label="First available hour"><select value={availability.startHour} onChange={e=>change("startHour",Number(e.target.value))}>{Array.from({length:24},(_,hour)=><option key={hour} value={hour}>{String(hour).padStart(2,"0")}:00</option>)}</select></Field>
-        <Field label="Finish by"><select value={availability.endHour} onChange={e=>change("endHour",Number(e.target.value))}>{Array.from({length:24},(_,index)=>index+1).map(hour=><option key={hour} value={hour}>{hour===24?"Midnight":String(hour).padStart(2,"0")+":00"}</option>)}</select></Field>
+        <Field label="First available hour"><select value={availability.startHour} onChange={e=>change("startHour",Number(e.target.value))}>{Array.from({length:24},(_,hour)=><option key={hour} value={hour}>{calendarHourLabel(hour)}</option>)}</select></Field>
+        <Field label="Finish by"><select value={availability.endHour} onChange={e=>change("endHour",Number(e.target.value))}>{Array.from({length:24},(_,index)=>index+1).map(hour=><option key={hour} value={hour}>{calendarHourLabel(hour)}</option>)}</select></Field>
 
       </div>
       <fieldset className="hub-personal-days"><legend>Days I interview</legend><div className="hub-weekdays">{["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"].map((day,index)=><label className="hub-checkbox" key={day}><input type="checkbox" checked={availability.weekdays.includes(index)} onChange={e=>change("weekdays",e.target.checked?[...availability.weekdays,index].sort():availability.weekdays.filter(value=>value!==index))}/>{day}</label>)}</div></fieldset>
