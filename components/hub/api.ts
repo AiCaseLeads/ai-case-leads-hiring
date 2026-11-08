@@ -10,6 +10,13 @@ export class HubError extends Error {
     super(message);
   }
 }
+/** Revalidation failures must not unmount an already loaded draft for this resource. */
+export function retainHubResource(error:unknown,loadedPath:string|null,path:string){
+  return loadedPath===path&&error instanceof HubError&&(
+    error.code==="staff_access_required"||error.status===401||error.status===0||
+    error.status===200||(error.status>=500&&error.status<=599)
+  );
+}
 function unavailableMessage(status: number) {
   return [502,503,504].includes(status)
     ? `The hiring server is temporarily unavailable (${status}). Your entries are still here. Please try again shortly.`
@@ -46,6 +53,9 @@ export async function hubRequest<T>(
       response.status,
     );
   }
+  if (!response.ok && (result.error?.code === "staff_access_required" || response.status === 401)) {
+    if (typeof window !== "undefined") window.dispatchEvent(new Event("hub:session-expired"));
+  }
   if (!response.ok)
     throw new HubError(
       typeof result.error?.message === "string" ? result.error.message : unavailableMessage(response.status),
@@ -77,16 +87,17 @@ export function useHubResource<T>(path: string, refresh = 0) {
     [error, setError] = useState(""),
     [loading, setLoading] = useState(true);
   const epoch = useRef(0);
+  const loadedPath=useRef<string|null>(null);
   const reload = useCallback(async () => {
     const current = ++epoch.current;
-    setLoading(true);
+    setLoading(loadedPath.current!==path);
     setError("");
     try {
       const next = await hubRequest<T>(path);
-      if (current === epoch.current) setData(next);
+      if (current === epoch.current) { loadedPath.current=path;setData(next); }
     } catch (e) {
       if (current === epoch.current) {
-        setData(null);
+        if (!retainHubResource(e,loadedPath.current,path)) {setData(null);loadedPath.current=null;}
         setError(e instanceof Error ? e.message : "Please try again.");
       }
     } finally {
@@ -106,11 +117,13 @@ export function useHubResource<T>(path: string, refresh = 0) {
       invalidate();
     };
   }, [reload, refresh, invalidate]);
+  useEffect(()=>{const restored=()=>{if(loadedPath.current===path){setError("");setLoading(false)}else void reload()};window.addEventListener("hub:session-restored",restored);return()=>window.removeEventListener("hub:session-restored",restored)},[reload,path]);
   return { data, error, loading, reload };
 }
 export function useHubMutation() {
   const [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
+    [errorCode, setErrorCode] = useState(""),
     [success, setSuccess] = useState(""),
     [retrying, setRetrying] = useState(false);
   const active = useRef(false);
@@ -125,6 +138,7 @@ export function useHubMutation() {
     active.current = true;
     setBusy(true);
     setError("");
+    setErrorCode("");
     setSuccess("");
     setRetrying(false);
     try {
@@ -134,6 +148,7 @@ export function useHubMutation() {
       setSuccess(message);
       return result;
     } catch (e) {
+      setErrorCode(e instanceof HubError ? e.code ?? "" : "");
       setError(e instanceof Error ? e.message : "Please try again.");
       return undefined;
     } finally {
@@ -146,10 +161,12 @@ export function useHubMutation() {
     busy,
     retrying,
     error,
+    errorCode,
     success,
     run,
     clear: () => {
       setError("");
+      setErrorCode("");
       setSuccess("");
     },
   };

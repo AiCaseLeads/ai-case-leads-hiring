@@ -11,6 +11,8 @@ import {
 import { HiringDashboard } from "@/components/hub/dashboard";
 import { PageChrome } from "@/components/careers/chrome";
 import "@/components/hub/hub.css";
+import "@/components/hub/workspace-v3.css";
+import "@/components/hub/workspace-surfaces.css";
 
 export const dynamic = "force-dynamic";
 export const metadata = {

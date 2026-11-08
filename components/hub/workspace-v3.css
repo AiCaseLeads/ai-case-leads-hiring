@@ -1,0 +1,90 @@
+/* Workspace v3 component contract. Operational density; large touch targets remain on coarse pointers. */
+.hiring-hub{--hub-ink:#17363d;--hub-muted:#50646a;--hub-line:#dbe5e3;--hub-surface:#f5f7f7;--hub-space-1:4px;--hub-space-2:8px;--hub-space-3:12px;--hub-space-4:16px;--hub-space-6:24px;font-size:14px;line-height:1.5;grid-template-columns:216px minmax(0,1fr)}
+.hiring-hub .hub-main{padding:24px 28px;max-width:1600px;width:100%;min-width:0}
+.hiring-hub .hub-topbar{min-height:60px;padding:10px 28px;gap:12px}
+.hiring-hub .hub-topbar>div{gap:10px;min-width:0}
+.hiring-hub .hub-sidebar{padding:24px 16px 16px}
+.hiring-hub .hub-workspace-label{margin:28px 10px 12px}
+.hiring-hub .hub-sidebar nav button{padding:10px 12px;gap:10px;min-height:40px}
+.hiring-hub .hub-card{padding:20px;margin-bottom:16px;border-radius:10px}
+.hiring-hub h1{font-size:26px;line-height:1.2;letter-spacing:-.025em}
+.hiring-hub h2{font-size:22px;line-height:1.3;letter-spacing:-.015em}
+.hiring-hub h3{font-size:17px;line-height:1.4}
+.hiring-hub .hub-section-heading{gap:16px;margin-bottom:18px}
+.hiring-hub .hub-section-heading p{margin:5px 0 0}
+.hiring-hub .hub-button,.hiring-hub .hub-icon-button{min-height:36px;border-radius:6px;font-size:13px;line-height:1.3;white-space:nowrap}
+.hiring-hub .hub-button{padding:8px 12px}
+.hiring-hub .hub-button-row{gap:8px;align-items:center}
+.hiring-hub .hub-field{gap:5px;margin-bottom:12px}
+.hiring-hub .hub-field>label{color:var(--hub-ink);font-size:13px;font-weight:600}
+.hiring-hub .hub-field input,.hiring-hub .hub-field select{min-height:36px;padding:7px 10px;font-size:14px;border-radius:6px}
+.hiring-hub .hub-field textarea{padding:9px 10px;font-size:14px;line-height:1.55;border-radius:6px}
+.hiring-hub .hub-field small{font-size:12px;color:var(--hub-muted)}
+.hiring-hub .hub-table-wrap{overflow-x:auto;max-width:100%;border-radius:8px}
+.hiring-hub .hub-applications-table{table-layout:auto;min-width:880px;width:100%}
+.hiring-hub .hub-applications-table th{white-space:nowrap;padding:10px 12px;font-size:12px;letter-spacing:0;text-transform:none}
+.hiring-hub .hub-applications-table td{padding:12px;font-size:13px;vertical-align:middle;overflow-wrap:normal;word-break:normal}
+.hiring-hub .hub-applications-table th:first-child,.hiring-hub .hub-applications-table td:first-child{width:40px}
+.hiring-hub .hub-applications-table th:nth-child(2),.hiring-hub .hub-applications-table td:nth-child(2){min-width:205px}
+.hiring-hub .hub-applications-table td:last-child{min-width:150px;white-space:nowrap}
+.hiring-hub .hub-applications-table td:last-child button{white-space:nowrap;word-break:normal;min-width:max-content}
+.hiring-hub .hub-applications-table td a{overflow-wrap:anywhere}
+.hiring-hub .hub-applicant-profile .hub-profile-tabs{margin-block:10px 16px;gap:0 20px}
+.hiring-hub .hub-applicant-profile .hub-profile-tabs>button{min-height:40px;font-size:13px;font-weight:600}
+.hiring-hub :where(button,a,input,select,textarea,summary):focus-visible{outline:2px solid #237c65;outline-offset:3px}
+.hub-session-dialog{max-width:520px;width:calc(100% - 32px);border:1px solid #dbe5e3;border-radius:12px;padding:24px;color:#17363d;box-shadow:0 16px 70px #132e3a30}
+.hub-session-dialog::backdrop{background:#10272bd0;backdrop-filter:blur(3px)}
+.hub-session-actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:20px}
+.hub-session-dialog h2{margin-top:0}
+.hub-session-dialog p{line-height:1.5}
+@media(max-width:1000px){.hiring-hub{grid-template-columns:184px minmax(0,1fr)}.hiring-hub .hub-main{padding:20px}.hiring-hub .hub-topbar{padding:10px 20px}.hub-breadcrumb>span{display:none}}
+@media(max-width:768px){.hiring-hub{display:block}.hiring-hub .hub-sidebar{padding:12px 16px;height:auto;position:static}.hiring-hub .hub-main{padding:16px}.hiring-hub .hub-topbar{padding:10px 16px;flex-wrap:wrap}.hiring-hub .hub-topbar .hub-breadcrumb{font-size:12px}.hiring-hub .hub-card{padding:16px}.hiring-hub .hub-field input,.hiring-hub .hub-field select,.hiring-hub .hub-field textarea{font-size:16px;min-height:44px}.hiring-hub .hub-section-heading{align-items:flex-start}.hiring-hub .hub-button,.hiring-hub .hub-icon-button{min-height:44px}.hiring-hub .hub-applications-table{min-width:0}.hiring-hub .hub-applications-table td:last-child{white-space:normal;min-width:0}.hiring-hub .hub-applications-table th:nth-child(2),.hiring-hub .hub-applications-table td:nth-child(2){min-width:0}.hub-session-actions>*{width:100%;justify-content:center}}
+@media(pointer:coarse){.hiring-hub .hub-button,.hiring-hub .hub-text-button,.hiring-hub .hub-icon-button,.hiring-hub summary{min-height:44px}}
+.hub-interview-readiness{background:#f3f7f5;border:1px solid var(--hub-line);padding:14px 16px;border-radius:8px;margin:12px 0 18px}
+.hub-interview-readiness h4,.hub-interview-preview h4{margin:0 0 10px;font-size:15px}
+.hub-interview-readiness p{margin:6px 0}
+.hub-interview-preview{border:1px solid var(--hub-line);border-radius:8px;background:#fff;padding:18px;margin-top:16px}
+.hub-interview-preview p{font-size:13px;margin:4px 0}
+.hub-interview-preview pre{font-size:14px;line-height:1.6;overflow-wrap:anywhere;max-width:100%}
+.hub-interview-composer details{margin:10px 0}
+.hub-interview-composer .hub-notice{font-size:13px}
+.hub-interview-composer .hub-notice a{display:inline-block;font-weight:600;text-decoration:underline}
+.hub-interview-overlay{position:fixed;inset:0;background:#10272ba6;backdrop-filter:blur(2px);z-index:80}
+.hub-interview-dialog{position:fixed;z-index:81;top:50%;left:50%;transform:translate(-50%,-50%);width:min(900px,calc(100vw - 40px));max-height:90dvh;overflow-y:auto;background:#fff;color:var(--hub-ink,#17363d);border:1px solid #dbe5e3;border-radius:12px;padding:24px;box-shadow:0 16px 70px #132e3a30;font:14px/1.5 system-ui,sans-serif}
+@media(max-width:640px){.hub-interview-dialog{width:calc(100vw - 16px);max-height:96dvh;padding:16px}.hub-interview-preview{padding:14px}}
+.hub-interview-dialog{margin:0;border:1px solid #dbe5e3}
+.hub-interview-dialog::backdrop{background:#10272ba6;backdrop-filter:blur(2px)}
+.hiring-hub .hub-refresh-applicants{display:inline-flex;align-items:center;gap:6px}
+@media(max-width:640px){.hub-candidate-browser>.hub-section-heading{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;margin-bottom:12px}.hub-candidate-browser>.hub-section-heading .hub-kicker{display:none}.hub-candidate-browser>.hub-section-heading .hub-button-row{display:flex;flex-direction:column;align-items:flex-end;gap:4px}.hub-candidate-browser>.hub-section-heading .hub-refresh-applicants{width:44px;padding:10px;justify-content:center}.hub-refresh-applicants>span{display:none}.hub-candidate-browser>.hub-screening-help{display:none}.hub-candidate-browser .hub-applicant-toolbar{padding:12px;margin-bottom:12px}.hub-candidate-browser .hub-application-view-tabs{margin-bottom:12px}}
+.hub-interview-dialog .hub-action-form,.hub-interview-dialog .hub-card{width:100%;max-width:none;position:static;margin:0;border:0;box-shadow:none}
+.hub-interview-dialog .hub-field input,.hub-interview-dialog .hub-field select,.hub-interview-dialog .hub-field textarea{width:100%}
+.hiring-hub .hub-candidate-browser>.hub-section-heading .hub-kicker{display:none}
+.hiring-hub .hub-candidate-browser>.hub-section-heading{margin-bottom:14px}
+.hub-stage-toolbar{display:flex;align-items:flex-end;gap:12px 16px;flex-wrap:wrap;margin-bottom:14px}
+.hiring-hub .hub-stage-toolbar .hub-application-view-tabs{margin:0;flex:none}
+.hub-stage-filter{width:230px;max-width:100%;flex:none}
+.hiring-hub .hub-stage-filter .hub-field{margin:0}
+.hiring-hub .hub-stage-toolbar .hub-queue-shortcuts{gap:8px 12px;padding:0;margin:0;flex:1;min-width:300px;min-height:36px}
+.hiring-hub .hub-candidate-browser .hub-filter-autoupdate{position:absolute;clip-path:inset(50%);width:1px;height:1px;overflow:hidden;white-space:nowrap}
+.hiring-hub .hub-candidate-browser .hub-advanced-filters{margin:0}
+.hiring-hub .hub-candidate-browser .hub-advanced-filters>summary{min-height:32px;padding:6px 0}
+.hiring-hub .hub-candidate-browser .hub-applicant-toolbar-actions{margin-top:4px}
+.hiring-hub .hub-candidate-browser .hub-application-downloads>summary{min-height:36px;padding:8px 0;margin:0;display:flex;align-items:center;gap:8px}
+@media(max-width:700px){.hub-stage-toolbar{gap:10px;margin-bottom:10px}.hub-stage-filter{flex:1;min-width:175px}.hiring-hub .hub-stage-toolbar .hub-queue-shortcuts{flex-basis:100%;min-width:0;min-height:40px;max-width:100%;padding:0 0 4px}.hiring-hub .hub-candidate-browser .hub-advanced-filters>summary{min-height:44px}.hiring-hub .hub-candidate-browser .hub-applicant-toolbar-actions{margin-top:0}.hiring-hub .hub-candidate-browser .hub-application-downloads>summary{min-height:44px;padding:8px 0}.hiring-hub .hub-candidate-browser>.hub-section-heading .hub-button-row{align-self:start}.hiring-hub .hub-candidate-browser>.hub-section-heading .hub-refresh-applicants{flex:none;height:44px;min-height:44px;max-height:44px}}
+@media(max-width:960px){
+ .hiring-hub .hub-applications-table tbody{gap:12px}
+ .hiring-hub .hub-applications-table tbody tr{position:relative;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:0 12px;padding:12px}
+ .hiring-hub .hub-applications-table td{min-width:0;padding:7px 0;border-bottom:0!important;font-size:13px}
+ .hiring-hub .hub-applications-table td::before{margin-bottom:3px}
+ .hiring-hub .hub-applications-table .hub-candidate-select{position:absolute;top:4px;right:4px;width:44px;height:44px;margin:0;padding:0}
+ .hiring-hub .hub-applications-table .hub-candidate-select::before{display:none}
+ .hiring-hub .hub-applications-table .hub-candidate-identity{grid-column:1/-1;padding:0 38px 10px 0;border-bottom:1px solid var(--hub-line)!important}
+ .hiring-hub .hub-applications-table .hub-candidate-identity::before{display:none}
+ .hiring-hub .hub-applications-table .hub-candidate-name{min-height:36px;padding:4px 0}
+ .hiring-hub .hub-applications-table td[data-label="Role"],.hiring-hub .hub-applications-table td[data-label="Applied"],.hiring-hub .hub-applications-table td[data-label="Next step"]{grid-column:1/-1}
+ .hiring-hub .hub-applications-table td[data-label="Next step"]::before{display:none}
+ .hiring-hub .hub-applications-table td[data-label="Next step"]:has(.hub-candidate-row-actions:empty){display:none}
+ .hiring-hub .hub-applications-table .hub-candidate-row-actions{flex-direction:row;align-items:center;gap:8px;flex-wrap:wrap}
+ .hiring-hub .hub-applications-table .hub-candidate-row-actions>*{min-height:44px;flex:none}
+}
+@media(min-width:961px) and (max-width:1320px){.hiring-hub .hub-applications-table .hub-optional-applied{display:none}}

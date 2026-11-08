@@ -32,7 +32,7 @@ async function invitation(
 ) {
   await currentAction(store, id, { action: kind }, MANAGER);
   const mail = (await store.tasks()).find(
-    (task) => task.kind === "gmail" && task.id.includes(`:${kind}:`),
+    (task) => task.kind === "gmail" && task.applicationId === id && task.id.includes(`:${kind}:`),
   )!;
   const token = String(mail.payload.body).match(
     new RegExp(`/${kind}/([a-f0-9]{64})`),
@@ -211,6 +211,10 @@ test("two candidates cannot reserve one time; booking is pending until Calendar 
   await approveScheduling(store);
   const token1 = await invitation(store, app1.id, "interview"),
     token2 = await invitation(store, app2.id, "interview");
+  assert.notEqual(token1,token2,"Each candidate must use their own private invitation");
+  for(const [token,id] of [[token1,app1.id],[token2,app2.id]])assert.equal(
+    (await store.stmt("SELECT application_id FROM hub_links WHERE token_hash=?",await sha256(token)).first<{application_id:string}>())?.application_id,id,
+  );
   const response = await handleCandidateRequest(
     req(token1),
     token1,

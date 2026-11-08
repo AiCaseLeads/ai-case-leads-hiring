@@ -6,6 +6,7 @@ export const MAIL_SETUP_ERRORS = [
   'google_oauth_reconnect_required',
   'google_required_permissions_missing',
   'recruiter_reply_contact_required',
+  'interview_sender_changed',
   'candidate_mail_exposes_staff_address',
   'transactional_mail_key_required',
   'transactional_mail_domain_not_verified',

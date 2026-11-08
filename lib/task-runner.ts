@@ -120,10 +120,12 @@ async function taskEffect(task:Task,store:HubStore,db:D1Database,bucket:R2Bucket
     if(/:(assessment|interview):.*:invitation:/.test(task.id)) {
       const linkKind=task.id.includes(":assessment:")?"assessment":"interview";
       const match=typeof task.payload.body==="string"?new RegExp(`https?:\\/\\/[^\\s]+\\/${linkKind}\\/([a-f0-9]{64})(?:\\s|$)`).exec(task.payload.body):null;
-      const link=match?await db.prepare("SELECT expires_at,used_at FROM hub_links WHERE token_hash=? AND application_id=? AND kind=?").bind(await sha256(match[1]),task.applicationId,linkKind).first<{expires_at:number;used_at:number|null}>():null;
+      const linkHash=typeof task.payload.invitationHash==="string"&&/^[a-f0-9]{64}$/.test(task.payload.invitationHash)?task.payload.invitationHash:match?await sha256(match[1]):null;
+      const link=linkHash?await db.prepare("SELECT expires_at,used_at FROM hub_links WHERE token_hash=? AND application_id=? AND kind=?").bind(linkHash,task.applicationId,linkKind).first<{expires_at:number;used_at:number|null}>():null;
       if(!link||link.used_at!==null||link.expires_at<=Date.now())return {stale:true,expiredInvitation:true};
     }
     const mail=await candidateMail(store,task.payload as unknown as MailInput,owners,{mailMode:candidateTaskMailMode(task.id,task.applicationId,task.payload),actor:task.payload.actor,applicationId:task.applicationId,rejection:isRejectionTask(task.id,task.applicationId),interview:isInterviewInvitationTask(task.id,task.applicationId)});
+    if(task.payload.approvedEnvelope && JSON.stringify(task.payload.approvedEnvelope)!==JSON.stringify({sender:mail.sender,to:mail.to,cc:mail.cc||[],replyTo:mail.replyTo||[]}))throw {code:'interview_sender_changed'};
     if(mail.sender===CANDIDATE_SENDER)return sendAutomaticTask(task,mail,store,db,deadline,automaticResolver);
     const transport=await candidateTransport(store,mail.candidateAccount,resolver);
     transport.setDeadline?.(deadline);

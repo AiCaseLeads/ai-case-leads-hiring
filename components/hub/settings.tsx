@@ -26,61 +26,45 @@ import { AgentAccess } from "./agent-access";
 import { MeetGeekSettings } from "./interview-workspace";
 import { WorkflowSettings } from "./workflow-settings";
 import { RecruitingRequests } from "./recruiting-help";
+import { InterviewTemplateSettings } from "./interview-composer";
 
-export function HubSettings({
-  member, refresh, changed, jobs = [], startSection, onDeliveryActivity,
-}: {
-  member: Member; refresh: number; changed: () => void; jobs?: HubJob[];
-  startSection?: "scorecards"; onDeliveryActivity?: () => void;
-}) {
-  const owner = member.isOwner === true;
-  const managesTeam = member.role === "admin";
-  const [section, setSection] = useState<"personal" | "team" | "company" | "scorecards" | "help">(startSection === "scorecards" ? "scorecards" : "personal");
-  useEffect(() => {
-    if (startSection === "scorecards") queueMicrotask(() => setSection("scorecards"));
-    else if ((owner || managesTeam) && new URLSearchParams(window.location.search).get("section") === "company") queueMicrotask(() => setSection("company"));
-  }, [startSection, owner, managesTeam]);
-  const sections = [
-    { id: "personal" as const, label: "My connections" },
-    ...(managesTeam ? [{ id: "team" as const, label: "Team" }] : []),
-    ...(owner || managesTeam ? [{ id: "company" as const, label: "Company" }] : []),
-    { id: "help" as const, label: "Help requests" },
-    { id: "scorecards" as const, label: "Templates" },
-  ];
-  return <section className="hub-settings" aria-labelledby="settings-title">
-    <div className="hub-section-heading"><div><p className="hub-kicker">WORKSPACE</p><h2 id="settings-title">Settings</h2><p>Manage your connections and your team’s workspace.</p></div>
-      <a className="hub-text-button hub-inline-guide" href="/recruiter-guide.pdf" target="_blank" rel="noopener noreferrer">Recruiter guide (PDF) <ExternalLink size={15} /></a>
-    </div>
-    <nav className="hub-page-tabs" aria-label="Settings sections">
-      {sections.map(item => <button key={item.id} type="button" aria-current={section === item.id ? "page" : undefined} className={"hub-text-button " + (section === item.id ? "active" : "")} onClick={() => setSection(item.id)}>{item.label}</button>)}
-    </nav>
+export type SettingsSection = "personal" | "team" | "integrations" | "templates" | "scorecards" | "help" | "diagnostics";
+export function HubSettings({member,refresh,changed,jobs=[],startSection,onDeliveryActivity}:{member:Member;refresh:number;changed:()=>void;jobs?:HubJob[];startSection?:SettingsSection;onDeliveryActivity?:()=>void}) {
+  const owner=member.isOwner===true, managesTeam=member.role==="admin";
+  const [section,setSection]=useState<SettingsSection>(startSection||"personal");
+  useEffect(()=>{function readSection(){const requested=new URLSearchParams(window.location.search).get("section");const next=requested==="company"?"integrations":["calendar","email"].includes(requested||"")?"personal":requested||startSection||"personal"; if(["personal","templates","scorecards","help","team","integrations","diagnostics"].includes(next||""))setSection(next as SettingsSection);}queueMicrotask(readSection);window.addEventListener("hub:navigate",readSection);window.addEventListener("popstate",readSection);return()=>{window.removeEventListener("hub:navigate",readSection);window.removeEventListener("popstate",readSection)};},[startSection]);
+  function choose(next:SettingsSection){setSection(next);const url=new URL(window.location.href);url.searchParams.set("section",next);window.history.replaceState(window.history.state,"",url);}
+  const sections=[{id:"personal" as const,label:"My calendar & email"},{id:"templates" as const,label:"Email templates"},...(managesTeam?[{id:"team" as const,label:"Team & permissions"}]:[]),...(owner||managesTeam?[{id:"integrations" as const,label:"Integrations"}]:[]),{id:"scorecards" as const,label:"Scorecards"},{id:"help" as const,label:"Help requests"},...(owner?[{id:"diagnostics" as const,label:"Diagnostics"}]:[])];
+  return <section className="hub-settings hub-settings-v3" aria-labelledby="settings-title">
+    <div className="hub-section-heading"><div><p className="hub-kicker">WORKSPACE</p><h2 id="settings-title">Settings</h2><p>Connections, communication defaults, and team access.</p></div><a className="hub-text-button hub-inline-guide" href="/recruiter-guide.pdf" target="_blank" rel="noopener noreferrer">Recruiter guide <ExternalLink size={15}/></a></div>
+    <div className="hub-settings-layout"><nav className="hub-settings-nav" aria-label="Settings sections">{sections.map(item=><button key={item.id} type="button" aria-current={section===item.id?"page":undefined} onClick={()=>choose(item.id)}>{item.label}</button>)}</nav>
     <div className="hub-setting-panel">
-      {section === "personal" && <>
-        <p className="hub-muted">Sign in with your own account, connect email and Calendar, then set your interview hours. Job notifications go to the people selected on each job.</p>
-        <PersonalMailSetup member={member} refresh={refresh} />
-        <PersonalCalendarSetup key={member.email} member={member} refresh={refresh} />
-      </>}
-      {section === "team" && managesTeam && <><TeamAccess member={member} changed={changed} refresh={refresh} /><details className="hub-card hub-setup-details"><summary>Review reminders</summary><ReviewReminderSettings /></details></>}
-      {section === "scorecards" && <><p className="hub-muted">Optional reusable review criteria for teams that want manual scorecards. AI matching uses each job’s description and applicant evidence.</p><section className="hub-card" id="scorecard-settings"><ScorecardTemplates jobs={jobs} /></section></>}
-      {section === "help" && <RecruitingRequests />}
-      {section === "company" && (owner || managesTeam) && <><MeetGeekSettings/><AgentAccess isOwner={owner}/>{owner&&<WorkflowSettings/>}<AutomaticMailSetup refresh={refresh} />{owner && <CompanySettings member={member} refresh={refresh} changed={changed} jobs={jobs} onDeliveryActivity={onDeliveryActivity} />}</>}
-    </div>
+    {section==="personal"&&<><div className="hub-setting-intro"><h3>My calendar & email</h3><p>Your calendar offers interview times. Your recruiting email sends invitations and receives replies.</p></div><PersonalMailSetup member={member} refresh={refresh}/><PersonalCalendarSetup key={member.email} member={member} refresh={refresh}/></>}
+    {section==="team"&&managesTeam&&<><TeamAccess member={member} changed={changed} refresh={refresh}/>{owner&&<WorkflowSettings/>}<details className="hub-card hub-setup-details"><summary>Review reminders</summary><ReviewReminderSettings/></details></>}
+    {section==="templates"&&<><div className="hub-setting-intro"><h3>Email templates</h3><p>Default messages are separate from edits to an individual invitation.</p></div><InterviewTemplateSettings isOwner={owner}/>{owner?<CompanySettings member={member} refresh={refresh} changed={changed} jobs={jobs} initialArea="notifications" onDeliveryActivity={onDeliveryActivity}/>:<p className="hub-muted">The account owner manages company rejection defaults. Individual invitations can be personalized before sending.</p>}</>}
+    {section==="scorecards"&&<section className="hub-card" id="scorecard-settings"><ScorecardTemplates jobs={jobs}/></section>}
+    {section==="help"&&<RecruitingRequests/>}
+    {section==="integrations"&&(owner||managesTeam)&&<><div className="hub-setting-intro"><h3>Integrations</h3><p>Open a connection to review its account, status, and setup.</p></div><details className="hub-integration-disclosure"><summary><strong>MeetGeek</strong><span>Interview recordings, transcripts and summaries</span></summary><MeetGeekSettings/></details>{owner&&<><details className="hub-integration-disclosure"><summary><strong>Codex & Claude</strong><span>Assistant access and permissions</span></summary><AgentAccess isOwner={owner}/></details><details className="hub-integration-disclosure"><summary><strong>Google Workspace & files</strong><span>Company archive and optional shared calendar</span></summary><CompanySettings member={member} refresh={refresh} changed={changed} jobs={jobs} initialArea="storage" onDeliveryActivity={onDeliveryActivity}/></details><details className="hub-integration-disclosure"><summary><strong>AI provider</strong><span>Applicant evidence comparison</span></summary><AiReviewSettings/></details></>}<details className="hub-integration-disclosure"><summary><strong>Automatic email</strong><span>Receipts, rejections and reminders</span></summary><AutomaticMailSetup refresh={refresh}/></details></>}
+    {section==="diagnostics"&&owner&&<><div className="hub-setting-intro"><h3>Diagnostics</h3><p>Delivery recovery and technical configuration for workspace administrators.</p></div>{onDeliveryActivity&&<button type="button" className="hub-button secondary" onClick={onDeliveryActivity}>Open delivery activity</button>}<CompanySettings member={member} refresh={refresh} changed={changed} jobs={jobs} initialArea="advanced" onDeliveryActivity={onDeliveryActivity}/></>}
+    </div></div>
   </section>;
 }
 
-function CompanySettings({ member, refresh, changed, jobs, onDeliveryActivity }: { member:Member; refresh:number; changed:()=>void; jobs:HubJob[]; onDeliveryActivity?:()=>void }) {
+function CompanySettings({ member, refresh, changed, jobs, onDeliveryActivity, initialArea }: { member:Member; refresh:number; changed:()=>void; jobs:HubJob[]; onDeliveryActivity?:()=>void; initialArea?:"storage"|"ai"|"notifications"|"advanced" }) {
   const resource = useHubResource<Settings>("/api/hub/settings", refresh);
   return <>
     <ResourceState loading={resource.loading} error={resource.error} retry={() => void resource.reload()} />
-    {resource.data && !resource.loading && <SettingsForm key={JSON.stringify(resource.data)} initial={resource.data} member={member} jobs={jobs} onDeliveryActivity={onDeliveryActivity} changed={() => { changed(); void resource.reload(); }} />}
+    {resource.data && !resource.loading && <SettingsForm key={(initialArea||"")+JSON.stringify(resource.data)} initialArea={initialArea} initial={resource.data} member={member} jobs={jobs} onDeliveryActivity={onDeliveryActivity} changed={() => { changed(); void resource.reload(); }} />}
   </>;
 }
 function SettingsForm({
   initial,
+  initialArea,
   changed,
   onDeliveryActivity,
 }: {
   initial: Settings;
+  initialArea?: "storage"|"ai"|"notifications"|"advanced";
   member: Member;
   changed: () => void;
   jobs: HubJob[];
@@ -157,12 +141,12 @@ function SettingsForm({
     if (result?.url && safeNavigation(result.url))
       window.location.assign(result.url);
   }
-  const [area, setArea] = useState<"storage" | "ai" | "notifications" | "advanced">("storage");
+  const [area, setArea] = useState<"storage" | "ai" | "notifications" | "advanced">(initialArea||"storage");
   const areas = [{id:"storage" as const,label:"Files & calendar"},{id:"ai" as const,label:"AI"},{id:"notifications" as const,label:"Messages & reminders"},{id:"advanced" as const,label:"Advanced"}];
   return <div className="hub-settings-stack hub-company-settings">
-    {initial.queue.failed > 0 && <div className="hub-notice hub-error hub-inline-alert" role="alert"><span>{initial.queue.failed} delivery tasks need attention.</span>{onDeliveryActivity && <button className="hub-text-button" type="button" onClick={onDeliveryActivity}>View delivery activity</button>}</div>}
+    {area === "advanced" && initial.queue.failed > 0 && <div className="hub-notice hub-error hub-inline-alert" role="alert"><span>{initial.queue.failed} delivery tasks need attention.</span>{onDeliveryActivity && <button className="hub-text-button" type="button" onClick={onDeliveryActivity}>View delivery activity</button>}</div>}
     {runtime.data?.hostingPlatform === "railway" && !runtime.data.backgroundEnabled && <div className="hub-notice hub-error hub-inline-alert" role="alert"><span>Automatic email, calendar, and file processing is disabled.</span><button type="button" className="hub-text-button" onClick={() => setArea("advanced")}>Open background setup</button></div>}
-    <nav className="hub-company-tabs hub-page-tabs" aria-label="Company settings sections">{areas.map(item => <button className={"hub-text-button " + (area === item.id ? "active" : "")} type="button" aria-current={area === item.id ? "page" : undefined} onClick={() => setArea(item.id)} key={item.id}>{item.label}</button>)}</nav>
+    {!initialArea&&<nav className="hub-company-tabs hub-page-tabs" aria-label="Company settings sections">{areas.map(item => <button className={"hub-text-button " + (area === item.id ? "active" : "")} type="button" aria-current={area === item.id ? "page" : undefined} onClick={() => setArea(item.id)} key={item.id}>{item.label}</button>)}</nav>}
     {area === "storage" && <section className="hub-card">
       <div className="hub-section-heading compact"><div><h3>Company Google connection</h3><p>Stores applicant files in Drive and provides an optional shared interview calendar.</p></div><Badge tone={initial.google.connected ? "success" : "warning"}>{initial.google.connected ? "Connected" : "Not connected"}</Badge></div>
       <ResourceState loading={runtime.loading} error={runtime.error} retry={() => void runtime.reload()} />
@@ -240,6 +224,7 @@ export function Tasks({
     google_oauth_reconnect_required: "Reconnect the recruiting Gmail account; its authorization has expired or changed.",
     google_required_permissions_missing: "Reconnect recruiting Gmail and grant the required permissions.",
     recruiter_reply_contact_required: "Assign a connected recruiter as the job’s reply contact.",
+    interview_sender_changed: "The interview reply contact changed after preview. Review the applicant and send a replacement invitation; this message is held.",
     candidate_mail_exposes_staff_address: "Update the email template to remove the private staff address before sending.",
   }[error] || "Recruiting email setup needs attention.");
   const [processResult, setProcessResult] = useState<{

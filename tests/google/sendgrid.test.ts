@@ -122,10 +122,22 @@ test("negative readiness is not cached and revoked key invalidates shared positi
 });
 
 test("coalesced callers retain independent deadlines", async () => {
-  const shared = sharedFixture("sendgrid-shared-deadlines"), long = shared.client(), short = shared.client();
-  long.setDeadline(now + 100); short.setDeadline(now + 1);
-  const pending = long.verifySender(); await assert.rejects(short.verifySender(), isError("processor_deadline_exceeded"));
-  assert.equal((await pending).verified, true); assert.equal(shared.count(), 1);
+  // Keep the provider pending until the short caller times out. Relative 1 ms/5 ms
+  // timers can both be due after an event-loop stall and resolve in registration order.
+  let checks = 0, release!: () => void, entered!: () => void;
+  const providerPending = new Promise<void>(resolve => { release = resolve; });
+  const providerEntered = new Promise<void>(resolve => { entered = resolve; });
+  const fetcher: typeof fetch = async () => {
+    checks++; entered(); await providerPending;
+    return response([{ domain: "aicaseleads.com", valid: true, user_id: 7 }]);
+  };
+  const client = () => new SendGridMail({ apiKey: "sendgrid-shared-deadlines", fetcher, now: () => now });
+  const long = client(), short = client();
+  long.setDeadline(now + 60_000); short.setDeadline(now + 1);
+  const pending = long.verifySender(); await providerEntered;
+  try { await assert.rejects(short.verifySender(), isError("processor_deadline_exceeded")); }
+  finally { release(); }
+  assert.equal((await pending).verified, true); assert.equal(checks, 1);
 });
 
 test("private addresses and malformed envelopes fail before any external request", async () => {
