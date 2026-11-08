@@ -19,8 +19,11 @@ function savedZone() {
   catch { return undefined; }
 }
 
-function saveZone(zone: string) {
-  try { sessionStorage.setItem(preferenceKey, zone); }
+function saveZone(zone?: string) {
+  try {
+    if (zone) sessionStorage.setItem(preferenceKey, zone);
+    else sessionStorage.removeItem(preferenceKey);
+  }
   catch { /* The picker still works with private storage disabled. */ }
 }
 
@@ -64,7 +67,7 @@ export function useBookingTimeZone(bookedZone: string | undefined, edgeZone: str
       if (!resolved) throw new Error("Unrecognized time zone");
       if (sequence !== request.current) return;
       setZone(resolved);
-      if (explicit) saveZone(resolved);
+      if (explicit) saveZone();
     } catch {
       if (explicit && sequence === request.current) setError(locationUnavailable);
     } finally {
