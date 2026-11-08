@@ -1,14 +1,47 @@
-import type {AiMatchDetail} from '../../lib/ai/matchtypes';
-import type {ApplicationDetail} from './types';
+import type { AiMatchDetail } from "../../lib/ai/matchtypes";
+import { summarizeClaim } from "../../lib/hub/claim-summary";
+import type { ApplicationDetail } from "./types";
 
-export function ClaimRadar({detail}:{detail:ApplicationDetail}){
- const match=detail.aiMatch as AiMatchDetail|undefined;
- const findings=match?.status==='ready'?match.criteria?.filter(c=>c.status==='needs_verification' && Array.isArray(c.citations) && new Set(c.citations.map(s=>s.source)).size>=2)??[]:[];
- const differences=detail.relatedApplications?.flatMap(a=>a.differences)??[];
- const level=findings.length && differences.length?'High':findings.length || differences.length?'Medium':match?.status==='ready'?'Low':'Not assessed';
- return <details key={detail.id}><summary>Claim review · {level}{level==='Not assessed'?'':' priority'}</summary>
- <p>{level==='High'?'Check both the application history and the source excerpts.':level==='Medium'?'Ask about the differences below before drawing a conclusion.':level==='Low'?'No discrepancy flagged in the comparisons available.':'No completed source comparison is available.'}</p>
- {!!differences.length && <p>Compare the dated answers under “other applications with this email.”</p>}
- {findings.map(c=><div key={c.criterion}><strong>{c.criterion}</strong><p>{c.explanation}</p>{c.citations.map((s,i)=><blockquote key={i}>{s.source==='answers'?'Application':s.source==='resume'?'Résumé':'LinkedIn'}: {s.quote}</blockquote>)}</div>)}
- <small>Review priority only. Writing style and repeat applications do not count as evidence of dishonesty.</small></details>;
+function relatedClaimSummaries(detail: ApplicationDetail): string[] {
+  const topics = new Map<string, { current: number; others: Set<number> }>();
+  for (const application of detail.relatedApplications ?? []) {
+    for (const { question, current, other } of application.differences) {
+      const topic = topics.get(question) ?? { current, others: new Set<number>() };
+      topic.others.add(other);
+      topics.set(question, topic);
+    }
+  }
+  return Array.from(topics, ([question, { current, others }]) => {
+    const values = Array.from(others).sort((a, b) => a - b);
+    const label = question.charAt(0).toUpperCase() + question.slice(1);
+    const history = new Intl.ListFormat("en-US").format(values.map(String));
+    return `For “${label}”, this application lists ${current} ${current === 1 ? "year" : "years"}. Linked applications list ${history}.`;
+  });
+}
+
+function SummaryLines({ lines }: { lines: string[] }) {
+  return lines.length === 1 ? <p>{lines[0]}</p> : <ul>{lines.map(line => <li key={line}>{line}</li>)}</ul>;
+}
+
+export function ClaimRadar({ detail }: { detail: ApplicationDetail }) {
+  const match = detail.aiMatch as AiMatchDetail | undefined;
+  const ready = match?.status === "ready";
+  const findings = ready ? (match.criteria ?? []).filter(item =>
+    item.status === "needs_verification" && new Set(item.citations?.map(citation => citation.source)).size >= 2
+  ) : [];
+  const history = relatedClaimSummaries(detail);
+  const summaries = [...new Set([...findings.map(item => summarizeClaim(item, detail.name)), ...history])];
+  const priority = findings.length && history.length ? "High" : "Medium";
+  const pending = match && ["pending", "preparing", "running"].includes(match.status);
+  const status = ready ? "No discrepancies flagged." : pending ? "Source comparison pending." : "No completed source comparison.";
+  return <section key={detail.id} className="hub-claim-review" aria-label="Claim review">
+    <div className="hub-claim-review-heading">
+      <strong>Claim review</strong>
+      {summaries.length > 0 ? <span>{priority} priority</span> : <span>{status}</span>}
+    </div>
+    {summaries.length > 0 && <SummaryLines lines={summaries.slice(0, 2)}/>}
+    {summaries.length > 2 && <details><summary>Show {summaries.length - 2} more</summary>
+      <SummaryLines lines={summaries.slice(2)}/>
+    </details>}
+  </section>;
 }
