@@ -25,6 +25,7 @@ jobs:
       - run: node --test tests/hub/interview-calendar-ui.spec.mjs
       - run: npm run test:mcp
       - run: npm run test:railway
+      - run: node --test tests/public-written-paste.spec.mjs tests/hub/response-check-report-ui.spec.mjs
       - run: python3 -m py_compile scripts/aws/deploy-hiring.py
       - run: python3 -m unittest discover -s tests/aws -p 'test_*.py'
       - run: node --test tests/aws/verify-release.test.mjs

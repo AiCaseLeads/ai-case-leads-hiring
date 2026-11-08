@@ -1,3 +1,4 @@
+import { parseResponseEntry } from "../hiring/response-entry";
 import { bookedReminderTimes, bookingFollowupDueAt, hasApprovedBookingEnvelope, currentBookedReminderSql, interviewRemindersEnabledSql, viableBookingInvitationSql } from './interview-reminders';
 import { applicationInterviewProgressSql, interviewProgressForRowSql, applicantInterviewFilter, type InterviewFilter, type InterviewProgress } from './interview-progress';
 import {draftKey,verifyBookingDraft} from './interview-booking-draft';
@@ -788,8 +789,9 @@ export class HubStore {
       guardValues.push(file.id, posting.id, file.path, sessionHash, now);
     }
     // A NOT NULL failure aborts the entire D1 batch if a posting/file changes between validation and commit.
+    const responseEntry = parseResponseEntry(input.responseEntry, posting.fields);
     const insert = this.stmt(
-      `INSERT INTO hub_applications (id,submission_key_hash,fingerprint,session_hash,job_id,job_title,form_version,name,email,stage,qualification,qualification_json,answers_json,fields_json,utm_json,source,rejection_reason,archive_project,archive_country,hiring_round,revision,stage_entered_at,created_at,updated_at) SELECT CASE WHEN EXISTS (SELECT 1 FROM hub_applications WHERE id=? AND fingerprint=? AND session_hash=?) OR (NOT EXISTS (SELECT 1 FROM hub_applications WHERE id=?) AND ${guards.join(" AND ")}) THEN ? ELSE NULL END,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,?,?,? ON CONFLICT(id) DO NOTHING`,
+      `INSERT INTO hub_applications (id,submission_key_hash,fingerprint,session_hash,job_id,job_title,form_version,name,email,stage,qualification,qualification_json,answers_json,fields_json,utm_json,source,rejection_reason,archive_project,archive_country,hiring_round,revision,stage_entered_at,created_at,updated_at${responseEntry ? ",response_entry_json" : ""}) SELECT CASE WHEN EXISTS (SELECT 1 FROM hub_applications WHERE id=? AND fingerprint=? AND session_hash=?) OR (NOT EXISTS (SELECT 1 FROM hub_applications WHERE id=?) AND ${guards.join(" AND ")}) THEN ? ELSE NULL END,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,?,?,?${responseEntry ? ",?" : ""} ON CONFLICT(id) DO NOTHING`,
       id,
       fingerprint,
       sessionHash,
@@ -818,6 +820,7 @@ export class HubStore {
       now,
       now,
       now,
+      ...(responseEntry ? [JSON.stringify(responseEntry)] : []),
     );
     const statements = [
       insert,
