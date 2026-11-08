@@ -56,6 +56,11 @@ test("stored bookings stay visible and cancellable when Calendar availability fa
     assert.equal(response.status,200);
     const body = await response.json() as {data:{status:string;interview:{start:string;meetUrl:string};slots:unknown[];availabilityError:string}};
     assert.equal(body.data.status,"booked"); assert.equal(body.data.interview.start,data.slots[0].start);
+    const staffView = await store.getApplication(id, MANAGER.email);
+    assert.equal(staffView.interviewProgress, "booked");
+    const confirmed = await store.applications({jobId: posting.id, interviewProgress: "booked"}, MANAGER.email);
+    assert.deepEqual(confirmed.items.map(item => item.id), [id]);
+
     assert.equal(body.data.interview.meetUrl,"https://meet.google.com/synthetic-booking");
     assert.equal(body.data.slots.length,0); assert.ok(body.data.availabilityError);
     assert.equal((await handleCandidateRequest(req(token,{action:"cancel"}),token,store,outage)).status,202);
