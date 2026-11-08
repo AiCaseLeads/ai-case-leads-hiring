@@ -1,3 +1,4 @@
+import {interviewReplyContact} from './interview-routing';
 import type {HubStore} from './store';
 import type {HubMember} from './auth';
 import {HiringError} from '../hiring/errors';
@@ -33,8 +34,9 @@ export async function interviewMessage(store:HubStore,member:HubMember,applicati
  const values:Record<string,string>={name:app.name,jobTitle:app.job_title,companyName:'AI Case Leads',interviewerName:'our hiring team',bookingLink,linkExpiry:expiry,senderName:'AI Case Leads Hiring Team'};
  const render=(value:string)=>value.replace(/{{\s*([^{}]+?)\s*}}/g,(_,key:string)=>values[key]);
  const renderedSubject=render(source.subject);if(/[\r\n]/.test(renderedSubject))throw new HiringError('invalid_interview_subject',422,'The rendered subject must fit on one line.');
- const mail=await candidateMail(store,{to:app.email,subject:renderedSubject,body:render(source.body),messageId:'<interview-preview@jobs.aicaseleads.com>'},(process.env.ADMIN_EMAILS||'').split(','),{mailMode:'recruiter',actor:member.email,applicationId,interview:true});
+ const interviewerEmail=await interviewReplyContact(store,applicationId,input,(process.env.ADMIN_EMAILS||'').split(','));
+ const mail=await candidateMail(store,{to:app.email,subject:renderedSubject,body:render(source.body),messageId:'<interview-preview@jobs.aicaseleads.com>'},(process.env.ADMIN_EMAILS||'').split(','),{mailMode:'recruiter',actor:member.email,applicationId,interview:true,interviewerEmail});
  const envelope={sender:mail.sender,to:mail.to,cc:mail.cc||[],replyTo:mail.replyTo||[]};
- const fingerprint=await sha256(JSON.stringify({applicationId,revision:app.revision,actor:member.email,source,templateVersion:template.version,organizer:input.interviewerEmail||'',renew:!!input.renew,envelope}));
- return {source,templateVersion:template.version,subject:mail.subject,body:mail.body,envelope,fingerprint};
+ const fingerprint=await sha256(JSON.stringify({applicationId,revision:app.revision,actor:member.email,source,templateVersion:template.version,organizer:interviewerEmail||'',renew:!!input.renew,envelope}));
+ return {source,interviewerEmail,applicationRevision:app.revision,templateVersion:template.version,subject:mail.subject,body:mail.body,envelope,fingerprint};
 }

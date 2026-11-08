@@ -5,7 +5,7 @@ export function interviewCancelOutcome({busy,dirty,confirming}:{busy:boolean;dir
 /** A delayed preview may never restore a draft after it changed or was closed. */
 export class InterviewPreviewEpoch {private generation=0;private mounted=true;begin(){return ++this.generation}invalidate(){this.generation++}mount(){this.mounted=true}dispose(){this.mounted=false;this.invalidate()}accept(ticket:number){return this.mounted&&ticket===this.generation}}
 
-export function interviewPreviewRecovery(code:string|undefined){return code==="template_changed"?"template":code==="preview_changed"?"preview":null;}
+export function interviewPreviewRecovery(code:string|undefined){return code==="template_changed"?"template":["preview_changed","record_changed"].includes(code||"")?"preview":null;}
 
 export function interviewNavigationOutcome(open:boolean,dirty:boolean,busy=false){return open&&busy?"blocked":!dirty?"leave":open?"modal":"page";}
 

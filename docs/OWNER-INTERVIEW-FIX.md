@@ -2,7 +2,7 @@
 
 The Send booking link failure was caused by explicit `sales@aicaseleads.com` exclusions in job reply routing, personal Gmail setup, worker transport and Gmail sender verification. A connected Calendar did not supply the separate Gmail grant.
 
-Owners now use the same personal recruiting-email authorization as active managers and recruiters. The acting sender uses their own verified Gmail account and is included in CC and Reply-To. Ordinary replies therefore target that person's Gmail. Automatic receipts/rejections retain SendGrid/no-reply routing with no staff copy. Company Drive/Calendar credentials are never substituted for personal Gmail consent.
+Owners now use the same personal recruiting-email authorization as active managers and recruiters. The acting sender uses their own verified Gmail account and is included in CC. For interview invitations, Reply-To follows the selected personal interviewer; company-calendar invitations fall back to the acting sender. Renewals retain their original interviewer. Other manual emails retain the acting sender in Reply-To. Automatic receipts/rejections retain SendGrid/no-reply routing with no staff copy. Company Drive/Calendar credentials are never substituted for personal Gmail consent.
 
 Explicit membership revocation overrides ADMIN_EMAILS consistently with production authentication. Missing/revoked mail grants still block sending with setup guidance. An approved invitation retains its reviewed From/To/CC/Reply-To; changed routing requires fresh review. Recovery excludes such mismatches, and Activity shows approved/actual delivery routing rather than an unsent recomputation. Existing held messages are not automatically released.
 
@@ -24,3 +24,11 @@ Live OAuth, provider acceptance and inbox receipt require independent verificati
 A separate Node process inside the deployed container can call `sendOwnerRecruitingTest(email,testId)` from `dist/railway/worker.mjs`. It is not exposed through HTTP/MCP or scheduled automatically. It validates the selected address is an active configured owner, uses only that owner's explicit personal Gmail grant, fixes the message contents and recipient, and returns message identifiers without credentials. Run it only for an explicitly approved self-test.
 
 Use the same strict test ID to reconcile a previously accepted send. An uncertain result is not permission to retry blindly. This diagnostic contains no applicant data or booking link and does not alter applicant records. Its self-copy recipient may be deduplicated because it is already in To; applicant invitation MIME is separately tested with distinct candidate and sender addresses.
+
+## Interview routing and stale-page follow-up
+
+A full CandidateDetail Chrome test reproduced a second Send failure: the page held an old applicant revision while Preview approved the latest revision. The preview now returns its approved application revision, and Send uses that same revision. A change after Preview still blocks the send, clears approval, preserves the email/note draft and requires another preview.
+
+The selected interviewer is carried through readiness, preview fingerprint, queued metadata, worker revalidation, recovery and Activity. The acting sender remains the Gmail transport and CC recipient. Deactivating the interviewer holds the queued message; reactivation alone never silently sends it.
+
+Combined release checks: 773 application tests passed, 3 native OCR tests skipped; 4 composer Chrome checks passed, including phone/desktop and another interviewer. The application suite includes two physical full-CandidateDetail tests through the actual invitation routes using a synthetic store/provider. AWS verifier checks passed (12 Python, 4 SQLite tests), as did typecheck, build, changed-source lint and diff checks. No real applicant was contacted.

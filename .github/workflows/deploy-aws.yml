@@ -24,6 +24,7 @@ jobs:
       - run: npm run test:railway
       - run: python3 -m py_compile scripts/aws/deploy-hiring.py
       - run: python3 -m unittest discover -s tests/aws -p 'test_*.py'
+      - run: node --test tests/aws/verify-release.test.mjs
   deploy:
     needs: validate
     if: github.ref == 'refs/heads/main'
@@ -52,7 +53,10 @@ jobs:
           for attempt in $(seq 1 480); do
             status=$(aws ssm get-command-invocation --command-id "$command_id" --instance-id i-04bbe6b1c7d2d0451 --query Status --output text 2>/dev/null || true)
             case "$status" in
-              Success) exit 0 ;;
+              Success)
+                aws ssm get-command-invocation --command-id "$command_id" --instance-id i-04bbe6b1c7d2d0451 --output json > "$RUNNER_TEMP/hiring-deploy-result.json"
+                python3 scripts/aws/summarize-release.py "$RUNNER_TEMP/hiring-deploy-result.json" "$DEPLOY_SHA"
+                exit 0 ;;
               Failed|Cancelled|TimedOut|Cancelling) echo "Deployment failed: $status"; exit 1 ;;
             esac
             sleep 4

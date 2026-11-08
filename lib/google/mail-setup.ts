@@ -7,6 +7,7 @@ export const MAIL_SETUP_ERRORS = [
   'google_required_permissions_missing',
   'recruiter_reply_contact_required',
   'interview_sender_changed',
+  'interviewer_not_active',
   'candidate_mail_exposes_staff_address',
   'transactional_mail_key_required',
   'transactional_mail_domain_not_verified',

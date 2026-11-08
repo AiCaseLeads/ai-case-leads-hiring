@@ -968,7 +968,7 @@ export class HubStore {
           const addresses=(value:unknown)=>Array.isArray(value)?value.filter((address):address is string=>typeof address==='string'):typeof value==='string'?[value]:[];
           if(approved&&typeof approved.sender==='string'&&addresses(approved.to).length)envelope={sender:approved.sender,to:addresses(approved.to),cc:addresses(approved.cc),replyTo:addresses(approved.replyTo)};
           else try{
-            const mail=await candidateMail(this,payload as unknown as import('../google/gmail').MailInput,(process.env.ADMIN_EMAILS||'').split(','),{applicationId:id,mailMode:'recruiter',actor:payload.actor,interview:true});
+            const mail=await candidateMail(this,payload as unknown as import('../google/gmail').MailInput,(process.env.ADMIN_EMAILS||'').split(','),{applicationId:id,mailMode:'recruiter',actor:payload.actor,interview:true,interviewerEmail:payload.interviewerEmail});
             envelope={sender:mail.sender,to:[mail.to],cc:mail.cc||[],replyTo:mail.replyTo||[]};
           }catch{/* Unconfigured legacy routing stays unspecified until it can be verified. */}
         }
@@ -1606,7 +1606,7 @@ export class HubStore {
           hash = await sha256(token),
           calendarId = personal?.calendarId || (renewing ? existing.calendar_id : null) || await this.setting("google_calendar_id", "");
         const url = `${this.options.origin}/interview/${token}`;
-        const message = preview ? await interviewMessage(this,member,app.id,input,url,"Fourteen days after sending") : {subject:`Interview invitation: ${app.job_title}`,body:`Hi ${app.name},\n\nYou are invited to interview for ${app.job_title}. Choose a time using your private link within fourteen days:\n${url}\n\nAI Case Leads Hiring Team`,templateVersion:undefined,envelope:undefined};
+        const message = preview ? await interviewMessage(this,member,app.id,input,url,"Fourteen days after sending") : {subject:`Interview invitation: ${app.job_title}`,body:`Hi ${app.name},\n\nYou are invited to interview for ${app.job_title}. Choose a time using your private link within fourteen days:\n${url}\n\nAI Case Leads Hiring Team`,templateVersion:undefined,envelope:undefined,interviewerEmail:personal?.ownerEmail};
         if(preview && "fingerprint" in message && message.fingerprint!==input.previewFingerprint)throw new HiringError("preview_changed",409,"The invitation sender changed. Refresh your preview before sending.");
         statements.push(
           ...(input.internalNote?.trim()?[this.stmt("INSERT INTO hub_history(id,application_id,type,text,actor,created_at) VALUES(?,?,?,?,?,?)",crypto.randomUUID(),app.id,"note",input.internalNote.trim(),member.email,now)]:[]),
@@ -1639,7 +1639,7 @@ export class HubStore {
             message.body,
             now,
             "Interview invitation with a private candidate link.",
-            {metadata:{mailMode:"recruiter",actor:member.email,...(preview?{templateVersion:message.templateVersion,approvedEnvelope:message.envelope,invitationHash:hash}:{})}},
+            {metadata:{mailMode:"recruiter",actor:member.email,...(message.interviewerEmail?{interviewerEmail:message.interviewerEmail}:{}),...(preview?{templateVersion:message.templateVersion,approvedEnvelope:message.envelope,invitationHash:hash}:{})}},
           ),
         );
         stage = renewing || app.stage==="Second Round Interview" ? app.stage : "Interview";

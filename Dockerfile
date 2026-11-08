@@ -17,5 +17,6 @@ COPY --from=build /app/package.json ./package.json
 COPY --from=build /app/lib/pdf/fonts ./lib/pdf/fonts
 COPY --from=build /app/lib/hiring/document-structure.ts ./lib/hiring/document-structure.ts
 COPY --from=build /app/scripts/start-railway.mjs /app/scripts/railway-http.mjs /app/scripts/railway-backup.mjs /app/scripts/pdf-text-worker.mjs /app/scripts/word-text-worker.mjs ./scripts/
+COPY --from=build /app/scripts/aws/verify-release.mjs ./scripts/aws/verify-release.mjs
 # Railway mounts the persistent volume at runtime; the image never creates it.
 CMD ["node", "scripts/start-railway.mjs"]
