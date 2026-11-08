@@ -48,15 +48,35 @@ export async function saveWorkflowSettings(store:HubStore,input:unknown,member:H
  await store.db.batch([store.settingStatement(CONFIG_KEY,value),store.stmt('INSERT INTO hub_audit(id,type,actor,before_json,after_json,created_at) VALUES(?,?,?,?,?,?)',crypto.randomUUID(),'hiring_approvers',member.email,JSON.stringify(before),JSON.stringify(value),now)]);
  return value;
 }
+interface HandoffQuestion {
+ question: string;
+ requestedBy: string;
+ reviewVersion: number;
+}
+
+export async function prepareHandoffReturn(store: HubStore, id: string, assignee: string | null, reason: string | undefined, member: HubMember) {
+ if (!await canApproveHiring(store,member))
+   throw new HiringError('hiring_approval_required',403,'Only a hiring approver can return a handoff.');
+ const question = reason?.trim();
+ if (!question) throw new HiringError('question_required',422,'Enter the question the recruiter should answer.');
+ const review = await getRecruiterReview(store,id);
+ const submitter = await store.stmt("SELECT actor FROM hub_history WHERE application_id=? AND type='stage' AND to_stage='Awaiting Founder Review' ORDER BY created_at DESC,rowid DESC LIMIT 1",id).first<{actor:string}>();
+ const owner = assignee || submitter?.actor || review.updatedBy;
+ const active = owner && (await store.members()).some(person => person.active && person.email.toLowerCase() === owner.toLowerCase());
+ return {assignee: active ? owner : null, request: {question, requestedBy:member.email, reviewVersion:review.version}};
+}
+
 export async function getRecruiterReview(store:HubStore,id:string,member?:HubMember){
  await store.applicationRow(id);
  const row=await store.stmt('SELECT * FROM hub_recruiter_reviews WHERE application_id=?',id).first<ReviewRow>();
  const review={version:row?.version||0,recommendation:row?.recommendation||'' as RecruiterReviewInput['recommendation'],notes:row?.notes||'',summary:row?.summary||'',recordingUrl:row?.recording_url||'',salaryExpectation:row?.salary_expectation||'',availability:row?.availability||'',concerns:row?.concerns||'',updatedBy:row?.updated_by||null,updatedAt:row?.updated_at||null};
  const fields=[review.recommendation,review.notes,review.summary,review.recordingUrl,review.salaryExpectation,review.availability,review.concerns];
- const missing=HANDOFF_REQUIRED.filter((_,index)=>!fields[index].trim());
+ const missing: string[]=HANDOFF_REQUIRED.filter((_,index)=>!fields[index].trim());
  const evidenceRows=await store.rows<{value:string}>('SELECT value FROM hub_settings WHERE key LIKE ?',`interview_evidence:${id}:%`);
  const evidence=evidenceRows.flatMap(item=>{try{const value=JSON.parse(item.value) as Record<string,unknown>;return [{providerMeetingId:value.providerMeetingId,interviewId:value.interviewId,recordingUrl:value.recordingUrl,summary:value.summary,hasTranscript:!!value.transcript,attachedAt:value.attachedAt}];}catch{return [];}});
- return {...review,evidence,readiness:{ready:missing.length===0,missing},canApprove:member?await canApproveHiring(store,member):false};
+ const returned = await store.setting<HandoffQuestion|null>('handoff_return:'+id,null);
+ if (returned && returned.reviewVersion >= review.version) missing.push('Updated handoff answering the reviewer’s question');
+ return {...review,evidence,returned,readiness:{ready:missing.length===0,missing},canApprove:member?await canApproveHiring(store,member):false};
 }
 export async function saveRecruiterReview(store:HubStore,id:string,input:unknown,member:HubMember){
  const parsed=recruiterReviewInput.safeParse(input);if(!parsed.success)throw new HiringError('invalid_recruiter_review',422,'Check the review fields and recording link.');
@@ -99,12 +119,21 @@ export async function workflowNotificationMail(task:Task,store:HubStore,owners:s
  if(!(await workflowApprovers(store,owners)).includes(recipient))return null;
  const app=await store.applicationRow(task.applicationId);
  if(app.stage!=='Awaiting Founder Review')return null;
- const origin=store.options.origin||'https://jobs.aicaseleads.com',url=new URL('/team',origin);url.searchParams.set('view','applications');url.searchParams.set('application',app.id);url.searchParams.set('jobId',app.job_id);
+ const origin=store.options.origin||'https://jobs.aicaseleads.com',url=new URL('/team',origin);url.searchParams.set('view','applications');url.searchParams.set('application',app.id);url.searchParams.set('stage','Awaiting Founder Review');url.searchParams.set('candidateSection','review');
  return {to:recipient,messageId:String(task.payload.messageId),subject:`Founder review ready: ${app.job_title}`,body:`An interview handoff is ready for your review.\n\nOpen the candidate record for the recommendation, notes, recording, interview summary, compensation, availability and concerns:\n${url}\n\nChoose a second interview, return to recruiter, or reject in the hiring workspace.`};
 }
 export async function workflowOverview(store:HubStore,member:HubMember){
- const canApprove=await canApproveHiring(store,member),[reviews,mine,unassigned]=await Promise.all([store.applications({stage:'Awaiting Founder Review',sort:'newest'},member.email),store.applications({stage:'Application Review',assignee:member.email,sort:'screening_newest'},member.email),store.applications({stage:'Application Review',assignee:'unassigned',sort:'screening_newest'},member.email)]);
- return {canApprove,approvers:await workflowApprovers(store),reviewQueue:reviews.items.slice(0,12),myQueue:mine.items.slice(0,12),unassigned:unassigned.items.slice(0,12),counts:{awaitingReview:reviews.total,myUnreviewed:mine.total,unassigned:unassigned.total},handoffRequired:HANDOFF_REQUIRED};
+ const canApprove = await canApproveHiring(store,member);
+ const newQueue = {stage:'Application Review',sort:'screening_newest' as const};
+ const [reviews,mine,unassigned,returned] = await Promise.all([
+   store.applications({stage:'Awaiting Founder Review',sort:'newest'},member.email),
+   store.applications({...newQueue,assignee:member.email},member.email),
+   store.applications({...newQueue,assignee:'unassigned'},member.email),
+   store.applications({handoffReturned:true,assignee:canApprove?undefined:member.email,sort:'newest'},member.email),
+ ]);
+ return {canApprove, approvers:await workflowApprovers(store), reviewQueue:reviews.items.slice(0,12),
+   myQueue:mine.items.slice(0,12),unassigned:unassigned.items.slice(0,12),returned:returned.items.slice(0,12),
+   counts:{awaitingReview:reviews.total,myUnreviewed:mine.total,unassigned:unassigned.total,returned:returned.total},handoffRequired:HANDOFF_REQUIRED};
 }
 export async function listRoleInterviews(store:HubStore,filters:{jobId?:string;owner?:string;status?:string;progress?:string;page?:number;pageSize?:number}){
  const page=filters.page??1,pageSize=filters.pageSize??50;

@@ -86,6 +86,7 @@ export function useHubResource<T>(path: string, refresh = 0) {
   const [data, setData] = useState<T | null>(null),
     [error, setError] = useState(""),
     [loading, setLoading] = useState(true);
+  const [dataPath,setDataPath] = useState<string|null>(null);
   const epoch = useRef(0);
   const loadedPath=useRef<string|null>(null);
   const reload = useCallback(async () => {
@@ -94,10 +95,10 @@ export function useHubResource<T>(path: string, refresh = 0) {
     setError("");
     try {
       const next = await hubRequest<T>(path);
-      if (current === epoch.current) { loadedPath.current=path;setData(next); }
+      if (current === epoch.current) { loadedPath.current=path;setDataPath(path);setData(next); }
     } catch (e) {
       if (current === epoch.current) {
-        if (!retainHubResource(e,loadedPath.current,path)) {setData(null);loadedPath.current=null;}
+        if (!retainHubResource(e,loadedPath.current,path)) {setData(null);setDataPath(null);loadedPath.current=null;}
         setError(e instanceof Error ? e.message : "Please try again.");
       }
     } finally {
@@ -118,7 +119,7 @@ export function useHubResource<T>(path: string, refresh = 0) {
     };
   }, [reload, refresh, invalidate]);
   useEffect(()=>{const restored=()=>{if(loadedPath.current===path){setError("");setLoading(false)}else void reload()};window.addEventListener("hub:session-restored",restored);return()=>window.removeEventListener("hub:session-restored",restored)},[reload,path]);
-  return { data, error, loading, reload };
+  return { data, dataPath, error, loading, reload };
 }
 export function useHubMutation() {
   const [busy, setBusy] = useState(false),

@@ -1,6 +1,7 @@
 "use client";
 import { GlobalSearch } from "./global-search";
 import { SessionBoundary } from "./session-boundary";
+import { ListReviewInbox } from "./list-review-inbox";
 import { WorkflowHome } from "./workflow-home";
 import { InterviewWorkspace } from "./interview-workspace";
 import { NavigationLink, applicantHref } from "./navigation-link";
@@ -33,6 +34,7 @@ import { stageLabel, stages, type Member, type Overview } from "./types";
 
 type View =
   "overview" | "applications" | "interviews" | "jobs" | "reports" | "tasks" | "settings";
+const applicantFilters = ["q", "jobId", "jobGroupId", "country", "listId", "columns", "stage", "excludeStage", "interviewProgress", "handoffReturned", "assignee", "qualification", "grade", "sort", "top", "active", "duplicate", "trash", "appliedFrom", "appliedTo", "timeZone"] as const;
 const navigation = [
   { id: "overview", label: "Home", icon: LayoutDashboard },
   { id: "applications", label: "Applicants", icon: ClipboardList },
@@ -99,7 +101,7 @@ export function HiringDashboard({
     setInitialJobId(next === "applications" || next === "interviews" ? params.get("jobId") || "" : "");
     setInterviewView(params.get("interviewProgress") ?? "upcoming");
     const filters = new URLSearchParams();
-    for (const key of ["q", "jobId", "stage", "excludeStage","interviewProgress", "assignee", "qualification", "grade", "sort", "top", "active", "duplicate", "trash", "appliedFrom", "appliedTo", "timeZone"]) if (next === "applications" && params.has(key)) filters.set(key, params.get(key)!);
+    for (const key of applicantFilters) if (next === "applications" && params.has(key)) filters.set(key, params.get(key)!);
     setInitialFilter(filters.toString());
     const page = Number(params.get("page"));
     setInitialPage(Number.isFinite(page) ? Math.max(1, Math.min(10000, Math.floor(page))) : 1);
@@ -170,7 +172,7 @@ export function HiringDashboard({
   }
   function viewUrl(next: View) {
     const url = new URL(window.location.href);
-    for (const key of ["application", "candidateAction", "candidateSection", "workspace", "reason", "jobId", "stage", "excludeStage","interviewProgress", "q", "assignee", "qualification", "grade", "sort", "top", "active", "duplicate", "trash", "appliedFrom", "appliedTo", "timeZone", "page", "section", "jobEditor", "jobStep", "jobStart", "jobSource", "jobSession"]) url.searchParams.delete(key);
+    for (const key of [...applicantFilters, "application", "candidateAction", "candidateSection", "workspace", "reason", "page", "section", "jobEditor", "jobStep", "jobStart", "jobSource", "jobSession"]) url.searchParams.delete(key);
     url.searchParams.set("view", next === "overview" ? "home" : next);
     return url;
   }
@@ -181,7 +183,14 @@ export function HiringDashboard({
   function selectApplication(id: string, action?: "interview", filter?: string, section?:"application"|"review"|"activity") {
     const url = new URL(window.location.href); url.searchParams.set("application", id);
     if(section)url.searchParams.set("candidateSection",section);else url.searchParams.delete("candidateSection");
-    if(filter!==undefined){for(const key of ["q","jobId","stage","excludeStage","interviewProgress","assignee","qualification","grade","sort","top","active","duplicate","trash","appliedFrom","appliedTo","timeZone","page"])url.searchParams.delete(key);url.searchParams.set("view","applications");new URLSearchParams(filter).forEach((value,key)=>url.searchParams.set(key,value));}
+    if(filter!==undefined){
+      const listPage=url.searchParams.get("view")==="applications"?url.searchParams.get("page"):null;
+      for(const key of [...applicantFilters,"page"])url.searchParams.delete(key);
+      url.searchParams.set("view","applications");
+      new URLSearchParams(filter).forEach((value,key)=>url.searchParams.set(key,value));
+      if(listPage&&!url.searchParams.has("page"))url.searchParams.set("page",listPage);
+    }
+    if(!section && !action && (url.searchParams.get("stage")==="Awaiting Founder Review" || url.searchParams.get("handoffReturned")==="true")) url.searchParams.set("candidateSection","review");
     if(action) url.searchParams.set("candidateAction",action); else url.searchParams.delete("candidateAction");
     navigate(url, false, window.location.href);
   }
@@ -286,7 +295,7 @@ export function HiringDashboard({
           {view === "applications" && <div hidden={!!detailId}><Candidates
             key={data?.jobs.some(job => job.id === initialJobId) ? initialJobId : "job-index"}
             initialStage={initialStage}
-            initialJobId={data?.jobs.some(job => job.id === initialJobId) ? initialJobId : ""}
+            initialJobId={initialJobId}
             initialFilter={initialFilter}
             initialPage={initialPage}
             reviewerEmail={member.email}
@@ -319,7 +328,8 @@ export function HiringDashboard({
               </div>
               <ResourceState loading={resource.loading} error={resource.error} retry={() => void resource.reload()} />
               {data && !resource.loading && <>
-                <WorkflowHome refresh={refresh} reviewerEmail={member.email} open={(id,filter)=>selectApplication(id,undefined,filter,"review")} />
+                <WorkflowHome refresh={refresh} reviewerEmail={member.email} openQueue={(filter)=>applyFilters(filter,1)} open={(id,filter,section)=>selectApplication(id,undefined,filter,section)} />
+                <ListReviewInbox onOpenApplication={(id,listId)=>selectApplication(id,undefined,new URLSearchParams({listId,active:"false",sort:"list_order"}).toString(),"review")} />
                 <details className="hub-overview-details"><summary>Hiring overview &amp; connections</summary>
                 <div className="hub-overview-metrics" aria-label="Hiring snapshot">
                   {[{stage:"Application Review",label:"In initial review"},{stage:"Screening",label:"Shortlisted"},{stage:"Interview",label:"Interviews"}].map(item => <button className="hub-overview-metric" key={item.stage} onClick={() => openStage(item.stage)}><span>{item.label}</span><strong>{(data.stageCounts.find(stage => stage.stage === item.stage)?.count || 0).toLocaleString()}</strong><small>Across all jobs · view applicants</small></button>)}
@@ -331,7 +341,7 @@ export function HiringDashboard({
                 </section>
                 <div className="hub-overview-columns">
                   <section className="hub-card">
-                    <div className="hub-section-heading compact"><h2>Latest applicants</h2><button className="hub-text-button" onClick={() => changeView("applications")}>All jobs</button></div>
+                    <div className="hub-section-heading compact"><h2>Latest applicants</h2><button className="hub-text-button" onClick={() => changeView("applications")}>All applicants</button></div>
                     {data.recentApplications.length ? <ul className="hub-activity-list">{data.recentApplications.slice(0,5).map(application => <li key={application.id}><NavigationLink className="hub-object-link" href={applicantHref(application.id,"",application.jobId)} navigate={() => selectApplication(application.id)}>{application.name}</NavigationLink><p>{application.jobTitle}</p><span className="hub-muted">{stageLabel(application.stage)} · Applied {displayDate(application.createdAt)}</span></li>)}</ul> : <p className="hub-muted">Applications will appear here once a published job receives them.</p>}
                   </section>
                   <ReviewReminderQueue refresh={refresh} onSelect={selectApplication} compact />

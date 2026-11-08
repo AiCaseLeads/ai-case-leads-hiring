@@ -10,5 +10,6 @@ export function NavigationLink({ navigate, children, ...props }: AnchorHTMLAttri
 export function applicantHref(id:string,filter="",jobId?:string) {
   const params=new URLSearchParams(filter);params.set("view","applications");params.set("application",id);
   if(jobId)params.set("jobId",jobId);
+  if(params.get("stage")==="Awaiting Founder Review" || params.get("handoffReturned")==="true")params.set("candidateSection","review");
   return `/team?${params}`;
 }

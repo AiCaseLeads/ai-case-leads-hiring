@@ -27,3 +27,19 @@ test('literal wildcard queries do not turn into match-all, phone search is norma
 
 test('numeric search survives invalid JSON, scalar JSON and mixed legacy answers while finding valid phone items',async()=>{const f=createStore();try{const job=await f.store.saveJob(jobInput());const values=['not json',JSON.stringify('legacy text'),JSON.stringify(['legacy answer text',42,null,true]),JSON.stringify({legacy:'text'}),JSON.stringify(['legacy text',{path:'_systemfield_phone',value:'+1 555 123 4567'},null,7])];let match='';for(const [i,value]of values.entries()){const app=await f.store.acceptApplication(applicationInput(job.id));await f.store.stmt('UPDATE hub_applications SET answers_json=? WHERE id=?',value,app.id).run();if(i===values.length-1)match=app.id}const result=await searchWorkspace(f.store,RECRUITER,params('555123'));assert.equal(result.applications.total,1);assert.equal(result.applications.items[0].id,match)}finally{f.database.close()}});
 test('common Latam names are searchable across case and composed accents without interpreting glob metacharacters',async()=>{const f=createStore();try{const job=await f.store.saveJob(jobInput());for(const name of ['José María MUÑOZ','João André Gonçalves','Literal [abc]?*_%']){const input=applicationInput(job.id);input.fieldSubmissions[0].value=name;await f.store.acceptApplication(input)}for(const q of ['jose maria munoz','JOSÉ MARÍA MUÑOZ','MuNoZ','joao andre','GONCALVES'])assert.equal((await searchWorkspace(f.store,RECRUITER,params(q))).applications.total,1,q);for(const q of ['[abc]','?*','_%'])assert.equal((await searchWorkspace(f.store,RECRUITER,params(q))).applications.total,1,q);assert.equal((await searchWorkspace(f.store,RECRUITER,params('[xyz]'))).applications.total,0)}finally{f.database.close()}});
+
+test('people search groups before pagination and keeps separate applicants with identical names',async t=>{
+ const f=createStore();t.after(()=>f.database.close());
+ const job=await f.store.saveJob(jobInput());
+ for(let i=0;i<13;i++){
+  const a=await f.store.acceptApplication(applicationInput(job.id));
+  await f.store.stmt('UPDATE hub_applications SET name=?,email=?,created_at=? WHERE id=?',
+    'Shared name',i<3?'shared@tests.invalid':`person-${i}@tests.invalid`,i+1,a.id).run();
+ }
+ const first=await searchWorkspace(f.store,RECRUITER,new URLSearchParams({q:'Shared name',group:'people'}));
+ const last=await searchWorkspace(f.store,RECRUITER,new URLSearchParams({q:'Shared name',group:'people',page:'2'}));
+ assert.equal(first.applications.total,11);assert.equal(first.applications.items.length,10);assert.equal(last.applications.items.length,1);
+ const all=[...first.applications.items,...last.applications.items];
+ assert.equal(new Set(all.map(row=>row.email)).size,11);
+ assert.equal(all.find(row=>row.email==='shared@tests.invalid')?.applicationCount,3);
+});

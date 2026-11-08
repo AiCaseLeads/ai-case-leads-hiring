@@ -149,7 +149,7 @@ try{
  const rubric={name:'Synthetic reusable rubric',criteria:[{label:'Implementation evidence',weight:1,anchors:['1','2','3','4','5']},{label:'Communication evidence',weight:1,anchors:['1','2','3','4','5']}]};
  catalog=await api('/api/scorecards','PATCH',{action:'save',expectedRevision:catalog.revision,rubric});const template=catalog.templates[0];
  catalog=await api('/api/scorecards','PATCH',{action:'bind',expectedRevision:catalog.revision,jobId:another.jobId,templateId:template.id,version:template.version});
- await team.goto(origin+'/team?application='+another.id);await team.getByRole('tab',{name:'AI review & notes',exact:true}).click();await team.getByText('Optional: human grades and scorecards',{exact:true}).click();await team.getByRole('heading',{name:'Reusable scorecard review',exact:true}).waitFor();
+ await team.goto(origin+'/team?application='+another.id);await team.getByRole('tab',{name:'Interviews & notes',exact:true}).click();await team.getByText('Optional: human grades and scorecards',{exact:true}).click();await team.getByRole('heading',{name:'Reusable scorecard review',exact:true}).waitFor();
  await team.getByLabel('Implementation evidence: score',{exact:true}).selectOption('3');await team.getByLabel('Implementation evidence: supporting evidence',{exact:true}).fill('Synthetic sample includes a working API.');
  await team.getByLabel('Communication evidence: score',{exact:true}).selectOption('4');await team.getByLabel('Communication evidence: supporting evidence',{exact:true}).fill('Synthetic explanation identifies constraints.');
  await team.getByRole('button',{name:'Save reusable scorecard',exact:true}).click();

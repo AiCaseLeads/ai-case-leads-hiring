@@ -327,3 +327,47 @@ export const hubRecruiterReviews = sqliteTable("hub_recruiter_reviews", {
  applicationId:text("application_id").primaryKey().notNull().references(()=>hubApplications.id),
  version:integer("version").notNull().default(1),recommendation:text("recommendation").notNull().default(""),notes:text("notes").notNull().default(""),summary:text("summary").notNull().default(""),recordingUrl:text("recording_url").notNull().default(""),salaryExpectation:text("salary_expectation").notNull().default(""),availability:text("availability").notNull().default(""),concerns:text("concerns").notNull().default(""),updatedBy:text("updated_by").notNull(),updatedAt:integer("updated_at").notNull(),
 },table=>[index("hub_recruiter_review_updated_idx").on(table.updatedAt)]);
+
+export const hubCollections = sqliteTable("hub_collections", {
+  id: text("id").primaryKey(),
+  kind: text("kind").notNull(),
+  name: text("name").notNull(),
+  owner: text("owner").notNull(),
+  visibility: text("visibility").notNull(),
+  query: text("query").notNull().default(""),
+  revision: integer("revision").notNull().default(1),
+  lastMutation: text("last_mutation").notNull(),
+  updatedAt: integer("updated_at").notNull(),
+}, t=>[
+  index("hub_collections_owner_visibility").on(t.owner,t.visibility),
+  check("hub_collections_kind",sql`${t.kind} IN ('list','view')`),
+  check("hub_collections_visibility",sql`${t.visibility} IN ('personal','team')`),
+]);
+
+export const hubCollectionMembers = sqliteTable("hub_collection_members", {
+  collectionId: text("collection_id").notNull().references(()=>hubCollections.id,{onDelete:"cascade"}),
+  applicationId: text("application_id").notNull().references(()=>hubApplications.id,{onDelete:"cascade"}),
+  addedBy: text("added_by").notNull(),
+  position: integer("position").notNull(),
+  addedAt: integer("added_at").notNull(),
+}, t=>[
+  primaryKey({columns:[t.collectionId,t.applicationId]}),
+  index("hub_collection_member_application").on(t.applicationId,t.collectionId),
+]);
+
+export const hubCollectionReviews = sqliteTable("hub_collection_reviews", {
+  id: text("id").primaryKey(),
+  collectionId:text("collection_id").notNull().references(()=>hubCollections.id,{onDelete:"cascade"}),
+  requester:text("requester").notNull(),
+  reviewer:text("reviewer").notNull(),
+  prompt:text("prompt").notNull(),
+  fingerprint:text("fingerprint").notNull(),
+  createdAt:integer("created_at").notNull(),
+}, t=>[index("hub_collection_reviews_reviewer").on(t.reviewer,t.createdAt),index("hub_collection_reviews_requester").on(t.requester,t.createdAt)]);
+export const hubCollectionReviewItems = sqliteTable("hub_collection_review_items", {
+  reviewId:text("review_id").notNull().references(()=>hubCollectionReviews.id,{onDelete:"cascade"}),
+  applicationId:text("application_id").notNull().references(()=>hubApplications.id,{onDelete:"cascade"}),
+  position:integer("position").notNull(),
+  feedback:text("feedback").notNull().default(""),
+  reviewedAt:integer("reviewed_at"),
+}, t=>[primaryKey({columns:[t.reviewId,t.applicationId]})]);

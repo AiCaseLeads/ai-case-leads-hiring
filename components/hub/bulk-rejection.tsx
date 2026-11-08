@@ -1,43 +1,43 @@
 "use client";
 import {useEffect,useRef,useState} from "react";
 import {hubRequest} from "./api";
-type Plan={planId:string;count:number;excluded:number;expiresAt:number};
+type Plan={planId:string;count:number;recipients?:number;excluded:number;expiresAt:number};
 type Progress={updated:number;total:number;remaining:number;complete:boolean;skipped:number};
-export function BulkRejection({filter,disabled,jobTitle,selectedIds=[],changed}:{filter:string;disabled:boolean;jobTitle:string;selectedIds?:string[];changed:()=>void}) {
+export function BulkRejection({filter,disabled,jobTitle,selectedIds=[],selectionId,changed}:{filter:string;disabled:boolean;jobTitle:string;selectedIds?:string[];selectionId?:string;changed:()=>void}) {
  const [plan,setPlan]=useState<Plan|null>(null),[progress,setProgress]=useState<Progress|null>(null),[busy,setBusy]=useState(false),[error,setError]=useState("");
- const [started,setStarted]=useState(false),[selectionOnly,setSelectionOnly]=useState(false);
- const currentScope=JSON.stringify({filter,ids:selectionOnly?selectedIds:undefined});
+ const [started,setStarted]=useState(false);
+ const currentScope=JSON.stringify({filter,ids:selectionId || selectedIds});
+ const restoreScope=useRef(currentScope);
  const storageKey="hiring-bulk-rejection:"+(new URLSearchParams(filter).get("jobId")||"");
  const [scope,setScope]=useState("");const running=useRef(false),mounted=useRef(true);
- useEffect(()=>{mounted.current=true;try{const saved=JSON.parse(sessionStorage.getItem(storageKey)||"null");if(saved&&typeof saved.plan?.planId==="string"&&typeof saved.plan.count==="number"&&typeof saved.scope==="string")queueMicrotask(()=>{if(mounted.current){setScope(saved.scope);setPlan(saved.plan);setProgress(saved.progress||null);setStarted(!!saved.started);}});}catch{}return()=>{mounted.current=false;};},[storageKey]);
+ useEffect(()=>{mounted.current=true;try{const saved=JSON.parse(sessionStorage.getItem(storageKey)||"null");if(saved&&typeof saved.plan?.planId==="string"&&typeof saved.plan.count==="number"&&saved.scope===restoreScope.current)queueMicrotask(()=>{if(mounted.current){setScope(saved.scope);setPlan(saved.plan);setProgress(saved.progress||null);setStarted(!!saved.started);}});}catch{}return()=>{mounted.current=false;};},[storageKey]);
  function remember(nextPlan:Plan,nextProgress:Progress|null,hasStarted:boolean,savedScope=scope){try{sessionStorage.setItem(storageKey,JSON.stringify({plan:nextPlan,progress:nextProgress,started:hasStarted,scope:savedScope}));}catch{}}
  function clear(){try{sessionStorage.removeItem(storageKey);}catch{}setPlan(null);setProgress(null);setStarted(false);setError("");}
  async function preview(){
-  if(disabled||running.current||selectionOnly&&!selectedIds.length)return;running.current=true;setBusy(true);setError("");setProgress(null);setStarted(false);
-  try{const params=new URLSearchParams(filter);params.delete("page");const result=await hubRequest<Plan>(`/api/hub/bulk-rejection/preview?${params}`,"POST",{reason:"Not selected after recruiter review.",...(selectionOnly?{ids:selectedIds}:{})});if(mounted.current){setScope(currentScope);setPlan(result);remember(result,null,false,currentScope);}}
+  if(disabled||running.current||!selectedIds.length)return;running.current=true;setBusy(true);setError("");setProgress(null);setStarted(false);
+  try{const params=new URLSearchParams(filter);params.delete("page");const result=await hubRequest<Plan>(`/api/hub/bulk-rejection/preview?${params}`,"POST",{reason:"Not selected after recruiter review.",...(selectionId?{selectionId}:{ids:selectedIds})});if(mounted.current){setScope(currentScope);setPlan(result);remember(result,null,false,currentScope);}}
   catch(cause){if(mounted.current)setError(cause instanceof Error?cause.message:"Could not preview these applicants.");}
   finally{running.current=false;if(mounted.current)setBusy(false);}
  }
  async function execute(){
-  if(!plan||running.current||(!started&&(disabled||scope!==currentScope)))return;running.current=true;setBusy(true);setError("");setStarted(true);remember(plan,progress,true);
+  if(!plan||running.current||(disabled||scope!==currentScope))return;running.current=true;setBusy(true);setError("");setStarted(true);remember(plan,progress,true);
   try{while(mounted.current){const result=await hubRequest<Progress>("/api/hub/bulk-rejection/execute","POST",{planId:plan.planId,confirmed:true});if(!mounted.current)return;setProgress(result);remember(plan,result,true);if(result.complete){changed();break;}}}
   catch(cause){if(mounted.current){setError(cause instanceof Error?cause.message:"Processing stopped. Retry this same selection to continue safely.");changed();}}
   finally{running.current=false;if(mounted.current)setBusy(false);}
  }
  const stale=scope!==currentScope;
- let selectedScope=false;try{selectedScope=Array.isArray(JSON.parse(scope).ids);}catch{}
  return <div className="hub-bulk-rejection">
-  <div className="hub-button-row">{selectedIds.length>0&&<label className="hub-checkbox"><input type="checkbox" checked={selectionOnly} disabled={busy||started&&!progress?.complete} onChange={event=>setSelectionOnly(event.target.checked)}/> Use only {selectedIds.length} selected applicants</label>}<button type="button" className="hub-button secondary" disabled={disabled||busy||started&&!progress?.complete||selectionOnly&&!selectedIds.length} onClick={()=>void preview()}>Reject unshortlisted applicants</button></div>
+  <button type="button" className="hub-button secondary" disabled={disabled||busy||!selectedIds.length||started&&!progress?.complete} onClick={()=>void preview()}>Preview rejection for {selectedIds.length} selected</button>
   {error&&<p role="alert">{error}</p>}
   {plan&&<section className="hub-card" aria-label="Confirm bulk rejection" style={{marginTop:12}}>
    <strong>{progress?.complete?"Bulk rejection completed":`Review ${plan.count.toLocaleString()} eligible applicants`}</strong>
-   <p>{jobTitle} · {selectedScope?"Selected applicants within the previewed filters.":"Previewed filters, across every page."}</p>
+   <p>{jobTitle} · Selected applications within these filters.</p>
    <p>Only applicants still in initial review who have never moved forward or received an interview are included. Shortlisted, interviewed, offered, hired, rejected, and withdrawn applicants are protected.</p>
-   {!progress?.complete&&<p>{plan.count.toLocaleString()} applicants will be rejected and their rejection emails queued. {plan.excluded.toLocaleString()} matching applicants are excluded. This does not delete applications or files.</p>}
+   {!progress?.complete&&<p>{plan.count.toLocaleString()} eligible applications · {plan.count.toLocaleString()} rejection emails to {(plan.recipients ?? plan.count).toLocaleString()} distinct addresses · {plan.excluded.toLocaleString()} selected applications excluded.</p>}
    {progress&&<p role="status">{progress.updated.toLocaleString()} applicants rejected; emails queued. {progress.skipped.toLocaleString()} skipped because their records changed. {progress.remaining.toLocaleString()} remaining.</p>}
-   {stale&&!started&&<p role="alert">Filters changed. Preview the updated selection before confirming.</p>}
+   {stale&&<p role="alert">Filters changed. Preview the updated selection before confirming.</p>}
    <div className="hub-button-row">
-    {!progress?.complete&&<button type="button" className="hub-button" disabled={busy||!plan.count||(!started&&(disabled||stale))} onClick={()=>void execute()}>{busy?"Processing…":started?"Continue this rejection safely":`Reject ${plan.count.toLocaleString()} and queue emails`}</button>}
+    {!progress?.complete&&<button type="button" className="hub-button" disabled={busy||!plan.count||(disabled||stale)} onClick={()=>void execute()}>{busy?"Processing…":started?"Continue this rejection safely":`Reject ${plan.count.toLocaleString()} and queue emails`}</button>}
     <button type="button" className="hub-text-button" disabled={busy} onClick={clear}>{progress?.complete?"Close":started?"Close recovery notice":"Cancel"}</button>
    </div>
   </section>}

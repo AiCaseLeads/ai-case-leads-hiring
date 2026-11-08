@@ -19,10 +19,17 @@ jobs:
           cache: npm
       - run: npm ci --include=dev --include=optional --no-audit --no-fund
       - run: npm run typecheck
-      - name: Install browser for interview submission regression tests
+      - name: Install browser for hiring workspace regression tests
         run: npx playwright install --with-deps --only-shell chromium
       - run: npm test
-      - run: node --test tests/hub/interview-calendar-ui.spec.mjs
+      - name: Test hiring workflows on mobile and desktop
+        run: >-
+          node --test --test-concurrency=1
+          tests/hub/interview-calendar-ui.spec.mjs
+          tests/hub/applications-job-first-ui.spec.mjs
+          tests/hub/decision-queue-mobile.spec.mjs
+          tests/hub/applicant-collections-ui.spec.mjs
+          tests/hub/job-directory-ui.spec.mjs
       - run: npm run test:mcp
       - run: npm run test:railway
       - run: python3 -m py_compile scripts/aws/deploy-hiring.py

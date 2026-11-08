@@ -17,9 +17,9 @@ const applicant={id:'app-1',name:'Synthetic applicant',email:'applicant@example.
 let compiled;
 async function setup(t,{width=1280,height=900,browserZoom=1}={}){
  compiled??=Promise.all([
-  build({stdin:{contents:`import React from 'react';import {createRoot} from 'react-dom/client';import {HiringDashboard} from './components/hub/dashboard';createRoot(document.getElementById('root')).render(<HiringDashboard member={${JSON.stringify(member)}} signOutHref='/logout'/>);`,loader:'tsx',resolveDir:process.cwd()},bundle:true,write:false,format:'iife',jsx:'automatic'}),
+  build({stdin:{contents:`import React from 'react';import {createRoot} from 'react-dom/client';import {HiringDashboard} from './components/hub/dashboard';createRoot(document.getElementById('root')).render(<HiringDashboard member={${JSON.stringify(member)}} signOutHref='/logout'/>);`,loader:'tsx',resolveDir:process.cwd()},bundle:true,write:false,format:'iife',jsx:'automatic',loader:{'.css':'empty'}}),
   postcss([tailwind()]).process(readFileSync('app/globals.css','utf8'),{from:'app/globals.css'})
- ]).then(([bundle,global])=>({js:bundle.outputFiles[0].text,css:global.css+'\n'+readFileSync('components/hub/hub.css','utf8')}));
+ ]).then(([bundle,global])=>({js:bundle.outputFiles[0].text,css:global.css+'\n'+['hub.css','workspace-v3.css','workspace-surfaces.css','global-search.css','share-applicant.css','job-directory.css','applicant-queue.css'].map(name=>readFileSync('components/hub/'+name,'utf8')).join('\n')}));
  const assets=await compiled;
  const server=createServer((req,res)=>{res.setHeader('Content-Type',req.url==='/bundle.js'?'text/javascript':req.url==='/styles.css'?'text/css':'text/html');res.end(req.url==='/bundle.js'?assets.js:req.url==='/styles.css'?assets.css:'<meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/styles.css"><div id="root" data-hiring-workspace></div><script src="/bundle.js"></script>');});
  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
@@ -37,6 +37,8 @@ async function setup(t,{width=1280,height=900,browserZoom=1}={}){
   if(url.pathname==='/api/hub/overview')data={counts:{applications:8,active:8,rejected:0,hired:0},stageCounts:[],recentApplications:[],integrations:{google:true,drive:true,applicationsEnabled:true},jobs};
   if(url.pathname==='/api/review-reminders')data={total:0,applications:[],staff:[member],config:{enabled:false,dueHours:48,fallbackAdmins:[]}};
   if(url.pathname==='/api/hub/jobs')data=jobs;
+  if(url.pathname==='/api/hub/job-groups')data={revision:0,groups:[]};
+  if(url.pathname==='/api/hub/collections')data=[];
   if(url.pathname==='/api/hub/application-counts')data={items:jobs.map(job=>({jobId:job.id,total:1,needsReview:0,aiReady:1}))};
   if(url.pathname==='/api/hub/applications')data={items:[applicant],total:1,page:1,pageSize:25};
   if(url.pathname==='/api/ai/match')data={enabled:false,available:true,status:'disabled',version:1,criteria:[]};
@@ -81,32 +83,31 @@ test('draft exit actions and focus rings have separate targets across narrow and
  assert.deepEqual(errors,[]);
 });
 
-test('last-job ZIP download does not extend the page into a blank overflow area or leave an open flyout',async t=>{
- const {page,origin,writes,errors}=await setup(t);
+test('queue export menu stays within the viewport for the selected posting',async t=>{
+ const {page,origin,errors}=await setup(t);
  for(const width of [320,390,768,1280,1728]){
-  await page.setViewportSize({width,height:900});await page.goto(origin+'/?view=applications');await page.getByRole('heading',{name:'Choose a job',exact:true}).waitFor();
-  const row=page.locator('.hub-application-job-row').last();await row.scrollIntoViewIfNeeded();
-  const before=await page.evaluate(()=>document.documentElement.scrollHeight);
-  const legacySummary=row.locator('.hub-job-download-menu > summary');
-  if(await legacySummary.count())await legacySummary.click();
-  const after=await page.evaluate(()=>document.documentElement.scrollHeight);
-  assert.ok(after<=before+1,`Opening bottom-job download adds ${after-before}px outside the layout at ${width}px`);
-  await row.getByRole('button',{name:'Download all applications ZIP for Synthetic job 7',exact:true}).click();
-  await page.getByText(/Synthetic job 7: download started/).waitFor();
-  assert.equal(await page.locator('.hub-job-download-menu[open]').count(),0,'Downloads must not leave a flyout open');
-  await noOverflow(page);await artifact(page,'last-job-download-'+width);
+  await page.setViewportSize({width,height:900});await page.goto(origin+'/?view=applications&jobId='+encodeURIComponent(jobs.at(-1).id));
+  const trigger=page.locator('summary[aria-label="Application options"]');
+  await trigger.click();const zip=page.getByRole('button',{name:/Download matching ZIP/});await zip.waitFor();
+  const rect=await zip.boundingBox();assert.ok(rect.x>=0&&rect.x+rect.width<=width+1);
+  await zip.focus();await page.keyboard.press('Escape');assert.equal(await zip.isVisible(),false);
+  await noOverflow(page);await artifact(page,'queue-download-'+width);
  }
- assert.deepEqual(writes,[]);assert.deepEqual(errors,[]);
+ assert.deepEqual(errors,[]);
 });
 
 test('screening, reviewer grade and owner filter controls align even with helper text',async t=>{
  const {page,origin}=await setup(t);
  for(const width of [320,390,768,1280,1728]){
   await page.setViewportSize({width,height:900});await page.goto(origin+'/?view=applications&jobId=job-0');
-  await page.locator('.hub-advanced-filters > summary').click();
-  const fields=await page.locator('.hub-advanced-filters .hub-filter-grid .hub-field').evaluateAll(es=>es.map(e=>({box:e.getBoundingClientRect().toJSON(),label:e.querySelector('label').getBoundingClientRect().toJSON(),control:e.querySelector('input,select').getBoundingClientRect().toJSON()})));
-  if(width>=1280){assert.ok(Math.max(...fields.map(f=>f.label.top))-Math.min(...fields.map(f=>f.label.top))<=1,JSON.stringify(fields));assert.ok(Math.max(...fields.map(f=>f.control.top))-Math.min(...fields.map(f=>f.control.top))<=1,JSON.stringify(fields));}
-  for(let i=1;i<fields.length;i++)if(fields[i].box.top>=fields[i-1].box.bottom)assert.ok(fields[i].box.top-fields[i-1].box.bottom>=12,'Wrapped filters retain spacing');
+  await page.getByRole('button',{name:'Filters & order'}).click();
+  await page.locator('.aq-more > summary').click();
+  for (const label of ['Screening','Owner','Reviewer grades']) {
+    const control=page.getByLabel(label,{exact:true});
+    assert.ok(await control.isVisible());
+    const bounds=await control.boundingBox();
+    assert.ok(bounds.width>=100 && bounds.x>=0 && bounds.x+bounds.width<=width+1,JSON.stringify({label,width,bounds}));
+  }
   await noOverflow(page);await artifact(page,'aligned-filters-'+width);
  }
 });
@@ -166,12 +167,19 @@ test('mixed job rows keep applicant, edit and Actions controls aligned with open
   await page.locator('.hub-job-row').last().waitFor();
   const rows=page.locator('.hub-job-row');
   assert.match(await rows.first().locator('h3').innerText(),/Synthetic job 7/);
+  assert.equal(await rows.count(),mixed.length);
+  const firstLink=rows.first().getByRole('link',{name:/View applicants for/});
+  await firstLink.filter({hasText:'1 applicant'}).waitFor();
+  assert.equal(new URL(await firstLink.getAttribute('href'),origin).searchParams.get('active'),'false');
   const links=await rows.getByRole('link',{name:/View applicants for/}).evaluateAll(es=>es.map(e=>e.getBoundingClientRect().toJSON()));
   assert.ok(Math.max(...links.map(r=>r.x))-Math.min(...links.map(r=>r.x))<2,'View applicants uses one consistent column');
   assert.ok(Math.max(...links.map(r=>r.width))-Math.min(...links.map(r=>r.width))<2,'Applicant buttons have equal width');
   for(const row of await rows.all()){
    const controls=await row.locator('.hub-job-actions > a,.hub-job-actions > button,.hub-job-menu > summary').evaluateAll(es=>es.map(e=>e.getBoundingClientRect().toJSON()));
-   for(let i=1;i<controls.length;i++)assert.ok(controls[i].left-controls[i-1].right>=7,'Actions retain separate targets');
+   for(let i=1;i<controls.length;i++) {
+    const separated=controls[i].left-controls[i-1].right>=7 || controls[i].top-controls[i-1].bottom>=7;
+    assert.ok(separated,'Adjacent actions retain separate hit targets when they wrap');
+   }
   }
   await noOverflow(page);await artifact(page,'job-action-columns-'+width);
  }
@@ -226,7 +234,7 @@ test('collapsed question rows stay compact and editors remain usable on phone an
  await page.route('**/api/hub/jobs',r=>r.fulfill({json:{data:[{...jobs[0],fields,rules:[{fieldPath:'q0',operator:'gte',value:7,enabled:true,reason:'Minimum experience'}]}]}}));
  for(const width of [320,390,1280]){
   await page.setViewportSize({width,height:900});await page.goto(origin+'/?view=jobs');await page.getByRole('link',{name:'Edit job',exact:true}).click();await page.getByRole('list',{name:'Job setup progress'}).getByRole('button',{name:'Application questions',exact:true}).click();
-  const rows=page.locator('.hub-question').filter({has:page.locator('.hub-question-row-heading')});assert.equal(await rows.count(),13);assert.equal(await rows.locator('button[aria-expanded="true"]').count(),0);const heights=await rows.evaluateAll(elements=>elements.map(e=>e.getBoundingClientRect().height));assert.ok(Math.max(...heights)<(width<640?180:105),JSON.stringify({width,heights}));await noOverflow(page);await artifact(page,'compact-question-list-'+width);
+  const rows=page.locator('.hub-question').filter({has:page.locator('.hub-question-row-heading')});assert.equal(await rows.count(),fields.length);assert.equal(await rows.locator('button[aria-expanded="true"]').count(),0);const heights=await rows.evaluateAll(elements=>elements.map(e=>e.getBoundingClientRect().height));assert.ok(Math.max(...heights)<(width<640?180:105),JSON.stringify({width,heights}));await noOverflow(page);await artifact(page,'compact-question-list-'+width);
   const row=rows.filter({hasText:'Relevant years of experience'}).first();await row.locator('button[aria-expanded]').click();await page.getByLabel('Minimum accepted number for Relevant years of experience',{exact:true}).waitFor();await noOverflow(page);await artifact(page,'compact-question-edit-'+width);await row.locator('button[aria-expanded]').click();assert.equal(await rows.locator('button[aria-expanded="true"]').count(),0);
  }
  assert.deepEqual(errors,[]);

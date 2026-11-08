@@ -14,7 +14,7 @@ import {readCachedFileTexts} from '../../lib/resume-text/cache';
 test('cache migration preserves existing applicant records and backfilled text survives a real SQLite restart',async()=>{
  const root=mkdtempSync(path.join(realpathSync(tmpdir()),'hiring-resume-upgrade-')),migrations=path.resolve('drizzle'),old=path.join(root,'old-migrations');mkdirSync(path.join(old,'meta'),{recursive:true});
  const journal=JSON.parse(readFileSync(path.join(migrations,'meta/_journal.json'),'utf8')) as {entries:{idx:number;tag:string}[]};
- const previous={...journal,entries:journal.entries.filter(entry=>entry.tag!=='0013_file_text_cache')};
+ const previous={...journal,entries:journal.entries.filter(entry=>entry.idx<13)};
  writeFileSync(path.join(old,'meta/_journal.json'),JSON.stringify(previous));
  for(const {tag} of previous.entries)writeFileSync(path.join(old,tag+'.sql'),readFileSync(path.join(migrations,tag+'.sql')));
  const filename=path.join(root,'hiring.sqlite');let db=new SQLiteD1Database(filename);

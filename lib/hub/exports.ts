@@ -57,10 +57,10 @@ function attachmentFilename(value:string){
   const encoded=encodeURIComponent(value).replace(/[!'()*]/g,character=>'%'+character.charCodeAt(0).toString(16).toUpperCase());
   return `attachment; filename="${ascii}"; filename*=UTF-8''${encoded}`;
 }
-export async function downloadApplications(request:Request,store:HubStore,filters:ApplicationFilters,bucket?:Pick<R2Bucket,'get'>):Promise<Response>{
+export async function downloadApplications(request:Request,store:HubStore,filters:ApplicationFilters,bucket?:Pick<R2Bucket,'get'>,snapshotIds?:string[]):Promise<Response>{
   const params=new URL(request.url).searchParams,format=params.get('format');
   if(format!=='csv'&&format!=='zip'&&format!=='pdf')throw new HiringError('invalid_export_format',422,'Choose PDF, CSV or ZIP.');
-  const rawIds=params.get('ids'),ids=rawIds===null?undefined:rawIds.split(',');
+  const rawIds=params.get('ids'),ids=snapshotIds ?? (rawIds===null?undefined:rawIds.split(','));
   if(ids && (!ids.length||ids.length>10000||ids.some(id=>!id||id.length>160)||new Set(ids).size!==ids.length))throw new HiringError('invalid_export_selection',422,'Select between 1 and 10,000 unique applications.');
   const selected=await store.exportIds(filters,ids);
   if(format==='pdf' && selected.length!==1)throw new HiringError('single_application_required',422,'Select one application for a PDF, or download multiple applications as a ZIP.');
@@ -75,13 +75,20 @@ export async function downloadApplications(request:Request,store:HubStore,filter
     if(bytes>3*1024*1024*1024||files+selected.length+2>60000)throw new HiringError('export_too_large',422,'This archive is too large for one ZIP. Select fewer applications or narrower filters (up to 3 GB of attachments).');
   }
   if(params.get('check')==='1')return Response.json({count:selected.length,format},{headers:{'Cache-Control':'private, no-store'}});
-  const job=await store.getJob(filters.jobId!);
+  const jobs = new Map<string, Awaited<ReturnType<HubStore["getJob"]>>>();
+  async function exportJob(id: string) {
+    let job=jobs.get(id);
+    if (!job) {job=await store.getJob(id);jobs.set(id,job);}
+    return job;
+  }
   async function pdfFor(id:string){
     const detail=await store.getApplication(id);
+    const job=await exportJob(detail.jobId);
     return applicationPdf({...detail,jobDescription:{descriptionHtml:job.descriptionHtml,formVersion:job.formVersion,location:job.location}});
   }
   if(format==='pdf') {
     const detail=await store.getApplication(selected[0]);
+    const job=await exportJob(detail.jobId);
     const pdf=await applicationPdf({...detail,jobDescription:{descriptionHtml:job.descriptionHtml,formVersion:job.formVersion,location:job.location}});
     return new Response(pdf as BodyInit,{headers:{'Content-Type':'application/pdf','Content-Disposition':attachmentFilename(`application-${safeFilename(detail.name)}-${safeFilename(detail.id)}.pdf`),'Cache-Control':'private, no-store','X-Content-Type-Options':'nosniff','X-Application-Count':'1'}});
   }
@@ -101,7 +108,7 @@ export async function downloadApplications(request:Request,store:HubStore,filter
         yield {name:folder+'/'+safeFilename(file.id)+'-'+safeFilename(file.filename),data:bodyData(object.body)};included++;
       }
     }
-    yield {name:'Download report.pdf',data:bytesData(await exportReportPdf({exportedAt:Date.now(),jobId:filters.jobId!,applicationCount:selected.length,includedFiles:included,missingFiles:missing}))};
+    yield {name:'Download report.pdf',data:bytesData(await exportReportPdf({exportedAt:Date.now(),jobId:filters.jobId || "Filtered applications",applicationCount:selected.length,includedFiles:included,missingFiles:missing}))};
   }
-  return new Response(streamOf(format==='csv'?csv():zipStream(entries())),{headers:{'Content-Type':format==='csv'?'text/csv; charset=utf-8':'application/zip','Content-Disposition':`attachment; filename="applications-${safeFilename(filters.jobId!)}.${format}"`,'Cache-Control':'private, no-store','X-Content-Type-Options':'nosniff','X-Application-Count':String(selected.length)}});
+  return new Response(streamOf(format==='csv'?csv():zipStream(entries())),{headers:{'Content-Type':format==='csv'?'text/csv; charset=utf-8':'application/zip','Content-Disposition':`attachment; filename="applications-${safeFilename(filters.jobId || "selected")}.${format}"`,'Cache-Control':'private, no-store','X-Content-Type-Options':'nosniff','X-Application-Count':String(selected.length)}});
 }

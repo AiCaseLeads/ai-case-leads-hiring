@@ -1,4 +1,5 @@
 "use client";
+import { JobDirectory } from "./job-directory";
 import { JobImport } from "./job-import";
 import { JobAutomation } from "./job-automation";
 import { NavigationLink } from "./navigation-link";
@@ -335,9 +336,7 @@ export function Jobs({
 
         <div className="hub-section-heading">
           <div>
-            <p className="hub-kicker">HIRING</p>
             <h2 id="jobs-title">Jobs</h2>
-            <p>Manage your job postings and their applicants.</p>
           </div>
           {admin && <button className="hub-button secondary" type="button" onClick={()=>setImportOpen(true)}>Create with AI / upload</button>}
           {admin && (
@@ -401,7 +400,8 @@ export function Jobs({
         </nav>
         {collection === "archived" && <p className="hub-muted">Archived jobs are closed to new applications. Review their applicants or restore a job when you need it again.</p>}
         {collection === "deleted" && <p className="hub-muted">Deleted jobs are kept here for recovery. Applications and files are retained. Restore a job to manage it again.</p>}
-        <div className="hub-job-filters hub-form-grid">
+        {!jobs.loading && !jobs.error && <JobDirectory jobs={data} filtered={filtered} admin={admin} refresh={refresh}
+          controls={<>
           <Field label="Search jobs">
             <input
               value={search}
@@ -417,16 +417,12 @@ export function Jobs({
               <option value="draft">Drafts</option>
             </select>
           </Field>}
-        </div>
-        {!jobs.loading &&
-          !jobs.error &&
-          (filtered.length ? (
-            <div className="hub-job-list">
-              {filtered.map((j) => (
+          </>}
+          renderPosting={(j, count) => (
                 <article className="hub-job-row" key={j.id}>
                   <div className="hub-job-info">
                     <div className="hub-job-title-row">
-                      <h3><a className="hub-object-link" href={"/team?view=applications&jobId="+encodeURIComponent(j.id)}>{j.title}</a></h3>
+                      <h3><a className="hub-object-link" href={"/team?view=applications&active=false&jobId="+encodeURIComponent(j.id)}>{j.title}</a></h3>
                       <Badge tone={j.status === "open" ? "success" : "neutral"}>
                         {collection === "archived" ? "Archived" : collection === "deleted" ? "In Trash" : j.status === "open" ? "Open" : j.status === "closed" ? "Paused" : "Draft"}
                       </Badge>
@@ -440,9 +436,9 @@ export function Jobs({
                   <div className="hub-job-actions">
                     <a
                       className="hub-button secondary"
-                      href={"/team?view=applications&jobId=" + encodeURIComponent(j.id)}
+                      href={"/team?view=applications&active=false&jobId=" + encodeURIComponent(j.id)}
                       aria-label={`View applicants for ${j.title}`}
-                    >View applicants</a>
+                    >{count === undefined ? "View applicants" : `${count} applicant${count===1?"":"s"}`}</a>
                     {admin && collection === "active" && (
                       <NavigationLink className="hub-text-button" href={"/team?view=jobs&jobEditor="+encodeURIComponent(j.id)+"&jobStep=0"} navigate={() => {if(!mutation.busy)openEditor(j);}}>
                         Edit job
@@ -482,9 +478,8 @@ export function Jobs({
                     </JobActionMenu>
                   </div>
                 </article>
-              ))}
-            </div>
-          ) : (
+            )}/>}
+        {!jobs.loading && !jobs.error && !filtered.length && (
             <EmptyState
               title={collection === "archived" ? "No archived jobs" : collection === "deleted" ? "Trash is empty" : data.length ? "No matching jobs" : "Create your first job"}
             >
@@ -494,7 +489,7 @@ export function Jobs({
                   : "Start blank, duplicate an existing posting, use a saved template, or fill out a hiring request."}
               </p>
             </EmptyState>
-          ))}
+          )}
         {templateJob && (
           <form
             className="hub-card"

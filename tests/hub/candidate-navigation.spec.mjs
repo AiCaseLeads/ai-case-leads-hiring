@@ -23,11 +23,11 @@ test('applicant record separates source files, review and activity without losin
  assert.equal(await page.getByRole('heading',{name:'Application answers',exact:true}).isVisible(),true);
  assert.equal(await page.getByRole('heading',{name:'Evidence & verification',exact:true}).isVisible(),false);
  assert.equal(await page.getByRole('link',{name:'synthetic-resume.pdf'}).getAttribute('href'),'/api/files/file-1');
- await page.getByRole('tab',{name:'Application & files',exact:true}).focus();await page.keyboard.press('ArrowRight');assert.equal(await page.getByRole('tab',{name:'AI review & notes',exact:true}).getAttribute('aria-selected'),'true');await page.keyboard.press('Home');
- await page.getByRole('tab',{name:'AI review & notes',exact:true}).click();await page.getByText('Advanced: evidence and verification tools',{exact:true}).click();await page.getByText('Record verification checks',{exact:true}).click();await page.getByLabel('Evidence and follow-up notes',{exact:true}).fill('Unsaved synthetic follow-up');
+ await page.getByRole('tab',{name:'Application & files',exact:true}).focus();await page.keyboard.press('ArrowRight');assert.equal(await page.getByRole('tab',{name:'Interviews & notes',exact:true}).getAttribute('aria-selected'),'true');await page.keyboard.press('Home');
+ await page.getByRole('tab',{name:'Interviews & notes',exact:true}).click();await page.getByText('Advanced: evidence and verification tools',{exact:true}).click();await page.getByText('Record verification checks',{exact:true}).click();await page.getByLabel('Evidence and follow-up notes',{exact:true}).fill('Unsaved synthetic follow-up');
  await page.getByRole('tab',{name:'Activity & messages',exact:true}).click();assert.equal(await page.getByRole('heading',{name:'Communication history',exact:true}).isVisible(),true);assert.equal(await page.getByRole('heading',{name:'Application answers',exact:true}).isVisible(),false);
- await page.getByRole('tab',{name:'AI review & notes',exact:true}).click();assert.equal(await page.getByLabel('Evidence and follow-up notes',{exact:true}).inputValue(),'Unsaved synthetic follow-up');
- await page.getByLabel('Action',{exact:true}).selectOption('scorecard');assert.equal(await page.getByRole('tab',{name:'AI review & notes',exact:true}).getAttribute('aria-selected'),'true');
+ await page.getByRole('tab',{name:'Interviews & notes',exact:true}).click();assert.equal(await page.getByLabel('Evidence and follow-up notes',{exact:true}).inputValue(),'Unsaved synthetic follow-up');
+ await page.getByLabel('Action',{exact:true}).selectOption('scorecard');assert.equal(await page.getByRole('tab',{name:'Interviews & notes',exact:true}).getAttribute('aria-selected'),'true');
 });
 test('application filters compare one posting and clear hidden filters together',async t=>{
  const {page,queries}=await setup(t,'list');assert.equal(await page.getByLabel('Order',{exact:true}).isDisabled(),true);

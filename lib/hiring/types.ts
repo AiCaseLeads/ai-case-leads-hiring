@@ -10,7 +10,7 @@ export type ApplicationField = {
   numberFormat?: "number" | "currency";
   currency?: "USD";
 };
-export type Job = { id: string; slug: string; title: string; department: string; descriptionHtml: string; location?: string };
+export type Job = { eligibleCountries?: string[] | "worldwide"; id: string; slug: string; title: string; department: string; descriptionHtml: string; location?: string };
 export type JobDefinition = { job: Job; fields: ApplicationField[]; formUnavailable?: string; formVersion?: number };
 export type FieldSubmission = { path: string; value: unknown };
 export type ApplicationInput = {

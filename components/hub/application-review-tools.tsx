@@ -9,7 +9,6 @@ import { hubRequest, useHubResource } from "./api";
 import type { ApplicationDetail, HubJob } from "./types";
 export function ApplicantNavigation({detail,filter,open,viewed,disabled=false}:{detail:ApplicationDetail;filter:string;jobs:HubJob[];open:(id:string,filter:string)=>void;viewed:()=>void;disabled?:boolean}) {
   const params=normalizeApplicantScope(new URLSearchParams(filter));
-  if(!params.has("jobId"))params.set("jobId",detail.jobId);
   if(!params.has("sort"))params.set("sort","screening_newest");
   if(!params.has("active")&&!params.get("stage")&&params.get("trash")!=="true")params.set("active","true");
   params.delete("page");
