@@ -27,7 +27,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import type { CareerJob, CareerField } from "./types";
 import { isWebsiteField, websiteLinkError } from "@/lib/hiring/website-links";
 import { countWords } from "@/lib/hiring/word-count";
-import { internationalPhoneError } from "@/lib/hiring/contact-fields";
+import { contactPaths, internationalPhoneError } from "@/lib/hiring/contact-fields";
 
 type Value = string | number | boolean | string[] | { score: number };
 export type Payload = {
@@ -44,6 +44,16 @@ const acceptedTypes = [
   "application/msword",
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
 ];
+
+function isWrittenResponse(field: CareerField) {
+  return field.type === "LongText" || (field.type === "String" && !contactPaths.includes(field.path));
+}
+
+function isWrittenControl(target: EventTarget | null): target is HTMLInputElement | HTMLTextAreaElement {
+  return (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) && target.hasAttribute("data-written-response");
+}
+
+const transferInputTypes = new Set(["insertFromPaste", "insertFromPasteAsQuotation", "insertFromDrop", "insertFromYank"]);
 
 export function ApplicationForm({
   job,
@@ -71,6 +81,28 @@ export function ApplicationForm({
   const submissionKey = useRef<string>(""),
     pendingPayload = useRef<Payload | null>(null),
     inFlight = useRef(false);
+  const formRef = useRef<HTMLFormElement>(null);
+  const [blockedField, setBlockedField] = useState("");
+  useEffect(() => {
+    const form = formRef.current;
+    if (!form) return;
+    function blockTransfer(event: Event) {
+      const field = event.target;
+      if (!isWrittenControl(field)) return;
+      if (event.type === "beforeinput" && !transferInputTypes.has((event as InputEvent).inputType)) return;
+      event.preventDefault();
+      setBlockedField(field.id);
+    }
+    // Native beforeinput covers mobile editing menus as well as keyboard paste.
+    form.addEventListener("beforeinput", blockTransfer);
+    form.addEventListener("paste", blockTransfer);
+    form.addEventListener("drop", blockTransfer);
+    return () => {
+      form.removeEventListener("beforeinput", blockTransfer);
+      form.removeEventListener("paste", blockTransfer);
+      form.removeEventListener("drop", blockTransfer);
+    };
+  }, []);
   const [securityToken, setSecurityToken] = useState("");
   const [securityRefresh, setSecurityRefresh] = useState(0);
   const verification = useRef<{grant:string;expiresAt:number}|null>(null);
@@ -130,6 +162,7 @@ export function ApplicationForm({
   }, [job.id, recoveryKey, fields]);
   /* eslint-enable react-hooks/set-state-in-effect */
   const change = (path: string, value: Value) => {
+    if (blockedField) setBlockedField("");
     setValues((v) => ({ ...v, [path]: value }));
     setErrors((e) => ({ ...e, [path]: "" }));
   };
@@ -372,7 +405,16 @@ export function ApplicationForm({
     }
   }
   return (
-    <form className="application-form" onSubmit={submit} noValidate>
+    <form ref={formRef} className="application-form" onSubmit={submit} noValidate
+      onChangeCapture={(event) => {
+        // Some mobile editors report an insertion only after the value has changed.
+        const field = event.target;
+        if (!isWrittenControl(field)) return;
+        if (!transferInputTypes.has((event.nativeEvent as InputEvent).inputType)) return;
+        field.value = String(values[field.id] ?? "");
+        event.stopPropagation();
+        setBlockedField(field.id);
+      }}>
       <div className="form-topline">
         <span className="form-top-icon">
           <FileText size={20} />
@@ -381,7 +423,7 @@ export function ApplicationForm({
       </div>
       <h2>Tell us about yourself.</h2>
       <p className="form-intro">
-        Start with your experience. We’ll take it from there.
+        {fields.some(isWrittenResponse) ? "Type your written responses directly into the form. Pasting is disabled for those questions." : "Start with your experience. We’ll take it from there."}
       </p>
       {!enabled && (
         <div className="form-notice">
@@ -474,6 +516,7 @@ export function ApplicationForm({
             ) : field.type === "LongText" ? (
               <>
                 <Textarea
+                  data-written-response=""
                   id={field.path}
                   value={String(values[field.path] ?? "")}
                   onChange={(e) => change(field.path, e.target.value)}
@@ -633,6 +676,7 @@ export function ApplicationForm({
               <FormattedNumberInput id={field.path} value={values[field.path] as number|string|undefined} currency={field.numberFormat==="currency"} onValueChange={value=>change(field.path,value)} required={field.required} aria-invalid={!!errors[field.path]} aria-describedby={[field.description && `${field.path}-help`,errors[field.path] && `${field.path}-error`].filter(Boolean).join(" ")||undefined} placeholder={field.numberFormat==="currency"?"Enter amount in USD":"Enter a number"}/>
             ) : (
               <Input
+                data-written-response={isWrittenResponse(field) ? "" : undefined}
                 id={field.path}
                 placeholder={isWebsiteField(field) ? "https://…" : field.type === "Phone" ? "+1 305 555 0123" : undefined}
                 onBlur={() => {
@@ -685,6 +729,7 @@ export function ApplicationForm({
                 }
               />
             )}
+            {blockedField === field.path && <small role="status">Please type your response directly into this field.</small>}
             {errors[field.path] && (
               <p className="field-error-message" id={`${field.path}-error`}>
                 {errors[field.path]}
