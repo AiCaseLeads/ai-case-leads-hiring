@@ -1229,7 +1229,7 @@ export class HubStore {
     }>(
       `SELECT a.source,COUNT(*) AS count,
         SUM(CASE WHEN a.qualification='pass' THEN 1 ELSE 0 END) AS qualified,
-        SUM(CASE WHEN a.stage IN ('Interview','Awaiting Founder Review','Second Round Interview') OR EXISTS (SELECT 1 FROM hub_history h WHERE h.application_id=a.id AND h.type='stage' AND h.to_stage IN ('Interview','Awaiting Founder Review','Second Round Interview')) THEN 1 ELSE 0 END) AS interviewed,
+        SUM(CASE WHEN EXISTS (SELECT 1 FROM hub_interviews i WHERE i.application_id=a.id AND i.attended=1) THEN 1 ELSE 0 END) AS interviewed,
         SUM(CASE WHEN a.stage='Hired' THEN 1 ELSE 0 END) AS hired
         FROM hub_applications a WHERE ${activeApplicationsSql('a')} GROUP BY a.source ORDER BY count DESC,a.source`,
     );
