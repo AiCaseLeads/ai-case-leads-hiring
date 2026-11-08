@@ -19,10 +19,10 @@ const expandedCoverageKey = "response_checks_expanded_coverage_v1";
 async function schedulePreviouslySkippedAnswers(store: HubStore, now: number) {
   if (await store.setting<boolean>(expandedCoverageKey, false)) return;
   // Keep cached results and passage evidence while the existing indexer
-  // revisits only applications that contained a skipped answer.
+  // reindexes written fields against the updated privacy and length rules.
   await store.db.batch([
     store.stmt(`UPDATE hub_response_index SET indexed_at=0 WHERE application_id IN (
-      SELECT application_id FROM hub_response_answers WHERE answer_hash IS NULL
+      SELECT application_id FROM hub_response_answers
     ) AND NOT EXISTS (SELECT 1 FROM hub_settings WHERE key=?)`, expandedCoverageKey),
     store.stmt("INSERT OR IGNORE INTO hub_settings(key,value,updated_at) VALUES(?,'true',?)", expandedCoverageKey, now)
   ]);
@@ -37,6 +37,10 @@ async function indexApplication(store:HubStore,row:Submission, now:number) {
   const anchorRows=answers.flatMap(answer=>answer.anchors.map(anchor=>({...anchor,path:answer.path})));
   const statements=[
     store.stmt("INSERT INTO hub_response_index(application_id,indexed_at) VALUES(?,?) ON CONFLICT(application_id) DO UPDATE SET indexed_at=excluded.indexed_at WHERE hub_response_index.indexed_at=0",row.id,now),
+    // Earlier versions could index free-text labels that requested personal
+    // details. Remove those fields from both staff counts and peer matching.
+    store.stmt("DELETE FROM hub_response_answers WHERE application_id=? AND path NOT IN (SELECT json_extract(value,'$.path') FROM json_each(?))",row.id,answerJson),
+    store.stmt("DELETE FROM hub_response_passages WHERE application_id=? AND path NOT IN (SELECT json_extract(value,'$.path') FROM json_each(?))",row.id,answerJson),
     store.stmt("INSERT OR IGNORE INTO hub_response_detector_cache(answer_hash,status,updated_at) SELECT DISTINCT json_extract(value,'$.hash'),'pending',? FROM json_each(?) WHERE json_extract(value,'$.hash') IS NOT NULL",now,answerJson),
     store.stmt("INSERT INTO hub_response_answers(application_id,path,title,words,answer_hash) SELECT ?,json_extract(value,'$.path'),json_extract(value,'$.title'),json_extract(value,'$.words'),json_extract(value,'$.hash') FROM json_each(?) WHERE true ON CONFLICT(application_id,path) DO UPDATE SET answer_hash=excluded.answer_hash WHERE hub_response_answers.answer_hash IS NULL",row.id,answerJson)
   ];

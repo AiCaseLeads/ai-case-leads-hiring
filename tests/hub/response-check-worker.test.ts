@@ -170,3 +170,27 @@ test("historical per-answer skips are revisited exactly once, preserve cached re
   assert.deepEqual([coverage.indexed,coverage.scannedAnswers,coverage.tooShort,coverage.notProse,coverage.unavailable,coverage.pendingAnswers],[5,3,1,1,0,0]);
   database.close();
 });
+
+test("private contact questions stay local for both text types and old report rows disappear",async()=>{
+  const privateLabels=["Who referred you?","Mailing address","What is your current company and title?","Provide your professional reference contact details","Please provide your date of birth","Government ID number"];
+  const source={id:"test",name:"Tester",email:"person@example.invalid"};
+  for (const type of ["String","LongText"]){
+    const fields=[...privateLabels,"How did you address an issue at your current company?"].map((title,i)=>({path:"f"+i,title,type}));
+    const row={...source,fields_json:JSON.stringify(fields),answers_json:JSON.stringify(fields.map(f=>({path:f.path,value:"A written answer."})))};
+    assert.deepEqual(writtenAnswers(row).map(a=>a.title),["How did you address an issue at your current company?"]);
+  }
+  const {store,database}=createStore();
+  const input=jobInput();
+  input.fields.push({path:"question1",type:"LongText",title:"Mailing address",required:false});
+  const job=await store.saveJob(input);
+  const id=await submit(store,job.id,"tester@example.invalid","12 Elm Street");
+  await store.stmt("INSERT INTO hub_response_index(application_id,indexed_at) VALUES(?,5)",id).run();
+  await store.stmt("INSERT INTO hub_response_detector_cache(answer_hash,status,updated_at) VALUES('old','pending',1)").run();
+  await store.stmt("INSERT INTO hub_response_answers(application_id,path,title,words,answer_hash) VALUES(?,'question1','Mailing address',3,'old')",id).run();
+  await store.stmt("INSERT INTO hub_response_passages(application_id,path,passage_hash,excerpt) VALUES(?,'question1','hash','private')",id).run();
+  await processResponseCheckBatch({store,key,allowance,scan:async()=>{assert.fail("sent private data");}});
+  assert.equal((await getResponseChecks(store,id)).status,"no_written_answers");
+  assert.equal((await getResponseCoverage(store)).noWritten,1);
+  assert.equal((await store.stmt("SELECT COUNT(*) n FROM hub_response_passages WHERE application_id=?",id).first<{n:number}>())?.n,0);
+  database.close();
+});

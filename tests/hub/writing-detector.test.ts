@@ -50,9 +50,10 @@ test("distinguishes a provider length refusal from unrelated validation errors o
   const replies=[
     {detail:[{msg:"String should have at least 250 characters",input:"private prose"}]},
     {detail:[{msg:"Unsupported content",input:"It is too short"}]},
+    {message:"Text must not be longer than 50000 characters"},
   ];
   t.mock.method(globalThis,"fetch",async()=>Response.json(replies.shift(),{status:422}));
-  for(const reason of ["too_short",undefined]){
+  for(const reason of ["too_short",undefined,undefined]){
     await assert.rejects(scanAnswer("private prose","test-key"),error=>error instanceof DetectorError && error.reason===reason);
   }
 });

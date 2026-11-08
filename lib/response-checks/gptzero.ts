@@ -24,7 +24,7 @@ function rejectedForLength(payload:unknown):boolean {
     for (const field of error.detail) messages.push(field?.msg);
   }
   return messages.some(value=>typeof value==="string" &&
-    /too short|insufficient (?:text|characters|words)|(?:at least|minimum(?: of)?|more than|longer than)\s+\d+\s+(?:characters?|words?)/i.test(value));
+    /too short|insufficient (?:text|characters|words)|(?:at least|minimum(?: of)?)\s+\d+\s+(?:characters?|words?)/i.test(value));
 }
 
 async function request(path: string, apiKey: string, document?: string) {
