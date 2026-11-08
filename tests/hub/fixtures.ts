@@ -1,5 +1,5 @@
 import { DatabaseSync } from "node:sqlite";
-import { readFileSync, readdirSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import {
   HubStore,
   DEFAULT_REJECTION,
@@ -42,10 +42,9 @@ export function createStore(options: HubOptions = {}) {
   const database = new DatabaseSync(":memory:");
   database.exec("PRAGMA foreign_keys=ON");
   const migrationDir = new URL("../../drizzle/", import.meta.url);
-  for (const filename of readdirSync(migrationDir)
-    .filter((name) => name.endsWith(".sql"))
-    .sort())
-    database.exec(readFileSync(new URL(filename, migrationDir), "utf8"));
+  const journal=JSON.parse(readFileSync(new URL("meta/_journal.json",migrationDir),"utf8")) as {entries:{tag:string}[]};
+  for (const {tag} of journal.entries)
+    database.exec(readFileSync(new URL(tag+".sql", migrationDir), "utf8"));
   const db = {
     prepare(sql: string) {
       let values: (string | number | null)[] = [];

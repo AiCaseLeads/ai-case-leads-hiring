@@ -1,4 +1,5 @@
 export type CareerJob = {
+  eligibleCountries?: string[] | "worldwide";
   id: string;
   slug: string;
   title: string;

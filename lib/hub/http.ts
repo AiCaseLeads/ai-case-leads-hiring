@@ -1,3 +1,5 @@
+import { createApplicationSelection, getApplicationSelection } from "./application-selections";
+import { jobGroupCatalog, changeJobGroups } from "./job-groups";
 import { isInterviewFilter, type InterviewFilter } from './interview-progress';
 import {claimHistory} from './claim-history';
 import {sendInterviewInvitation} from './interview-delivery';
@@ -48,8 +50,9 @@ function admin(member: HubMember): void {
     );
 }
 
-function applicationFilters(request: Request) {
+function applicationFilters(request: Request, member: HubMember) {
       const params = new URL(request.url).searchParams;
+      if (params.get("sort") === "list_order" && !params.get("listId")) throw new HiringError("list_required",422,"Open a candidate list to use list order.");
       if(params.has("top") && params.get("top")!=="10") throw new HiringError("invalid_top",422,"Only the top 10 shortcut is supported.");
       const q = params.get("q") || undefined,
         page = params.get("page") || "1";
@@ -58,6 +61,9 @@ function applicationFilters(request: Request) {
         sort = params.get("sort") || undefined,
         duplicate = params.get("duplicate") || undefined,
         jobId = params.get("jobId") || undefined;
+      const jobGroupId = params.get("jobGroupId") || undefined;
+      if (jobGroupId && (jobId || !/^[a-f0-9-]{36}$/i.test(jobGroupId)))
+        throw new HiringError("invalid_job_group",422,"Choose one role group or one posting.");
       if ((params.has('active')&&!['true','false'].includes(params.get('active')||'')) || (params.has('trash')&&params.get('trash')!=='true') || (q?.length || 0) > 200 || !/^\d{1,6}$/.test(page))
         throw new HiringError(
           "invalid_filter",
@@ -78,10 +84,13 @@ function applicationFilters(request: Request) {
       applicationDateBounds(dates);
       return {
         ...dates,
+        country: params.get("country") || undefined,
+        listId:params.get("listId") || undefined, listViewer:member.email.toLowerCase(),
         interviewProgress:interviewProgress as InterviewFilter|undefined,
         q,
         top: params.get("top") === "10" ? 10 as const : undefined,
         jobId,
+        jobGroupId,
         stage,
         excludeStage,
         assignee: params.get("assignee") || undefined,
@@ -92,6 +101,7 @@ function applicationFilters(request: Request) {
         duplicate: duplicate === "true" ? true : undefined,
         trash: params.get('trash')==='true',
         active: params.get('active')==='true',
+        handoffReturned: params.get('handoffReturned')==='true',
       };
 }
 /** Route authentication must run before this dispatcher; tests supply an explicit authorized member. */
@@ -106,7 +116,44 @@ export async function handleHubRequest(
     if (!member?.email) throw new HiringError("staff_access_required",403,"Sign in with an authorized hiring account.");
     if (request.method !== "GET") assertSameOrigin(request);
     const [section, id, operation] = path;
+    if (section === 'list-reviews') {
+      const {listReviewDetail,listReviewers,reviewsInbox,changeListReview}=await import('./list-reviews');
+      if(request.method==='GET' && id==='reviewers') return jsonResponse({data:await listReviewers(store,member)});
+      if(request.method==='GET' && id) return jsonResponse({data:await listReviewDetail(store,member,id)});
+      if(request.method==='GET') return jsonResponse({data:await reviewsInbox(store,member,new URL(request.url).searchParams)});
+      if(request.method==='POST' && !id) return jsonResponse({data:await changeListReview(store,member,await json(request))});
+      throw new HiringError('method_not_allowed',405,'Choose a supported review action.');
+    }
+    if (section === 'collections' && id && operation === 'open' && request.method==='GET') {
+      const view=await store.stmt("SELECT query FROM hub_collections WHERE id=? AND kind='view' AND visibility='team'",id).first<{query:string}>();
+      if (!view) throw new HiringError('collection_not_found',404,'This shared view is unavailable.');
+      const params=new URLSearchParams(view.query);
+      params.set('view','applications');
+      return new Response(null,{status:302,headers:{Location:'/team?'+params.toString(),'Cache-Control':'private, no-store'}});
+    }
+    if (section === 'collections' && !id) {
+      const {applicantCollections,changeApplicantCollection,compareListApplications} = await import('./applicant-collections');
+      const params = new URL(request.url).searchParams;
+      if (request.method === 'GET') {
+        const data = params.has('compare')
+          ? await compareListApplications(store,member,params.get('listId') || '',params.getAll('compare'))
+          : await applicantCollections(store,member);
+        return jsonResponse({data});
+      }
+      if (request.method !== 'POST') throw new HiringError('method_not_allowed',405,'Choose a supported collection action.');
+      const data = await changeApplicantCollection(store,member,await json(request),filters=>{
+        const url = new URL(request.url);
+        url.search = filters.toString();
+        applicationFilters(new Request(url),member);
+      });
+      return jsonResponse({data});
+    }
     let data: unknown;
+    if (section === "job-groups" && path.length === 1) {
+      if (request.method === "GET") return jsonResponse({data:await jobGroupCatalog(store)});
+      if (request.method === "POST") return jsonResponse({data:await changeJobGroups(store,member,await json(request))});
+      throw new HiringError("method_not_allowed",405,"Choose a supported job group action.");
+    }
     if(section==='meetgeek') {const {handleMeetGeekRequest}=await import('../meetgeek/service');return await handleMeetGeekRequest(request,path,member,store);}
     if(section==="response-checks" && !id && request.method==="GET") {
       const {listResponseChecks}=await import("../response-checks/report");
@@ -174,10 +221,16 @@ export async function handleHubRequest(
       );
     } else if(section === "application-counts" && request.method === "GET") {
       data=await store.applicationCounts();
+    } else if (section === "application-selections" && request.method === "POST" && !id) {
+      const body = await json(request) as {ids?:string[]};
+      if (!body || typeof body!=="object" || Array.isArray(body) || Object.keys(body).some(key=>key!=="ids") ||
+          (body.ids!==undefined && (!Array.isArray(body.ids) || body.ids.length>10000 || body.ids.some(value=>typeof value!=="string" || !value || value.length>128))))
+        throw new HiringError("invalid_selection",422,"Choose valid applications.");
+      data = await createApplicationSelection(store,applicationFilters(request,member),member,body.ids);
     } else if (section === "applications" && request.method === "GET" && !id) {
-      data = await store.applications(applicationFilters(request),member.email);
+      data = await store.applications(applicationFilters(request,member),member.email);
     } else if(section==='applications' && id && operation==='navigation' && request.method==='GET') {
-      data=await store.applicationNavigation(id,applicationFilters(request));
+      data=await store.applicationNavigation(id,applicationFilters(request,member));
     } else if(section==='applications' && id && operation==='notes-reviewed' && request.method==='POST') {
       const body=await json(request) as Record<string,unknown>;
       if(!body||typeof body!=='object'||Array.isArray(body)||Object.keys(body).some(key=>key!=='expectedNotesVersion')||typeof body.expectedNotesVersion!=='string'||! /^[a-f0-9]{64}$/.test(body.expectedNotesVersion))throw new HiringError('invalid_request',422,'Provide the current notes version.');
@@ -191,9 +244,10 @@ export async function handleHubRequest(
         const format=new URL(request.url).searchParams.get("format");
         if(format !== "csv" && format !== "zip" && format !== "pdf") throw new HiringError("invalid_export_format",422,"Choose PDF, CSV or ZIP.");
         const bucket=format === "zip" ? (await import("../hiring/runtime")).getHiringEnv().BUCKET : undefined;
-        return await downloadApplications(request,store,applicationFilters(request),bucket);
+        const token=new URL(request.url).searchParams.get("selectionId");
+        return await downloadApplications(request,store,applicationFilters(request,member),bucket,token ? await getApplicationSelection(store,token,member) : undefined);
       }
-      data = await store.exportApplications(applicationFilters(request));
+      data = await store.exportApplications(applicationFilters(request,member));
     } else if (
       section === "applications" &&
       id &&
@@ -223,8 +277,10 @@ export async function handleHubRequest(
       const body=await json(request) as Record<string,unknown>;
       if(!body||typeof body!=="object"||Array.isArray(body))throw new HiringError("invalid_bulk",422,"Choose applicants to preview.");
       if(id==="preview"){
-        if(Object.keys(body).some(key=>!["ids","reason"].includes(key))||body.ids!==undefined&&(!Array.isArray(body.ids)||body.ids.length<1||body.ids.length>10000||body.ids.some(value=>typeof value!=="string"||value.length>128)||new Set(body.ids).size!==body.ids.length)||body.reason!==undefined&&(typeof body.reason!=="string"||!body.reason.trim()||body.reason.length>2000))throw new HiringError("invalid_bulk",422,"Choose valid applicants and a rejection reason.");
-        data=await store.previewBulkRejection(applicationFilters(request),body.ids as string[]|undefined,typeof body.reason==="string"?body.reason.trim():"Not selected after recruiter review.",member);
+        if(Object.keys(body).some(key=>!["ids","reason","selectionId"].includes(key))||body.ids!==undefined&&(!Array.isArray(body.ids)||body.ids.length<1||body.ids.length>10000||body.ids.some(value=>typeof value!=="string"||value.length>128)||new Set(body.ids).size!==body.ids.length)||body.reason!==undefined&&(typeof body.reason!=="string"||!body.reason.trim()||body.reason.length>2000))throw new HiringError("invalid_bulk",422,"Choose valid applicants and a rejection reason.");
+        if (body.selectionId!==undefined && (typeof body.selectionId!=="string" || body.ids!==undefined)) throw new HiringError("invalid_selection",422,"Choose one selection.");
+        const ids = typeof body.selectionId === "string" ? await getApplicationSelection(store,body.selectionId,member) : body.ids as string[]|undefined;
+        data=await store.previewBulkRejection(applicationFilters(request,member),ids,typeof body.reason==="string"?body.reason.trim():"Not selected after recruiter review.",member);
       }else if(id==="execute"){
         if(Object.keys(body).some(key=>!["planId","confirmed"].includes(key))||body.confirmed!==true||typeof body.planId!=="string"||! /^[a-f0-9-]{36}$/.test(body.planId))throw new HiringError("invalid_bulk",422,"Confirm the previewed group before rejecting applicants.");
         data=await store.executeBulkRejection(body.planId,member);

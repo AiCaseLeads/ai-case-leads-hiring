@@ -142,6 +142,28 @@ test("archive migration preserves existing applications and legacy Drive identit
   }finally{db.close();rmSync(root,{recursive:true,force:true});}
 });
 
+test("collections migrate after deployed response checks and preserve existing results",async()=>{
+  const root=temporary(),before=path.join(root,"before"),file=path.join(root,"volume.sqlite");
+  const {entries}=JSON.parse(readFileSync(path.join(migrations,"meta/_journal.json"),"utf8")) as {entries:{idx:number;tag:string}[]};
+  assert.equal(entries[14].tag,"0015_response_checks");
+  assert.equal(entries[15].tag,"0014_hub_collections");
+  journal(before,entries.slice(0,15).map(({tag})=>[tag,readFileSync(path.join(migrations,tag+".sql"),"utf8")]));
+  let db=new SQLiteD1Database(file);
+  try {
+    db.migrate(before);
+    const store=new HubStore(db.asD1(),{sessionHash:"a".repeat(64),origin:"https://jobs.example.invalid"});
+    const job=await store.saveJob(jobInput()),app=await store.acceptApplication(applicationInput(job.id));
+    db.connection.prepare("INSERT INTO hub_response_index(application_id,indexed_at) VALUES(?,?)").run(app.id,123);
+    const history=db.connection.prepare("SELECT * FROM railway_migrations ORDER BY position").all();
+    db.close();db=new SQLiteD1Database(file);
+    db.migrate(migrations);
+    assert.deepEqual(db.connection.prepare("SELECT * FROM railway_migrations WHERE position<15 ORDER BY position").all(),history);
+    assert.equal(db.connection.prepare("SELECT indexed_at FROM hub_response_index WHERE application_id=?").get(app.id)?.indexed_at,123);
+    assert.equal(db.connection.prepare("SELECT COUNT(*) AS n FROM hub_collections").get()?.n,0);
+    db.migrate(migrations);
+  }finally{db.close();rmSync(root,{recursive:true,force:true});}
+});
+
 test("the previous image can receive applications with the exact next response-check schema and rejects other migration drift",async()=>{
   const root=temporary(), filename=path.join(root,"test.sqlite");
   const base=path.join(root,"baseline"),next=path.join(root,"next");

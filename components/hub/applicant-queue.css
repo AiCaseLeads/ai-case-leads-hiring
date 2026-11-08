@@ -1,0 +1,60 @@
+.applicant-queue {min-width:0}
+.applicant-queue .hub-section-heading {align-items:center;margin-bottom:12px}
+.applicant-queue .hub-section-heading h2 {margin:0}
+.applicant-queue .hub-section-heading p {margin:4px 0 0}
+.aq-controls,.aq-filter-panel,.aq-more>div,.aq-bulk {display:grid;gap:10px;align-items:end}
+.aq-controls {grid-template-columns:minmax(190px,1fr) minmax(170px,1fr);max-width:860px;margin:10px 0}
+.aq-filter-panel {grid-template-columns:repeat(4,minmax(0,1fr)) minmax(150px,1.15fr);margin:12px 0}
+.aq-filter-panel .aq-more {grid-column:1/-1}
+.aq-filter-panel label,.aq-bulk label,.aq-controls label {display:grid;gap:3px;min-width:0;font-weight:650;font-size:13px;color:#204748}
+.aq-filter-panel input,.aq-filter-panel select,.aq-bulk select,.aq-controls input,.aq-controls select {width:100%;min-width:0;max-width:100%;height:38px;min-height:36px;font:inherit;font-size:14px;font-weight:450;background:#fff;border:1px solid #b8ceca;border-radius:5px;padding:5px 8px;color:#183b41}
+.aq-more>summary {cursor:pointer;width:fit-content;color:#17624e;font-weight:650;font-size:13px;padding:5px 0}
+.aq-more>div {grid-template-columns:repeat(auto-fit,minmax(155px,1fr));margin:8px 0}
+.aq-more .hub-checkbox {display:flex;align-items:center;min-height:38px;gap:7px}
+.aq-more input[type=checkbox]{width:18px;height:18px;min-height:18px}
+.aq-filter-toggle {display:none!important}
+.aq-chips,.aq-selection {display:flex;flex-wrap:wrap;align-items:center;gap:6px}
+.aq-chips {margin-bottom:12px}
+.aq-chips button {font:inherit;font-size:12px;font-weight:600;border-radius:20px;border:1px solid #b6d5cd;background:#eaf5f0;padding:5px 9px;color:#174d42;max-width:100%;white-space:normal;overflow-wrap:anywhere}
+.aq-chips button.aq-clear {background:transparent;border-color:transparent}
+.aq-selection {margin:10px 0 6px;padding:6px 0;border-top:1px solid #d8e5df;font-size:13px}
+.aq-selection>span {font-weight:650;margin-right:8px}
+.aq-selection .hub-text-button {min-height:32px}
+.aq-bulk {grid-template-columns:repeat(auto-fit,minmax(min(190px,100%),1fr));margin:8px 0 12px;padding:12px;background:#eff6f2;border:1px solid #cddfd6;border-radius:6px}
+.aq-bulk .hub-bulk-rejection {grid-column:1/-1}
+.applicant-queue .hub-secondary-line {overflow-wrap:anywhere}
+@media(max-width:760px){
+  .aq-controls{grid-template-columns:repeat(2,minmax(0,1fr));align-items:end}
+  .aq-search{grid-column:1/-1}
+  .aq-filter-toggle{display:block!important}
+  .aq-filter-panel{display:none}
+  .aq-filter-panel[data-open=true]{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));align-items:end}
+  .aq-more>div{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .aq-filter-panel input,.aq-filter-panel select,.aq-bulk select,.aq-controls input,.aq-controls select {font-size:16px;height:44px}
+  .aq-chips button,.aq-selection .hub-text-button {min-height:36px}
+  .aq-selection>span{flex-basis:100%}
+}
+@media(max-width:440px){.aq-more>div,.aq-bulk{grid-template-columns:minmax(0,1fr)}}
+.aq-columns{border:0;display:grid;gap:4px;margin:0 0 5px;padding:4px 8px 8px}
+.aq-columns legend{font-size:12px;font-weight:650}
+.aq-columns label{display:flex;align-items:center;gap:8px;min-height:30px}
+.aq-columns input[type=checkbox]{width:17px;min-height:17px;height:17px}
+.aq-candidate-role{font-weight:600;color:#2e5652}
+@media(min-width:961px){
+.hiring-hub .applicant-queue .hub-applications-table{min-width:0}
+.hiring-hub .applicant-queue .hub-applications-table th,.hiring-hub .applicant-queue .hub-applications-table td{padding:8px}
+.hiring-hub .applicant-queue .hub-applications-table td:last-child{min-width:0;white-space:normal}
+.hiring-hub .applicant-queue .hub-applications-table .aq-candidate-role{max-width:28ch}
+}
+/* Keep the results in the first viewport; applied filter chips stay visible. */
+@media(min-width:761px){
+ .aq-controls {grid-template-columns:minmax(160px,1.1fr) minmax(160px,1fr) auto;max-width:none;margin:6px 0}
+ .aq-filter-toggle{display:block!important;min-height:38px}
+ .aq-filter-panel{display:none}
+ .aq-filter-panel[data-open=true]{display:grid}
+ .aq-chips{margin:6px 0}
+ .aq-selection{margin:4px 0;padding:0}
+}
+@media (max-width:960px) {
+  .hiring-hub .applicant-queue td.hub-optional-owner { overflow-wrap:anywhere; white-space:normal; }
+}

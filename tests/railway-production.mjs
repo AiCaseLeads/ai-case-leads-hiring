@@ -134,20 +134,19 @@ try{
  const mismatch=await fetch(origin+'/api/ai/resume-text',{method:'POST',headers:{Origin:origin,Cookie:ownerCookie,'Content-Type':'application/json'},body:JSON.stringify({...pdfRequest,applicationId:another.id})});assert.equal(mismatch.status,404);
  // Real browser history on the built server, without changing applicant data.
  const nav=team.getByRole('navigation',{name:'Hiring workspace'});
- await nav.getByRole('button',{name:'Applicants',exact:true}).click();await team.getByRole('heading',{name:'Choose a job',exact:true}).waitFor();
+ await nav.getByRole('button',{name:'Applicants',exact:true}).click();await team.getByRole('heading',{name:'Applicants',exact:true}).waitFor();
  const applicationListUrl=team.url();
  await nav.getByRole('button',{name:'Jobs',exact:true}).click();await team.getByRole('heading',{name:'Jobs',exact:true}).waitFor();
- await team.goBack();await team.getByRole('heading',{name:'Choose a job',exact:true}).waitFor();assert.equal(team.url(),applicationListUrl);
+ await team.goBack();await team.getByRole('heading',{name:'Applicants',exact:true}).waitFor();assert.equal(team.url(),applicationListUrl);
  await team.goForward();await team.getByRole('heading',{name:'Jobs',exact:true}).waitFor().catch(async error=>{throw new Error(error.message+'\nURL: '+team.url()+'\n'+(await team.locator('body').innerText()).slice(0,1500)+'\nBrowser errors: '+JSON.stringify({errors,consoleErrors})+'\nServer logs: '+logs.slice(-1500));});
- await nav.getByRole('button',{name:'Applicants',exact:true}).click();await team.getByRole('heading',{name:'Choose a job',exact:true}).waitFor();
+ await nav.getByRole('button',{name:'Applicants',exact:true}).click();await team.getByRole('heading',{name:'Applicants',exact:true}).waitFor();
  const chosenJob=[engineer,creative].find(job=>job.id===detail.jobId);assert.ok(chosenJob);
- await team.getByRole('link',{name:chosenJob.title,exact:true}).click();await team.getByRole('heading',{name:chosenJob.title,exact:true}).waitFor();
+ await team.getByLabel('Role or posting',{exact:true}).selectOption('job:'+chosenJob.id);await team.getByRole('heading',{name:chosenJob.title,exact:true}).waitFor();
  const jobApplicationsUrl=team.url();
  // Real browser exports retain answers and original files, with job scope made explicit.
- await team.getByText('Download applications',{exact:true}).click();
- await team.getByLabel('Download scope',{exact:true}).selectOption('all');
+ await team.getByLabel('Application options',{exact:true}).click();
  const csvResponse=await fetch(origin+'/api/hub/applications-export?format=csv&jobId='+chosenJob.id,{headers:{Cookie:ownerCookie}});assert.equal(csvResponse.status,200);const csv=await csvResponse.text();assert.ok(csv.includes(detail.email));assert.ok(csv.includes(detail.name));
- const [zipDownload]=await Promise.all([team.waitForEvent('download'),team.getByRole('button',{name:'Download applications (ZIP)',exact:true}).click()]);
+ const [zipDownload]=await Promise.all([team.waitForEvent('download'),team.getByRole('button',{name:/^Download matching ZIP/}).click()]);
  assert.match(zipDownload.suggestedFilename(),/\.zip$/);const zip=readFileSync(await zipDownload.path());assert.equal(zip.subarray(0,2).toString(),'PK');assert.ok(zip.includes(Buffer.from('isolated-resume.pdf')));
  await team.getByRole('link',{name:detail.name,exact:true}).click();await team.getByRole('heading',{name:detail.name,exact:true}).waitFor();
  assert.equal(new URL(team.url()).searchParams.get('application'),firstId);
@@ -171,7 +170,7 @@ try{
  const rubric={name:'Synthetic reusable rubric',criteria:[{label:'Implementation evidence',weight:1,anchors:['1','2','3','4','5']},{label:'Communication evidence',weight:1,anchors:['1','2','3','4','5']}]};
  catalog=await api('/api/scorecards','PATCH',{action:'save',expectedRevision:catalog.revision,rubric});const template=catalog.templates[0];
  catalog=await api('/api/scorecards','PATCH',{action:'bind',expectedRevision:catalog.revision,jobId:another.jobId,templateId:template.id,version:template.version});
- await team.goto(origin+'/team?application='+another.id);await team.getByRole('tab',{name:'AI review & notes',exact:true}).click();await team.getByText('Optional: human grades and scorecards',{exact:true}).click();await team.getByRole('heading',{name:'Reusable scorecard review',exact:true}).waitFor();
+ await team.goto(origin+'/team?application='+another.id);await team.getByRole('tab',{name:'Interviews & notes',exact:true}).click();await team.getByText('Optional: human grades and scorecards',{exact:true}).click();await team.getByRole('heading',{name:'Reusable scorecard review',exact:true}).waitFor();
  await team.getByLabel('Implementation evidence: score',{exact:true}).selectOption('3');await team.getByLabel('Implementation evidence: supporting evidence',{exact:true}).fill('Synthetic sample includes a working API.');
  await team.getByLabel('Communication evidence: score',{exact:true}).selectOption('4');await team.getByLabel('Communication evidence: supporting evidence',{exact:true}).fill('Synthetic explanation identifies constraints.');
  await team.getByRole('button',{name:'Save reusable scorecard',exact:true}).click();

@@ -37,7 +37,7 @@ test('complete interview handoff defaults to readable evidence without form cont
  const html=renderToStaticMarkup(createElement(HandoffSummary,{review,edit:()=>undefined}));
  assert.match(html,/Move forward/);assert.match(html,/Edit handoff/);assert.match(html,/Open call recording/);assert.match(html,/Concise interview summary/);assert.match(html,/Two weeks/);
  assert.doesNotMatch(html,/<(?:input|textarea|select|form)\b/);assert.doesNotMatch(html,/<details[^>]*\bopen(?:\s|=|>)/);
- assert.ok(html.indexOf('Detailed interview notes')>html.indexOf('<details'));assert.ok(html.indexOf('Verify incident ownership')>html.indexOf('<details'));
+ assert.ok(html.indexOf('Detailed interview notes')>html.indexOf('<details'));assert.ok(html.indexOf('Verify incident ownership')<html.indexOf('<details'));
 });
 test('incomplete interview handoff names missing evidence and offers completion without mounting seven inputs',()=>{
  const review:InterviewHandoffReview={version:0,recommendation:'',notes:'',summary:'',recordingUrl:'',salaryExpectation:'',availability:'',concerns:'',readiness:{ready:false,missing:['Call recording','Interview notes']},canApprove:false};

@@ -1,4 +1,6 @@
 "use client";
+import { countryOptions } from "@/lib/countries";
+import { matchesResidence, countrySummary, postingLocationCountries } from "@/lib/hiring/posting-countries";
 import { MobileApply } from "./mobile-apply";
 import { SafeDescription } from "./safe-description";
 import { useCallback, useEffect, useState } from "react";
@@ -73,11 +75,12 @@ export function CareersHome() {
   const { data, loading, error, reload } =
     useResource<JobsResponse>("/api/jobs");
   const [department, setDepartment] = useState("all"),
-    [query, setQuery] = useState("");
+    [query, setQuery] = useState(""),
+    [country, setCountry] = useState("");
   const jobs = data?.jobs || [];
   const filtered = jobs.filter(
     (job) =>
-      (department === "all" || job.department === department) &&
+      (department === "all" || job.department === department) && matchesResidence(job,country) &&
       `${job.title} ${job.department}`
         .toLowerCase()
         .includes(query.toLowerCase()),
@@ -150,13 +153,13 @@ export function CareersHome() {
               <p className="eyebrow dark">FIND YOUR NEXT OPPORTUNITY</p>
               <h2 id="positions-title">A place for your best work.</h2>
             </div>
-            <span className="count-label">
+            <span className="count-label" aria-live="polite">
               {loading
                 ? "Loading roles…"
-                : `${jobs.length} ${jobs.length === 1 ? "role" : "roles"}`}
+                : `${filtered.length} ${filtered.length === 1 ? "role" : "roles"}`}
             </span>
           </div>
-          <div className="filter-bar">
+          <div className="filter-bar career-directory-filters">
             <Select value={department} onValueChange={setDepartment}>
               <SelectTrigger
                 className="filter-select"
@@ -173,6 +176,13 @@ export function CareersHome() {
                 ))}
               </SelectContent>
             </Select>
+            <label className="country-directory-filter"><span>Where do you live?</span>
+              <select value={country} onChange={event=>setCountry(event.target.value)}>
+                <option value="">All countries</option>
+                {/* Browser ICU labels can differ from the server. Populate after the initial jobs request. */}
+                {data && countryOptions.map(option=><option key={option.value} value={option.value}>{option.label}</option>)}
+              </select>
+            </label>
             <label className="job-search">
               <Search size={18} aria-hidden="true" />
               <span className="sr-only">Search opportunities</span>
@@ -229,8 +239,9 @@ export function CareersHome() {
                   <p>
                     {jobs.length === 0
                       ? "Check back for future opportunities."
-                      : "Try another search or department."}
+                      : "Try another search, department, or country."}
                   </p>
+                  {jobs.length > 0 && <button type="button" className="button outline" onClick={()=>{setCountry("");setDepartment("all");setQuery("");}}>Clear filters</button>}
                 </div>
               )}
             </div>
@@ -304,6 +315,11 @@ function JobRow({
   index: number;
   enabled: boolean;
 }) {
+  const advertised = postingLocationCountries(job.location);
+  const explicit = job.eligibleCountries;
+  const eligibility = Array.isArray(explicit) && (!Array.isArray(advertised) ||
+    advertised.length !== explicit.length || !advertised.every(code=>explicit.includes(code)))
+    ? countrySummary(explicit) : "";
   const creative = (job.department || "").toLowerCase().includes("creative");
   return (
     <article className="job-row">
@@ -323,7 +339,7 @@ function JobRow({
         </h3>
         <p>
           <MapPin size={14} aria-hidden="true" />
-          {job.location || "International applicants"}
+          {job.location || "Location unspecified"}{eligibility && <span> · Eligible: {eligibility}</span>}
           {job.employmentType && (
             <>
               <span className="metadata-divider" />

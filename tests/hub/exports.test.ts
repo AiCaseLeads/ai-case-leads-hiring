@@ -11,12 +11,13 @@ import {readablePdf} from '../pdf/readable';
 test('CSV escapes formula cells and ZIP filenames cannot traverse directories',()=>{
  assert.equal(csvCell(' =HYPERLINK("x")'),'"\' =HYPERLINK(""x"")"');assert.equal(csvCell('a,b\nc'),'"a,b\nc"');assert.equal(safeFilename('../../résumé.pdf'),'__.._résumé.pdf');
 });
-test('download requires one job, preserves answers and rejects cross-job selected IDs',async()=>{
+test('download supports the cross-job queue, preserves answers and restricts explicit posting scopes',async()=>{
  const {store,database}=createStore();try{
  const job=await store.saveJob(jobInput()),other=await store.saveJob(jobInput());
  const a=await store.acceptApplication(applicationInput(job.id)),b=await store.acceptApplication(applicationInput(other.id));
  const request=(query:string)=>new Request('https://jobs.example.invalid/api/hub/applications-export?format=csv'+query);
  await assert.rejects(downloadApplications(request(''),store,{}),{code:'export_job_required'});
+ assert.equal((await downloadApplications(request('&ids='+a.id+','+b.id),store,{})).headers.get('X-Application-Count'),'2');
  await assert.rejects(downloadApplications(request('&ids='+b.id),store,{jobId:job.id}),{code:'export_selection_changed'});
  const response=await downloadApplications(request('&ids='+a.id),store,{jobId:job.id});
  assert.equal(response.headers.get('X-Application-Count'),'1');assert.equal(response.headers.get('Cache-Control'),'private, no-store');

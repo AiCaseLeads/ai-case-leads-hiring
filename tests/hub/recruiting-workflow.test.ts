@@ -99,3 +99,27 @@ test('MeetGeek asynchronous connection failures use the hub JSON error boundary'
  const body=await response.json() as {error:{code:string;message:string}};assert.equal(body.error.code,'meetgeek_not_connected');assert.match(body.error.message,/Connect MeetGeek/);
  }finally{hooks.deregister();f.database.close();}
 });
+
+test('returning a handoff keeps the internal question, routes work to the submitting recruiter and requires an updated handoff', async t => {
+ const {store,database,app}=await fixture();
+ t.after(()=>database.close());
+ await store.stmt("INSERT OR REPLACE INTO hub_members(id,email,role,active,created_at,updated_at) VALUES(?,?,'recruiter',1,0,0)", RECRUITER.userId,RECRUITER.email).run();
+ await saveRecruiterReview(store,app.id,{...complete,expectedVersion:0},RECRUITER);
+ await currentAction(store,app.id,{action:'stage',stage:'Awaiting Founder Review'},RECRUITER);
+ const question='Which campaign did they personally manage?';
+ await assert.rejects(currentAction(store,app.id,{action:'returnHandoff',reason:question},RECRUITER),{code:'hiring_approval_required'});
+ await assert.rejects(currentAction(store,app.id,{action:'returnHandoff',reason:' '},MANAGER),{code:'question_required'});
+ const mailBefore=(await store.tasks()).filter(task=>task.kind==='gmail').length;
+ await currentAction(store,app.id,{action:'returnHandoff',reason:question},MANAGER);
+ assert.equal((await store.applicationRow(app.id)).assignee,RECRUITER.email);
+ assert.equal((await workflowOverview(store,RECRUITER)).counts.returned,1);
+ const received=await getRecruiterReview(store,app.id,RECRUITER);
+ assert.equal(received.returned?.question,question);
+ assert.equal(received.readiness.ready,false);
+ assert.equal((await store.tasks()).filter(task=>task.kind==='gmail').length,mailBefore);
+ await assert.rejects(currentAction(store,app.id,{action:'stage',stage:'Awaiting Founder Review'},RECRUITER),{code:'interview_handoff_incomplete'});
+ await saveRecruiterReview(store,app.id,{...complete,notes:'They owned lead generation for the entire region.',expectedVersion:1},RECRUITER);
+ await currentAction(store,app.id,{action:'stage',stage:'Awaiting Founder Review'},RECRUITER);
+ assert.equal((await getRecruiterReview(store,app.id)).returned,null);
+ assert.equal((await workflowOverview(store,RECRUITER)).counts.returned,0);
+});

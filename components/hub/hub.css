@@ -2038,6 +2038,42 @@ body:has(.hiring-hub .hub-draft-overlay) { overflow: hidden; }
   .booking-mark { flex-basis: 36px; height: 36px; }
 }
 
+.work-queue-links {display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,12rem),1fr));gap:.65rem;margin:0 0 1rem}
+.work-queue-links a {display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:.25rem .6rem;border:1px solid var(--hub-border,#cbded8);border-radius:.5rem;padding:.7rem .85rem;background:white;color:#183b3c;text-decoration:none}
+.work-queue-links a:hover,.work-queue-links a:focus-visible {background:#eff7f3;border-color:#377963}
+.work-queue-links span {grid-column:1/-1;font-size:.86rem;font-weight:600}
+.work-queue-links strong {font-size:1.32rem;line-height:1.2}
+.hub-handoff-question {overflow-wrap:anywhere;border-inline-start:3px solid #97bba9;padding-inline-start:.75rem;white-space:pre-line}
+.hub-return-question label {display:grid;gap:.4rem;font-weight:600}
+.hub-return-question textarea {width:100%;max-width:100%;font:inherit}
+.hub-return-question .hub-button-row {margin-top:.75rem}
+@media(max-width:600px){.work-queue-links{grid-template-columns:repeat(2,minmax(0,1fr))}.work-queue-links a{padding:.65rem}.work-queue-links span{font-size:.8rem}}
+
+/* Applicant collections */
+.hub-collections{min-width:0;margin:.5rem 0}
+.collection-toolbar,.collection-controls,.collection-heading,.collection-actions{display:flex;align-items:center;flex-wrap:wrap;gap:.4rem .85rem}
+.collection-heading{justify-content:space-between}
+.collection-heading h3,.collection-cards h4{margin:0}
+.collection-toolbar button,.collection-actions button{display:inline-flex;align-items:center;gap:.35rem}
+.collection-panel,.hub-collection-compare{background:var(--hub-surface,#fff);border:1px solid #d6e3df;border-radius:8px;padding:1rem;margin:.5rem 0}
+.collection-panel p,.hub-collection-compare p{margin:.35rem 0 .65rem}
+.collection-controls{align-items:flex-end}
+.collection-controls label,.collection-panel>label{display:grid;gap:.2rem;font-size:.82rem;font-weight:600;min-width:0;max-width:100%}
+.collection-controls :is(input,select),.collection-panel>label input{box-sizing:border-box;max-width:100%;min-width:0;border:1px solid #b9ccca;border-radius:5px;font:inherit;padding:.45rem .6rem;color:inherit;background:white}
+.collection-controls label{flex:0 1 18rem}
+.collection-actions{margin-top:.55rem}
+.collection-current{overflow-wrap:anywhere;font-size:.9rem}
+.collection-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(13rem,100%),1fr));gap:.75rem;margin-top:.5rem}
+.collection-cards article{min-width:0;overflow-wrap:anywhere;border:1px solid #d6e3df;border-radius:5px;padding:.75rem}
+.collection-cards dl{margin:0}
+.collection-cards dt{font-weight:600;font-size:.8rem}
+.collection-cards dd{margin:0 0 .5rem;white-space:pre-line}
+@media(max-width:40rem){.collection-controls{align-items:stretch}.collection-controls label{flex-basis:100%}.collection-cards{grid-template-columns:1fr}.collection-toolbar{gap:.25rem .6rem}.collection-panel,.hub-collection-compare{padding:.7rem}.collection-actions button,.collection-toolbar button{min-height:38px}}
+.collection-review-row{display:flex;align-items:baseline;justify-content:space-between;gap:.5rem 1rem;flex-wrap:wrap;background:transparent;color:inherit;font:inherit;cursor:pointer;width:100%;padding:.7rem 0;border:0;border-bottom:1px solid #d6e3df;text-align:left;overflow-wrap:anywhere}
+.collection-feedback{white-space:pre-wrap;overflow-wrap:anywhere}
+.hub-review-inbox>.hub-text-button{font-weight:650}
+.hub-review-inbox>.hub-text-button[aria-expanded="true"]{margin-bottom:.55rem}
+.hub-review-inbox textarea{width:100%;box-sizing:border-box;display:block;margin:.25rem 0 .5rem}
 .response-check-panel,.response-check-app,.response-check-answer { border-block-start:1px solid var(--hub-line,#dce4e1); padding-block:.65rem; min-width:0; }
 .response-check-panel > summary,.response-check-app > summary { cursor:pointer; font-weight:600; }
 .response-check-heading,.response-check-pages,.response-check-summary { display:flex; align-items:center; flex-wrap:wrap; gap:.6rem 1rem; }

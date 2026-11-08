@@ -91,6 +91,7 @@ export const actionInput = z
     internalNote: z.string().trim().max(20000).optional(),
     interviewerEmail: z.string().trim().email().transform(value=>value.toLowerCase()).optional(),
     action: z.enum([
+      "returnHandoff",
       "stage",
       "note",
       "assign",

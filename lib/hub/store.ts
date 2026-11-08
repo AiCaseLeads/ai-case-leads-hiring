@@ -1,10 +1,13 @@
+import { postingLocationCountries } from "../hiring/posting-countries";
+import { jobGroupPostingIdsSql } from "./job-groups";
+import { countryCodes, countryOptions, residencePath } from "../countries";
 import { parseResponseEntry } from "../hiring/response-entry";
 import { bookedReminderTimes, bookingFollowupDueAt, hasApprovedBookingEnvelope, currentBookedReminderSql, interviewRemindersEnabledSql, viableBookingInvitationSql } from './interview-reminders';
 import { applicationInterviewProgressSql, interviewProgressForRowSql, applicantInterviewFilter, type InterviewFilter, type InterviewProgress } from './interview-progress';
 import {draftKey,verifyBookingDraft} from './interview-booking-draft';
 import {isHistoricalInterview} from './interview-history';
 import {interviewMessage} from './interview-template';
-import {assertHiringTransition,workflowNotificationStatements} from "./recruiting-workflow";
+import {assertHiringTransition,prepareHandoffReturn,workflowNotificationStatements} from "./recruiting-workflow";
 import {notesReviews} from "./note-review";
 import {candidateMail} from "../job-team/service";
 import {isInterviewInvitationTask} from "../google/mail-setup";
@@ -55,10 +58,13 @@ import { DEFAULT_REJECTION } from "../hiring/email-templates";
 export { DEFAULT_REJECTION } from "../hiring/email-templates";
 
 type Bind = string | number | null;
-export const APPLICATION_SORTS = ["newest","oldest","screening_newest","screening_asc","screening_desc","owner_asc","owner_desc","ai_match_asc","ai_match_desc","grade_desc"] as const;
+export const APPLICATION_SORTS = ["newest","oldest","screening_newest","screening_asc","screening_desc","owner_asc","owner_desc","ai_match_asc","ai_match_desc","grade_desc","list_order"] as const;
 export type ApplicationFilters = {
+  country?:string;
+  listId?:string;listViewer?:string;
   interviewProgress?:InterviewFilter;
-  q?:string;jobId?:string;stage?:string;excludeStage?:string;active?:boolean;assignee?:string;qualification?:"pass"|"review"|"fail";
+  handoffReturned?:boolean;
+  q?:string;jobId?:string;jobGroupId?:string;stage?:string;excludeStage?:string;active?:boolean;assignee?:string;qualification?:"pass"|"review"|"fail";
   appliedFrom?:string;appliedTo?:string;timeZone?:string;
   top?:10;grade?:"reviewed"|"ungraded";sort?:typeof APPLICATION_SORTS[number];duplicate?:boolean;page?:number;trash?:boolean;
 };
@@ -326,12 +332,17 @@ export class HubStore {
       )
     ).map((row) => {
       const value = job(row);
+      const residenceRules = value.rules.filter(rule=>rule.enabled && rule.fieldPath===residencePath);
+      const eligibleCountries = residenceRules.length
+        ? countryCodes.filter(code=>evaluateRequirements(residenceRules,[{path:residencePath,value:code}],value.fields).qualification === "pass")
+        : postingLocationCountries(value.location);
       return {
         id: value.id,
         slug: value.slug,
         title: value.title,
         department: value.department,
         descriptionHtml: value.descriptionHtml,
+        eligibleCountries,
         ...(value.location ? { location: value.location } : {}),
       };
     });
@@ -915,14 +926,42 @@ export class HubStore {
     if ((filters.grade || (filters.sort && ["grade_desc","ai_match_desc","ai_match_asc"].includes(filters.sort))) && !filters.jobId)
       throw new HiringError("job_required_for_grading",422,"Choose one role before filtering or sorting reviewer grades.");
     const where:string[] = [filters.trash?`NOT (${activeApplicationsSql('a')})`:activeApplicationsSql('a')], values:Bind[] = [];
+    if (filters.jobGroupId) {
+      where.push(`a.job_id IN (${jobGroupPostingIdsSql})`);
+      values.push(filters.jobGroupId);
+    }
+    if (filters.sort === "list_order" && !filters.listId)
+      throw new HiringError("list_required",422,"Open a candidate list to use list order.");
     if(filters.q) {where.push("(instr(lower(a.name),lower(?))>0 OR instr(lower(a.email),lower(?))>0)");values.push(filters.q,filters.q);}
     for(const [key,column] of [["jobId","job_id"],["stage","stage"],["assignee","assignee"],["qualification","qualification"]] as const)
       if(filters[key]) {if(key==="assignee"&&filters[key]==="unassigned")where.push("(a.assignee IS NULL OR trim(a.assignee)='')");else {where.push(`a.${column}=?`);values.push(filters[key]!);}}
+    if (filters.country) {
+      const codes = filters.country.split(",");
+      const names = codes.map(code => countryOptions.find(option => option.value === code)?.label);
+      if (!codes.length || codes.length > 30 || names.some(name => !name))
+        throw new HiringError("invalid_country", 422, "Choose up to 30 countries of residence.");
+      const accepted = [...codes, ...names as string[]].map(value => value.toLowerCase());
+      // Older imports can contain non-array JSON or mixed primitive/object entries.
+      const entries = (column: "answers_json" | "fields_json") =>
+        `json_each(CASE WHEN json_valid(a.${column}) THEN CASE WHEN json_type(a.${column})='array' THEN a.${column} END END)`;
+      const answer = "CASE WHEN answer.type='object' THEN answer.value ELSE '{}' END";
+      const field = "CASE WHEN field.type='object' THEN field.value ELSE '{}' END";
+      where.push(`EXISTS (SELECT 1 FROM ${entries("answers_json")} answer
+        WHERE lower(trim(json_extract(${answer},'$.value'))) IN (${accepted.map(() => "?").join(",")})
+          AND (json_extract(${answer},'$.path') IN (?, 'country', 'residence_country', 'current_country')
+            OR EXISTS (SELECT 1 FROM ${entries("fields_json")} field
+              WHERE json_extract(${field},'$.path')=json_extract(${answer},'$.path')
+              AND json_extract(${field},'$.type') IN ('String','ValueSelect')
+              AND lower(rtrim(trim(json_extract(${field},'$.title')),'?')) IN
+                ('country','country of residence','current country','what country do you live in','what country do you currently live in'))))`);
+      values.push(...accepted, residencePath);
+    }
     if(filters.interviewProgress) {
       const predicate = applicantInterviewFilter(filters.interviewProgress);
       where.push(predicate.sql);
       values.push(...predicate.values);
     }
+    if(filters.handoffReturned) where.push("a.stage='Interview' AND EXISTS (SELECT 1 FROM hub_settings WHERE key='handoff_return:'||a.id)");
     if(filters.excludeStage){where.push("a.stage<>?");values.push(filters.excludeStage);}
     if(filters.active&&!filters.stage)where.push("a.stage NOT IN ('Rejected','Withdrawn','Hired')");
     const dates=applicationDateBounds(filters);
@@ -932,6 +971,9 @@ export class HubStore {
     const graded = !!filters.grade || filters.sort === "grade_desc";
     const cte = graded ? "WITH latest_scores AS (SELECT c.application_id,c.score,row_number() OVER (PARTITION BY c.application_id,lower(trim(c.actor)) ORDER BY c.created_at DESC,c.id DESC) AS n FROM hub_scorecards c JOIN hub_applications j ON j.id=c.application_id WHERE j.job_id=? AND c.score BETWEEN 1 AND 5 AND trim(c.actor)<>''), grades AS (SELECT application_id,AVG(score) AS average_score FROM latest_scores WHERE n=1 GROUP BY application_id) " : "";
     let join = graded ? " LEFT JOIN grades g ON g.application_id=a.id" : "";
+    if (filters.listId) {
+      join += " JOIN hub_collection_members list_entry ON list_entry.application_id=a.id AND list_entry.collection_id=? JOIN hub_collections list ON list.id=list_entry.collection_id AND list.kind='list' AND (list.visibility='team' OR list.owner=?)";
+    }
     if(filters.grade) where.push(filters.grade === "reviewed" ? "g.average_score IS NOT NULL" : "g.average_score IS NULL");
     if(filters.top) {
       if(!filters.jobId || filters.sort !== "ai_match_desc") throw new HiringError("invalid_top",422,"Choose a job and AI match order for the top 10.");
@@ -950,7 +992,8 @@ export class HubStore {
     else if (filters.sort === "oldest") order = "a.created_at ASC,a.id";
     else if (filters.sort === "screening_newest" || filters.sort === "screening_asc" || filters.sort === "screening_desc") order = `${screening} ${filters.sort === "screening_desc" ? "DESC" : "ASC"},${newest}`;
     else if (filters.sort === "owner_asc" || filters.sort === "owner_desc") order = `CASE WHEN a.assignee IS NULL OR trim(a.assignee)='' THEN 1 ELSE 0 END,lower(trim(a.assignee)) ${filters.sort === "owner_desc" ? "DESC" : "ASC"},${newest}`;
-    return {cte,join,clause,order,values:graded?[filters.jobId!,...values]:values};
+    if (filters.sort === "list_order") order="list_entry.position ASC,a.id";
+    return {cte,join,clause,order,values:[...(graded?[filters.jobId!]:[]),...(filters.listId?[filters.listId,filters.listViewer || ""]:[]),...values]};
   }
   private async summaries(rows:ApplicationRow[],viewerEmail?:string):Promise<ApplicationSummary[]> {
     const cards = new Map<string,{id:string;actor:string;score:number;criteria:string;text:string;createdAt:number}[]>();
@@ -978,11 +1021,22 @@ export class HubStore {
     const noteStates=viewerEmail?await notesReviews(this,rows.map(row=>row.id),viewerEmail):new Map();
     return rows.map((row)=>({...summary(row),...(viewerEmail?{notesReview:noteStates.get(row.id)}:{}),...(viewerEmail?{viewedAt:views.get(row.id)??null}:{}),grade:gradeForScorecards(cards.get(row.id)||[]),aiMatch:matches.get(row.id)}));
   }
+  async selectionSnapshot(filters: ApplicationFilters) {
+    const selected = this.applicationSelection(filters);
+    const rows = await this.rows<{id:string;revision:number;stage:string}>(`${selected.cte}SELECT a.id,a.revision,a.stage FROM hub_applications a${selected.join}${selected.clause} ORDER BY ${selected.order} LIMIT ${filters.top ? 10 : 10001}`, ...selected.values);
+    if (rows.length>10000) throw new HiringError("selection_too_large",422,"Narrow the filters to at most 10,000 applications.");
+    return {items:rows,total:rows.length};
+  }
   async applications(filters:ApplicationFilters={},viewerEmail?:string) {
     const selected=this.applicationSelection(filters), page=Math.max(1,Math.min(100000,filters.page||1)),pageSize=30;
     const count=await this.stmt(`${selected.cte}SELECT COUNT(*) AS total FROM hub_applications a${selected.join}${selected.clause}`,...selected.values).first<{total:number}>();
     const rows=await this.rows<ApplicationRow>(`${selected.cte}SELECT ${SUMMARY_COLUMNS.split(",").map((column)=>`a.${column}`).join(",")},${applicationInterviewProgressSql} AS interview_progress,(SELECT COUNT(*) FROM hub_applications d WHERE d.email=a.email) AS duplicate_application_count FROM hub_applications a${selected.join}${selected.clause} ORDER BY ${selected.order} LIMIT ? OFFSET ?`,...selected.values,pageSize,(page-1)*pageSize);
-    return {items:(await this.summaries(filters.top ? rows.slice(0,Math.max(0,10-(page-1)*pageSize)) : rows,viewerEmail)).map(item=>({...item,trashed:!!filters.trash})),total:filters.top?Math.min(10,count?.total||0):count?.total||0,page,pageSize};
+    const scope = this.applicationSelection({
+      jobId: filters.jobId, jobGroupId: filters.jobGroupId, listId: filters.listId,
+      listViewer: filters.listViewer, trash: filters.trash,
+    });
+    const scopeCount = await this.stmt(`SELECT COUNT(*) AS n FROM hub_applications a${scope.join}${scope.clause}`,...scope.values).first<{n:number}>();
+    return {scopeTotal:scopeCount?.n ?? 0,items:(await this.summaries(filters.top ? rows.slice(0,Math.max(0,10-(page-1)*pageSize)) : rows,viewerEmail)).map(item=>({...item,trashed:!!filters.trash})),total:filters.top?Math.min(10,count?.total||0):count?.total||0,page,pageSize};
   }
   async exportApplications(filters:ApplicationFilters={}) {
     const selected=this.applicationSelection(filters),limit=filters.top?10:10000;
@@ -995,7 +1049,8 @@ export class HubStore {
     return {items:await this.rows<{jobId:string;total:number;needsReview:number;aiReady:number}>(`SELECT j.id AS jobId,COUNT(a.id) AS total,COALESCE(SUM(a.stage='Application Review'),0) AS needsReview,COALESCE(SUM(m.status='ready' AND m.score IS NOT NULL),0) AS aiReady FROM hub_jobs j LEFT JOIN hub_applications a ON a.job_id=j.id AND ${activeApplicationsSql('a')} LEFT JOIN hub_ai_matches m ON m.application_id=a.id AND m.form_version=j.form_version AND j.ai_match_enabled=1 GROUP BY j.id`)};
   }
   async exportIds(filters:ApplicationFilters,ids?:string[]) {
-    if(!filters.jobId) throw new HiringError("export_job_required",422,"Choose a job before downloading applications.");
+    if (!filters.jobId && !filters.jobGroupId && !filters.listId && !ids?.length)
+      throw new HiringError("export_job_required",422,"Select the matching applications before downloading across all roles.");
     const selected=this.applicationSelection(filters);
     // Snapshot IDs, not PDFs or entire application histories. A download never silently truncates.
     let rows=await this.rows<{id:string}>(`${selected.cte}SELECT a.id FROM hub_applications a${selected.join}${selected.clause} ORDER BY ${selected.order} LIMIT ${filters.top?10:10001}`, ...selected.values);
@@ -1471,6 +1526,19 @@ export class HubStore {
     const statements: D1PreparedStatement[] = [];
     let text = "";
     switch (input.action) {
+      case "returnHandoff": {
+        if (app.stage !== "Awaiting Founder Review")
+          throw new HiringError("handoff_stage_changed", 409, "The application has already left founder review.");
+        const returned = await prepareHandoffReturn(this, app.id, app.assignee, input.reason, member);
+        stage = "Interview";
+        assignee = returned.assignee;
+        text = "Returned to recruiter for more information";
+        statements.push(
+          this.settingStatement("handoff_return:" + app.id, returned.request),
+          this.historyStatement(crypto.randomUUID(), app.id, "note", "More information requested: " + returned.request.question, member.email, now),
+        );
+        break;
+      }
       case "stage":
         if (!input.stage)
           throw new HiringError(
@@ -1829,6 +1897,8 @@ export class HubStore {
         );
       }
     }
+    if (stage !== app.stage && input.action !== "returnHandoff")
+      statements.push(this.stmt("DELETE FROM hub_settings WHERE key=?", "handoff_return:" + app.id));
     const type = stage !== app.stage ? "stage" : input.action;
     return [
       this.mutationStatement(app, now, stage, assignee, reason),
@@ -1904,6 +1974,7 @@ export class HubStore {
     return !!await this.stmt(`SELECT 1 AS eligible FROM hub_applications a WHERE a.id=? AND ${this.bulkRejectionEligibilitySql()}`,id).first();
   }
   async previewBulkRejection(filters:ApplicationFilters,ids:string[]|undefined,reason:string,member:HubMember){
+    if (!filters.jobId && !filters.jobGroupId && !filters.listId && !ids?.length) throw new HiringError("bulk_selection_required",422,"Select the matching applications before previewing bulk rejections across roles.");
     let matching:string[];
     try{matching=await this.exportIds(filters,ids);}catch(error){
       if(error instanceof HiringError){
@@ -1913,19 +1984,20 @@ export class HubStore {
       throw error;
     }
     const entries:{id:string;revision:number}[]=[];
+    const recipients = new Set<string>();
     // Bounded set queries avoid two sequential database reads per candidate at 10k.
     for(let offset=0;offset<matching.length;offset+=100){
       const ids=matching.slice(offset,offset+100);
-      const eligible=await this.rows<{id:string;revision:number}>(`SELECT a.id,a.revision FROM hub_applications a WHERE a.id IN (${ids.map(()=>"?").join(",")}) AND ${this.bulkRejectionEligibilitySql()}`,...ids);
+      const eligible=await this.rows<{id:string;revision:number;email:string}>(`SELECT a.id,a.revision,a.email FROM hub_applications a WHERE a.id IN (${ids.map(()=>"?").join(",")}) AND ${this.bulkRejectionEligibilitySql()}`,...ids);
       const byId=new Map(eligible.map(row=>[row.id,row]));
-      for(const id of ids){const row=byId.get(id);if(row)entries.push(row);}
+      for(const id of ids){const row=byId.get(id);if(row){entries.push({id:row.id,revision:row.revision});recipients.add(row.email.trim().toLowerCase());}}
     }
     // Retain completed/abandoned snapshots for seven days so uncertain clients can
     // replay safely, then prune a bounded batch without touching active plans.
     await this.stmt(`DELETE FROM hub_settings WHERE key IN (SELECT key FROM hub_settings WHERE key LIKE 'bulk_rejection:%' AND updated_at<? AND json_valid(value) AND json_extract(value,'$.expiresAt')<? ORDER BY updated_at LIMIT 100)`,Date.now()-7*86400_000,Date.now()).run();
     const planId=crypto.randomUUID(),expiresAt=Date.now()+30*60_000;
     await this.setSetting('bulk_rejection:'+planId,{actor:member.email.toLowerCase(),entries,reason,expiresAt,cursor:0,updated:0,skipped:0});
-    return {planId,count:entries.length,excluded:matching.length-entries.length,expiresAt};
+    return {planId,count:entries.length,recipients:recipients.size,excluded:matching.length-entries.length,expiresAt};
   }
   async executeBulkRejection(planId:string,member:HubMember){
     type Plan={actor:string;entries:{id:string;revision:number}[];reason:string;expiresAt:number;cursor:number;updated:number;skipped:number};

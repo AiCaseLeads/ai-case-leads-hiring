@@ -1,0 +1,20 @@
+.role-directory {display:grid;gap:.65rem;min-width:0}
+.role-directory-tools,.role-editor-actions,.role-suggestion {display:flex;align-items:end;flex-wrap:wrap;gap:.55rem}
+.role-directory-tools .hub-field{min-width:0;flex:1 1 8rem}
+.role-directory-tools .hub-field:first-child{flex:2 1 12rem}
+.role-directory-tools select,.role-directory-tools input{min-width:0;max-width:100%;width:100%}
+.role-directory-tools>button{margin-left:auto}
+.role-directory .role-editor {padding:1rem;border:1px solid #c9dad4;border-radius:.5rem;overflow-wrap:anywhere}
+.role-editor form {display:grid;gap:.55rem}
+.role-editor ul{list-style:none;margin:0;padding:0}
+.role-suggestion {align-items:center;justify-content:space-between;border-bottom:1px solid #d7e3e0}
+.role-job-options{max-height:17rem;overflow:auto;border:1px solid #d7e3e0;padding:.5rem;min-width:0}
+.role-job-options label{display:flex;align-items:flex-start;gap:.6rem;padding:.4rem .25rem;line-height:1.3}
+.role-job-options label input{width:18px;height:18px;min-height:0;flex:none;margin:1px 0}
+.role-job-options small{display:block;font-size:.78rem;color:#47645d}
+.role-family{position:relative;border-bottom:1px solid #d7e3e0}
+.role-family>details>summary{cursor:pointer;padding:.95rem 9rem .95rem .8rem;overflow-wrap:anywhere;line-height:1.4}
+.role-family summary span{white-space:nowrap;color:#4b675f;font-size:.82rem}
+.role-family-applicants{position:absolute;right:.8rem;top:.7rem;min-height:32px;display:inline-flex;align-items:center}
+.role-family details[open] .hub-job-row{padding-left:1.4rem;background:#f6f9f8}
+@media(max-width:620px){.role-directory-tools {align-items:stretch;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));align-items:end}.role-directory-tools .hub-field:first-child{grid-column:1/-1}.role-directory-tools>button{margin:0;justify-self:start}.role-family>details>summary{padding:.7rem .55rem;min-height:42px}.role-family-applicants{position:static;margin:.1rem .55rem .4rem;min-height:42px}.role-family details[open] .hub-job-row{padding:.65rem}.role-job-options label{min-height:44px}.role-directory .hub-job-actions{flex-wrap:wrap;min-width:0}}

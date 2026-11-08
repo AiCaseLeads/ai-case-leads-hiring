@@ -65,6 +65,7 @@ test("the response-check image can reopen only the exact next collections migrat
   const prefix=journal.entries.slice(0,15);
   assert.equal(prefix[14].tag,"0015_response_checks");
   const tag="0014_hub_collections";
+  assert.equal(readFileSync(path.join(migrations,tag+".sql"),"utf8"),collectionsSql,"Published collections SQL must match the previous image’s pinned rollback fixture.");
   let db=new SQLiteD1Database(filename);
   try {
     for(const [folder,entries] of [[before,prefix],[next,[...prefix,{idx:15,tag}]]] as const) {

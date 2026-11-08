@@ -88,3 +88,9 @@
  .hiring-hub .hub-applications-table .hub-candidate-row-actions>*{min-height:44px;flex:none}
 }
 @media(min-width:961px) and (max-width:1320px){.hiring-hub .hub-applications-table .hub-optional-applied{display:none}}
+
+@media (min-width:1100px) {
+  .hiring-hub .hub-applicant-profile .hub-profile-topbar { margin-bottom:8px; }
+  .hiring-hub .hub-applicant-profile .hub-profile-header { margin-bottom:8px; padding-bottom:8px; }
+  .hiring-hub .hub-applicant-profile .hub-profile-tabs { margin-top:6px; }
+}

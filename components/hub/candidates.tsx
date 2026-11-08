@@ -1,6 +1,7 @@
 "use client";
 import {isHistoricalInterview} from "../../lib/hub/interview-history";
-import {ApplicantFilterDisclosure} from "./applicant-filter-disclosure";
+import { ApplicantCollections } from "./applicant-collections";
+import { countryOptions } from "../../lib/countries";
 import {interviewCancelOutcome,interviewNavigationOutcome} from "./interview-draft-state";
 import {InterviewComposer,InterviewDiscardConfirmation,type InterviewDraftPayload} from "./interview-composer";
 import { INTERVIEW_VIEW_LABELS } from "../../lib/hub/interview-progress";
@@ -11,7 +12,7 @@ import { ClaimRadar } from "./claim-radar";
 import { NavigationLink, applicantHref } from "./navigation-link";
 import {ShareApplicant} from "./share-applicant";
 import {BulkRejection} from "./bulk-rejection";
-import { WorkflowReview } from "./workflow-review";
+import { WorkflowReview, type InterviewHandoffReview } from "./workflow-review";
 import { RecordingPanel } from "./interview-workspace";
 import { RecruiterNotes } from "./recruiter-notes";
 import { ApplicantMessages } from "./applicant-messages";
@@ -21,7 +22,7 @@ import { JobActionMenu } from "./action-menu";
 import { ApplicantNavigation, ResumePreview, resumeFile } from "./application-review-tools";
 import { requestDraftNavigation } from "./draft-navigation";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { ArrowLeft, CalendarClock, Download, ExternalLink, StickyNote, Settings2, RefreshCw, Trash2, Users } from "lucide-react";
+import { ArrowLeft, CalendarClock, Download, ExternalLink, StickyNote, Settings2, RefreshCw, Trash2, UserCheck } from "lucide-react";
 import {
   hubRequest,
   displayAnswer,
@@ -33,7 +34,7 @@ import { Badge, EmptyState, Feedback, Field, ResourceState } from "./shared";
 import { ReusableScorecard, useScorecardDraft } from "./scorecards";
 import { CandidateEvidence, useEvidenceDraft } from "./ai-review";
 import { MatchScore, JobMatchSetup, CandidateMatch } from "./ai-match";
-import { jobGroup, jobLocation } from "./job-organization";
+import { jobLocation } from "./job-organization";
 import { downloadApplication } from "./export";
 import { sortHubJobs } from "./job-order";
 import {
@@ -74,6 +75,8 @@ function InterviewActionFrame({interview,panelRef,cancel,busy,children}:{intervi
  return <dialog className="hub-interview-dialog" aria-labelledby="hub-invitation-title" ref={el=>{dialog.current=el;panelRef.current=el}} onCancel={event=>{event.preventDefault();if(!busy)cancel()}} onPointerDown={event=>{const box=event.currentTarget.getBoundingClientRect();outsideDown.current=event.target===event.currentTarget&&(event.clientX<box.left||event.clientX>box.right||event.clientY<box.top||event.clientY>box.bottom)}} onClick={event=>{if(busy||!outsideDown.current||event.target!==event.currentTarget)return;outsideDown.current=false;const box=event.currentTarget.getBoundingClientRect();if(event.clientX<box.left||event.clientX>box.right||event.clientY<box.top||event.clientY>box.bottom)cancel()}}>{children}</dialog>;
 }
 function ApplicantActionCard({interview,open,toggle,children}:{interview:boolean;open:boolean;toggle:(open:boolean)=>void;children:React.ReactNode}){return interview?<section className="hub-card hub-candidate-actions">{children}</section>:<details className="hub-card hub-candidate-actions" open={open} onToggle={event=>toggle(event.currentTarget.open)}>{children}</details>;}
+const queueColumns=["screening","match","owner","applied"] as const;
+const columnLabels={screening:"Screening",match:"AI job match",owner:"Owner",applied:"Applied"};
 export function CandidateTable({
   items,
   select,
@@ -85,7 +88,7 @@ export function CandidateTable({
   interview,
   busy = false,
   showRole = true,
-  hrefFor, screeningConfigured, sort, onSort, qualification, assignee, onColumnFilter,
+  hrefFor, screeningConfigured, sort, optionalColumns=queueColumns, roleInIdentity=false, allowAiSort=true, onSort, qualification, assignee, onColumnFilter,
 }: {
   items: ApplicationSummary[];
   select: (id: string) => void;
@@ -99,7 +102,7 @@ export function CandidateTable({
   busy?: boolean;
   showRole?: boolean;
   screeningConfigured?: boolean;
-  sort?: string; onSort?: (value:string)=>void;
+  sort?: string; optionalColumns?:readonly string[]; roleInIdentity?:boolean; allowAiSort?:boolean; onSort?: (value:string)=>void;
   qualification?: string; assignee?: string; onColumnFilter?: (key:string,value:string)=>void;
 }) {
   const [cardLayout,setCardLayout]=useState(false);
@@ -115,12 +118,12 @@ export function CandidateTable({
               </th>
             )}
             <th scope="col" role="columnheader">Candidate</th>
-            {showRole && <th scope="col" role="columnheader">Role</th>}
+            {showRole && !roleInIdentity && <th scope="col" role="columnheader">Role</th>}
             <th scope="col" role="columnheader">Stage</th>
-            <th scope="col" role="columnheader" aria-sort={sort==="screening_asc"?"ascending":sort==="screening_desc"?"descending":"none"}>{onSort && !cardLayout?<button type="button" className="hub-table-sort" onClick={()=>onSort(sort==="screening_asc"?"screening_desc":"screening_asc")}>Screening <span aria-hidden="true">{sort==="screening_asc"?"↓":sort==="screening_desc"?"↑":"↕"}</span></button>:"Screening"}{onColumnFilter && !cardLayout&&<JobActionMenu label="Filter Screening" triggerLabel={qualification?"Filtered":"Filter"}><label className="hub-column-filter">Screening result<select aria-label="Filter screening result" value={qualification||""} onChange={event=>onColumnFilter("qualification",event.target.value)}><option value="">All results</option><option value="pass">Requirements met</option><option value="review">No automatic decision</option><option value="fail">Requirement not met</option></select></label></JobActionMenu>}</th>
-            <th scope="col" role="columnheader" aria-sort={sort==="ai_match_desc"?"descending":sort==="ai_match_asc"?"ascending":"none"}>{onSort && !cardLayout?<button type="button" className="hub-table-sort" onClick={()=>onSort(sort==="ai_match_desc"?"ai_match_asc":"ai_match_desc")}>AI job match <span aria-hidden="true">{sort==="ai_match_desc"?"↓":sort==="ai_match_asc"?"↑":"↕"}</span></button>:"AI job match"}</th>
-            <th scope="col" role="columnheader" className="hub-optional-owner" aria-sort={sort==="owner_asc"?"ascending":sort==="owner_desc"?"descending":"none"}>{onSort && !cardLayout?<button type="button" className="hub-table-sort" onClick={()=>onSort(sort==="owner_asc"?"owner_desc":"owner_asc")}>Owner <span aria-hidden="true">{sort==="owner_asc"?"↓":sort==="owner_desc"?"↑":"↕"}</span></button>:"Owner"}{onColumnFilter && !cardLayout&&<JobActionMenu label="Filter Owner" triggerLabel={assignee?"Filtered":"Filter"}><form className="hub-column-filter" key={assignee||"any"} onSubmit={event=>{event.preventDefault();onColumnFilter("assignee",String(new FormData(event.currentTarget).get("owner")||"").trim());}}><label>Recruiter email<input aria-label="Filter owner email" name="owner" type="email" defaultValue={assignee||""}/></label><button type="submit">Apply owner filter</button><button type="button" onClick={()=>onColumnFilter("assignee","")}>All owners</button></form></JobActionMenu>}</th>
-            <th scope="col" role="columnheader" className="hub-optional-applied" aria-sort={sort==="newest"?"descending":sort==="oldest"?"ascending":"none"}>{onSort && !cardLayout?<button type="button" className="hub-table-sort" onClick={()=>onSort(sort==="newest"?"oldest":"newest")}>Applied <span aria-hidden="true">{sort==="newest"?"↓":sort==="oldest"?"↑":"↕"}</span></button>:"Applied"}</th>
+            {optionalColumns.includes("screening")&&<th scope="col" role="columnheader" aria-sort={sort==="screening_asc"?"ascending":sort==="screening_desc"?"descending":"none"}>{onSort && !cardLayout?<button type="button" className="hub-table-sort" onClick={()=>onSort(sort==="screening_asc"?"screening_desc":"screening_asc")}>Screening <span aria-hidden="true">{sort==="screening_asc"?"↓":sort==="screening_desc"?"↑":"↕"}</span></button>:"Screening"}{onColumnFilter && !cardLayout&&<JobActionMenu label="Filter Screening" triggerLabel={qualification?"Filtered":"Filter"}><label className="hub-column-filter">Screening result<select aria-label="Filter screening result" value={qualification||""} onChange={event=>onColumnFilter("qualification",event.target.value)}><option value="">All results</option><option value="pass">Requirements met</option><option value="review">No automatic decision</option><option value="fail">Requirement not met</option></select></label></JobActionMenu>}</th>}
+            {optionalColumns.includes("match")&&<th scope="col" role="columnheader" aria-sort={sort==="ai_match_desc"?"descending":sort==="ai_match_asc"?"ascending":"none"}>{onSort && allowAiSort && !cardLayout?<button type="button" className="hub-table-sort" onClick={()=>onSort(sort==="ai_match_desc"?"ai_match_asc":"ai_match_desc")}>AI job match <span aria-hidden="true">{sort==="ai_match_desc"?"↓":sort==="ai_match_asc"?"↑":"↕"}</span></button>:"AI job match"}</th>}
+            {optionalColumns.includes("owner")&&<th scope="col" role="columnheader" className="hub-optional-owner" aria-sort={sort==="owner_asc"?"ascending":sort==="owner_desc"?"descending":"none"}>{onSort && !cardLayout?<button type="button" className="hub-table-sort" onClick={()=>onSort(sort==="owner_asc"?"owner_desc":"owner_asc")}>Owner <span aria-hidden="true">{sort==="owner_asc"?"↓":sort==="owner_desc"?"↑":"↕"}</span></button>:"Owner"}{onColumnFilter && !cardLayout&&<JobActionMenu label="Filter Owner" triggerLabel={assignee?"Filtered":"Filter"}><form className="hub-column-filter" key={assignee||"any"} onSubmit={event=>{event.preventDefault();onColumnFilter("assignee",String(new FormData(event.currentTarget).get("owner")||"").trim());}}><label>Recruiter email<input aria-label="Filter owner email" name="owner" type="email" defaultValue={assignee||""}/></label><button type="submit">Apply owner filter</button><button type="button" onClick={()=>onColumnFilter("assignee","")}>All owners</button></form></JobActionMenu>}</th>}
+            {optionalColumns.includes("applied")&&<th scope="col" role="columnheader" className="hub-optional-applied" aria-sort={sort==="newest"?"descending":sort==="oldest"?"ascending":"none"}>{onSort && !cardLayout?<button type="button" className="hub-table-sort" onClick={()=>onSort(sort==="newest"?"oldest":"newest")}>Applied <span aria-hidden="true">{sort==="newest"?"↓":sort==="oldest"?"↑":"↕"}</span></button>:"Applied"}</th>}
             {(shortlist || unshortlist || interview) && <th scope="col" role="columnheader">Next step</th>}
           </tr>
         </thead>
@@ -145,21 +148,22 @@ export function CandidateTable({
                 >
                   {item.name || "Unnamed applicant"}
                 </NavigationLink>
+                {showRole && roleInIdentity && <span className="hub-secondary-line aq-candidate-role">{item.jobTitle}</span>}
                 <span className="hub-secondary-line">{item.email}</span>
                 <span title={item.viewedAt?`Viewed by you ${displayDate(item.viewedAt)}`:"No recorded view by you yet. This does not mean a new application."}><Badge tone={item.viewedAt?"neutral":"success"}>{item.viewedAt?"Viewed":"New to you"}</Badge></span>
                 {item.duplicateEmail && <Badge tone="warning">Shared email · {item.duplicateApplicationCount || 2} applications</Badge>}
               </td>
-              {showRole && <td role="cell" data-label="Role">{item.jobTitle}</td>}
+              {showRole && !roleInIdentity && <td role="cell" data-label="Role">{item.jobTitle}</td>}
               <td role="cell" data-label="Stage">
                 <ApplicantStageBadges application={item}/>
                 {!!item.notesReview?.hasUnread&&<Badge tone="warning">New notes</Badge>}
               </td>
-              <td role="cell" data-label="Screening">
+              {optionalColumns.includes("screening")&&<td role="cell" data-label="Screening">
                 <span title={item.qualification === "review" ? screeningConfigured === false ? "This job has no enabled screening rules. The AI match is shown separately." : "An answer needed by the screening rules is missing or could not be evaluated. Check the application answers. The AI match is shown separately." : undefined}><Badge tone={qualificationTone(item.qualification)}>{qualificationLabel(item.qualification, screeningConfigured)}</Badge></span>
-              </td>
-              <td role="cell" data-label="AI job match"><MatchScore match={item.aiMatch} /></td>
-              <td role="cell" data-label="Owner" className="hub-optional-owner">{item.assignee || "Unassigned"}</td>
-              <td role="cell" data-label="Applied" className="hub-nowrap hub-optional-applied">{displayDate(item.createdAt)}</td>
+              </td>}
+              {optionalColumns.includes("match")&&<td role="cell" data-label="AI job match"><MatchScore match={item.aiMatch} /></td>}
+              {optionalColumns.includes("owner")&&<td role="cell" data-label="Owner" className="hub-optional-owner">{item.assignee || "Unassigned"}</td>}
+              {optionalColumns.includes("applied")&&<td role="cell" data-label="Applied" className="hub-nowrap hub-optional-applied">{displayDate(item.createdAt)}</td>}
               {(shortlist || unshortlist || interview) && <td role="cell" data-label="Next step"><div className="hub-candidate-row-actions">
                 {shortlist && !item.trashed && item.stage === "Application Review" && <button type="button" className="hub-button secondary" disabled={busy} onClick={() => shortlist(item)}>Shortlist<span className="sr-only"> {item.name}</span></button>}
                 {unshortlist && !item.trashed && item.stage === "Screening" && <button type="button" className="hub-button secondary" disabled={busy} onClick={() => unshortlist(item)}>Remove from shortlist<span className="sr-only"> {item.name}</span></button>}
@@ -178,524 +182,238 @@ type CandidatesProps = {
   onSelect?: (id: string, action?: "interview", filter?: string) => void; onFilterChange?: (filter: string, page: number, replace?: boolean) => void;
 };
 
-export function Candidates(props: CandidatesProps) {
-  const [search, setSearch] = useState("");
-  const [status, setStatus] = useState("all");
-  const [downloadBusy, setDownloadBusy] = useState("");
-  const [downloadError, setDownloadError] = useState("");
-  const [downloadNotice, setDownloadNotice] = useState("");
-  async function downloadJob(job: HubJob, format: "csv" | "zip") {
-    setDownloadBusy(job.id); setDownloadError(""); setDownloadNotice("");
-    try {
-      const url = "/api/hub/applications-export?" + new URLSearchParams({jobId:job.id,format});
-      const response = await fetch(url + "&check=1", {credentials:"same-origin",cache:"no-store"});
-      const result = await response.json().catch(() => null) as {error?: {message?: string}} | null;
-      if (!response.ok) throw new Error(result?.error?.message || "Download could not be prepared. Open this job and narrow the filters, then try again.");
-      const link = document.createElement("a"); link.href=url; link.download=`applications-${job.slug}.${format}`; document.body.appendChild(link); link.click(); link.remove();
-      setDownloadNotice(`${job.title}: download started for all applications. Check your browser’s downloads for completion.`);
-    } catch (error) {setDownloadError(error instanceof Error ? error.message : "Download failed.");}
-    finally {setDownloadBusy("");}
+type QueueRow = Pick<ApplicationSummary, "id"|"stage"|"revision">;
+type QueueSnapshot = {items:QueueRow[];selectionId:string};
+type GroupInfo = {id:string;name:string};
+const defaultQueueSort = "screening_newest";
+const sortLabels: Record<string,string> = {
+  list_order:"List order", screening_newest:"Requirements met, then newest", newest:"Newest applications", oldest:"Oldest applications",
+  owner_asc:"Owner A–Z", owner_desc:"Owner Z–A", screening_asc:"Requirements met first", screening_desc:"Unmet requirements first",
+  ai_match_desc:"Highest AI match first", ai_match_asc:"Lowest AI match first", grade_desc:"Highest reviewer grade first",
+};
+const roleSorts = ["ai_match_asc","ai_match_desc","grade_desc"];
+function queueParams(value: string) {
+  const params = reviewQueue(new URLSearchParams(value));
+  params.delete("page");
+  if (!params.get("jobId")) {
+    if (roleSorts.includes(params.get("sort")||"")) params.delete("sort");
+    params.delete("top");params.delete("grade");
   }
-  const counts = useHubResource<{items: {jobId:string;total:number;needsReview:number;aiReady:number}[]}>("/api/hub/application-counts", props.refresh);
-  if (props.initialJobId && props.jobs.some(job => job.id === props.initialJobId)) return <JobCandidates {...props} />;
-  const jobs = sortHubJobs(props.jobs).filter(job => (status === "archived" ? job.lifecycle?.state === "archived" : status === "deleted" ? job.lifecycle?.state === "deleted" : (!job.lifecycle || job.lifecycle.state === "active") && (status === "all" || job.status === status)) && `${job.title} ${job.location || ""} ${jobGroup(job)} ${job.hiringRound || ""}`.toLowerCase().includes(search.toLowerCase()));
-  return <section aria-labelledby="application-jobs-title">
-    <div className="hub-section-heading compact"><div><p className="hub-kicker">APPLICANTS</p><h2 id="application-jobs-title">Choose a job</h2><p>Keep each hiring process together. Open a job to compare, shortlist, and interview its applicants.</p></div></div>
-    <div className="hub-applicant-filters"><Field label="Find a job"><input type="search" value={search} onChange={event => setSearch(event.target.value)} placeholder="Job title or location" /></Field><Field label="Job status"><select value={status} onChange={event => setStatus(event.target.value)}><option value="all">All current jobs</option><option value="open">Open jobs</option><option value="closed">Paused jobs</option><option value="draft">Draft jobs</option><option value="archived">Archived jobs</option><option value="deleted">Jobs in Trash</option></select></Field></div>
-    <Feedback error={downloadError} success={downloadNotice}/>
-    <div className="hub-application-job-list">{jobs.map(job => {
-      const count = counts.data?.items.find(item => item.jobId === job.id);
-      const jobParams=new URLSearchParams({view:"applications",jobId:job.id});if(props.initialStage)jobParams.set("stage",props.initialStage);
-      const openJob = () => {const params=new URLSearchParams({jobId:job.id});if(props.initialStage)params.set("stage",props.initialStage);props.onFilterChange?.(params.toString(),1);};
-      return <article className="hub-application-job-row" key={job.id}>
-        <div><h3><NavigationLink href={`/team?${jobParams}`} className="hub-text-button hub-job-title-link" navigate={openJob}>{job.title}</NavigationLink></h3><p className="hub-muted">{job.location || jobLocation(job)} · {job.lifecycle?.state === "archived" ? "Archived" : job.lifecycle?.state === "deleted" ? "In Trash" : job.status === "open" ? "Open" : job.status === "closed" ? "Paused" : "Draft"}</p></div>
-        <div className="hub-job-applicant-count"><strong>{counts.data ? count?.total || 0 : counts.loading ? "…" : "—"}</strong><span>applicants</span></div>
-        <JobActionMenu label={`Manage applicants for ${job.title}`} triggerLabel="Manage"><NavigationLink href={`/team?${jobParams}`} navigate={openJob}><Users size={16} aria-hidden="true"/>View applications</NavigationLink><a href={"/team?view=interviews&jobId="+encodeURIComponent(job.id)}>View interviews</a><button type="button" disabled={!!downloadBusy} onClick={()=>void downloadJob(job,"zip")}><Download size={16} aria-hidden="true"/>{downloadBusy===job.id?"Preparing ZIP…":"Download all applications ZIP"}</button></JobActionMenu>
-      </article>;
-    })}</div>
-    {!jobs.length && <EmptyState title="No jobs found"><p>Try another search or create a posting from Jobs.</p></EmptyState>}
-  </section>;
+  if(params.get("sort")==="list_order" && !params.has("listId"))params.delete("sort");
+  if (!params.has("sort")) params.set("sort",defaultQueueSort);
+  if (!params.has("appliedFrom")&&!params.has("appliedTo")) params.delete("timeZone");
+  params.sort();
+  return params;
 }
-
-function JobCandidates({
-  reviewerEmail,
-  jobs,
-  refresh,
-  changed,
-  initialStage = "",
-  initialJobId = "",
-  initialFilter,
-  initialPage = 1,
-  onSelect,
-  onFilterChange,
-}: {
-  jobs: HubJob[];
-  refresh: number;
-  changed: () => void;
-  reviewerEmail: string;
-  initialStage?: string;
-  initialJobId?: string;
-  initialFilter?: string;
-  initialPage?: number;
-  onSelect?: (id: string, action?: "interview", filter?: string) => void;
-  onFilterChange?: (filter: string, page: number, replace?: boolean) => void;
-}) {
-  const defaultSort = "screening_newest";
-  const initial = new URLSearchParams(initialFilter);
-  if (!initial.has("sort")) initial.set("sort", defaultSort);
-  if (initialStage) initial.set("stage", initialStage);
-  if (initialJobId) initial.set("jobId", initialJobId);
-  else {initial.delete("jobId"); initial.delete("grade"); initial.delete("sort");}
-  reviewQueue(initial);
-  const [q, setQ] = useState(initial.get("q") || ""),
-    [jobId] = useState(initialJobId),
-    [stage, setStage] = useState(initial.get("stage") || ""),
-    [excludeStage,setExcludeStage]=useState(initial.get("excludeStage")||""),
-    [assignee, setAssignee] = useState(initial.get("assignee") || ""),
-    [qualification, setQualification] = useState(initial.get("qualification") || ""),
-    [grade, setGrade] = useState(initial.get("grade") || ""),
-    [sort, setSort] = useState(initial.get("sort") || defaultSort),
-    [appliedFrom, setAppliedFrom] = useState(initial.get("appliedFrom") || ""),
-    [appliedTo, setAppliedTo] = useState(initial.get("appliedTo") || ""),
-    [timeZone, setTimeZone] = useState(initial.get("timeZone") || "UTC"),
-    [duplicate, setDuplicate] = useState(initial.get("duplicate") === "true"),
-    [page, setPage] = useState(initialPage),
-    [filter, setFilter] = useState(initial.toString()),
-    [selected, setSelected] = useState<string[]>([]),
-    [detailId, setDetailId] = useState<string | null>(null);
-  useEffect(() => {
-    if (!initial.get("timeZone")) queueMicrotask(() => setTimeZone(Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC"));
-    // Resolve browser time zone after hydration; server and first browser render use the same fallback.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-  const [detailAction, setDetailAction] = useState<"note" | "interview">("note");
-  const [detailSection,setDetailSection] = useState<"application"|"review"|"activity">("application");
-  const [exportMessage, setExportMessage] = useState("");
-  const [exportError, setExportError] = useState("");
-  const [exporting, setExporting] = useState(false);
-  const [exportScope, setExportScope] = useState("filtered");
-  const [allMatching, setAllMatching] = useState(false);
-  const selectedJob = jobs.find(job => job.id === jobId);
-  const isTopTen = new URLSearchParams(filter).get("top") === "10";
-  const inTrash = new URLSearchParams(filter).get("trash") === "true";
-  const [bulkAction, setBulkAction] = useState("stage"),
-    [bulkStage, setBulkStage] = useState("Screening"),
-    [bulkAssignee, setBulkAssignee] = useState(""),
-    [reason, setReason] = useState(""),
-    [approve, setApprove] = useState(false);
-  const path = "/api/hub/applications?" + filter + "&page=" + page;
-  const resource = useHubResource<ApplicationList & { pageSize?: number }>(
-      path,
-      refresh,
-    ),
-    mutation = useHubMutation();
-  const waitingForAi = resource.data?.items.some(item => item.aiMatch?.retryPending || ["pending", "preparing", "running"].includes(item.aiMatch?.status || ""));
-  const reloadApplications = resource.reload;
-  useEffect(() => {
-    if (!waitingForAi) return;
-    const timer = setInterval(() => void reloadApplications(), 15000);
-    return () => clearInterval(timer);
-  }, [waitingForAi, reloadApplications]);
-  const visibleRevisions = resource.data?.items.map(item => `${item.id}:${item.revision}`).join("|");
-  useEffect(() => {
-    // A previous selection or rejection approval must not carry over to changed records.
-    queueMicrotask(() => {setSelected([]); setApprove(false); setExportScope(current => current === "selected" ? "filtered" : current);});
-  }, [refresh, visibleRevisions]);
-  function draftQuery() {
-    const search = new URLSearchParams();
-    if (inTrash) search.set("trash", "true");
-    const interviewProgress = new URLSearchParams(filter).get("interviewProgress");
-    if (interviewProgress) search.set("interviewProgress", interviewProgress);
-    for (const [key, value] of Object.entries({q, jobId, stage, excludeStage, assignee, qualification, grade, sort, appliedFrom, appliedTo})) {
-      if (value) search.set(key, value);
-    }
-    if (appliedFrom || appliedTo) search.set("timeZone", timeZone);
-    if (duplicate) search.set("duplicate", "true");
-    if (isTopTen && sort === "ai_match_desc") search.set("top", "10");
-    if(!inTrash)search.set("active",new URLSearchParams(filter).get("active")||(stage?"false":"true"));
-    return reviewQueue(search);
+export function Candidates({jobs,refresh,changed,reviewerEmail,initialStage="",initialJobId="",initialFilter="",initialPage=1,onSelect,onFilterChange}:CandidatesProps) {
+  const incoming = new URLSearchParams(initialFilter);
+  if (initialJobId) incoming.set("jobId",initialJobId);
+  if (initialStage) incoming.set("stage",initialStage);
+  const incomingFilter=queueParams(incoming.toString()).toString();
+  const [filter,setFilter]=useState(incomingFilter),[page,setPage]=useState(initialPage);
+  const params = new URLSearchParams(filter);
+  const val=(key:string)=>params.get(key)||"";
+  const [search,setSearch]=useState(val("q"));
+  const [selection,setSelection]=useState<QueueRow[]>([]),[snapshotId,setSnapshotId]=useState(""),[selecting,setSelecting]=useState(false);
+  const [busy,setBusy]=useState(false),[notice,setNotice]=useState(""),[error,setError]=useState("");
+  const [bulkAction,setBulkAction]=useState(""),[bulkStage,setBulkStage]=useState("Screening"),[bulkAssignee,setBulkAssignee]=useState("");
+  const [detail,setDetail]=useState<{id:string;action?:"interview"}|null>(null);
+  const [countryChoice,setCountryChoice]=useState("");
+  const [showFilters,setShowFilters]=useState(false),[selectMode,setSelectMode]=useState(false);
+  const epoch=useRef(0);
+  const jobId=val("jobId"),groupId=val("jobGroupId"),listId=val("listId"),inTrash=val("trash")==="true";
+  const selectedJob=jobs.find(job=>job.id===jobId);
+  const groups=useHubResource<{groups:GroupInfo[]}>("/api/hub/job-groups",refresh);
+  const owners=useHubResource<{staff:{email:string}[]}>("/api/job-team",refresh);
+  const ownerChoices=[...new Set([reviewerEmail,...(owners.data?.staff||[]).map(s=>s.email),val("assignee")].filter(email=>email && email!=="unassigned"))];
+  const scopeName=selectedJob?.title || (jobId?"Unavailable posting":groupId ? groups.data?.groups?.find(g=>g.id===groupId)?.name || "Job group" : listId ? "Candidate list" : "All roles");
+  const path="/api/hub/applications?"+filter+"&page="+page;
+  const resource=useHubResource<ApplicationList & {scopeTotal?:number;pageSize?:number}>(path,refresh);
+  const data=resource.dataPath===path?resource.data:null;
+  const loading=resource.loading || !data;
+  const blocked=busy||selecting||loading||!!resource.error||search.trim()!==val("q");
+  const total=data?.total || 0, scopeTotal=data?.scopeTotal ?? total;
+  const ids=selection.map(r=>r.id);
+  const isAll=!!snapshotId;
+  const columns=val("columns")?queueColumns.filter(c=>val("columns").split(",").includes(c)):[...queueColumns];
+  const countries=val("country").split(",").filter(Boolean);
+  function clearSelection(){epoch.current++;setSelection([]);setSnapshotId("");setBulkAction("");setSelectMode(false);}
+  function applyView(value:string,replace=false) {
+    const next=queueParams(value);
+    setSearch(next.get("q")||"");setCountryChoice("");
+    clearSelection();setError("");setNotice("");setFilter(next.toString());setPage(1);
+    onFilterChange?.(next.toString(),1,replace);
   }
-  const draft = draftQuery();
-  const applied = new URLSearchParams(filter);
-  const filtersDirty = Array.from(new Set([...draft.keys(), ...applied.keys()])).some(key => draft.get(key) !== applied.get(key));
-  const invalidDates = !!appliedFrom && !!appliedTo && appliedFrom > appliedTo;
-  const pendingFilterQuery=draft.toString();
-  // Apply the complete serialized query once; unrelated render callbacks must not restart debounce.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(()=>{if(!filtersDirty||invalidDates)return;const timer=window.setTimeout(()=>applyView(pendingFilterQuery),300);return()=>window.clearTimeout(timer);},[pendingFilterQuery,filtersDirty,invalidDates]);
-  function syncFields(params: URLSearchParams) {
-    setQ(params.get("q") || ""); setStage(params.get("stage") || ""); setExcludeStage(params.get("excludeStage")||""); setAssignee(params.get("assignee") || "");
-    setQualification(params.get("qualification") || ""); setGrade(params.get("grade") || ""); setSort(params.get("sort") || defaultSort); setDuplicate(params.get("duplicate") === "true");
-    setAppliedFrom(params.get("appliedFrom") || ""); setAppliedTo(params.get("appliedTo") || "");
-    setTimeZone(params.get("timeZone") || Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC");
-  }
-  const incomingFilter = initial.toString();
+  const previousIncoming=useRef({incomingFilter,initialPage});
   useEffect(()=>{
-    const raw=new URLSearchParams(initialFilter);
-    if(raw.get("active")==="true"&&["Rejected","Withdrawn","Hired"].includes(raw.get("stage")||""))onFilterChange?.(incomingFilter,initialPage,true);
-  },[initialFilter,incomingFilter,initialPage,onFilterChange]);
-  const previousLocation = useRef({filter:incomingFilter,page:initialPage});
-  useEffect(() => {
-    const previous = previousLocation.current;
-    previousLocation.current = {filter:incomingFilter,page:initialPage};
-    if (previous.filter === incomingFilter && previous.page === initialPage) return;
-    let cancelled = false;
-    queueMicrotask(() => {
-      if (cancelled) return;
-      setPage(initialPage);
-      if (previous.filter !== incomingFilter) {
-        syncFields(new URLSearchParams(incomingFilter));
-        setFilter(incomingFilter); setSelected([]); setAllMatching(false); setExportScope("filtered"); setApprove(false);
+    const previous=previousIncoming.current;previousIncoming.current={incomingFilter,initialPage};
+    if(previous.incomingFilter===incomingFilter && previous.initialPage===initialPage)return;
+    let cancelled=false;
+    queueMicrotask(()=>{if(cancelled)return;setPage(initialPage);if(previous.incomingFilter!==incomingFilter){setFilter(incomingFilter);setSearch(new URLSearchParams(incomingFilter).get("q")||"");clearSelection();}});
+    return()=>{cancelled=true;};
+  },[incomingFilter,initialPage]);
+  function update(changes:Record<string,string|null>) {
+    const next=new URLSearchParams(filter);
+    for(const [key,value] of Object.entries(changes)){if(value)next.set(key,value);else next.delete(key);}
+    if((changes.appliedFrom || changes.appliedTo)&&!next.has("timeZone"))next.set("timeZone",Intl.DateTimeFormat().resolvedOptions().timeZone||"UTC");
+    if(changes.sort && changes.sort!=="ai_match_desc")next.delete("top");
+    applyView(next.toString());
+  }
+  useEffect(()=>{
+    const q=search.trim(), next=new URLSearchParams(filter);if(q===(next.get("q")||""))return;
+    if(q)next.set("q",q);else next.delete("q");
+    const timer=window.setTimeout(()=>applyView(next.toString(),true),300);
+    return()=>window.clearTimeout(timer);
+    // User edits update URL after typing; navigating adopts the URL directly.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[search,filter]);
+  const waitingForAi=data?.items.some(item=>item.aiMatch?.retryPending || ["pending","preparing","running"].includes(item.aiMatch?.status||""));
+  const reload=resource.reload;
+  useEffect(()=>{if(!waitingForAi||selection.length)return;const timer=setInterval(()=>void reload(),15000);return()=>clearInterval(timer);},[waitingForAi,reload,selection.length]);
+  function open(id:string,action?:"interview"){clearSelection();if(onSelect)onSelect(id,action,filter);else setDetail({id,action});}
+  function toggle(rows:QueueRow[]) {
+    if(blocked)return;
+    epoch.current++;setSnapshotId("");setBulkAction("");
+    const remove=rows.every(row=>ids.includes(row.id));
+    const removeIds=new Set(rows.map(row=>row.id));
+    setSelection(current=>remove?current.filter(row=>!removeIds.has(row.id)):[...current,...rows.filter(row=>!current.some(old=>old.id===row.id)).map(({id,stage,revision})=>({id,stage,revision}))]);
+  }
+  async function selectAll() {
+    if(blocked||!total)return;
+    const current=++epoch.current;setSelecting(true);setError("");
+    try{const snapshot=await hubRequest<QueueSnapshot>("/api/hub/application-selections?"+filter,"POST",{});
+      if(current===epoch.current){setSelection(snapshot.items);setSnapshotId(snapshot.selectionId);setBulkAction("");}
+    }catch(e){if(current===epoch.current)setError(e instanceof Error?e.message:"Selection failed.");}finally{setSelecting(false);}
+  }
+  function turnPage(n:number){setPage(n);onFilterChange?.(filter,n);}
+  function resetFilters(){
+    const next=new URLSearchParams({active:"false"});
+    for(const key of ["jobId","jobGroupId","listId","trash"])if(val(key))next.set(key,val(key));
+    applyView(next.toString());
+  }
+  async function download(format:"csv"|"zip"){
+    if(blocked)return;setBusy(true);setError("");setNotice("");
+    try{
+      const search=new URLSearchParams(filter);search.set("format",format);
+      if(snapshotId)search.set("selectionId",snapshotId);
+      else if(ids.length || (!jobId&&!groupId&&!listId)){
+        const snap=await hubRequest<QueueSnapshot>("/api/hub/application-selections?"+filter,"POST",ids.length?{ids}:{});
+        search.set("selectionId",snap.selectionId);
       }
-    });
-    return () => {cancelled = true;};
-    // Location changes also cover browser Back/Forward without resetting all-matching selection on pagination.
-  }, [incomingFilter, initialPage]);
-  function filterSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    if (invalidDates) return;
-    applyView(draft.toString());
+      const url="/api/hub/applications-export?"+search;
+      const check=await fetch(url+"&check=1",{credentials:"same-origin",cache:"no-store"});
+      if(!check.ok){const response=await check.json() as {error?:{message?:string}};throw new Error(response?.error?.message||"Download could not be prepared.");}
+      const link=document.createElement("a");link.href=url;link.download="applications."+format;document.body.appendChild(link);link.click();link.remove();
+      setNotice("Download started. Check your browser’s downloads.");
+    }catch(e){setError(e instanceof Error?e.message:"Download failed.");}finally{setBusy(false);}
   }
-  function applyView(value: string) {
-    const params = reviewQueue(new URLSearchParams(value));
-    if (!params.has("sort")) params.set("sort", defaultSort);
-    syncFields(params);
-    const next = params.toString();
-    onFilterChange?.(next, 1); setFilter(next); setPage(1); setSelected([]); setAllMatching(false); setExportScope("filtered"); setApprove(false); setExportMessage(""); setExportError("");
+  async function setApplicationStage(row:ApplicationSummary,stage:string){
+    if(blocked)return;setBusy(true);setNotice("");setError("");
+    try{await hubRequest("/api/hub/applications/"+encodeURIComponent(row.id)+"/action","POST",{action:"stage",stage,expectedRevision:row.revision});clearSelection();changed();await reload();}catch(e){setError(e instanceof Error?e.message:"Stage change failed.");}finally{setBusy(false);}
   }
-  async function exportApplications(format: "csv" | "zip") {
-    if (filtersDirty || invalidDates || resource.loading || resource.error) return;
-    setExporting(true); setExportError(""); setExportMessage("");
-    try {
-      const params = new URLSearchParams(exportScope === "all" ? { jobId } : filter);
-      params.set("jobId", jobId);
-      if(inTrash)params.set("trash","true");
-      params.delete("page");
-      params.set("format", format);
-      if (exportScope === "selected") params.set("ids", selected.join(","));
-      const downloadUrl = "/api/hub/applications-export?" + params;
-      const response = await fetch(downloadUrl + "&check=1", {credentials:"same-origin",cache:"no-store"});
-      if (!response.ok) {
-        const error = await response.json().catch(() => null) as {error?:{message?:string}} | null;
-        throw new Error(error?.error?.message || `The download could not be prepared (status ${response.status}). Try a smaller selection or refresh and try again.`);
+  async function applyBulk(){
+    if(blocked||!selection.length||!["assign","stage"].includes(bulkAction))return;
+    setBusy(true);setNotice("");setError("");
+    let updated=0;
+    try{
+      for(let offset=0;offset<selection.length;offset+=100){
+        const batch=selection.slice(offset,offset+100);
+        await hubRequest("/api/hub/bulk","POST",{ids:batch.map(r=>r.id),expectedRevisions:Object.fromEntries(batch.map(r=>[r.id,r.revision])),action:bulkAction,...(bulkAction==="stage"?{stage:bulkStage}:{assignee:bulkAssignee||null})});
+        updated+=batch.length;setNotice(updated+" of "+selection.length+" applications updated.");
       }
-      const link = document.createElement("a");
-      link.href = downloadUrl; link.download = `applications-${selectedJob?.slug || jobId}.${format}`;
-      document.body.appendChild(link); link.click(); link.remove();
-      setExportMessage(format === "csv" ? "Spreadsheet download started. Check your browser’s downloads for completion." : "Application files download started. Check your browser’s downloads for completion and the included PDF export report for unavailable files.");
-    } catch (error) {setExportError(error instanceof Error ? error.message : "Download failed.");}
-    finally {setExporting(false);}
+      clearSelection();
+    }catch(e){setError((updated ? updated+" applications updated. " : "")+(e instanceof Error?e.message:"Bulk action failed.")+" Refresh before retrying.");clearSelection();}
+    finally{setBusy(false);changed();void reload();}
   }
-  async function applyBulk(e: React.FormEvent) {
-    e.preventDefault();
-    if (
-      allMatching || filtersDirty || selected.length === 0 ||
-      selected.length > 100 ||
-      (bulkAction === "reject" && !approve)
-    )
-      return;
-    const result = await mutation.run(
-      "/api/hub/bulk",
-      "POST",
-      {
-        ids: selected,
-        expectedRevisions: Object.fromEntries((resource.data?.items || []).filter((item) => selected.includes(item.id)).map((item) => [item.id, item.revision])),
-        action: bulkAction,
-        ...(bulkAction === "stage"
-          ? { stage: bulkStage }
-          : bulkAction === "assign"
-            ? { assignee: bulkAssignee.trim() || null }
-            : { reason }),
-      },
-      "Bulk action saved. Candidate records have been updated.",
-    );
-    if (result !== undefined) {
-      setSelected([]);
-      setApprove(false);
-      changed();
-      void resource.reload();
-    }
-  }
-  async function shortlist(item: ApplicationSummary) {
-    if (item.stage !== "Application Review") return;
-    const result = await mutation.run("/api/hub/applications/" + encodeURIComponent(item.id) + "/action", "POST", {action:"stage", stage:"Screening", expectedRevision:item.revision}, `${item.name} added to the shortlist.`);
-    if (result !== undefined) {changed(); await resource.reload();}
-  }
-  async function unshortlist(item:ApplicationSummary){
-    if(item.stage!=="Screening"||mutation.busy)return;
-    const result=await mutation.run(`/api/hub/applications/${encodeURIComponent(item.id)}/action`,"POST",{action:"stage",stage:"Application Review",expectedRevision:item.revision},`${item.name} removed from the shortlist. No email sent.`);
-    if(result!==undefined){changed();await resource.reload();}
-  }
-  async function unshortlistSelected(){
-    if(allMatching||filtersDirty||mutation.busy)return;
-    const records=(resource.data?.items||[]).filter(item=>selected.includes(item.id));
-    if(!records.length||records.length!==selected.length||records.length>100||records.some(item=>item.stage!=="Screening"))return;
-    const result=await mutation.run("/api/hub/bulk","POST",{ids:selected,expectedRevisions:Object.fromEntries(records.map(item=>[item.id,item.revision])),action:"stage",stage:"Application Review"},`${records.length} applicants removed from the shortlist. No emails sent.`);
-    if(result!==undefined){setSelected([]);changed();await resource.reload();}
-  }
-  async function shortlistSelected() {
-    if (allMatching || filtersDirty) return;
-    const records=(resource.data?.items || []).filter(item=>selected.includes(item.id));
-    if (!records.length || records.length!==selected.length || records.length>100 || records.some(item=>!["Application Review","Screening"].includes(item.stage))) return;
-    const result=await mutation.run("/api/hub/bulk","POST",{ids:selected,expectedRevisions:Object.fromEntries(records.map(item=>[item.id,item.revision])),action:"stage",stage:"Screening"},`${records.length} applicants added to the shortlist.`);
-    if (result!==undefined) {setSelected([]);changed();await resource.reload();}
-  }
-  if (detailId)
-    return (
-      <CandidateDetail
-        key={detailId}
-        id={detailId}
-        back={() => {setDetailId(null); setDetailAction("note");setDetailSection("application");}}
-        changed={changed}
-        initialAction={detailAction}
-        initialSection={detailSection}
-        navigationFilter={filter}
-        navigationJobs={jobs}
-        onDecisionNotice={setExportMessage}
-        openApplicant={(id,_filter,section)=>{setDetailSection(section || "application");setDetailId(id);}}
-      />
-    );
-  return (
-    <section className="hub-candidate-browser" aria-labelledby="candidates-title">
-      <div className="hub-section-heading">
-        <div>
-          <p className="hub-kicker">RECRUITER WORKSPACE</p>
-          <button className="hub-text-button" type="button" onClick={() => onFilterChange?.("", 1)}><ArrowLeft size={16} /> All jobs</button>
-          <h2 id="candidates-title">{selectedJob?.title || "Job applications"}</h2>
-          <p>
-            {selectedJob?.location || (selectedJob ? jobLocation(selectedJob) : "")}<span className="hub-posting-context"> · Applications for this posting</span>
-          </p>
-        </div>
-        <div className="hub-button-row"><span className="hub-count">
-          {resource.data ? resource.data.total + " applications" : ""}
-        </span><button type="button" className="hub-button secondary hub-refresh-applicants" aria-label="Refresh applications" disabled={resource.loading} onClick={() => void resource.reload()}><RefreshCw size={16}/><span>Refresh applications</span></button></div>
-      </div>
-      <div className="hub-stage-toolbar"><div className="hub-button-row hub-application-view-tabs"><button className="hub-pipeline-tab" type="button" aria-pressed={!inTrash} onClick={()=>applyView(new URLSearchParams({jobId}).toString())}>Applications</button><button className="hub-pipeline-tab" type="button" aria-pressed={inTrash} onClick={()=>applyView(new URLSearchParams({jobId,trash:"true"}).toString())}>Trash</button></div>
-      {inTrash && <p className="hub-muted">Deleted applications stay here with their original files and history. Open an application to restore it. Cancelled emails and booking links are not sent again.</p>}
-      {!inTrash && <div className="hub-stage-filter">
-        <Field label="Stage"><select disabled={invalidDates} value={applicantStageChoice(new URLSearchParams(filter))} onChange={event=>applyView(applyApplicantStageChoice(draftQuery(),event.target.value).toString())}>
-          <option value="active">In progress</option><option value="all">All stages</option>
-          <option value="active:exclude:Screening">In progress — not shortlisted</option>
-          <optgroup label="Interview schedule">{Object.entries(INTERVIEW_VIEW_LABELS).map(([value,label])=><option key={value} value={`interview:${value}`}>{label}</option>)}</optgroup>
-          <optgroup label="Interview progress">{Object.entries(interviewProgressLabels).map(([value,label])=><option key={value} value={`interview:${value}`}>{label}</option>)}</optgroup>
-          <optgroup label="Only this stage">{stages.map(value=><option key={value} value={`stage:${value}`}>{stageLabel(value)}</option>)}</optgroup>
-          {excludeStage&&applicantStageChoice(new URLSearchParams(filter))!=="active:exclude:Screening"&&<option value={applicantStageChoice(new URLSearchParams(filter))}>{new URLSearchParams(filter).get("active")==="false"?"All":"Active"} — not {stageLabel(excludeStage).toLowerCase()}</option>}
-        </select></Field>
+  const chips:{key:string;label:string;changes:Record<string,string|null>}[]=[];
+  function chip(key:string,label:string,changes:Record<string,string|null>={[key]:null}){chips.push({key,label,changes});}
+  if(jobId||groupId)chip("role",scopeName,{jobId:null,jobGroupId:null,grade:null,top:null});
+  if(listId)chip("listId","Candidate list");
+  const stageChoice=applicantStageChoice(params);
+  if(!inTrash && stageChoice!=="all")chip("stage",val("stage")?stageLabel(val("stage")):val("excludeStage")?"In progress · excluding "+stageLabel(val("excludeStage")):"In progress",{stage:null,excludeStage:null,active:"false"});
+  if(val("interviewProgress"))chip("interviewProgress",({...INTERVIEW_VIEW_LABELS,...interviewProgressLabels} as Record<string,string>)[val("interviewProgress")]||val("interviewProgress"));
+  if(val("assignee"))chip("assignee","Owner: "+(val("assignee")==="unassigned"?"Unassigned":val("assignee")));
+  if(val("qualification"))chip("qualification",qualificationLabel(val("qualification")));
+  if(val("q"))chip("q","Search: "+val("q"));
+  if(val("top"))chip("top","Top 10 AI matches");
+  if(val("grade"))chip("grade",val("grade")==="reviewed"?"Graded":"Ungraded");
+  if(val("duplicate"))chip("duplicate","Shared email");
+  if(val("handoffReturned"))chip("handoffReturned","Returned handoffs");
+  if(val("appliedFrom"))chip("appliedFrom","From "+val("appliedFrom"));
+  if(val("appliedTo"))chip("appliedTo","Through "+val("appliedTo"));
+  for (const code of countries)chip("country-"+code,countryOptions.find(c=>c.value===code)?.label||code,{country:countries.filter(c=>c!==code).join(",")});
+  if(detail)return <CandidateDetail key={detail.id} id={detail.id} initialAction={detail.action || "note"} navigationFilter={filter} navigationJobs={jobs} back={()=>setDetail(null)} changed={changed} onDecisionNotice={setNotice} openApplicant={id=>setDetail({id})}/>;
+  return <section className="hub-candidate-browser applicant-queue" aria-labelledby="candidates-title">
+    <div className="hub-section-heading compact"><div><h2 id="candidates-title">{inTrash?"Applications in Trash":selectedJob?.title||"Applicants"}</h2>
+      <p aria-live="polite">{data?`${total.toLocaleString()} of ${scopeTotal.toLocaleString()} applications · ${scopeName}`:"Loading applications…"}</p></div>
+      <JobActionMenu label="Application options" triggerLabel="Options">
+        <fieldset className="aq-columns"><legend>Visible columns</legend>{queueColumns.map(col=><label key={col}>
+          <input type="checkbox" aria-label={"Show "+columnLabels[col]+" column"} checked={columns.includes(col)} onChange={e=>{
+            const next=queueColumns.filter(c=>c===col?e.target.checked:columns.includes(c));
+            update({columns:next.length===queueColumns.length?null:next.join(",")||"none"});
+          }}/> {columnLabels[col]}</label>)}</fieldset>
+        <button type="button" disabled={blocked||!total} onClick={()=>void download("zip")}>Download {ids.length?"selected":"matching"} ZIP ({ids.length||total})</button>
+        <button type="button" disabled={blocked||!total} onClick={()=>void download("csv")}>Export {ids.length?"selected":"matching"} CSV ({ids.length||total})</button>
+        <button type="button" onClick={()=>void reload()}>Refresh applications</button>
+        <button type="button" onClick={()=>{const next=new URLSearchParams();if(jobId)next.set("jobId",jobId);if(!inTrash)next.set("trash","true");applyView(next.toString());}}>{inTrash?"Back to applications":"View Trash"}</button>
+      </JobActionMenu></div>
+    <ApplicantCollections filter={filter} onApply={applyView} selectedIds={ids} selectionId={snapshotId || undefined} allMatching={isAll && ids.length>100} disabled={blocked} onChanged={()=>void reload()}/>
+    <div className="aq-controls"><label className="aq-search">Search applicants<input type="search" value={search} placeholder="Name or email" maxLength={200} onChange={e=>setSearch(e.target.value)}/></label>
+      <label>Role or posting<select aria-label="Role or posting" value={jobId?"job:"+jobId:groupId?"group:"+groupId:""} onChange={e=>{
+        const value=e.target.value;update({jobId:value.startsWith("job:")?value.slice(4):null,jobGroupId:value.startsWith("group:")?value.slice(6):null,grade:null,top:null});
+      }}><option value="">All roles</option>{jobId&&!selectedJob&&<option value={"job:"+jobId}>Unavailable posting</option>}{!!groups.data?.groups?.length&&<optgroup label="Job groups">{groups.data.groups.map(g=><option value={"group:"+g.id} key={g.id}>{g.name}</option>)}</optgroup>}
+      <optgroup label="Individual postings">{sortHubJobs(jobs).map(j=><option value={"job:"+j.id} key={j.id}>{j.title} · {jobLocation(j)}</option>)}</optgroup></select></label>
+      <button type="button" className="hub-button secondary aq-filter-toggle" aria-expanded={showFilters} aria-controls="aq-filters" onClick={()=>setShowFilters(v=>!v)}>Filters &amp; order</button>
+    </div>
+    <div className="aq-filter-panel" id="aq-filters" data-open={showFilters}>
+      <label>Stage<select aria-label="Stage" disabled={inTrash} value={stageChoice} onChange={e=>{const next=new URLSearchParams(filter);applyApplicantStageChoice(next,e.target.value);applyView(next.toString());}}>
+        <option value="active">In progress</option><option value="all">All stages</option><option value="active:exclude:Screening">In progress — not shortlisted</option>
+        {val("excludeStage")&&stageChoice!=="active:exclude:Screening"&&<option value={stageChoice}>Excluding {stageLabel(val("excludeStage"))}</option>}
+        {stages.map(s=><option key={s} value={"stage:"+s}>{stageLabel(s)}</option>)}</select></label>
+      <label>Screening<select aria-label="Screening" value={val("qualification")} onChange={e=>update({qualification:e.target.value})}><option value="">All screening results</option><option value="pass">Requirements met</option><option value="fail">Requirement not met</option><option value="review">No automatic decision</option></select></label>
+      <label>Interview<select aria-label="Interview" value={val("interviewProgress")} onChange={e=>update({interviewProgress:e.target.value})}><option value="">Any interview status</option><optgroup label="Schedule">{Object.entries(INTERVIEW_VIEW_LABELS).map(([k,v])=><option key={k} value={k}>{v}</option>)}</optgroup><optgroup label="Progress">{Object.entries(interviewProgressLabels).map(([k,v])=><option key={k} value={k}>{v}</option>)}</optgroup></select></label>
+      <label>Owner<select aria-label="Owner" value={val("assignee")} onChange={e=>update({assignee:e.target.value})}><option value="">All owners</option><option value="unassigned">Unassigned</option>{ownerChoices.map(email=><option key={email} value={email}>{email===reviewerEmail?"Me · ":""}{email}</option>)}</select></label>
+      <label>Order<select aria-label="Order" value={val("sort")||defaultQueueSort} onChange={e=>update({sort:e.target.value})}>{Object.entries(sortLabels).filter(([k])=>(!!jobId||!roleSorts.includes(k))&&(k!=="list_order"||!!listId)).map(([k,v])=><option key={k} value={k}>{v}</option>)}</select></label>
+      <details className="aq-more"><summary>More filters</summary><div>
+        <label>Country of residence<select aria-label="Country of residence" value={countryChoice} onChange={e=>{const code=e.target.value;setCountryChoice("");if(code)update({country:[...new Set([...countries,code])].join(",")});}}><option value="">Add a country</option>{countryOptions.map(c=><option key={c.value} value={c.value} disabled={countries.includes(c.value)}>{c.label}</option>)}</select></label>
+        <label>Applied from<input type="date" value={val("appliedFrom")} max={val("appliedTo")||undefined} onChange={e=>update({appliedFrom:e.target.value})}/></label>
+        <label>Applied through<input type="date" value={val("appliedTo")} min={val("appliedFrom")||undefined} onChange={e=>update({appliedTo:e.target.value})}/></label>
+        {jobId&&<label>Reviewer grades<select aria-label="Reviewer grades" value={val("grade")} onChange={e=>update({grade:e.target.value})}><option value="">All grades</option><option value="reviewed">Graded</option><option value="ungraded">Ungraded</option></select></label>}
+        <label className="hub-checkbox"><input type="checkbox" checked={val("duplicate")==="true"} onChange={e=>update({duplicate:e.target.checked?"true":null})}/>Shared-email applications</label>
+        {jobId&&!inTrash&&<button type="button" className="hub-text-button" onClick={()=>update({sort:"ai_match_desc",top:"10"})}>Top 10 AI matches</button>}
+      </div></details>
+    </div>
+    {chips.length>0&&<div className="aq-chips" aria-label="Applied filters">{chips.map(c=><button key={c.key} type="button" aria-label={"Remove filter: "+c.label} onClick={()=>update(c.changes)}>{c.label} <span aria-hidden="true">×</span></button>)}<button type="button" className="aq-clear" onClick={resetFilters}>Clear filters</button></div>}
+    <Feedback error={error} success={notice}/>
+    <ResourceState loading={loading&&!resource.error} error={resource.error} retry={()=>void reload()}/>
+    {data&&<>
+      {!!data.items.length&&<div className="aq-selection" aria-label="Application selection">
+        {!selectMode&&!selection.length&&<button className="hub-text-button" type="button" onClick={()=>setSelectMode(true)}>Select applications</button>}
+        {(selectMode||selection.length>0)&&<><span aria-live="polite">{selection.length?`${selection.length} selected${isAll?" · all matching":""}`: `${data.items.length} on this page`}</span>
+        <button type="button" className="hub-text-button" disabled={blocked} onClick={()=>toggle(data.items)}>{data.items.every(r=>ids.includes(r.id))?"Deselect page":"Select page"}</button>
+        <button type="button" className="hub-text-button" disabled={blocked||isAll} onClick={()=>void selectAll()}>Select all {total} matching</button>
+        {!!selection.length&&<button type="button" className="hub-text-button" disabled={busy} onClick={clearSelection}>Clear selection</button>}{!selection.length&&<button type="button" className="hub-text-button" onClick={clearSelection}>Cancel</button>}</>}
       </div>}
-      <div className="hub-button-row hub-queue-shortcuts" aria-label="Applicant queues">
-        <button className="hub-text-button" type="button" onClick={()=>applyView(new URLSearchParams({jobId,active:"true",sort:"screening_newest"}).toString())}>In progress</button>
-        <button className="hub-text-button" type="button" onClick={()=>applyView(new URLSearchParams({jobId,active:"true",assignee:reviewerEmail,sort:"screening_newest"}).toString())}>Assigned to me</button>
-        <button className="hub-text-button" type="button" onClick={()=>applyView(new URLSearchParams({jobId,active:"true",assignee:"unassigned",sort:"screening_newest"}).toString())}>Unassigned</button>
-        <button className="hub-text-button" type="button" onClick={()=>applyView(new URLSearchParams({jobId,stage:"Awaiting Founder Review",active:"false"}).toString())}>Awaiting founder review</button>
-        <a className="hub-text-button" href={"/team?view=interviews&jobId="+encodeURIComponent(jobId)}>Interviews for this role</a>
-      </div>
-      </div>
-      <div className="hub-applicant-toolbar">
-      <form className="hub-applicant-filter-form" onSubmit={filterSubmit}>
-        <div className="hub-applicant-filters">
-          <Field label="Search"><input value={q} onChange={e=>setQ(e.target.value)} placeholder="Name or email" type="search" /></Field>
-          <ApplicantFilterDisclosure activeCount={[qualification,sort!==defaultSort?sort:'',grade,assignee,duplicate,appliedFrom,appliedTo].filter(Boolean).length} headerAction={<>
-        <details className="hub-download-menu hub-application-downloads"><summary><Download size={16} /> Download<span className="hub-download-context"> applications</span></summary>
-          <div className="hub-download-menu-body">
-            <div className="hub-button-row"><button className="hub-text-button" type="button" disabled={filtersDirty || resource.loading || !resource.data?.items.length} onClick={() => {setAllMatching(false);setSelected(resource.data?.items.map(item=>item.id)||[]);setExportScope("selected");}}>Select this page ({resource.data?.items.length||0})</button><button className="hub-text-button" type="button" disabled={filtersDirty || resource.loading || !resource.data?.total} onClick={() => {setSelected([]);setAllMatching(true);setExportScope("filtered");}}>Select all matching for download ({resource.data?.total||0})</button>{(selected.length>0 || allMatching) && <button className="hub-text-button" type="button" onClick={() => {setSelected([]);setAllMatching(false);setExportScope("filtered");}}>Clear selection ({allMatching ? resource.data?.total || 0 : selected.length})</button>}</div>
-            <div className="hub-button-row hub-download-actions"><Field label="Download scope"><select value={exportScope} onChange={event=>{setExportScope(event.target.value);setAllMatching(false);}}><option value="filtered">All matching results ({resource.data?.total || 0}){isTopTen?" · Top 10":" · every page"}</option><option value="all">{inTrash?"All applications in Trash":"All applicants for this job"}</option><option value="selected">Selected applicants ({selected.length})</option></select></Field><button className="hub-button" type="button" disabled={exporting || resource.loading || !!resource.error || filtersDirty || invalidDates || (exportScope==="filtered"&&!resource.data?.total) || (exportScope==="selected"&&!selected.length)} onClick={()=>void exportApplications("zip")}><Download size={16}/> Download applications (ZIP)</button></div>
-            <p className="hub-muted">{exportScope==="selected"?`${selected.length} selected applicants`:exportScope==="all"?(inTrash?"Every application in Trash for this job":"Every applicant for this job, across all pages and stages"):`${resource.data?.total||0} matching applicants across all pages`} will be downloaded. The ZIP includes a readable PDF for each application and the original uploaded files.</p>
-            <details><summary>Download limits</summary><p>Up to 10,000 applications and 3 GB of attachments per download. Narrow the filters for larger archives. Bulk record changes apply to selected applicants on this page.</p></details>
-            {exporting && <p role="status">Preparing your download…</p>}
-            <Feedback error={exportError} success={exportMessage}/>
-          </div>
-        </details></>}>
-          <Field label="Screening"><select value={qualification} onChange={e=>setQualification(e.target.value)}><option value="">All screening results</option><option value="pass">Requirements met</option><option value="review">No automatic decision</option><option value="fail">Requirement not met</option></select></Field>
-          {!inTrash && <Field label="Order"><select value={sort} onChange={e=>setSort(e.target.value)}><option value="screening_newest">Requirements met, then newest</option><option value="newest">Newest applications</option><option value="oldest">Oldest applications</option><option value="owner_asc">Owner A–Z</option><option value="owner_desc">Owner Z–A</option><option value="screening_asc">Requirements met first</option><option value="screening_desc">Unmet requirements first</option><option value="ai_match_asc">Lowest AI match first</option><option value="ai_match_desc">Highest AI match first</option><option value="grade_desc">Highest reviewer grade first</option></select></Field>}
-        <details className="hub-advanced-filters"><summary>More filters{[grade,assignee,duplicate,appliedFrom,appliedTo].filter(Boolean).length ? ` · ${[grade,assignee,duplicate,appliedFrom,appliedTo].filter(Boolean).length} selected` : ""}</summary>
-          <div className="hub-filter-grid">
-
-
-          <Field label="Applied from"><input type="date" value={appliedFrom} max={appliedTo || undefined} onChange={e=>setAppliedFrom(e.target.value)}/></Field>
-          <Field label="Applied through"><input type="date" value={appliedTo} min={appliedFrom || undefined} onChange={e=>setAppliedTo(e.target.value)}/></Field>
-
-            <Field label="Reviewer grades" hint="Optional grades recorded by your team."><select value={grade} onChange={e=>setGrade(e.target.value)}><option value="">Graded and ungraded</option><option value="reviewed">Graded applications</option><option value="ungraded">Ungraded applications</option></select></Field>
-            <Field label="Assigned to"><input value={assignee} onChange={e=>setAssignee(e.target.value)} type="email" placeholder="Recruiter email" /></Field>
-            <label className="hub-checkbox"><input type="checkbox" checked={duplicate} onChange={e=>setDuplicate(e.target.checked)} /> Shared-email applications</label>
-          </div><p className="hub-muted hub-filter-hint">Dates use {timeZone}.</p><span className="hub-muted">Filters update automatically.</span>
-        </details>
-          <div className="hub-filter-shortcut-actions">
-
-        {!inTrash && <button className="hub-button secondary" type="button" onClick={() => applyView((() => {const params=new URLSearchParams(filter);params.set("sort","ai_match_desc");params.set("top","10");return params.toString();})())}>Top 10 AI matches</button>}
-        {isTopTen && <button className="hub-text-button" type="button" onClick={() => applyView((() => {const params=new URLSearchParams(filter);params.delete("top");return params.toString();})())}>Show all applicants</button>}
-        <button className="hub-text-button" type="button" onClick={()=>applyView(new URLSearchParams({jobId,...(inTrash?{trash:"true"}:{})}).toString())}>Clear filters</button>
-          </div>
-          </ApplicantFilterDisclosure>
-          <span className="hub-muted hub-filter-autoupdate" aria-live="polite">{filtersDirty?"Updating results…":"Filters update automatically"}</span>
-        </div>
-
-        {invalidDates && <p role="alert">The end date must be on or after the start date.</p>}
-        {filtersDirty && <p className="hub-notice" role="status">Updating results and download scope…</p>}
-
-      </form>
-
-      </div>
-      {!inTrash && selectedJob && <BulkRejection filter={filter} selectedIds={allMatching?[]:selected} jobTitle={selectedJob.title} disabled={filtersDirty || resource.loading || !!resource.error || !resource.data?.total} changed={()=>{setSelected([]);setAllMatching(false);void resource.reload();changed();}}/>}
-      {allMatching && <p className="hub-selection-banner" role="status">All {resource.data?.total || 0} matching applicants across every page are selected for download. To change applicant stages, clear this selection and select applicants on a single page.</p>}
-      {isTopTen && <p className="hub-muted">Top 10 includes active applicants with a completed AI match in this filtered view.</p>}
-      {selectedJob && !selectedJob.rules?.some(rule=>rule.enabled) && <p className="hub-muted hub-screening-help">No screening rules are enabled for this job. AI matches still compare the résumé and answers with the job description.</p>}
-      <Feedback error={mutation.error} success={mutation.success}/>
-      <ResourceState
-        loading={resource.loading}
-        error={resource.error}
-        retry={() => void resource.reload()}
-      />
-      {!resource.loading && resource.data && (
-        <>
-          {resource.data.items.length ? (
-            <CandidateTable
-              hrefFor={item=>applicantHref(item.id,new URLSearchParams({...Object.fromEntries(new URLSearchParams(filter)),page:String(page)}).toString(),item.jobId)}
-              items={resource.data.items}
-              showRole={false}
-              qualification={new URLSearchParams(filter).get("qualification")||""}
-              assignee={new URLSearchParams(filter).get("assignee")||""}
-              onColumnFilter={(key,value)=>{const params=new URLSearchParams(filter);if(value)params.set(key,value);else params.delete(key);applyView(params.toString());}}
-              sort={new URLSearchParams(filter).get("sort")||defaultSort}
-              onSort={value=>{const params=new URLSearchParams(filter);params.set("sort",value);params.delete("top");applyView(params.toString());}}
-              screeningConfigured={selectedJob?.rules?.some(rule=>rule.enabled) ?? false}
-              busy={mutation.busy}
-              shortlist={item=>void shortlist(item)}
-              unshortlist={item=>void unshortlist(item)}
-              interview={item=>{if(onSelect)onSelect(item.id,"interview",filter);else{setDetailAction("interview");setDetailId(item.id);}}}
-              select={id=>onSelect?onSelect(id,undefined,filter):setDetailId(id)}
-              selected={allMatching ? resource.data.items.map(item=>item.id) : selected}
-              togglePage={() => {const ids = resource.data?.items.map(item => item.id) || []; setSelected(allMatching || ids.every(id => selected.includes(id)) ? [] : ids); setAllMatching(false); setExportScope("selected");}}
-              toggle={(id) => {
-                if (allMatching) {setAllMatching(false);setSelected((resource.data?.items || []).filter(item=>item.id!==id).map(item=>item.id));setExportScope("selected");return;}
-                setExportScope("selected");
-                setSelected((current) =>
-                  current.includes(id)
-                    ? current.filter((value) => value !== id)
-                    : current.length < 100
-                      ? [...current, id]
-                      : current,
-                );
-              }}
-            />
-          ) : (
-            <EmptyState title={isTopTen ? "No completed AI matches yet" : "No applications in this view"}>
-              <p>{isTopTen ? "Enable AI matching for this job and wait for reviews to finish. Only active applicants with current, completed scores appear in the Top 10." : "New accepted applications appear here. Try another filter if records already exist."}</p>
-            </EmptyState>
-          )}
-          {!isTopTen && <div className="hub-pagination">
-            <button
-              className="hub-button secondary"
-              disabled={page <= 1}
-              onClick={() => {
-                onFilterChange?.(filter, page - 1);
-                setPage((value) => value - 1);
-                setSelected([]);
-              }}
-            >
-              Previous
-            </button>
-            <span>
-              Page {page} of {Math.max(1, Math.ceil(resource.data.total / (resource.data.pageSize || 25)))} · {resource.data.total} matching applicants
-            </span>
-            <button
-              className="hub-button secondary"
-              disabled={
-                resource.data.items.length === 0 ||
-                page * (resource.data.pageSize || 25) >= resource.data.total
-              }
-              onClick={() => {
-                onFilterChange?.(filter, page + 1);
-                setPage((value) => value + 1);
-                setSelected([]);
-              }}
-            >
-              Next
-            </button>
-          </div>}
-        </>
-      )}
-      {selectedJob && <JobMatchSetup key={jobId} jobId={jobId} changed={()=>void resource.reload()}/> }
-      {selected.length > 0 && !allMatching && !inTrash && (
-        <form className="hub-bulk" onSubmit={applyBulk}>
-          <strong>{selected.length} selected</strong>
-          {(resource.data?.items||[]).filter(item=>selected.includes(item.id)).every(item=>item.stage==="Screening")&&<button type="button" className="hub-button secondary" disabled={mutation.busy||filtersDirty} onClick={()=>void unshortlistSelected()}>Remove selected from shortlist</button>}
-          <button type="button" className="hub-button" disabled={mutation.busy || filtersDirty || !(resource.data?.items || []).filter(item=>selected.includes(item.id)).every(item=>["Application Review","Screening"].includes(item.stage))} onClick={()=>void shortlistSelected()}>Shortlist selected</button>
-          <Field label="Bulk action">
-            <select
-              value={bulkAction}
-              onChange={(e) => {
-                setBulkAction(e.target.value);
-                setApprove(false);
-              }}
-            >
-              <option value="stage">Move stage</option>
-              <option value="assign">Assign reviewer</option>
-              <option value="reject">Reject applications</option>
-            </select>
-          </Field>
-          {bulkAction === "stage" && (
-            <Field label="Stage">
-              <select
-                value={bulkStage}
-                onChange={(e) => setBulkStage(e.target.value)}
-              >
-                {stages
-                  .filter((s) => s !== "Rejected")
-                  .map((s) => (
-                    <option key={s} value={s}>{stageLabel(s)}</option>
-                  ))}
-              </select>
-            </Field>
-          )}
-          {bulkAction === "assign" && (
-            <Field label="Reviewer email">
-              <input
-                value={bulkAssignee}
-                onChange={(e) => setBulkAssignee(e.target.value)}
-                type="email"
-                placeholder="Blank to unassign"
-              />
-            </Field>
-          )}
-          {bulkAction === "reject" && (
-            <>
-              <Field label="Rejection reason">
-                <input
-                  value={reason}
-                  onChange={(e) => setReason(e.target.value)}
-                  required
-                />
-              </Field>
-              <label className="hub-checkbox">
-                <input
-                  type="checkbox"
-                  checked={approve}
-                  onChange={(e) => setApprove(e.target.checked)}
-                  required
-                />{" "}
-                I approve these rejections and their rejection emails.
-              </label>
-            </>
-          )}
-          <button
-            className="hub-button"
-            type="submit"
-            disabled={mutation.busy || filtersDirty || (bulkAction === "reject" && !approve)}
-          >
-            {mutation.busy ? "Applying…" : "Apply to selected"}
-          </button>
-          <button
-            className="hub-text-button"
-            type="button"
-            onClick={() => setSelected([])}
-          >
-            Clear selection
-          </button>
-          <Feedback error={mutation.error} success={mutation.success} />
-        </form>
-      )}
-    </section>
-  );
+      {selection.length>0&&!inTrash&&<div className="aq-bulk">
+        <label>Apply to {selection.length} selected<select disabled={blocked} value={bulkAction} onChange={e=>setBulkAction(e.target.value)}><option value="">Choose action</option><option value="assign">Assign owner</option><option value="stage">Move stage</option><option value="reject">Preview rejection</option><option value="download">Download</option></select></label>
+        {bulkAction==="assign"&&<label>New owner<select aria-label="New owner" value={bulkAssignee} onChange={e=>setBulkAssignee(e.target.value)}><option value="">Unassigned</option>{ownerChoices.map(email=><option key={email} value={email}>{email}</option>)}</select></label>}
+        {bulkAction==="stage"&&<label>New stage<select aria-label="New stage" value={bulkStage} onChange={e=>setBulkStage(e.target.value)}>{stages.filter(s=>s!=="Rejected").map(s=><option key={s} value={s}>{stageLabel(s)}</option>)}</select></label>}
+        {["stage","assign"].includes(bulkAction)&&<button type="button" className="hub-button" disabled={blocked} onClick={()=>void applyBulk()}>{busy?"Updating…":"Update "+selection.length+" applications"}</button>}
+        {bulkAction==="download"&&<button type="button" disabled={blocked} className="hub-button" onClick={()=>void download("zip")}>Download {selection.length} applications (ZIP)</button>}
+        {bulkAction==="reject"&&<BulkRejection key={reviewerEmail+filter} actor={reviewerEmail} filter={filter} selectedIds={ids} selectionId={snapshotId} jobTitle={scopeName} disabled={blocked} changed={()=>{void reload();changed();}}/>}
+      </div>}
+      {(!selection.length || bulkAction!=="reject") && <BulkRejection key={"recovery"+reviewerEmail+filter} actor={reviewerEmail} recoveryOnly filter={filter} jobTitle={scopeName} disabled={blocked} changed={()=>{void reload();changed();}}/>}
+      {data.items.length?<CandidateTable items={data.items} showRole={!selectedJob} roleInIdentity optionalColumns={columns} select={id=>open(id)} hrefFor={item=>applicantHref(item.id,new URLSearchParams({...Object.fromEntries(params),page:String(page)}).toString())}
+        selected={ids} togglePage={()=>toggle(data.items)} toggle={id=>{const item=data.items.find(r=>r.id===id);if(item)toggle([item]);}}
+        sort={val("sort")} onSort={order=>update({sort:order,top:null})} allowAiSort={!!jobId} busy={blocked}
+        screeningConfigured={selectedJob?.rules?.some(rule=>rule.enabled)} shortlist={row=>void setApplicationStage(row,"Screening")} unshortlist={row=>void setApplicationStage(row,"Application Review")}/>
+        :<EmptyState title="No applications in this view"><button className="hub-text-button" type="button" onClick={resetFilters}>Reset filters</button></EmptyState>}
+      {total>0&&<div className="hub-pagination"><button type="button" className="hub-button secondary" disabled={page<=1||blocked} onClick={()=>turnPage(page-1)}>Previous</button>
+        <span>Page {page} of {Math.max(1,Math.ceil(total/(data.pageSize||30)))} · {total} matching applicants</span>
+        <button type="button" className="hub-button secondary" disabled={blocked||page*(data.pageSize||30)>=total} onClick={()=>turnPage(page+1)}>Next</button></div>}
+    </>}
+    {selectedJob&&<JobMatchSetup key={jobId} jobId={jobId} changed={()=>void reload()}/>}
+  </section>;
 }
 export function CandidateDetail({
   id,
@@ -726,10 +444,23 @@ export function CandidateDetail({
       "/api/hub/applications/" + encodeURIComponent(id),
     ),
     mutation = useHubMutation();
-  const approval = useHubResource<{canApprove:boolean}>("/api/hub/applications/"+encodeURIComponent(id)+"/recruiter-review");
   const [evidenceRefresh,setEvidenceRefresh]=useState(0);
+  const approval = useHubResource<InterviewHandoffReview>("/api/hub/applications/"+encodeURIComponent(id)+"/recruiter-review",evidenceRefresh);
+  const [editingHandoff,setEditingHandoff]=useState(false);
+  const [returningHandoff,setReturningHandoff]=useState(false);
+  const [handoffQuestion,setHandoffQuestion]=useState("");
+  const questionRef=useRef<HTMLTextAreaElement>(null);
+  useEffect(()=>{ if(returningHandoff) questionRef.current?.focus(); },[returningHandoff]);
   const [reviewDirty,setReviewDirty]=useState(false);
   const [section, setSection] = useState<"application" | "review" | "activity">(initialSection);
+  const aiMatchPanel = useRef<HTMLDetailsElement>(null);
+  const [showHistoryReview,setShowHistoryReview] = useState(false);
+  useEffect(()=>{
+    if (!showHistoryReview || !aiMatchPanel.current) return;
+    aiMatchPanel.current.open=true;
+    aiMatchPanel.current.querySelector("summary")?.focus();
+    setShowHistoryReview(false);
+  },[section,showHistoryReview]);
   const profileTop = useRef<HTMLElement>(null);
   const openedProfile = useRef<string|null>(null);
   useLayoutEffect(() => {
@@ -778,7 +509,7 @@ export function CandidateDetail({
   useLayoutEffect(()=>{if(leaveRequest)leaveDialog.current?.focus();},[leaveRequest]);
   const evidenceDraft = useEvidenceDraft();
   const scorecardDraft = useScorecardDraft();
-  const dirty = !!(interviewDirty || reviewDirty || evidenceDraft.notes.trim() || scorecardDraft[0].ratings.length || text.trim() || subject.trim() || body.trim() || reason.trim() || score || criteria.trim() || assignee.trim() || renew || emailPending || (actionOpen && ((action==="stage" && stage!=="Screening") || (action==="attendance" && attendance!==""))));
+  const dirty = !!(interviewDirty || reviewDirty || handoffQuestion.trim() || evidenceDraft.notes.trim() || scorecardDraft[0].ratings.length || text.trim() || subject.trim() || body.trim() || reason.trim() || score || criteria.trim() || assignee.trim() || renew || emailPending || (actionOpen && ((action==="stage" && stage!=="Screening") || (action==="attendance" && attendance!==""))));
   const dirtyRef=useRef(dirty);useLayoutEffect(()=>{dirtyRef.current=dirty;},[dirty]);
   function resetInterview(){if(mutation.busy||decisionBusy)return;setConfirmInterviewDiscard(false);setActionOpen(false);setInterviewerEmail("");setRenew(false);setInterviewDraft(null);setInterviewDirty(false);setInterviewReady(false);mutation.clear();const leave=interviewLeave.current;interviewLeave.current=null;if(leave){dirtyRef.current=false;leave();}}
   function keepInterview(){interviewLeave.current=null;setConfirmInterviewDiscard(false);queueMicrotask(()=>actionPanel.current?.querySelector<HTMLElement>('select')?.focus({preventScroll:true}));}
@@ -816,7 +547,7 @@ export function CandidateDetail({
     if (!resource.data || resource.data.stage !== "Application Review" || mutation.busy || rejectionInFlight.current || dirty) return;
     rejectionInFlight.current=true;setShortlistBusy(true);
     const params=reviewQueue(new URLSearchParams(navigationFilter));
-    params.set("jobId",resource.data.jobId);params.delete("page");
+    params.delete("page");
     if(!params.has("sort"))params.set("sort","screening_newest");
     let nextId:string|null=null;let navigationReady=false;
     try {
@@ -834,10 +565,29 @@ export function CandidateDetail({
       }
     } finally {rejectionInFlight.current=false;if(stillMounted.current)setShortlistBusy(false);}
   }
-  async function founderTransition(target:"Awaiting Founder Review"|"Second Round Interview") {
-    if(!resource.data||mutation.busy||decisionBusy||dirty)return;
-    const result=await mutation.run(`/api/hub/applications/${encodeURIComponent(id)}/action`,"POST",{action:"stage",stage:target,expectedRevision:resource.data.revision},target==="Awaiting Founder Review"?"Sent for founder review. Email notifications queued.":"Moved to second-round interview. No invitation sent; request an interview when ready.");
-    if(result!==undefined){await resource.reload();changed();}
+  async function decideHandoff(target:"Awaiting Founder Review"|"Second Round Interview"|"returnHandoff") {
+    const detail=resource.data;
+    if(!detail || mutation.busy || decisionBusy || (target!=="returnHandoff" && dirty))return;
+    const params=reviewQueue(new URLSearchParams(navigationFilter));
+    const inFounderQueue=params.get("stage")==="Awaiting Founder Review" && detail.stage==="Awaiting Founder Review";
+    let next: {nextId:string|null} | undefined;
+    if(inFounderQueue && openApplicant) {
+      try { next=await hubRequest(`/api/hub/applications/${encodeURIComponent(id)}/navigation?${params}`); }
+      catch { /* A decision is still valid if queue navigation is unavailable. */ }
+    }
+    const returning=target==="returnHandoff";
+    const body=returning ? {action:"returnHandoff",reason:handoffQuestion.trim()} : {action:"stage",stage:target};
+    const message=returning ? "Returned to the recruiter with your question." : target==="Awaiting Founder Review" ? "Sent for founder review." : "Moved to second-round interview.";
+    const result=await mutation.run(`/api/hub/applications/${encodeURIComponent(id)}/action`,"POST",{...body,expectedRevision:detail.revision},message);
+    if(result===undefined)return;
+    setReturningHandoff(false);setHandoffQuestion("");dirtyRef.current=false;changed();
+    if(next && openApplicant) {
+      onDecisionNotice?.(message,next.nextId || "list");
+      if(next.nextId)openApplicant(next.nextId,params.toString(),"review");else back();
+    }else{ await Promise.all([resource.reload(),approval.reload()]); }
+  }
+  function openHandoffEditor(){
+    chooseSection("review");setEditingHandoff(true);
   }
   async function unshortlist(){
     if(!resource.data||resource.data.stage!=="Screening"||mutation.busy||decisionBusy||dirty)return;
@@ -848,7 +598,7 @@ export function CandidateDetail({
     if(!resource.data || mutation.busy || rejectionInFlight.current || dirty || ["Rejected","Withdrawn","Hired"].includes(resource.data.stage))return;
     rejectionInFlight.current=true;setRejectBusy(true);
     const params=reviewQueue(new URLSearchParams(navigationFilter));
-    params.set("jobId",resource.data.jobId);params.delete("page");
+    params.delete("page");
     if(!params.has("sort"))params.set("sort","screening_newest");
     let nextId:string|null=null;let navigationReady=false;
     try {
@@ -961,11 +711,16 @@ export function CandidateDetail({
               {!detail.trashed&&!['Rejected','Withdrawn','Hired'].includes(detail.stage)&&<button type="button" className="hub-button secondary" disabled={mutation.busy||decisionBusy||dirty} title={dirty?"Save or clear your unsaved note or action before rejecting.":"Reject and queue this job’s rejection email, then open the next active applicant."} onClick={()=>void rejectAndContinue()}>{rejectBusy?"Rejecting…":"Reject"}</button>}
               {detail.trashed && <button type="button" className="hub-button secondary" disabled={mutation.busy||decisionBusy} onClick={()=>void lifecycle("restore")}>Restore application</button>}
               {!detail.trashed && canRecordAttendance && <button type="button" className="hub-button secondary" disabled={mutation.busy||decisionBusy||dirty} onClick={()=>{setAction("attendance");setAttendance("");setActionOpen(true);mutation.clear();}}>Record attendance</button>}
-              {!detail.trashed&&detail.stage==="Interview"&&<button type="button" className="hub-button secondary" disabled={mutation.busy||decisionBusy||dirty||!detail.notes.length} title={!detail.notes.length?"Save interview feedback in Recruiter notes first.":"Send a complete interview handoff and notify the hiring approvers."} onClick={()=>void founderTransition("Awaiting Founder Review")}>Send for founder review</button>}
-              {!detail.trashed&&detail.stage==="Awaiting Founder Review"&&approval.data?.canApprove&&<button type="button" className="hub-button" disabled={mutation.busy||decisionBusy||dirty} onClick={()=>void founderTransition("Second Round Interview")}>Move to second-round interview</button>}
+              {!detail.trashed&&detail.stage==="Interview"&&(approval.data?.readiness?.ready
+                ? <button type="button" className="hub-button" disabled={mutation.busy||decisionBusy||dirty} onClick={()=>void decideHandoff("Awaiting Founder Review")}>Send for founder review</button>
+                : <button type="button" className="hub-button secondary" disabled={dirty||decisionBusy||mutation.busy} onClick={openHandoffEditor}>Complete interview handoff</button>)}
+              {!detail.trashed&&detail.stage==="Awaiting Founder Review"&&approval.data?.canApprove&&<>
+                <button type="button" className="hub-button" disabled={mutation.busy||decisionBusy||dirty} onClick={()=>void decideHandoff("Second Round Interview")}>Move to second-round interview</button>
+                <button type="button" className="hub-button secondary" disabled={mutation.busy||decisionBusy||dirty} onClick={()=>{chooseSection("review");setReturningHandoff(true);}}>Return to recruiter</button>
+              </>}
               {!detail.trashed&&<ShareApplicant key={detail.id} id={detail.id}/>}
               <JobActionMenu label="More applicant actions" triggerLabel="More">
-                {!detail.trashed&&reviewerEmail&&detail.assignee!==reviewerEmail&&<button type="button" disabled={mutation.busy||decisionBusy} onClick={async()=>{const r=await mutation.run(`/api/hub/applications/${encodeURIComponent(id)}/action`,"POST",{action:"assign",assignee:reviewerEmail,expectedRevision:detail.revision},"Assigned to you.");if(r!==undefined){await resource.reload();changed()}}}>Assign to me</button>}
+                {!detail.trashed&&reviewerEmail&&detail.assignee!==reviewerEmail&&<button type="button" disabled={mutation.busy||decisionBusy} onClick={async()=>{const r=await mutation.run(`/api/hub/applications/${encodeURIComponent(id)}/action`,"POST",{action:"assign",assignee:reviewerEmail,expectedRevision:detail.revision},"Assigned to you.");if(r!==undefined){await resource.reload();changed()}}}><UserCheck size={16} aria-hidden="true"/>Assign to me</button>}
                 {!detail.trashed && !["Rejected","Withdrawn","Hired"].includes(detail.stage) && <button type="button" disabled={mutation.busy||decisionBusy} onClick={()=>{interviewLeave.current=null;setConfirmInterviewDiscard(false);setAction("interview");setActionOpen(true);mutation.clear();}}><CalendarClock size={16} aria-hidden="true"/>{detail.interview && isHistoricalInterview(detail.interview) ? "Request another interview" : "Request interview"}</button>}
                 {!detail.trashed && <button type="button" disabled={mutation.busy||decisionBusy} onClick={()=>{setAction("note");setActionOpen(true);mutation.clear();}}><StickyNote size={16} aria-hidden="true"/>Add note</button>}
                 {!detail.trashed && <button type="button" disabled={mutation.busy||decisionBusy} onClick={()=>{setAction("stage");setActionOpen(true);mutation.clear();}}><Settings2 size={16} aria-hidden="true"/>Other applicant actions</button>}
@@ -976,7 +731,8 @@ export function CandidateDetail({
             </div>
           </header>
           <Feedback error={mutation.error||pdfError} success={mutation.success}/>
-          {!detail.trashed&&["Interview","Awaiting Founder Review","Second Round Interview"].includes(detail.stage)&&<p className="hub-notice hub-founder-guidance">{detail.stage==="Interview"?"After the first interview, complete the interview handoff, then send for founder review.":detail.stage==="Awaiting Founder Review"?"Review the recruiter’s feedback, mark the notes reviewed, then move to a second-round interview or reject.":"Ready for the second round. Use More → Request interview when you want to send a booking invitation."} <button type="button" className="hub-text-button" onClick={()=>setSection("review")}>View recruiter notes{detail.notesReview?.hasUnread?" · new":""}</button></p>}
+          {!detail.trashed&&detail.stage==="Interview"&&approval.data?.returned&&section!=="review"&&<p className="hub-notice hub-handoff-question"><strong>More information requested</strong><br/>{approval.data.returned.question}</p>}
+          {!detail.trashed&&detail.stage==="Awaiting Founder Review"&&section!=="review"&&<button type="button" className="hub-text-button" onClick={()=>chooseSection("review")}>Open interview handoff{detail.notesReview?.hasUnread?" · unread notes":""}</button>}
           {detail.trashed && <p className="hub-muted">This application is in Trash. Its files and history are retained. Restore it before taking recruiting actions.</p>}
           {deleteOpen && <div className="hub-card" role="alertdialog" aria-labelledby="delete-application-title"><h3 id="delete-application-title">Move this application to Trash?</h3><p>It will leave your recruiting queues. Files and history stay saved, and you can restore it from this job’s Trash tab. Unsent emails and active booking links will be cancelled.</p><div className="hub-button-row"><button className="hub-button secondary" type="button" disabled={mutation.busy||decisionBusy} onClick={()=>setDeleteOpen(false)}>Keep application</button><button className="hub-button" type="button" disabled={mutation.busy||decisionBusy} onClick={()=>void lifecycle("trash")}>Move to Trash</button></div></div>}
           <div className="hub-detail-grid">
@@ -1176,11 +932,17 @@ export function CandidateDetail({
               </ApplicantActionCard>
             </InterviewActionFrame>}
             <div className="hub-detail-main">
-              <div ref={recordTabs} className="hub-button-row hub-profile-tabs" role="tablist" aria-label="Applicant record">{([{id:"application",label:"Application & files"},{id:"review",label:"AI review & notes"},{id:"activity",label:"Activity & messages"}] as const).map(tab=><button key={tab.id} type="button" role="tab" id={`candidate-tab-${tab.id}`} aria-selected={section===tab.id} tabIndex={section===tab.id?0:-1} onKeyDown={event=>{const ids=["application","review","activity"] as const;const index=ids.indexOf(section);const next=event.key==="ArrowRight"?ids[(index+1)%3]:event.key==="ArrowLeft"?ids[(index+2)%3]:event.key==="Home"?ids[0]:event.key==="End"?ids[2]:null;if(next){event.preventDefault();chooseSection(next);document.getElementById(`candidate-tab-${next}`)?.focus({preventScroll:true});}}} aria-controls={`candidate-panel-${tab.id}`} className={"hub-button " + (section===tab.id ? "" : "secondary")} onClick={()=>chooseSection(tab.id)}>{tab.label}</button>)}</div>
+              <div ref={recordTabs} className="hub-button-row hub-profile-tabs" role="tablist" aria-label="Applicant record">{([{id:"application",label:"Application & files"},{id:"review",label:"Interviews & notes"},{id:"activity",label:"Activity & messages"}] as const).map(tab=><button key={tab.id} type="button" role="tab" id={`candidate-tab-${tab.id}`} aria-selected={section===tab.id} tabIndex={section===tab.id?0:-1} onKeyDown={event=>{const ids=["application","review","activity"] as const;const index=ids.indexOf(section);const next=event.key==="ArrowRight"?ids[(index+1)%3]:event.key==="ArrowLeft"?ids[(index+2)%3]:event.key==="Home"?ids[0]:event.key==="End"?ids[2]:null;if(next){event.preventDefault();chooseSection(next);document.getElementById(`candidate-tab-${next}`)?.focus({preventScroll:true});}}} aria-controls={`candidate-panel-${tab.id}`} className={"hub-button " + (section===tab.id ? "" : "secondary")} onClick={()=>chooseSection(tab.id)}>{tab.label}</button>)}</div>
               <div role="tabpanel" id="candidate-panel-review" aria-labelledby="candidate-tab-review" hidden={section!=="review"}>
               <fieldset disabled={decisionBusy} style={{border:0,padding:0,margin:0,minWidth:0}}>
-              {section === "review" && <><WorkflowReview id={detail.id} refresh={evidenceRefresh} onDirty={setReviewDirty} changed={()=>{void resource.reload();changed();}}/>{reviewDirty?<p className="hub-muted">Save your interview handoff before attaching a recording.</p>:<RecordingPanel applicationId={detail.id} primaryRecordingInHandoff refresh={evidenceRefresh} changed={()=>{setEvidenceRefresh(n=>n+1);void resource.reload();changed();}}/>}<CandidateMatch applicationId={detail.id}/></>}
+              {section === "review" && <><WorkflowReview id={detail.id} resource={approval} editing={editingHandoff} onEdit={setEditingHandoff} onDirty={setReviewDirty} changed={()=>{void resource.reload();changed();}}/>
+              {returningHandoff && detail.stage==="Awaiting Founder Review" && <form className="hub-card hub-return-question" onSubmit={event=>{event.preventDefault();void decideHandoff("returnHandoff");}}>
+                <label>What should the recruiter clarify?<textarea ref={questionRef} required maxLength={2000} rows={3} value={handoffQuestion} onChange={event=>setHandoffQuestion(event.target.value)}/></label>
+                <div className="hub-button-row"><button type="submit" className="hub-button" disabled={!handoffQuestion.trim()||mutation.busy}>Send question to recruiter</button><button type="button" className="hub-text-button" disabled={mutation.busy} onClick={()=>{setReturningHandoff(false);setHandoffQuestion("");}}>Cancel</button></div>
+                <Feedback error={mutation.error} success=""/>
+              </form>}{reviewDirty?<p className="hub-muted">Save your interview handoff before attaching a recording.</p>:<RecordingPanel applicationId={detail.id} primaryRecordingInHandoff refresh={evidenceRefresh} changed={()=>{setEvidenceRefresh(n=>n+1);void resource.reload();changed();}}/>}</>}
               <RecruiterNotes detail={detail} busy={mutation.busy||decisionBusy||dirty} addNote={()=>{setAction("note");setActionOpen(true);}} changed={()=>{void resource.reload();changed();}}/>
+              {section==="review"&&<details className="hub-card" ref={aiMatchPanel}><summary>AI job match</summary><CandidateMatch applicationId={detail.id}/></details>}
               <details className="hub-card"><summary>Optional: human grades and scorecards</summary>
               <section className="hub-card">
                 <h3>Reviewer grade</h3>
@@ -1343,7 +1105,7 @@ export function CandidateDetail({
                   ))
                 ) : (
                   <p className="hub-muted">
-                    No scorecards yet. Use AI review & notes to record a review.
+                    No scorecards yet. Use Interviews &amp; notes to record a review.
                   </p>
                 )}
               </section>
@@ -1356,7 +1118,7 @@ export function CandidateDetail({
                       <li key={event.id}>
                         <strong>{summary.title}</strong>
                         {summary.description && (event.type==="note" || summary.description.length>240 ? <details><summary>View details</summary><p className="hub-preserve">{summary.description}</p></details> : <p>{summary.description}</p>)}
-                        {summary.review && <button type="button" className="hub-text-button" onClick={()=>{setSection("review");document.getElementById("candidate-tab-review")?.focus({preventScroll:true});}}>View AI review</button>}
+                        {summary.review && <button type="button" className="hub-text-button" onClick={()=>{setSection("review");setShowHistoryReview(true);}}>View AI review</button>}
                         <small>
                           {event.actor} · {displayDate(event.createdAt)}
                         </small>
