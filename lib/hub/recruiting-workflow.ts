@@ -4,6 +4,7 @@ import type { HubMember } from './auth-core';
 import type { Task } from './types';
 import type { MailInput } from '../google/gmail';
 import { HiringError } from '../hiring/errors';
+import { INTERVIEW_PROGRESS_VALUES, interviewProgressForRowSql, type InterviewProgress } from './interview-progress';
 import { activeApplicationsSql } from './application-lifecycle';
 import { sha256 } from '../hiring/crypto';
 import { notesReviews } from './note-review';
@@ -105,16 +106,33 @@ export async function workflowOverview(store:HubStore,member:HubMember){
  const canApprove=await canApproveHiring(store,member),[reviews,mine,unassigned]=await Promise.all([store.applications({stage:'Awaiting Founder Review',sort:'newest'},member.email),store.applications({stage:'Application Review',assignee:member.email,sort:'screening_newest'},member.email),store.applications({stage:'Application Review',assignee:'unassigned',sort:'screening_newest'},member.email)]);
  return {canApprove,approvers:await workflowApprovers(store),reviewQueue:reviews.items.slice(0,12),myQueue:mine.items.slice(0,12),unassigned:unassigned.items.slice(0,12),counts:{awaitingReview:reviews.total,myUnreviewed:mine.total,unassigned:unassigned.total},handoffRequired:HANDOFF_REQUIRED};
 }
-export async function listRoleInterviews(store:HubStore,filters:{jobId?:string;owner?:string;status?:string;page?:number;pageSize?:number}){
+export async function listRoleInterviews(store:HubStore,filters:{jobId?:string;owner?:string;status?:string;progress?:string;page?:number;pageSize?:number}){
  const page=filters.page??1,pageSize=filters.pageSize??50;
  if(!Number.isSafeInteger(page)||page<1||page>1000000||!Number.isSafeInteger(pageSize)||pageSize<1||pageSize>100)throw new HiringError('invalid_interview_page',422,'Choose a valid interview page and a page size between 1 and 100.');
  const where=[activeApplicationsSql('a')],values:(string|number|null)[]=[];
  if(filters.jobId){await store.getJob(filters.jobId);where.push('a.job_id=?');values.push(filters.jobId);}
  if(filters.owner){where.push("lower(COALESCE(a.assignee,''))=?");values.push(filters.owner.toLowerCase());}
- if(filters.status){if(!['invited','pending','booked','cancel_pending','cancelled','failed','completed','upcoming'].includes(filters.status))throw new HiringError('invalid_interview_filter',422,'Choose a valid interview status.');
- if(filters.status==='completed'){where.push("i.status='booked' AND i.end<?");values.push(new Date().toISOString());}else if(filters.status==='upcoming'){where.push("i.status='booked' AND i.start>=?");values.push(new Date().toISOString());}else{where.push('i.status=?');values.push(filters.status);}}
+ const progressSql = interviewProgressForRowSql('i');
+ if (filters.progress) {
+  if (!INTERVIEW_PROGRESS_VALUES.includes(filters.progress as InterviewProgress))
+   throw new HiringError('invalid_interview_filter',422,'Choose a valid interview status.');
+  where.push(`(${progressSql})=?`);
+  values.push(filters.progress);
+ }
+ if (filters.status) {
+  if (filters.status === 'completed') where.push('i.attended=1');
+  else if (filters.status === 'upcoming') {
+   where.push("i.status='booked' AND i.attended IS NULL AND i.start>=?");
+   values.push(new Date().toISOString());
+  } else {
+   if (!['invited','pending','booked','cancel_pending','cancelled','failed'].includes(filters.status))
+    throw new HiringError('invalid_interview_filter',422,'Choose a valid interview status.');
+   where.push('i.status=?');
+   values.push(filters.status);
+  }
+ }
  const clause=where.join(' AND '),count=await store.stmt(`SELECT COUNT(*) AS n FROM hub_interviews i JOIN hub_applications a ON a.id=i.application_id WHERE ${clause}`,...values).first<{n:number}>();
- const rows=await store.rows<{id:string;applicationId:string;name:string;jobId:string;jobTitle:string;assignee:string|null;status:string;start:string|null;end:string|null;meetUrl:string|null;recordingUrl:string|null;summary:string|null}>(`SELECT i.id,i.application_id AS applicationId,a.name,a.job_id AS jobId,a.job_title AS jobTitle,a.assignee,i.status,i.start,i.end,i.meet_url AS meetUrl,r.recording_url AS recordingUrl,r.summary FROM hub_interviews i JOIN hub_applications a ON a.id=i.application_id LEFT JOIN hub_recruiter_reviews r ON r.application_id=a.id WHERE ${clause} ORDER BY COALESCE(i.start,'' ) DESC,i.created_at DESC,i.id DESC LIMIT ? OFFSET ?`,...values,pageSize,(page-1)*pageSize);
+ const rows=await store.rows<{id:string;applicationId:string;name:string;jobId:string;jobTitle:string;assignee:string|null;status:string;interviewProgress:InterviewProgress;start:string|null;end:string|null;meetUrl:string|null;recordingUrl:string|null;summary:string|null}>(`SELECT i.id,i.application_id AS applicationId,a.name,a.job_id AS jobId,a.job_title AS jobTitle,a.assignee,i.status,(${progressSql}) AS interviewProgress,i.start,i.end,i.meet_url AS meetUrl,r.recording_url AS recordingUrl,r.summary FROM hub_interviews i JOIN hub_applications a ON a.id=i.application_id LEFT JOIN hub_recruiter_reviews r ON r.application_id=a.id WHERE ${clause} ORDER BY COALESCE(i.start,'' ) DESC,i.created_at DESC,i.id DESC LIMIT ? OFFSET ?`,...values,pageSize,(page-1)*pageSize);
  const evidenceRows=rows.length?await store.rows<{value:string}>(`SELECT value FROM hub_settings WHERE ${[...new Set(rows.map(row=>row.applicationId))].map(()=>"key LIKE ?").join(' OR ')}`,...[...new Set(rows.map(row=>row.applicationId))].map(id=>`interview_evidence:${id}:%`)):[];
  const byInterview=new Map<string,{recordingUrl?:string;summary?:string}>();
  for(const item of evidenceRows){try{const evidence=JSON.parse(item.value) as {interviewId?:string;recordingUrl?:string;summary?:string};if(evidence.interviewId)byInterview.set(evidence.interviewId,evidence);}catch{/* Ignore malformed legacy evidence. */}}

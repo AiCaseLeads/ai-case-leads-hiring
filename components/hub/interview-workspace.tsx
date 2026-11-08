@@ -1,4 +1,6 @@
 "use client";
+import type { InterviewProgress } from '../../lib/hub/interview-progress';
+import { interviewProgressLabels } from './interview-progress';
 import {useState} from 'react';
 import {useHubResource,useHubMutation,displayDate} from './api';
 import {Feedback,ResourceState} from './shared';
@@ -9,7 +11,60 @@ type UploadedRecording={id:string;filename:string;url:string};
 export function RecordingEvidence({recordingUrl,uploads,primaryRecordingInHandoff=false}:{recordingUrl?:string;uploads:UploadedRecording[];primaryRecordingInHandoff?:boolean}){
  return <>{recordingUrl&&<>{(recordingUrl.startsWith("/api/hub/")||/\.(mp4|webm|mp3|m4a|wav)(\?|$)/i.test(recordingUrl))&&<video controls preload="none" src={recordingUrl} style={{width:'100%',maxHeight:360,background:'#102f35',borderRadius:8}}/>}{!primaryRecordingInHandoff&&<a href={recordingUrl} target="_blank" rel="noreferrer">Open recording</a>}</>}{uploads.filter(file=>!primaryRecordingInHandoff||file.url!==recordingUrl).map(file=><p key={file.id}><a href={file.url} target="_blank" rel="noreferrer">{file.filename}</a></p>)}</>;
 }
-type InterviewItem={id:string;applicationId:string;name?:string;candidateName?:string;jobTitle?:string;jobId?:string;start?:string;status:string;meetUrl?:string;recordingUrl?:string};
-export function InterviewWorkspace({jobId,refresh=0,openApplicant,jobs}:{jobId?:string;refresh?:number;changed?:()=>void;jobs?:{id:string;title:string}[];openApplicant?:(id:string)=>void}){const [selection,setSelection]=useState({jobId,value:jobId||'',page:1});const current=selection.jobId===jobId?selection:{jobId,value:jobId||'',page:1};const role=current.value,page=current.page;const resource=useHubResource<{items:InterviewItem[];total:number;page:number;pageSize:number}>('/api/hub/interviews?page='+page+'&pageSize=50'+(role?'&jobId='+encodeURIComponent(role):''),refresh);return <section className="hub-card"><div className="hub-section-heading compact"><h2>Interviews</h2>{jobs&&<label>Role<select value={role} onChange={e=>setSelection({jobId,value:e.target.value,page:1})}><option value="">All roles</option>{jobs.map(j=><option value={j.id} key={j.id}>{j.title}</option>)}</select></label>}</div><p className="hub-muted">Scheduled interviews and completed calls, grouped with each applicant’s record.</p><ResourceState loading={resource.loading} error={resource.error} retry={resource.reload}/>{resource.data?.items.length===0&&<p>No interviews match this role yet.</p>}<div className="hub-interview-list">{resource.data?.items.map(i=><article key={i.id} style={{display:'flex',gap:16,alignItems:'center',flexWrap:'wrap',borderTop:'1px solid #dce6e7',padding:'12px 0'}}><div style={{flex:1,minWidth:180}}><a href={'/team?view=applications&application='+encodeURIComponent(i.applicationId)+(i.jobId?'&jobId='+encodeURIComponent(i.jobId):'')} onClick={openApplicant?e=>{if(!e.metaKey&&!e.ctrlKey&&!e.shiftKey){e.preventDefault();openApplicant(i.applicationId);}}:undefined}><strong>{i.name||i.candidateName||'View applicant'}</strong></a><small style={{display:'block'}}>{i.jobTitle}</small></div><span>{i.start?displayDate(Date.parse(i.start)):'Awaiting booking'}</span><span className="hub-badge">{i.status.replaceAll('_',' ')}</span>{i.meetUrl&&<a href={i.meetUrl} target="_blank" rel="noreferrer">Join Meet</a>}{i.recordingUrl&&<a href={i.recordingUrl} target="_blank" rel="noreferrer">Recording</a>}</article>)}</div>{resource.data&&<nav className="hub-button-row" aria-label="Interview pages"><span className="hub-muted">{resource.data.total===0?'0 interviews':`${(page-1)*resource.data.pageSize+1}–${Math.min(page*resource.data.pageSize,resource.data.total)} of ${resource.data.total} interviews`}</span><button className="hub-button secondary" disabled={resource.loading||page<=1} onClick={()=>setSelection({...current,page:page-1})}>Previous</button><button className="hub-button secondary" disabled={resource.loading||page*resource.data.pageSize>=resource.data.total} onClick={()=>setSelection({...current,page:page+1})}>Next</button></nav>}</section>}
+type InterviewItem = {
+  id: string; applicationId: string; name?: string; jobTitle?: string; jobId?: string;
+  start?: string; interviewProgress: InterviewProgress; meetUrl?: string; recordingUrl?: string;
+};
+type WorkspaceProps = {
+  jobId?: string; refresh?: number; changed?: () => void;
+  jobs?: {id: string; title: string}[]; openApplicant?: (id: string) => void;
+};
+
+export function InterviewWorkspace({jobId, refresh=0, openApplicant, jobs}: WorkspaceProps) {
+  const initial = {jobId, role:jobId || '', progress:'', page:1};
+  const [selection,setSelection] = useState(initial);
+  const current = selection.jobId === jobId ? selection : initial;
+  const {role, progress, page} = current;
+  const params = new URLSearchParams({page:String(page),pageSize:'50'});
+  if (role) params.set('jobId',role);
+  if (progress) params.set('progress',progress);
+  const resource = useHubResource<{items:InterviewItem[]; total:number; page:number; pageSize:number}>(
+    '/api/hub/interviews?' + params,refresh);
+  return <section className="hub-card">
+    <div className="hub-section-heading compact">
+      <h2>Interviews</h2>
+      {jobs && <label>Role<select value={role} onChange={event=>setSelection({...current,role:event.target.value,page:1})}>
+        <option value="">All roles</option>
+        {jobs.map(job=><option value={job.id} key={job.id}>{job.title}</option>)}
+      </select></label>}
+      <label>Interview status<select value={progress} onChange={event=>setSelection({...current,progress:event.target.value,page:1})}>
+        <option value="">All interviews</option>
+        {Object.entries(interviewProgressLabels).filter(([value])=>value!=='none').map(([value,label])=><option key={value} value={value}>{label}</option>)}
+      </select></label>
+    </div>
+    <ResourceState loading={resource.loading} error={resource.error} retry={resource.reload}/>
+    {resource.data?.items.length===0 && <p>No matching interviews.</p>}
+    <div className="hub-interview-list">
+      {resource.data?.items.map(item=><article key={item.id} style={{display:'flex',gap:16,alignItems:'center',flexWrap:'wrap',borderTop:'1px solid #dce6e7',padding:'12px 0'}}>
+        <div style={{flex:1,minWidth:180}}>
+          <a href={'/team?view=applications&application='+encodeURIComponent(item.applicationId)+(item.jobId?'&jobId='+encodeURIComponent(item.jobId):'')} onClick={openApplicant?event=>{
+            if(event.defaultPrevented || event.button!==0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey)return;
+            event.preventDefault();openApplicant(item.applicationId);
+          }:undefined}><strong>{item.name || 'View applicant'}</strong></a>
+          <small style={{display:'block'}}>{item.jobTitle}</small>
+        </div>
+        {item.start && <span>{displayDate(Date.parse(item.start))}</span>}
+        <span className="hub-badge">{interviewProgressLabels[item.interviewProgress]}</span>
+        {item.meetUrl && item.interviewProgress==='booked' && <a href={item.meetUrl} target="_blank" rel="noreferrer">Join Meet</a>}
+        {item.recordingUrl && <a href={item.recordingUrl} target="_blank" rel="noreferrer">Recording</a>}
+      </article>)}
+    </div>
+    {resource.data && <nav className="hub-button-row" aria-label="Interview pages">
+      <span className="hub-muted">{resource.data.total===0?'0 interviews':`${(page-1)*resource.data.pageSize+1}–${Math.min(page*resource.data.pageSize,resource.data.total)} of ${resource.data.total} interviews`}</span>
+      <button className="hub-button secondary" disabled={resource.loading || page<=1} onClick={()=>setSelection({...current,page:page-1})}>Previous</button>
+      <button className="hub-button secondary" disabled={resource.loading || page*resource.data.pageSize>=resource.data.total} onClick={()=>setSelection({...current,page:page+1})}>Next</button>
+    </nav>}
+  </section>;
+}
 
 export {MeetGeekSettings} from "./meetgeek-settings";
