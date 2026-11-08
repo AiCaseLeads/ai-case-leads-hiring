@@ -4,6 +4,7 @@ import {ApplicantFilterDisclosure} from "./applicant-filter-disclosure";
 import {interviewCancelOutcome,interviewNavigationOutcome} from "./interview-draft-state";
 import {InterviewComposer,InterviewDiscardConfirmation,type InterviewDraftPayload} from "./interview-composer";
 import { normalizeApplicantScope, applicantStageChoice, applyApplicantStageChoice } from "./applicant-stage-filter";
+import { ClaimRadar } from "./claim-radar";
 import { NavigationLink, applicantHref } from "./navigation-link";
 import {ShareApplicant} from "./share-applicant";
 import {BulkRejection} from "./bulk-rejection";
@@ -932,8 +933,11 @@ export function CandidateDetail({
         <>
           <header className="hub-profile-header">
             <div className="hub-profile-identity">
-              <div className="hub-profile-name-row"><h2 id="candidate-title" tabIndex={-1}>{answerContactName(detail)}</h2><div className="hub-status-line"><Badge>{detail.trashed?"In Trash":stageLabel(detail.stage)}</Badge><Badge tone={qualificationTone(detail.qualification)}>{qualificationLabel(detail.qualification,detail.qualificationEvidence.length>0)}</Badge>{detail.duplicateEmail && <Badge tone="warning">{detail.duplicateApplicationCount} applications share this email</Badge>}</div></div>
+              <div className="hub-profile-name-row"><h2 id="candidate-title" tabIndex={-1}>{answerContactName(detail)}</h2><div className="hub-status-line"><Badge>{detail.trashed?"In Trash":stageLabel(detail.stage)}</Badge><Badge tone={qualificationTone(detail.qualification)}>{qualificationLabel(detail.qualification,detail.qualificationEvidence.length>0)}</Badge></div></div>
               <p className="hub-profile-job">{detail.jobTitle}</p>
+              {!!detail.relatedApplications?.length && <details key={detail.id}><summary>{detail.relatedApplications.length} other application{detail.relatedApplications.length===1?'':'s'} with this email{detail.relatedApplications.some(a=>a.differences.length)?' · Experience answers differ':''}</summary><ul>{detail.relatedApplications.map(a=><li key={a.id}><a href={applicantHref(a.id,"",a.jobId)}>{a.jobTitle}</a> · {displayDate(a.createdAt)} · {stageLabel(a.stage)}
+                {a.differences.map(d=><p key={d.question}>{d.question} — This application: <strong>{d.current}</strong>; linked application: <strong>{d.other}</strong>.</p>)}</li>)}</ul></details>}
+              <ClaimRadar detail={detail}/>
               <p className="hub-profile-contact"><a href={"mailto:"+detail.email}>{detail.email}</a><span>Applied {displayDate(detail.createdAt)}</span><span>Assigned to {detail.assignee||"no recruiter"}</span></p>
             </div>
             <div className="hub-candidate-quick-actions" aria-label="Applicant actions">

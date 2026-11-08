@@ -111,6 +111,7 @@ export type Interview = {
   hasSentBookingLink?: boolean;
 };
 export type ApplicationDetail = ApplicationSummary & {
+  relatedApplications?: Awaited<ReturnType<typeof import("../../lib/hub/claim-history").claimHistory>>;
   answers: FieldSubmission[];
   fields: ApplicationField[];
   files: {
