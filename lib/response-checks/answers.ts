@@ -47,7 +47,10 @@ export function writtenAnswers(row:Submission):WrittenAnswer[] {
 }
 
 export function canScan(answer:WrittenAnswer) {
-  return answer.sanitized.length>=250 && countWords(answer.sanitized)>=100;
+  // Structured fields are excluded by writtenAnswers. A narrative field can
+  // still contain only a contact detail, a number, or punctuation.
+  const prose = answer.sanitized.replace(/\[(?:redacted|email|link|number)\]/g, "").trim();
+  return /\p{L}/u.test(prose);
 }
 export function detectorHash(answer:WrittenAnswer) {
   return sha256("gptzero-v1\n"+answer.sanitized);

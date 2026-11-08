@@ -2076,15 +2076,14 @@ body:has(.hiring-hub .hub-draft-overlay) { overflow: hidden; }
 .hub-review-inbox textarea{width:100%;box-sizing:border-box;display:block;margin:.25rem 0 .5rem}
 .response-check-panel,.response-check-app,.response-check-answer { border-block-start:1px solid var(--hub-line,#dce4e1); padding-block:.65rem; min-width:0; }
 .response-check-panel > summary,.response-check-app > summary { cursor:pointer; font-weight:600; }
-.response-check-heading,.response-check-pages,.response-check-summary { display:flex; align-items:center; flex-wrap:wrap; gap:.6rem 1rem; }
+.response-check-heading,.response-check-pages { display:flex; align-items:center; flex-wrap:wrap; gap:.6rem 1rem; }
 .response-check-heading { justify-content:space-between; }
 .response-check-heading label,.response-check-connection label { display:grid; gap:.25rem; font-size:.9rem; }
-.response-check-summary { font-size:.875rem; font-weight:600; }
 .response-check-results,.response-check-app,.response-check-detail { overflow-wrap:anywhere; }
 .response-check-results { margin-block-start:.65rem; }
 .response-check-answer h4,.response-check-answer p,.response-check-progress p { margin-block:.35rem; }
-.response-check-prose,.response-check-answer blockquote { white-space:pre-wrap; }
-.response-check-answer blockquote { border-inline-start:2px solid #c6d8d2; padding-inline-start:.75rem; margin:.5rem 0; }
+.response-check-prose,.response-check-inline blockquote { white-space:pre-wrap; }
+.response-check-inline blockquote { border-inline-start:2px solid #c6d8d2; padding-inline-start:.75rem; margin:.5rem 0; }
 .response-check-app > summary span:first-child { display:inline-grid; vertical-align:middle; margin-inline-end:.9rem; }
 .response-check-app > summary small,.response-check-app > summary span:last-child { font-size:.85rem; font-weight:400; }
 .response-check-pages,.response-check-detail,.response-check-progress { margin-block:.75rem; }
@@ -2097,3 +2096,20 @@ body:has(.hiring-hub .hub-draft-overlay) { overflow: hidden; }
 }
 
 .response-check-heading .response-check-match { display:inline-flex; align-items:center; gap:.5rem; }
+
+
+.response-check-inline {
+  margin-block-start:.4rem;
+  color:#425f64;
+  font-size:.8rem;
+  line-height:1.5;
+  white-space:normal;
+  overflow-wrap:anywhere;
+}
+.response-check-verdict {display:flex; flex-wrap:wrap; align-items:baseline; gap:0 .4rem;}
+.response-check-inline strong {color:#254950;}
+.response-check-qualifier::before {content:"· ";}
+.response-check-inline details {margin-block-start:.2rem;}
+.response-check-inline summary,.response-check-summary-detail summary {cursor:pointer;}
+.response-check-inline p,.response-check-summary-detail p {margin:.3rem 0;}
+.response-check-summary-detail {font-size:.875rem; color:#425f64;}

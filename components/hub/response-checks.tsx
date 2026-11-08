@@ -7,6 +7,7 @@ import type { ResponseState } from "../../lib/response-checks/report-status";
 import { displayDate, hubRequest, useHubResource } from "./api";
 import { applicantHref } from "./navigation-link";
 import { ResourceState } from "./shared";
+import { ApplicationAnswers, type AnswerDetail } from "./application-answers";
 
 type Checks = Awaited<ReturnType<typeof getResponseChecks>> & {entry:ResponseEntry|null};
 type List = {items:ResponseListItem[];total:number;page:number;pageSize:number;coverage:Awaited<ReturnType<typeof getResponseCoverage>>};
@@ -22,43 +23,81 @@ function duration(ms:number) {
   return Math.floor(seconds/60)+" min "+seconds%60+" sec";
 }
 
+type CheckedAnswer = Checks["answers"][number];
+
+function InlineAnswerCheck({answer,entry}:{answer:CheckedAnswer;entry:Checks["entry"]}) {
+  const events=entry?.fields.find(field=>field.path===answer.path);
+  const fewWords=answer.words<=3;
+  const statusLabels={
+    too_short:"More text needed for an estimate",
+    not_prose:"No writing to assess",
+    unavailable:"Estimate unavailable",
+    pending:"Estimate pending",
+  };
+  const label=answer.status==="ready"
+    ? fewWords ? "Checked · Too little context to interpret" : classificationLabels[answer.classification || ""] || "Unable to determine"
+    : statusLabels[answer.status];
+  return <div className="response-check-inline">
+    <div className="response-check-verdict"><strong>GPTZero</strong> <span>{label}</span>
+      {answer.status==="ready" && !fewWords && (answer.words<100
+        ? <span className="response-check-qualifier">Limited text</span>
+        : answer.confidence && <span className="response-check-qualifier">{answer.confidence.toLowerCase()} confidence</span>)}
+    </div>
+    {events && (events.pasteAttempts>0 || events.largeInsertions>0) && <details><summary>Writing activity</summary>
+      {events.pasteAttempts>0 && <p>Reported paste attempts · {events.pasteAttempts}</p>}
+      {events.largeInsertions>0 && <p>Large text insertions · {events.largeInsertions} · largest {events.largestInsertionChars} characters</p>}
+    </details>}
+    {answer.matches.length>0 && <details><summary>Matching passages ({answer.matches.length})</summary>
+      {answer.matches.map((match,index)=><div key={match.applicationId+"-"+index}><blockquote>{match.passage}</blockquote><a href={applicantHref(match.applicationId)}>Open matching application · {match.jobTitle}</a></div>)}
+    </details>}
+  </div>;
+}
+
+function CheckSummary({data}:{data:Checks}) {
+  if(!data.answers.length)return null;
+  const words=data.answers.reduce((n,answer)=>n+answer.words,0);
+  return <details className="response-check-panel response-check-summary-detail">
+    <summary>About these checks</summary>
+    <p>{data.answers.length} written {data.answers.length===1?"answer":"answers"} · {words.toLocaleString()} words</p>
+    <p>{data.entry?.formElapsedMs!=null ? "Form open to submission: "+duration(data.entry.formElapsedMs) : "Form timing unavailable"}
+      {data.entry?.firstEditToSubmitMs!=null && " · First written edit to submission: "+duration(data.entry.firstEditToSubmitMs)}</p>
+    <p>GPTZero estimates writing patterns. Short answers offer fewer clues. The browser reports timing and editing activity. These checks do not establish authorship or change hiring stages.</p>
+  </details>;
+}
+
+function useAnswerChecks(applicationId:string, includeText=true) {
+  return useHubResource<Checks>("/api/hub/applications/"+encodeURIComponent(applicationId)+"/response-checks"+(includeText?"":"?includeText=false"));
+}
+
+export function ReviewedApplicationAnswers({detail}:{detail:AnswerDetail & {id:string}}) {
+  const checks=useAnswerChecks(detail.id,false);
+  const data=checks.data;
+  const byPath=new Map(data?.answers?.map(answer=>[answer.path,answer]));
+  return <>
+    <ApplicationAnswers detail={detail} renderAnswerCheck={path=>{
+      const answer=byPath.get(path);
+      return data && answer && <InlineAnswerCheck answer={answer} entry={data.entry}/>;
+    }}/>
+    {checks.error && <ResourceState loading={false} error={checks.error} retry={()=>void checks.reload()}/>}
+    {data && Array.isArray(data.answers) && <CheckSummary data={data}/>}
+  </>;
+}
+
 function AnswerChecks({applicationId}:{applicationId:string}) {
-  const checks=useHubResource<Checks>("/api/hub/applications/"+encodeURIComponent(applicationId)+"/response-checks");
+  const checks=useAnswerChecks(applicationId);
   const data=checks.data;
   return <div className="response-check-results">
     <ResourceState loading={checks.loading} error={checks.error} retry={()=>void checks.reload()}/>
     {data && Array.isArray(data.answers) && <>
-      <div className="response-check-summary">
-        <span>{data.answers.length} written {data.answers.length===1?"answer":"answers"} · {data.answers.reduce((n,a)=>n+a.words,0).toLocaleString()} words</span>
-        <span>{data.entry?.formElapsedMs!=null ? "Form open to submission: "+duration(data.entry.formElapsedMs) : "Form timing unavailable"}</span>
-        {data.entry?.firstEditToSubmitMs!=null && <span>First written edit to submission: {duration(data.entry.firstEditToSubmitMs)}</span>}
-      </div>
-      <p className="hub-muted">GPTZero’s estimates are experimental. Timing and editing activity are reported by the browser. These checks do not determine authorship or affect hiring stages.</p>
       {!data.answers.length && <p>No written responses to check.</p>}
-      {data.answers.map(answer=>{
-        const events=data.entry?.fields.find(field=>field.path===answer.path);
-        const label=answer.status==="too_short" ? "Too short to assess" : answer.status==="unavailable" ? "Assessment unavailable" : answer.status==="ready" ? classificationLabels[answer.classification || ""] || "Unable to determine" : "Assessment pending";
-        return <article key={answer.path} className="response-check-answer">
-          <h4>{answer.title}</h4>
-          <p className="response-check-prose">{answer.text || "No answer supplied."}</p>
-          <p><strong>GPTZero estimate</strong> · {label}{answer.status==="ready" && !!answer.confidence && " · "+answer.confidence.toLowerCase()+" confidence"}</p>
-          {events && events.pasteAttempts>0 && <p>Reported paste attempts · {events.pasteAttempts}</p>}
-          {events && events.largeInsertions>0 && <p>Large text insertions · {events.largeInsertions} · largest {events.largestInsertionChars} characters</p>}
-          {!!answer.matches.length && <details><summary>Matching passages ({answer.matches.length})</summary>
-            {answer.matches.map((match,index)=><div key={match.applicationId+"-"+index}><blockquote>{match.passage}</blockquote><a href={applicantHref(match.applicationId)}>Open matching application · {match.jobTitle}</a></div>)}
-          </details>}
-        </article>;
-      })}
+      {data.answers.map(answer=><article key={answer.path} className="response-check-answer">
+        <h4>{answer.title}</h4>
+        <p className="response-check-prose">{answer.text}</p>
+        <InlineAnswerCheck answer={answer} entry={data.entry}/>
+      </article>)}
+      <CheckSummary data={data}/>
     </>}
   </div>;
-}
-
-export function ResponseCheckPanel({applicationId}:{applicationId:string}) {
-  const [open,setOpen]=useState(false);
-  return <details className="response-check-panel" onToggle={e=>setOpen(e.currentTarget.open)}>
-    <summary>Response checks</summary>
-    {open && <AnswerChecks key={applicationId} applicationId={applicationId}/>}
-  </details>;
 }
 
 function Connection({onSaved}:{onSaved:()=>void}) {
@@ -88,7 +127,7 @@ function ReviewPage({status,matches,page,setPage,refresh}:{status:string;matches
   return <>
     <ResourceState loading={resource.loading} error={resource.error} retry={()=>void resource.reload()}/>
     {coverage && <div className="response-check-progress" aria-label="All application checks">
-      <p><strong>{coverage.indexed.toLocaleString()} of {coverage.total.toLocaleString()} applications indexed</strong> · {coverage.scannedAnswers.toLocaleString()} answers assessed · {coverage.pendingAnswers.toLocaleString()} awaiting assessment · {coverage.tooShort.toLocaleString()} too short · {coverage.unavailable.toLocaleString()} unavailable</p>
+      <p><strong>{coverage.indexed.toLocaleString()} of {coverage.total.toLocaleString()} applications indexed</strong> · {coverage.scannedAnswers.toLocaleString()} answers assessed · {coverage.pendingAnswers.toLocaleString()} awaiting assessment{coverage.tooShort>0 && " · "+coverage.tooShort.toLocaleString()+" below GPTZero’s minimum"}{coverage.notProse>0 && " · "+coverage.notProse.toLocaleString()+" with no writing to assess"} · {coverage.unavailable.toLocaleString()} unavailable</p>
       {coverage.detectorState==="unconfigured" && <p>GPTZero is awaiting an API connection.</p>}
       {coverage.detectorState==="paused" && <p>{coverage.pauseReason==="quota"?"Pending answers exceed the remaining GPTZero word allowance.":coverage.pauseReason==="allowance_unavailable"?"GPTZero’s word allowance could not be verified. Assessments are paused.":"GPTZero assessments are paused."}{coverage.retryAt ? " Next retry "+displayDate(coverage.retryAt)+"." : " Check the API connection."}</p>}
     </div>}

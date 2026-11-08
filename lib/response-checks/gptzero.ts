@@ -4,7 +4,7 @@ const endpoint = "https://api.gptzero.me";
 export type DetectorClassification = "AI_ONLY" | "HUMAN_ONLY" | "MIXED" | "UNDETERMINED";
 
 export class DetectorError extends Error {
-  constructor(readonly status: number, readonly retryAfterSeconds: number) {
+  constructor(readonly status: number, readonly retryAfterSeconds: number, readonly reason?: "too_short") {
     super("The writing assessment service could not complete this request.");
   }
 }
@@ -13,6 +13,18 @@ function retryDelay(header: string | null) {
   if (!header) return 60;
   const seconds = /^\d+$/.test(header) ? Number(header) : Math.ceil((Date.parse(header) - Date.now()) / 1000);
   return Number.isFinite(seconds) ? Math.max(1, Math.min(seconds, 86_400)) : 60;
+}
+
+function rejectedForLength(payload:unknown):boolean {
+  if (!payload || typeof payload !== "object") return false;
+  const error=payload as Record<string,unknown>;
+  // Inspect only provider error messages, never a validation error's echoed input.
+  const messages=[error.message,error.error,error.detail];
+  if (Array.isArray(error.detail)) {
+    for (const field of error.detail) messages.push(field?.msg);
+  }
+  return messages.some(value=>typeof value==="string" &&
+    /too short|insufficient (?:text|characters|words)|(?:at least|minimum(?: of)?|more than|longer than)\s+\d+\s+(?:characters?|words?)/i.test(value));
 }
 
 async function request(path: string, apiKey: string, document?: string) {
@@ -24,8 +36,13 @@ async function request(path: string, apiKey: string, document?: string) {
       cache: "no-store", redirect: "error", signal: AbortSignal.timeout(20_000),
     });
     if (!response.ok) {
-      await response.body?.cancel();
-      throw new DetectorError(response.status, retryDelay(response.headers.get("retry-after")));
+      let reason:"too_short"|undefined;
+      if (document!==undefined && [400,422].includes(response.status)) {
+        if (rejectedForLength(await response.json().catch(()=>null))) reason="too_short";
+      } else {
+        await response.body?.cancel();
+      }
+      throw new DetectorError(response.status, retryDelay(response.headers.get("retry-after")),reason);
     }
     return await response.json();
   } catch (error) {

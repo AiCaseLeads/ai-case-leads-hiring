@@ -34,15 +34,15 @@ test("backfill indexes all written answers locally, caches matching copy and sep
   let requests=0;
   const scan=async()=>{requests++;return {classification:"MIXED" as const,confidence:"medium"};};
   await Promise.all([processResponseCheckBatch({store,allowance,key,scan}),processResponseCheckBatch({store,allowance,key,scan})]);
-  assert.equal(requests,1);
+  assert.equal(requests,2);
   const checked=await getResponseChecks(store,first);
   assert.equal(checked.status,"ready");assert.equal(checked.answers[0].classification,"MIXED");
   assert.deepEqual(checked.answers[0].matches.map(m=>m.applicationId),[other]);
   assert.ok(checked.answers[0].matches[0].passage.length>40);
-  assert.equal((await getResponseChecks(store,short)).answers[0].status,"too_short");
+  assert.equal((await getResponseChecks(store,short)).answers[0].status,"ready");
   assert.equal((await getResponseChecks(store,noWriting.id)).status,"no_written_answers");
   const coverage=await getResponseCoverage(store);
-  assert.deepEqual([coverage.total,coverage.indexed,coverage.ready,coverage.noWritten,coverage.scannedAnswers,coverage.tooShort,coverage.pending],[5,5,4,1,3,1,0]);
+  assert.deepEqual([coverage.total,coverage.indexed,coverage.ready,coverage.noWritten,coverage.scannedAnswers,coverage.tooShort,coverage.pending],[5,5,4,1,4,0,0]);
   await store.setSetting("application_trash:"+other,{deletedAt:1});
   assert.deepEqual((await getResponseChecks(store,repeated)).answers[0].matches,[]);
   assert.equal((await getResponseCoverage(store)).total,4);
@@ -133,5 +133,37 @@ test("a shared allowance funds one answer across concurrent workers and keeps th
   assert.equal(paid,2);assert.equal(coverage.pendingAnswers,0);
   await processResponseCheckBatch(deps);
   assert.equal(usageCalls,2);
+  database.close();
+});
+
+test("historical per-answer skips are revisited exactly once, preserve cached results, and respect provider refusals",async()=>{
+  const {store,id,database}=await fixture();
+  const oldReady=await submit(store,id,"one@example.invalid",text);
+  const short=await submit(store,id,"two@example.invalid","I designed that campaign and ran the entire launch.");
+  const tiny=await submit(store,id,"three@example.invalid","My example.");
+  const yes=await submit(store,id,"four@example.invalid","Yes.");
+  const link=await submit(store,id,"five@example.invalid","https://private.example/portfolio");
+  // Snapshot what the old worker stored: the long response already has a
+  // prediction, but the historical short answers have a null reference.
+  await processResponseCheckBatch({store,key:async()=>null});
+  await store.stmt("UPDATE hub_response_detector_cache SET status='ready',classification='HUMAN_ONLY',confidence='medium'").run();
+  await store.stmt("UPDATE hub_response_answers SET answer_hash=NULL WHERE application_id<>?",oldReady).run();
+  await store.stmt("DELETE FROM hub_response_detector_cache WHERE answer_hash NOT IN (SELECT answer_hash FROM hub_response_answers WHERE answer_hash IS NOT NULL)").run();
+  await store.stmt("DELETE FROM hub_settings WHERE key='response_checks_expanded_coverage_v1'").run();
+  const scans:string[]=[];
+  const scan=async(prose:string)=>{
+    scans.push(prose);
+    if(prose==="My example.")throw new DetectorError(400,60,"too_short");
+    return {classification:"MIXED" as const,confidence:"low"};
+  };
+  for(let i=0;i<3;i++)await processResponseCheckBatch({store,allowance,key,scan});
+  assert.deepEqual(scans.sort(),["I designed that campaign and ran the entire launch.","My example.","Yes."]);
+  const read=async(id:string)=>(await getResponseChecks(store,id)).answers[0];
+  assert.equal((await read(oldReady)).classification,"HUMAN_ONLY");
+  assert.equal((await read(short)).classification,"MIXED");
+  assert.equal((await read(tiny)).status,"too_short");assert.equal((await read(tiny)).classification,null);
+  assert.equal((await read(yes)).status,"ready");assert.equal((await read(link)).status,"not_prose");
+  const coverage=await getResponseCoverage(store);
+  assert.deepEqual([coverage.indexed,coverage.scannedAnswers,coverage.tooShort,coverage.notProse,coverage.unavailable,coverage.pendingAnswers],[5,3,1,1,0,0]);
   database.close();
 });

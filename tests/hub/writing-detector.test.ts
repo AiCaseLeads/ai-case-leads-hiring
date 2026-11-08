@@ -45,3 +45,14 @@ test("a verified detector key is sealed at rest and a failed replacement preserv
   await assert.rejects(()=>saveDetectorKey(store,"example-test-replacement"),/GPTZero rejected/);
   assert.equal(await getDetectorKey(store),token);
 });
+
+test("distinguishes a provider length refusal from unrelated validation errors or echoed text",async t=>{
+  const replies=[
+    {detail:[{msg:"String should have at least 250 characters",input:"private prose"}]},
+    {detail:[{msg:"Unsupported content",input:"It is too short"}]},
+  ];
+  t.mock.method(globalThis,"fetch",async()=>Response.json(replies.shift(),{status:422}));
+  for(const reason of ["too_short",undefined]){
+    await assert.rejects(scanAnswer("private prose","test-key"),error=>error instanceof DetectorError && error.reason===reason);
+  }
+});

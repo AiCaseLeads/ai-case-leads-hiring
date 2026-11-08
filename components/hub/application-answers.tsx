@@ -24,7 +24,8 @@ function linkedText(text:string):ReactNode {
  }
  parts.push(text.slice(cursor));return parts;
 }
-export function ApplicationAnswers({detail}:{detail:Pick<ApplicationDetail,"name"|"email"|"answers"|"fields">}) {
+export type AnswerDetail = Pick<ApplicationDetail,"name"|"email"|"answers"|"fields">;
+export function ApplicationAnswers({detail,renderAnswerCheck}:{detail:AnswerDetail;renderAnswerCheck?:(path:string)=>ReactNode}) {
  const read=(path:string)=>String(detail.answers.find(answer=>answer.path===path)?.value||"").trim();
  const email=read(contactPaths[2])||detail.email,phone=read(contactPaths[3]);
  const phoneHref=/^\+?[\d ()-]+$/.test(phone)?`tel:${phone.replace(/[ ()-]/g,"")}`:null;
@@ -36,7 +37,7 @@ export function ApplicationAnswers({detail}:{detail:Pick<ApplicationDetail,"name
    const field=detail.fields.find(field=>field.path===answer.path);
    const value=field?.type==="Number"&&typeof answer.value==="number"?new Intl.NumberFormat("en-US",field.numberFormat==="currency"?{style:"currency",currency:field.currency||"USD"}:{}).format(answer.value):field?.options?(Array.isArray(answer.value)?answer.value:[answer.value]).map(value=>field.options?.find(option=>option.value===value)?.label||displayAnswer(value)).join(", "):displayAnswer(answer.value);
    const long=field?.type==="LongText"||value.length>180||value.includes("\n");
-   return <div key={answer.path} className={long?"hub-answer-long":"hub-answer-short"}><dt>{field?.title||answer.path}</dt><dd>{linkedText(value)}</dd></div>;
+   return <div key={answer.path} className={long?"hub-answer-long":"hub-answer-short"}><dt>{field?.title||answer.path}</dt><dd><span>{linkedText(value)}</span>{renderAnswerCheck?.(answer.path)}</dd></div>;
   })}</dl>:<p className="hub-muted">No additional application answers.</p>}
  </div>;
 }

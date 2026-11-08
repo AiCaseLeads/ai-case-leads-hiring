@@ -3,7 +3,7 @@ import { activeApplicationsSql } from "../hub/application-lifecycle";
 import { sha256 } from "../hiring/crypto";
 import { canScan, detectorHash, passageAnchors, writtenAnswers, type Submission } from "./answers";
 import { countWords } from "../hiring/word-count";
-import { getDetectorAllowance, scanAnswer } from "./gptzero";
+import { DetectorError, getDetectorAllowance, scanAnswer } from "./gptzero";
 import { getDetectorKey } from "./key";
 
 import { providerStateKey, type ProviderState } from "./store";
@@ -14,6 +14,20 @@ const pauseFloor=30_000;
 const indexPage=25;
 const scanPage=8;
 
+const expandedCoverageKey = "response_checks_expanded_coverage_v1";
+
+async function schedulePreviouslySkippedAnswers(store: HubStore, now: number) {
+  if (await store.setting<boolean>(expandedCoverageKey, false)) return;
+  // Keep cached results and passage evidence while the existing indexer
+  // revisits only applications that contained a skipped answer.
+  await store.db.batch([
+    store.stmt(`UPDATE hub_response_index SET indexed_at=0 WHERE application_id IN (
+      SELECT application_id FROM hub_response_answers WHERE answer_hash IS NULL
+    ) AND NOT EXISTS (SELECT 1 FROM hub_settings WHERE key=?)`, expandedCoverageKey),
+    store.stmt("INSERT OR IGNORE INTO hub_settings(key,value,updated_at) VALUES(?,'true',?)", expandedCoverageKey, now)
+  ]);
+}
+
 async function indexApplication(store:HubStore,row:Submission, now:number) {
   const answers=await Promise.all(writtenAnswers(row).map(async answer=>({
     path:answer.path,title:answer.title,words:answer.words,hash:canScan(answer)?await detectorHash(answer):null,
@@ -22,9 +36,9 @@ async function indexApplication(store:HubStore,row:Submission, now:number) {
   const answerJson=JSON.stringify(answers.map(({path,title,words,hash})=>({path,title,words,hash})));
   const anchorRows=answers.flatMap(answer=>answer.anchors.map(anchor=>({...anchor,path:answer.path})));
   const statements=[
-    store.stmt("INSERT OR IGNORE INTO hub_response_index(application_id,indexed_at) VALUES(?,?)",row.id,now),
+    store.stmt("INSERT INTO hub_response_index(application_id,indexed_at) VALUES(?,?) ON CONFLICT(application_id) DO UPDATE SET indexed_at=excluded.indexed_at WHERE hub_response_index.indexed_at=0",row.id,now),
     store.stmt("INSERT OR IGNORE INTO hub_response_detector_cache(answer_hash,status,updated_at) SELECT DISTINCT json_extract(value,'$.hash'),'pending',? FROM json_each(?) WHERE json_extract(value,'$.hash') IS NOT NULL",now,answerJson),
-    store.stmt("INSERT OR IGNORE INTO hub_response_answers(application_id,path,title,words,answer_hash) SELECT ?,json_extract(value,'$.path'),json_extract(value,'$.title'),json_extract(value,'$.words'),json_extract(value,'$.hash') FROM json_each(?)",row.id,answerJson)
+    store.stmt("INSERT INTO hub_response_answers(application_id,path,title,words,answer_hash) SELECT ?,json_extract(value,'$.path'),json_extract(value,'$.title'),json_extract(value,'$.words'),json_extract(value,'$.hash') FROM json_each(?) WHERE true ON CONFLICT(application_id,path) DO UPDATE SET answer_hash=excluded.answer_hash WHERE hub_response_answers.answer_hash IS NULL",row.id,answerJson)
   ];
   for(let i=0;i<anchorRows.length;i+=100){
     statements.push(store.stmt("INSERT OR IGNORE INTO hub_response_passages(application_id,path,passage_hash,excerpt) SELECT ?,json_extract(value,'$.path'),json_extract(value,'$.hash'),json_extract(value,'$.excerpt') FROM json_each(?)",row.id,JSON.stringify(anchorRows.slice(i,i+100))));
@@ -43,8 +57,9 @@ async function claimNext(store:HubStore,now:number,token:string) {
 }
 
 export async function processResponseCheckBatch({store,scan=scanAnswer,key=getDetectorKey,allowance=getDetectorAllowance,now=Date.now,shouldStop=()=>false}:Dependencies) {
+  await schedulePreviouslySkippedAnswers(store,now());
   const rows=await store.rows<Submission>(`SELECT a.id,a.name,a.email,a.fields_json,a.answers_json FROM hub_applications a
-    WHERE ${activeApplicationsSql("a")} AND NOT EXISTS (SELECT 1 FROM hub_response_index r WHERE r.application_id=a.id)
+    WHERE ${activeApplicationsSql("a")} AND NOT EXISTS (SELECT 1 FROM hub_response_index r WHERE r.application_id=a.id AND r.indexed_at>0)
     ORDER BY a.created_at,a.id LIMIT ?`,indexPage);
   let indexed=0;
   for(const row of rows){
@@ -127,6 +142,12 @@ export async function processResponseCheckBatch({store,scan=scanAnswer,key=getDe
           await store.stmt("UPDATE hub_response_detector_cache SET status='ready',classification=?,confidence=?,updated_at=?,lease_token=NULL WHERE answer_hash=? AND lease_token=?",result.classification,result.confidence,now(),job.answer_hash,token).run();
           scanned++;
         }catch(error){
+          if(error instanceof DetectorError && error.reason==="too_short") {
+            // Preserve an explicit provider refusal so duplicate answers share
+            // the same terminal result without consuming further quota.
+            await store.stmt("UPDATE hub_response_detector_cache SET status='unavailable',classification='TOO_SHORT',confidence=NULL,lease_token=NULL,updated_at=? WHERE answer_hash=? AND lease_token=?",now(),job.answer_hash,token).run();
+            continue;
+          }
           const failure=error as {status?:number;retryAfterSeconds?:number};
           const http=failure?.status||503;
           const globalPause=[401,402,403,429].includes(http);
