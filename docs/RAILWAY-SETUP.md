@@ -6,7 +6,7 @@ The current deployment has dated evidence for Google authorization, volume persi
 
 ## 1. Current owner and recruiting account
 
-`sales@aicaseleads.com` remains the owner login and existing company Drive/fallback Calendar connection. It is not an applicant-mail transport. Recruiters authorize their own Gmail separately through **Settings → My setup → My recruiting email**, while signed in as themselves.
+`sales@aicaseleads.com` remains the owner login and existing company Drive/fallback Calendar connection. Owners and recruiters can send interview invitations and manual conversations using their own Gmail, authorized separately through **Settings → My calendar & email → Recruiting email**, while signed in as themselves. A connected calendar or company Drive grant does not authorize Gmail sending.
 
 Automatic emails use the company's existing SendGrid account and `no-reply-recruiting@aicaseleads.com`, with Reply-To `no-reply@notify.aicaseleads.com`. SendGrid needs no Gmail alias or mailbox. Configure the restricted server key and DNS using [Automatic email setup](AUTOMATIC-EMAIL-SETUP.md). `CANDIDATE_MAIL_ACCOUNT` now selects only Gmail reply synchronization and legacy uncertain-message reconciliation. Do not replace the company Drive grant or change `EXPECTED_RECRUITING_EMAIL` to connect personal mail.
 

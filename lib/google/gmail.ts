@@ -110,7 +110,7 @@ export class Gmail {
     const profile = await this.profile();
     if (candidateMail) {
       const required = candidateAccount?.trim().toLowerCase();
-      if (!required || required === "sales@aicaseleads.com") throw new GoogleError("candidate_mail_account_not_configured");
+      if (!required) throw new GoogleError("candidate_mail_account_not_configured");
       if (profile.email !== emailAddress(required)) throw new GoogleError("candidate_mail_account_connection_required");
     }
     if (profile.email !== sender) {

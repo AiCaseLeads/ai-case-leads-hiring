@@ -121,14 +121,14 @@ for (const status of ["accepted", "pending", "missing", "forbidden"]) test(`cand
   assert.equal(sends,status==="accepted"?1:0);
 });
 
-test("candidate sending requires its explicitly configured Google account, never sales transport",async()=>{
+test("candidate sending requires its configured Google profile and never substitutes a different account",async()=>{
  const previous=process.env.CANDIDATE_MAIL_ACCOUNT;
  const f=fixture(async()=>assert.fail("wrong account must never send"));
  try {
   delete process.env.CANDIDATE_MAIL_ACCOUNT;
   await assert.rejects(f.workspace.sendMail({...mail,candidateMail:true}),/candidate_mail_account_not_configured/);
   process.env.CANDIDATE_MAIL_ACCOUNT="sales@aicaseleads.com";
-  await assert.rejects(f.workspace.sendMail({...mail,candidateMail:true}),/candidate_mail_account_not_configured/);
+  await assert.rejects(f.workspace.sendMail({...mail,candidateMail:true}),/candidate_mail_account_connection_required/);
   process.env.CANDIDATE_MAIL_ACCOUNT="mariam@aicaseleads.com";
   await assert.rejects(f.workspace.sendMail({...mail,candidateMail:true}),/candidate_mail_account_connection_required/);
   assert.equal(f.counts().sends,0);
@@ -143,4 +143,36 @@ test("recruiter transport sends through its exact own Google profile",async()=>{
  });
  await f.workspace.sendMail({...mail,sender:config.sender,replyTo:[config.sender],candidateMail:true,candidateAccount:config.sender});
  assert.equal(f.counts().sends,1);
+});
+
+
+test("owner personal transport sends with exact profile, requester CC and Reply-To",async()=>{
+ const owner="sales@aicaseleads.com";let sends=0;
+ const workspace=new GoogleWorkspace({...config,sender:owner},async(input,init={})=>{
+  const url=String(input);
+  if(url.includes("oauth2.googleapis.com"))return response({access_token:"owner-access",token_type:"Bearer",expires_in:3600});
+  if(url.endsWith("/profile"))return response({emailAddress:owner});
+  if(url.includes("/messages?"))return response({messages:[]});
+  if(url.endsWith("/messages/send")){
+   sends++;const mime=Buffer.from(JSON.parse(String(init.body)).raw,"base64url").toString();
+   assert.match(mime,/From: sales@aicaseleads.com\r\n/);assert.match(mime,/Cc: sales@aicaseleads.com\r\n/);assert.match(mime,/Reply-To: sales@aicaseleads.com\r\n/);
+   return response({id:"owner-sent",threadId:"owner-thread"});
+  }
+  throw new Error("unexpected_request");
+ });
+ await workspace.sendMail({...mail,sender:owner,cc:[owner],replyTo:[owner],candidateMail:true,candidateAccount:owner});assert.equal(sends,1);
+});
+
+test("owner grant cannot impersonate another candidate account or an unverified alias",async()=>{
+ const owner="sales@aicaseleads.com";let sends=0;
+ const workspace=new GoogleWorkspace({...config,sender:owner},async(input)=>{
+  const url=String(input);
+  if(url.includes("oauth2.googleapis.com"))return response({access_token:"owner-access",token_type:"Bearer",expires_in:3600});
+  if(url.endsWith("/profile"))return response({emailAddress:owner});
+  if(url.endsWith("/settings/sendAs"))return response({sendAs:[]});
+  sends++;throw new Error("must_not_send");
+ });
+ await assert.rejects(workspace.sendMail({...mail,sender:owner,candidateMail:true,candidateAccount:"recruiter@example.invalid"}),/candidate_mail_account_connection_required/);
+ await assert.rejects(workspace.sendMail({...mail,sender:"alias@example.invalid",candidateMail:true,candidateAccount:owner}),/gmail_sender_alias_not_verified/);
+ assert.equal(sends,0);
 });

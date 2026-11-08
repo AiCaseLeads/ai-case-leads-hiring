@@ -9,7 +9,7 @@ import { configurationFingerprint } from "@/lib/google/config-state";
 export const dynamic="force-dynamic";
 export async function POST(request:Request){try{
  const member=await requireHubMember(request);assertSameOrigin(request);
- if(!canConnectPersonalMail(member.email))throw new HiringError("recruiter_mail_required",403,"The sales account cannot connect recruiting email. Maria must connect using her own staff login.");
+ if(!canConnectPersonalMail(member.email))throw new HiringError("recruiter_mail_required",403,"Sign in with your authorized hiring-team email before connecting recruiting email.");
  const env=await resolvedWorkspaceEnv();
  if(!env.DB||!env.GOOGLE_CLIENT_ID||!env.GOOGLE_CLIENT_SECRET||!env.GOOGLE_TOKEN_KEY)throw new HiringError("google_setup_required",503,"Ask your account owner to configure the Google connection first.");
  const state=privateToken(),verifier=privateToken();

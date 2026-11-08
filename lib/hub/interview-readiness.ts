@@ -38,7 +38,7 @@ export async function interviewReadiness(store: HubStore, member: HubMember, app
 }
 
 export function assertInterviewReady(readiness:Awaited<ReturnType<typeof interviewReadiness>>,input:{renew?:boolean;interviewerEmail?:string}){
- if(!readiness.mailReady)throw new HiringError('interview_email_setup_required',422,readiness.mailIssue==='recruiter_reply_contact_required'?'Choose a recruiter reply contact for this job before sending.':'The sending recruiter needs to reconnect recruiting email.');
+ if(!readiness.mailReady)throw new HiringError('interview_email_setup_required',422,readiness.mailIssue==='recruiter_reply_contact_required'?'Choose an active hiring team reply contact for this job before sending.':'Connect the sending account’s recruiting email in Settings → My calendar & email.');
  if(!readiness.companyGoogleReady)throw new HiringError('interview_company_setup_required',422,'The company Google scheduling connection needs attention.');
  const calendarReady=input.renew?readiness.hasActiveInterview&&readiness.renewCalendarReady:input.interviewerEmail?readiness.interviewers.some(p=>p.email===input.interviewerEmail&&p.ready):readiness.sharedCalendarReady;
  if(!calendarReady)throw new HiringError('interview_calendar_setup_required',422,'Choose a connected interviewer and save interview hours before sending.');

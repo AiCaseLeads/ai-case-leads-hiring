@@ -144,8 +144,8 @@ test("recruiter initiated mail replies only to its authenticated active recruite
  const input={to:"candidate@example.invalid",subject:"Next step",body:"Please reply with availability",messageId:"next@example.invalid"};
  const mail=await candidateMail(f.store,input,[],{mailMode:"recruiter",actor:RECRUITER.email,applicationId:app.id});
  assert.deepEqual(mail.replyTo,[RECRUITER.email]);assert.equal(mail.sender,RECRUITER.email);assert.equal(mail.candidateAccount,RECRUITER.email);assert.equal(mail.candidateMail,true);assert.ok(!mail.body.includes("Replies are rejected"));
- assert.match(mail.body,/reply to this email to contact your recruiter/);
- await assert.rejects(()=>candidateMail(f.store,input,["sales@aicaseleads.com"],{mailMode:"recruiter",actor:"sales@aicaseleads.com",applicationId:app.id}),/Assign an active recruiter/);
+ assert.match(mail.body,/reply to this email to contact the hiring team/);
+ const ownerMail=await candidateMail(f.store,input,["sales@aicaseleads.com"],{mailMode:"recruiter",actor:"sales@aicaseleads.com",applicationId:app.id});assert.equal(ownerMail.sender,"sales@aicaseleads.com");assert.deepEqual(ownerMail.cc,["sales@aicaseleads.com"]);assert.deepEqual(ownerMail.replyTo,["sales@aicaseleads.com"]);
  f.database.close();
 });
 
@@ -163,7 +163,7 @@ test("owner sales hiring alerts are suppressed at delivery even if a legacy team
  f.database.close();
 });
 
-test('interview-only copy uses active requester and allows owner replies without leaking into automatic mail',async()=>{
+test('manual mail copies its active requester, including owners, without leaking into automatic mail',async()=>{
  const {candidateMail}=await import('../../lib/job-team/service');
  const {mimeMessage}=await import('../../lib/google/gmail');
  const f=await fixture();try{
@@ -172,7 +172,7 @@ test('interview-only copy uses active requester and allows owner replies without
  const input={to:'candidate@example.invalid',subject:'Interview',body:'Choose a time',messageId:'interview@example.invalid',cc:['forged@example.invalid']};
  const context={applicationId:app.id,mailMode:'recruiter',interview:true,actor:'sales@aicaseleads.com'};
  const mail=await candidateMail(f.store,input,['sales@aicaseleads.com'],context);
- assert.equal(mail.sender,RECRUITER.email);assert.deepEqual(mail.cc,['sales@aicaseleads.com']);assert.deepEqual(mail.replyTo,[RECRUITER.email,'sales@aicaseleads.com']);
+ assert.equal(mail.sender,'sales@aicaseleads.com');assert.deepEqual(mail.cc,['sales@aicaseleads.com']);assert.deepEqual(mail.replyTo,['sales@aicaseleads.com']);
  assert.match(mimeMessage(mail.sender!,mail),/Cc: sales@aicaseleads.com/);
  const same=await candidateMail(f.store,input,[],{...context,actor:RECRUITER.email});assert.deepEqual(same.cc,[RECRUITER.email]);assert.deepEqual(same.replyTo,[RECRUITER.email]);
  const external=await candidateMail(f.store,input,[],{...context,actor:'external@example.invalid'});assert.equal(external.cc,undefined);

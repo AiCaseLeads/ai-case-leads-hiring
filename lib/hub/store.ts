@@ -963,10 +963,15 @@ export class HubStore {
         const payload=decode<Record<string,unknown>>(item.payload_json||"{}",{});
         const direction=item.status==='received'?'incoming' as const:'outgoing' as const;
         let envelope=payload.deliveryEnvelope as {sender?:string;to?:string[];cc?:string[];replyTo?:string[]}|undefined;
-        if(!envelope&&['pending','queued','failed'].includes(item.status)&&isInterviewInvitationTask(item.task_id,id))try{
-          const mail=await candidateMail(this,payload as unknown as import('../google/gmail').MailInput,(process.env.ADMIN_EMAILS||'').split(','),{applicationId:id,mailMode:'recruiter',actor:payload.actor,interview:true});
-          envelope={sender:mail.sender,to:[mail.to],cc:mail.cc||[],replyTo:mail.replyTo||[]};
-        }catch{/* Unconfigured routing stays unspecified until it can be verified. */}
+        if(!envelope&&['pending','queued','failed'].includes(item.status)&&isInterviewInvitationTask(item.task_id,id)){
+          const approved=payload.approvedEnvelope as {sender?:unknown;to?:unknown;cc?:unknown;replyTo?:unknown}|undefined;
+          const addresses=(value:unknown)=>Array.isArray(value)?value.filter((address):address is string=>typeof address==='string'):typeof value==='string'?[value]:[];
+          if(approved&&typeof approved.sender==='string'&&addresses(approved.to).length)envelope={sender:approved.sender,to:addresses(approved.to),cc:addresses(approved.cc),replyTo:addresses(approved.replyTo)};
+          else try{
+            const mail=await candidateMail(this,payload as unknown as import('../google/gmail').MailInput,(process.env.ADMIN_EMAILS||'').split(','),{applicationId:id,mailMode:'recruiter',actor:payload.actor,interview:true});
+            envelope={sender:mail.sender,to:[mail.to],cc:mail.cc||[],replyTo:mail.replyTo||[]};
+          }catch{/* Unconfigured legacy routing stays unspecified until it can be verified. */}
+        }
         return {id:item.id,purpose:communicationPurpose(item.task_id,id),subject:item.subject,body:item.body,status:item.status,createdAt:item.created_at,direction,...(envelope||{}),...(direction==='incoming'?{sender:typeof payload.sender==='string'?payload.sender:app.email}:{} )};
       })),
       assessments:allAssessments,interviews:allInterviews,

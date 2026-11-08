@@ -13,11 +13,11 @@ test('interview worker sends and records requester CC/reply envelope once',async
  await approveScheduling(f.store);f.database.prepare("UPDATE hub_tasks SET status='done'").run();
  const owner={...MANAGER,email:'sales@aicaseleads.com'};
  await currentAction(f.store,app.id,{action:'interview'},owner);
- let sends=0;const transport={setDeadline:()=>{},sendMail:async(mail:MailInput)=>{sends++;assert.equal(mail.sender,RECRUITER.email);assert.deepEqual(mail.cc,[owner.email]);assert.deepEqual(mail.replyTo,[RECRUITER.email,owner.email]);return {id:'sent-interview',threadId:'thread-interview'};}} as unknown as GoogleWorkspace;
+ let sends=0;const transport={setDeadline:()=>{},sendMail:async(mail:MailInput)=>{sends++;assert.equal(mail.sender,owner.email);assert.deepEqual(mail.cc,[owner.email]);assert.deepEqual(mail.replyTo,[owner.email]);return {id:'sent-interview',threadId:'thread-interview'};}} as unknown as GoogleWorkspace;
  await processHubTasks(f.store,f.db,undefined,undefined,3,[owner.email],async()=>transport);
  assert.equal(sends,1);
  const row=f.database.prepare("SELECT payload_json,status FROM hub_tasks WHERE id LIKE ?").get(`gmail:${app.id}:interview:%`)!;assert.equal(row.status,'done');
- const payload=JSON.parse(String(row.payload_json));assert.deepEqual(payload.deliveryEnvelope.cc,[owner.email]);assert.equal(payload.deliveryAccount,RECRUITER.email);
+ const payload=JSON.parse(String(row.payload_json));assert.deepEqual(payload.deliveryEnvelope.cc,[owner.email]);assert.equal(payload.deliveryAccount,owner.email);
  const detail=await f.store.getApplication(app.id);const communication=detail.communications.find(item=>item.purpose==='Interview invitation') as unknown as {cc:string[];replyTo:string[];direction:string};
  assert.ok(communication);assert.deepEqual(communication.cc,[owner.email]);assert.equal(communication.direction,'outgoing');
  await processHubTasks(f.store,f.db,undefined,undefined,3,[owner.email],async()=>transport);assert.equal(sends,1);

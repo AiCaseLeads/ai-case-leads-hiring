@@ -573,7 +573,7 @@ test("new job setup presents four clear steps and publishes without manual score
  await page.getByLabel('Job description',{exact:true}).fill('Build reliable TypeScript services and own deployment.');
  await next(page);await next(page);
  assert.equal(await page.getByLabel('Review scorecard',{exact:true}).isVisible(),false);
- assert.equal(await page.getByLabel('Recruiter who handles candidate replies',{exact:true}).isVisible(),false);
+ assert.equal(await page.getByLabel('Default reply contact',{exact:true}).isVisible(),false);
  await page.getByRole('checkbox',{name:/Rank applicants with AI/}).check();
  await next(page);
  assert.equal(await page.getByRole('checkbox',{name:/I have reviewed|I approve/}).count(),0);

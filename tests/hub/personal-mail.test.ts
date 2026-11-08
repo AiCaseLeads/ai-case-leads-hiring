@@ -43,11 +43,33 @@ test('personal mail worker never falls back to shared account and rejects inacti
  }finally{f.database.close();}
 });
 
-test('sales account cannot authorize or become a candidate mail transport even with a stored grant',async()=>{
- const f=await fixture();try{
-  assert.equal(canConnectPersonalMail(' SALES@AICASELEADS.COM '),false);
-  await f.store.setSetting(mailGrantKey('sales@aicaseleads.com'),{email:'sales@aicaseleads.com',sealedToken:await sealToken('sales-refresh',key),revision:0,fingerprint:await configurationFingerprint(env),connectedAt:Date.now()});
-  assert.equal((await personalMailStatus(f.store,'sales@aicaseleads.com',env)).connected,false);
-  assert.equal(await personalMailWorkspace(f.store,'sales@aicaseleads.com',{...env,ADMIN_EMAILS:'sales@aicaseleads.com'}),null);
+test('owner can explicitly connect personal Gmail without falling back to company credentials',async()=>{
+ const f=await fixture(),owner='sales@aicaseleads.com',ownerEnv={...env,ADMIN_EMAILS:owner};try{
+  assert.equal(canConnectPersonalMail(' SALES@AICASELEADS.COM '),true);assert.equal(canConnectPersonalMail('not an email'),false);
+  await f.store.setSetting('google_refresh_token','shared-storage-grant');await f.store.setSetting('google_sender',owner);
+  const disconnected=await personalMailStatus(f.store,owner,ownerEnv);
+  assert.equal(disconnected.canConnect,true);assert.equal(disconnected.connected,false);
+  assert.equal(await personalMailWorkspace(f.store,owner,ownerEnv),null,'company authorization is not a substitute for personal consent');
+  await f.store.setSetting(mailGrantKey(owner),{email:owner,sealedToken:await sealToken('owner-personal-refresh',key),revision:0,fingerprint:await configurationFingerprint(ownerEnv),connectedAt:Date.now()});
+  const status=await personalMailStatus(f.store,' SALES@AICASELEADS.COM ',ownerEnv);assert.equal(status.connected,true);assert.equal(status.email,owner);
+  assert.doesNotMatch(JSON.stringify(status),/sealedToken|refresh|fingerprint/);
+  const workspace=await personalMailWorkspace(f.store,owner,ownerEnv);assert.equal(workspace?.status().sender,owner);assert.equal(workspace?.status().drive,false);assert.equal(workspace?.status().calendar,false);
+  assert.equal(await personalMailWorkspace(f.store,owner,env),null,'an unconfigured nonmember cannot borrow an owner grant');
+  assert.equal(await personalMailWorkspace(f.store,owner,{...ownerEnv,GOOGLE_CLIENT_REVISION:1}),null);
+  assert.equal(await f.store.setting('google_refresh_token',''),'shared-storage-grant');
+ }finally{f.database.close();}
+});
+
+test('owner personal-mail OAuth remains identity-bound and separate from company Google',async()=>{
+ const f=await fixture(),owner={...MANAGER,email:'sales@aicaseleads.com'},ownerEnv={...env,ADMIN_EMAILS:'sales@aicaseleads.com'};try{
+  await f.store.setSetting('google_refresh_token','shared-storage-grant');
+  const state='f'.repeat(64),binding={flow:'personal-mail' as const,email:owner.email,verifier:'b'.repeat(64),revision:0,fingerprint:await configurationFingerprint(ownerEnv)},now=Date.now();
+  f.database.prepare('INSERT INTO hub_oauth_states(state_hash,user_id,verifier,expires_at,used_at) VALUES(?,?,?,?,NULL)').run(await sha256(state),owner.userId,JSON.stringify(binding),now+60000);
+  const claimed=await claimOAuthBinding(f.db,state,owner.userId,now),input={...claimed,member:owner,clientId:'client',clientSecret:'secret',tokenKey:key,redirectUri:origin+'/api/google/callback',code:'code'};
+  await assert.rejects(()=>savePersonalMailGrant(f.db,input,google(RECRUITER.email)),/wrong_mail_account/);
+  await savePersonalMailGrant(f.db,input,google(owner.email));
+  const saved=await f.store.setting<{sealedToken:string}>(mailGrantKey(owner.email),{sealedToken:''});assert.equal(await openToken(saved.sealedToken,key),'personal-mail-refresh');
+  assert.equal((await personalMailStatus(f.store,owner.email,ownerEnv)).connected,true);
+  assert.equal(await f.store.setting('google_refresh_token',''),'shared-storage-grant');
  }finally{f.database.close();}
 });

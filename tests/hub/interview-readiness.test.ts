@@ -8,13 +8,13 @@ import {configurationFingerprint} from '../../lib/google/config-state';
 const env={GOOGLE_CLIENT_ID:'fixture-client',GOOGLE_CLIENT_SECRET:'fixture-secret',GOOGLE_TOKEN_KEY:'a'.repeat(64),GOOGLE_CLIENT_REVISION:0,ADMIN_EMAILS:'sales@aicaseleads.com'};
 async function fixture(){const f=createStore({integrations:{google:true,drive:true,applicationsEnabled:true}});const job=await f.store.saveJob(jobInput());const {id}=await f.store.acceptApplication(applicationInput(job.id));await f.store.stmt("INSERT INTO hub_members(id,email,role,active,created_at,updated_at) VALUES (?,?,?,1,0,0)",'recruiter',RECRUITER.email,'recruiter').run();return {...f,id,job};}
 async function grant(store:ReturnType<typeof createStore>['store'],email:string){await store.setSetting(mailGrantKey(email),{email,sealedToken:'never-return-this',revision:0,fingerprint:await configurationFingerprint(env),connectedAt:1});}
-test('readiness follows effective recruiter contact instead of owner or unrelated candidate mailbox',async()=>{
- const f=await fixture();await grant(f.store,RECRUITER.email);
+test('owner readiness uses their own explicit email grant and copies their own address',async()=>{
+ const f=await fixture();await grant(f.store,'sales@aicaseleads.com');
  await f.store.setSetting(teamKey(f.job.id),{members:[RECRUITER.email],replyTo:RECRUITER.email,revision:1});
  const owner={...MANAGER,email:'sales@aicaseleads.com'};
  const result=await interviewReadiness(f.store,owner,f.id,env);
- assert.deepEqual(result.cc,[owner.email]);assert.deepEqual(result.replyTo,[RECRUITER.email,owner.email]);
- assert.equal(result.sender,RECRUITER.email);assert.equal(result.mailReady,true);assert.equal(result.mailIssue,null);
+ assert.deepEqual(result.cc,[owner.email]);assert.deepEqual(result.replyTo,[owner.email]);
+ assert.equal(result.sender,owner.email);assert.equal(result.mailReady,true);assert.equal(result.mailIssue,null);
  assert.ok(!JSON.stringify(result).includes('never-return-this'));
  assert.equal((await f.store.getApplication(f.id)).stage,'Application Review');
  assert.equal((await f.store.getApplication(f.id)).interviews.length,0);
@@ -22,8 +22,9 @@ test('readiness follows effective recruiter contact instead of owner or unrelate
 });
 test('missing reply contact and disconnected recruiter are actionable readiness states',async()=>{
  const f=await fixture();const owner={...MANAGER,email:'sales@aicaseleads.com'};
- const missing=await interviewReadiness(f.store,owner,f.id,env);
+ const missing=await interviewReadiness(f.store,{...MANAGER,email:'inactive@example.invalid',isOwner:false},f.id,env);
  assert.equal(missing.mailIssue,'recruiter_reply_contact_required');assert.equal(missing.mailReady,false);assert.equal(missing.sender,null);
+ const ownerDisconnected=await interviewReadiness(f.store,owner,f.id,env);assert.equal(ownerDisconnected.sender,owner.email);assert.equal(ownerDisconnected.mailIssue,'recruiter_email_not_connected');
  const disconnected=await interviewReadiness(f.store,RECRUITER,f.id,env);
  assert.equal(disconnected.sender,RECRUITER.email);assert.equal(disconnected.mailReady,false);assert.equal(disconnected.mailIssue,'recruiter_email_not_connected');
  await grant(f.store,RECRUITER.email);
