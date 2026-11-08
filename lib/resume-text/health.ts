@@ -22,7 +22,7 @@ export function finishTextCycle(failed: boolean) {
   if (failed) heartbeat.lastErrorAt = heartbeat.lastFinishedAt;
 }
 
-export async function resumeCoverage(db: D1Database) {
+async function countFiles(db: D1Database) {
   // Only aggregate supported uploads. Reading the text column here would make
   // health probes increasingly expensive as the backfill progresses.
   const counts = await db.prepare(`SELECT COUNT(*) AS totalFiles,
@@ -35,5 +35,17 @@ export async function resumeCoverage(db: D1Database) {
       AND c.content_type=f.content_type AND c.size=f.size AND c.parser_version=?
     WHERE f.uploaded_at>0 AND f.content_type IN (${RESUME_TEXT_MIMES.map(()=>'?').join(',')}) AND ${eligibleFileSql()}`)
     .bind(RESUME_TEXT_VERSION, ...RESUME_TEXT_MIMES, Date.now()).first();
-  return { ...counts, worker: state[KEY] ? { ...state[KEY] } : null };
+  return counts;
+}
+
+const snapshots = new WeakMap<D1Database, { at: number; counts: Awaited<ReturnType<typeof countFiles>> }>();
+
+export async function resumeCoverage(db: D1Database) {
+  const now = Date.now();
+  let snapshot = snapshots.get(db);
+  if (!snapshot || now - snapshot.at >= 15_000) {
+    snapshot = { at: now, counts: await countFiles(db) };
+    snapshots.set(db, snapshot);
+  }
+  return { ...snapshot.counts, worker: state[KEY] ? { ...state[KEY] } : null };
 }
