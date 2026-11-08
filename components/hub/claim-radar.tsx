@@ -3,7 +3,7 @@ import type {ApplicationDetail} from './types';
 
 export function ClaimRadar({detail}:{detail:ApplicationDetail}){
  const match=detail.aiMatch as AiMatchDetail|undefined;
- const findings=match?.status==='ready'?match.criteria?.filter(c=>c.status==='needs_verification' && new Set(c.citations.map(s=>s.source)).size>=2)??[]:[];
+ const findings=match?.status==='ready'?match.criteria?.filter(c=>c.status==='needs_verification' && Array.isArray(c.citations) && new Set(c.citations.map(s=>s.source)).size>=2)??[]:[];
  const differences=detail.relatedApplications?.flatMap(a=>a.differences)??[];
  const level=findings.length && differences.length?'High':findings.length || differences.length?'Medium':match?.status==='ready'?'Low':'Not assessed';
  return <details key={detail.id}><summary>Claim review · {level}{level==='Not assessed'?'':' priority'}</summary>
