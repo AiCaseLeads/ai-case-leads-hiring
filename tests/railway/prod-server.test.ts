@@ -59,3 +59,57 @@ test("built Node production server serves assets, protects staff data, fixes OAu
     const after = new DatabaseSync(path.join(volume, "hiring.sqlite")); assert.equal(after.prepare("SELECT COUNT(*) AS n FROM staff_oauth_states").get()!.n, states); after.close();
   } finally { if (instance) await stop(instance.child); await rm(volume, { recursive: true, force: true }); }
 });
+
+test("production response-check routes protect data and return owner-only connection errors without echoing keys", { skip: !existsSync(path.join(root, "dist/railway/worker.mjs")) }, async () => {
+  const {createHash,randomBytes} = await import("node:crypto");
+  const {HubStore} = await import("../../lib/hub/store");
+  const {SQLiteD1Database} = await import("../../lib/railway/sqlite");
+  const {applicationInput,jobInput,SESSION_HASH} = await import("../hub/fixtures");
+  const volume = await realpath(await mkdtemp(path.join(tmpdir(), "hiring-checks-http-")));
+  let instance: Awaited<ReturnType<typeof launch>> | undefined;
+  try {
+    instance=await launch(volume);
+    const sqlite=new SQLiteD1Database(path.join(volume,"hiring.sqlite"));
+    let id:string;
+    const staffToken=randomBytes(32).toString("hex"),recruiterToken=randomBytes(32).toString("hex");
+    try {
+      const now=Date.now();
+      const session=sqlite.connection.prepare("INSERT INTO staff_sessions(token_hash,user_id,email,full_name,created_at,expires_at) VALUES(?,?,?,?,?,?)");
+      for (const [token,role] of [[staffToken,"owner"],[recruiterToken,"recruiter"]]) {
+        session.run(createHash("sha256").update(token).digest("hex"),"synthetic-"+role,role+"@example.invalid","Synthetic "+role,now,now+3600000);
+      }
+      sqlite.connection.prepare("INSERT INTO hub_members(id,email,role,active,created_at,updated_at) VALUES(?,?,'recruiter',1,?,?)")
+        .run("synthetic-recruiter","recruiter@example.invalid",now,now);
+      const hub=new HubStore(sqlite as unknown as D1Database,{origin:canonical,sessionHash:SESSION_HASH});
+      const input=jobInput();
+      input.fields.push({path:"story",type:"LongText",title:"Describe a project",required:false});
+      const job=await hub.saveJob(input),app=applicationInput(job.id);
+      app.fieldSubmissions.push({path:"story",value:"A synthetic answer for the route smoke test."});
+      id=(await hub.acceptApplication(app)).id;
+    } finally {sqlite.close();}
+    const headers={Cookie:"__Host-aicl_staff_session="+staffToken};
+    const reportPath="/api/hub/response-checks",profilePath="/api/hub/applications/"+id+"/response-checks";
+    for (const pathname of [reportPath,profilePath]) {
+      const guest=await fetch(instance.origin+pathname);
+      assert.equal(guest.status,403);assert.equal((await guest.json()).error.code,"staff_access_required");
+    }
+    const report=await fetch(instance.origin+reportPath,{headers});
+    assert.equal(report.status,200);
+    const {data}=await report.json();
+    assert.equal(data.coverage.total,1);assert.equal(data.items[0].id,id);
+    const detail=await fetch(instance.origin+profilePath,{headers});
+    assert.equal(detail.status,200);
+    const profile=(await detail.json()).data;
+    assert.equal(profile.entry,null);
+    assert.ok(profile.answers.some((answer:{path:string;text:string})=>answer.path==="story" && answer.text.includes("synthetic answer")));
+    const invalidFakeKey="fake example!";
+    const connection="/api/hub/response-checks/connection";
+    const post={method:"POST",headers:{Origin:canonical,"Content-Type":"application/json"},body:JSON.stringify({apiKey:invalidFakeKey})};
+    assert.equal((await fetch(instance.origin+connection,post)).status,403);
+    assert.equal((await fetch(instance.origin+connection,{...post,headers:{...post.headers,Cookie:"__Host-aicl_staff_session="+recruiterToken}})).status,403);
+    const error=await fetch(instance.origin+connection,{...post,headers:{...post.headers,...headers}});
+    assert.equal(error.status,422);
+    const body=await error.text();
+    assert.equal(JSON.parse(body).error.code,"invalid_detector_key");assert.equal(body.includes(invalidFakeKey),false);
+  } finally {if(instance) await stop(instance.child);await rm(volume,{recursive:true,force:true});}
+});
