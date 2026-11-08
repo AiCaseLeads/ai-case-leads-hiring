@@ -701,9 +701,9 @@ export function CandidateDetail({
               <p className="hub-profile-job">{detail.jobTitle}</p>
               {!!detail.relatedApplications?.length && <details key={detail.id}><summary>{detail.relatedApplications.length} other application{detail.relatedApplications.length===1?'':'s'} with this email{detail.relatedApplications.some(a=>a.differences.length)?' · Experience answers differ':''}</summary><ul>{detail.relatedApplications.map(a=><li key={a.id}><a href={applicantHref(a.id,"",a.jobId)}>{a.jobTitle}</a> · {displayDate(a.createdAt)} · {stageLabel(a.stage)}
                 {a.differences.map(d=><p key={d.question}>{d.question} — This application: <strong>{d.current}</strong>; linked application: <strong>{d.other}</strong>.</p>)}</li>)}</ul></details>}
-              <ClaimRadar detail={detail}/>
               {detail.interview?.start && (detail.interviewProgress === "booked" || detail.interviewProgress === "attendance_due") && <p className="hub-profile-contact">Interview · {displayDate(detail.interview.start, detail.interview.timeZone)} {detail.interview.timeZone}</p>}
               <p className="hub-profile-contact"><a href={"mailto:"+detail.email}>{detail.email}</a><span>Applied {displayDate(detail.createdAt)}</span><span>Assigned to {detail.assignee||"no recruiter"}</span></p>
+              <ClaimRadar detail={detail}/>
             </div>
             <div className="hub-candidate-quick-actions" aria-label="Applicant actions">
               {!detail.trashed && detail.stage==="Application Review" && <button type="button" className="hub-button" disabled={mutation.busy||decisionBusy||dirty} title={dirty?"Save or clear unsaved changes first.":"Shortlist and open the next applicant. No email is sent."} onClick={()=>void shortlist()}>{shortlistBusy?"Shortlisting…":"Shortlist"}</button>}
