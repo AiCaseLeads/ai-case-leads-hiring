@@ -92,6 +92,10 @@ export class SQLiteD1Database {
         if (!known && migrations.length === 14 && index === 14 && entry.position === 14 &&
             entry.name === "0015_response_checks.sql" &&
             entry.sha256 === "0a666cb07bad348500fe1358beae349cf06889694aa45a40efa9e88ba5526df4") continue;
+        // Response-check deployments may also reopen the next strictly additive collections schema.
+        if (!known && migrations.length === 15 && index === 15 && entry.position === 15 &&
+            entry.name === "0014_hub_collections.sql" &&
+            entry.sha256 === "2fd51860b4d6bfa1e4107caea78d2dc4c8f3d0004f3dd4b91f6923e2411a0e40") continue;
         throw new Error("migration_hash_drift");
       }
       for (const migration of migrations.slice(applied.length)) {
