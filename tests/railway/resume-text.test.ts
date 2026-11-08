@@ -22,7 +22,7 @@ test('cache migration preserves existing applicant records and backfilled text s
   db.migrate(old);let store=new HubStore(db.asD1(),{sessionHash:'a'.repeat(64),origin:'https://jobs.example.invalid'});
   const job=await store.saveJob(jobInput()),app=await store.acceptApplication(applicationInput(job.id)),fileId='9'.repeat(64),bytes=makePdf('Built offline conversion and personal injury systems.');
   await store.stmt('INSERT INTO hub_files(id,job_id,field_path,filename,content_type,size,object_key,uploaded_at,application_id,expires_at,session_hash) VALUES(?,?,?,?,?,?,?,?,?,?,?)',fileId,job.id,'_systemfield_resume','resume.pdf','application/pdf',bytes.length,'applications/synthetic',1,app.id,Date.now()+100000,'a'.repeat(64)).run();
-  const records=JSON.stringify(db.connection.prepare('SELECT * FROM hub_applications').all());
+  const records=JSON.stringify(db.connection.prepare('SELECT *,NULL AS response_entry_json FROM hub_applications').all());
   db.migrate(migrations);assert.equal(JSON.stringify(db.connection.prepare('SELECT * FROM hub_applications').all()),records);
   const objects=new FileObjectStore(path.join(root,'objects'));await objects.put('applications/synthetic',bytes,{customMetadata:{fileId}});
   let reads=0;const bucket={get:async(key:string)=>{reads++;return objects.get(key);}} as unknown as R2Bucket;

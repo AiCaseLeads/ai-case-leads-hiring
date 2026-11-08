@@ -1,3 +1,4 @@
+import { parseResponseEntry } from "./response-entry";
 import { countWords } from "./word-count";
 import { HiringError } from "./errors";
 import { internationalPhoneError, isLinkedInProfile } from "./contact-fields";
@@ -25,7 +26,8 @@ export function parseApplication(value: unknown): ApplicationInput {
     if (!object(value.utmData) || Object.entries(value.utmData).some(([k, v]) => !UTM_KEYS.has(k) || (v !== null && (typeof v !== "string" || v.length > 500)))) badRequest();
     utmData = value.utmData as ApplicationInput["utmData"];
   }
-  return { jobPostingId: value.jobPostingId, submissionKey: value.submissionKey, fieldSubmissions: fields as ApplicationInput["fieldSubmissions"], ...(utmData ? { utmData } : {}),...(typeof value.formVersion==="number"?{formVersion:value.formVersion}:{}) };
+  const responseEntry = parseResponseEntry(value.responseEntry);
+  return { ...(responseEntry ? {responseEntry} : {}), jobPostingId: value.jobPostingId, submissionKey: value.submissionKey, fieldSubmissions: fields as ApplicationInput["fieldSubmissions"], ...(utmData ? { utmData } : {}),...(typeof value.formVersion==="number"?{formVersion:value.formVersion}:{}) };
 }
 export function parseUpload(value: unknown): UploadInput {
   if (!object(value) || typeof value.jobPostingId !== "string" || !UUID.test(value.jobPostingId) || typeof value.fieldPath !== "string" || !value.fieldPath || value.fieldPath.length > 256 || typeof value.filename !== "string" || !value.filename || value.filename.length > 180 || /[\x00-\x1f\x7f/\\]/.test(value.filename) || typeof value.contentType !== "string" || typeof value.contentLength !== "number" || !Number.isSafeInteger(value.contentLength) || value.contentLength < 1 || value.contentLength > MAX_FILE_BYTES) badRequest("Upload a supported file up to 10 MB.");

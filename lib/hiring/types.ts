@@ -1,3 +1,4 @@
+import type { ResponseEntry } from "./response-entry";
 export type FieldType = "String" | "Email" | "File" | "Date" | "Number" | "Boolean" | "LongText" | "ValueSelect" | "MultiValueSelect" | "Phone" | "SocialLink" | "Score" | "Url";
 export type ApplicationField = {
   path: string;
@@ -19,6 +20,7 @@ export type ApplicationInput = {
   submissionKey: string;
   formVersion?: number;
   utmData?: Record<string, string | null>;
+  responseEntry?: ResponseEntry;
 };
 export type UploadInput = { jobPostingId: string; fieldPath: string; filename: string; contentType: string; contentLength: number };
 export type UploadHandle = { url: string; fields: Record<string, string>; handle: string };

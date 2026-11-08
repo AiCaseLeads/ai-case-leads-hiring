@@ -179,7 +179,8 @@ export function CareersHome() {
             <label className="country-directory-filter"><span>Where do you live?</span>
               <select value={country} onChange={event=>setCountry(event.target.value)}>
                 <option value="">All countries</option>
-                {countryOptions.map(option=><option key={option.value} value={option.value}>{option.label}</option>)}
+                {/* Browser ICU labels can differ from the server. Populate after the initial jobs request. */}
+                {data && countryOptions.map(option=><option key={option.value} value={option.value}>{option.label}</option>)}
               </select>
             </label>
             <label className="job-search">

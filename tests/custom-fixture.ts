@@ -1,10 +1,11 @@
 import { DatabaseSync } from "node:sqlite";
-import { readdirSync,readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { HubStore } from "../lib/hub/store";
 export function customDatabase(){
   const database=new DatabaseSync(":memory:");
   const folder=new URL("../drizzle/",import.meta.url);
-  for(const name of readdirSync(folder).filter(name=>/^\d+.*\.sql$/.test(name)).sort())database.exec(readFileSync(new URL(name,folder),"utf8"));
+  const journal=JSON.parse(readFileSync(new URL("meta/_journal.json",folder),"utf8")) as {entries:{tag:string}[]};
+  for(const {tag} of journal.entries)database.exec(readFileSync(new URL(tag+".sql",folder),"utf8"));
   const db={
     prepare(sql:string){
       const stmt=database.prepare(sql);let values:(string|number|null)[]=[];

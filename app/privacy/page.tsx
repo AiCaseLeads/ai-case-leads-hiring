@@ -51,6 +51,16 @@ export default function PrivacyPage() {
             Results become part of the hiring record. Contact us to correct
             information or discuss how your information is used.
           </p>
+          <h2>Written response checks</h2>
+          <p>
+            Recruiters can review shared passages across applications. On supported forms we also
+            record elapsed time and counts of blocked paste attempts and large edits. Individual keys,
+            clipboard contents, and earlier versions of answers are not collected by these checks.
+            When connected, GPTZero receives longer written answers with common contact details removed
+            and estimates whether the writing resembles AI-generated text. This can also apply to
+            previously submitted answers. Its estimates can be wrong. Staff review the evidence
+            themselves. These checks do not change applicant rankings or hiring stages.
+          </p>
           <h2>Questions about your information</h2>
           <p>
             Recruiting emails are sent from an automated no-reply address. Replies

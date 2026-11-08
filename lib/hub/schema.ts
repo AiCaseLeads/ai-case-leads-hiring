@@ -86,6 +86,7 @@ export const hubApplications = sqliteTable(
     qualification: text("qualification").notNull(),
     qualificationJson: text("qualification_json").notNull(),
     answersJson: text("answers_json").notNull(),
+    responseEntryJson: text("response_entry_json"),
     fieldsJson: text("fields_json").notNull(),
     utmJson: text("utm_json").notNull(),
     source: text("source").notNull(),
@@ -371,3 +372,21 @@ export const hubCollectionReviewItems = sqliteTable("hub_collection_review_items
   feedback:text("feedback").notNull().default(""),
   reviewedAt:integer("reviewed_at"),
 }, t=>[primaryKey({columns:[t.reviewId,t.applicationId]})]);
+export const hubResponseIndex = sqliteTable("hub_response_index", {
+  applicationId: text("application_id").primaryKey().notNull().references(()=>hubApplications.id,{onDelete:"cascade"}),
+  indexedAt: integer("indexed_at").notNull(),
+});
+export const hubResponseDetectorCache = sqliteTable("hub_response_detector_cache", {
+  answerHash: text("answer_hash").primaryKey().notNull(), status: text("status").notNull(),
+  classification: text("classification"), confidence: text("confidence"), attempts: integer("attempts").notNull().default(0),
+  runAfter: integer("run_after").notNull().default(0), leaseToken: text("lease_token"), updatedAt: integer("updated_at").notNull(),
+}, t=>[index("hub_response_cache_queue").on(t.status,t.runAfter,t.answerHash),check("hub_response_status",sql`${t.status} IN ('pending','running','ready','unavailable')`)]);
+export const hubResponseAnswers = sqliteTable("hub_response_answers", {
+  applicationId:text("application_id").notNull().references(()=>hubResponseIndex.applicationId,{onDelete:"cascade"}),
+  path:text("path").notNull(), title:text("title").notNull(), words:integer("words").notNull(),
+  answerHash:text("answer_hash").references(()=>hubResponseDetectorCache.answerHash),
+},t=>[primaryKey({columns:[t.applicationId,t.path]}),index("hub_response_answer_hash").on(t.answerHash,t.applicationId)]);
+export const hubResponsePassages = sqliteTable("hub_response_passages", {
+  applicationId:text("application_id").notNull().references(()=>hubResponseIndex.applicationId,{onDelete:"cascade"}),
+  path:text("path").notNull(), passageHash:text("passage_hash").notNull(), excerpt:text("excerpt").notNull(),
+},t=>[primaryKey({columns:[t.applicationId,t.path,t.passageHash]}),index("hub_response_passage_lookup").on(t.passageHash,t.applicationId)]);

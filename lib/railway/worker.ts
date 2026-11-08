@@ -5,6 +5,7 @@ import { workspaceEnv, workspaceStatus, workspaceClient, resolvedWorkspaceEnv } 
 import { HubStore } from "../hub/store";
 import { processAiMatches } from "../ai/matching";
 import { processHubTasks } from "../task-runner";
+import { processResponseCheckBatch } from "../response-checks/worker";
 import { processResumeTextBatch } from "../resume-text/worker";
 import { requeueFailedFileText, RESUME_BATCH_SIZE } from "../resume-text/cache";
 import { startTextCycle, finishTextCycle } from "../resume-text/health";
@@ -86,14 +87,30 @@ export async function initializeRuntime() {
     if(!textStopping)textTimer=setTimeout(()=>{void textCycle();},busy?250:5000);
 
   };
+  let checkTimer:ReturnType<typeof setTimeout>|undefined, checkPending:Promise<void>|undefined, checkStopping=false;
+  const checkCycle=async()=>{
+    if(checkStopping)return;
+    let more=false;
+    checkPending=(async()=>{
+      try {
+        const result=await processResponseCheckBatch({store:new HubStore(storage.DB),shouldStop:()=>checkStopping});
+        more=result.hasMore;
+      } catch { console.error("[railway] response_check_cycle_failed"); }
+    })();
+    await checkPending;checkPending=undefined;
+    if(!checkStopping)checkTimer=setTimeout(()=>{void checkCycle();},more?250:15_000);
+  };
   await runner.start();
   // Separate awaited loop: PDF/OCR/provider latency cannot delay Gmail or Calendar.
   if(config.backgroundEnabled)aiTimer=setTimeout(()=>{void aiCycle();},1000);
   if(config.backgroundEnabled)textTimer=setTimeout(()=>{void textCycle();},1500);
+  if(config.backgroundEnabled)checkTimer=setTimeout(()=>{void checkCycle();},2000);
   return { async stop() {
+    checkStopping=true;if(checkTimer)clearTimeout(checkTimer);
     aiStopping=true;if(aiTimer)clearTimeout(aiTimer);
     textStopping=true;if(textTimer)clearTimeout(textTimer);
     const googleStopped=await runner.stop();
+    if(checkPending)await checkPending;
     if(aiPending)await aiPending;
     if(textPending)await textPending;
     return googleStopped;
