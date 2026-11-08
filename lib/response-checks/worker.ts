@@ -1,0 +1,100 @@
+import type { HubStore } from "../hub/store";
+import { activeApplicationsSql } from "../hub/application-lifecycle";
+import { sha256 } from "../hiring/crypto";
+import { canScan, detectorHash, passageAnchors, writtenAnswers, type Submission } from "./answers";
+import { scanAnswer } from "./gptzero";
+import { getDetectorKey } from "./key";
+
+import { providerStateKey, type ProviderState } from "./store";
+
+type Dependencies={store:HubStore; scan?:typeof scanAnswer; key?:typeof getDetectorKey; now?:()=>number; shouldStop?:()=>boolean};
+const leaseMs=120_000;
+const pauseFloor=30_000;
+const indexPage=25;
+const scanPage=8;
+
+async function indexApplication(store:HubStore,row:Submission, now:number) {
+  const answers=await Promise.all(writtenAnswers(row).map(async answer=>({
+    path:answer.path,title:answer.title,words:answer.words,hash:canScan(answer)?await detectorHash(answer):null,
+    anchors:await passageAnchors(answer)
+  })));
+  const answerJson=JSON.stringify(answers.map(({path,title,words,hash})=>({path,title,words,hash})));
+  const anchorRows=answers.flatMap(answer=>answer.anchors.map(anchor=>({...anchor,path:answer.path})));
+  const statements=[
+    store.stmt("INSERT OR IGNORE INTO hub_response_index(application_id,indexed_at) VALUES(?,?)",row.id,now),
+    store.stmt("INSERT OR IGNORE INTO hub_response_detector_cache(answer_hash,status,updated_at) SELECT DISTINCT json_extract(value,'$.hash'),'pending',? FROM json_each(?) WHERE json_extract(value,'$.hash') IS NOT NULL",now,answerJson),
+    store.stmt("INSERT OR IGNORE INTO hub_response_answers(application_id,path,title,words,answer_hash) SELECT ?,json_extract(value,'$.path'),json_extract(value,'$.title'),json_extract(value,'$.words'),json_extract(value,'$.hash') FROM json_each(?)",row.id,answerJson)
+  ];
+  for(let i=0;i<anchorRows.length;i+=100){
+    statements.push(store.stmt("INSERT OR IGNORE INTO hub_response_passages(application_id,path,passage_hash,excerpt) SELECT ?,json_extract(value,'$.path'),json_extract(value,'$.hash'),json_extract(value,'$.excerpt') FROM json_each(?)",row.id,JSON.stringify(anchorRows.slice(i,i+100))));
+  }
+  await store.db.batch(statements);
+}
+
+type CachedJob={answer_hash:string;attempts:number};
+async function claimNext(store:HubStore,now:number,token:string) {
+  const activeRef=`EXISTS(SELECT 1 FROM hub_response_answers ar JOIN hub_applications a ON a.id=ar.application_id
+    WHERE ar.answer_hash=c.answer_hash AND ${activeApplicationsSql("a")})`;
+  return store.stmt(`UPDATE hub_response_detector_cache SET status='running',lease_token=?,run_after=?,updated_at=?
+    WHERE answer_hash=(SELECT c.answer_hash FROM hub_response_detector_cache c
+      WHERE c.status IN ('pending','running') AND c.run_after<=? AND ${activeRef} ORDER BY c.run_after,c.answer_hash LIMIT 1)
+    RETURNING answer_hash,attempts`,token,now+leaseMs,now,now).first<CachedJob>();
+}
+
+export async function processResponseCheckBatch({store,scan=scanAnswer,key=getDetectorKey,now=Date.now,shouldStop=()=>false}:Dependencies) {
+  const rows=await store.rows<Submission>(`SELECT a.id,a.name,a.email,a.fields_json,a.answers_json FROM hub_applications a
+    WHERE ${activeApplicationsSql("a")} AND NOT EXISTS (SELECT 1 FROM hub_response_index r WHERE r.application_id=a.id)
+    ORDER BY a.created_at,a.id LIMIT ?`,indexPage);
+  let indexed=0;
+  for(const row of rows){
+    if(shouldStop())break;
+    await indexApplication(store,row,now());indexed++;
+  }
+  if(shouldStop() || rows.length===indexPage)return {indexed,scanned:0,hasMore:true};
+  const apiKey=await key(store);
+  const previous=await store.setting<ProviderState|null>(providerStateKey,null);
+  if(!apiKey){
+    if(previous?.state!=="unconfigured")await store.setSetting(providerStateKey,{state:"unconfigured"});
+    return {indexed,scanned:0,hasMore:false};
+  }
+  const keyId=(await sha256(apiKey)).slice(0,24);
+  if(previous?.keyId===keyId && previous.state==="paused" && (previous.retryAt||0)>now())return {indexed,scanned:0,hasMore:false};
+  if(previous?.keyId!==keyId || previous.state!=="active")await store.setSetting(providerStateKey,{state:"active",keyId});
+  let scanned=0, claimed=0, paused=false;
+  async function consume(credential:string){
+    while(!shouldStop() && !paused && claimed<scanPage){
+      claimed++;
+      const token=crypto.randomUUID();
+      const job=await claimNext(store,now(),token);
+      if(!job)return;
+      try {
+        const ref=await store.stmt(`SELECT a.id,a.name,a.email,a.fields_json,a.answers_json,ar.path FROM hub_response_answers ar
+          JOIN hub_applications a ON a.id=ar.application_id WHERE ar.answer_hash=? AND ${activeApplicationsSql("a")} LIMIT 1`,job.answer_hash).first<Submission & {path:string}>();
+        const answer=ref && writtenAnswers(ref).find(a=>a.path===ref.path);
+        if(!answer || !canScan(answer) || await detectorHash(answer)!==job.answer_hash) {
+          await store.stmt("UPDATE hub_response_detector_cache SET status='pending',run_after=?,lease_token=NULL WHERE answer_hash=? AND lease_token=?",now()+60_000,job.answer_hash,token).run();
+          continue;
+        }
+        const result=await scan(answer.sanitized,credential);
+        await store.stmt("UPDATE hub_response_detector_cache SET status='ready',classification=?,confidence=?,updated_at=?,lease_token=NULL WHERE answer_hash=? AND lease_token=?",result.classification,result.confidence,now(),job.answer_hash,token).run();
+        scanned++;
+      }catch(error){
+        const failure=error as {status?:number;retryAfterSeconds?:number};
+        const http=failure?.status||503;
+        const globalPause=[401,402,403,429].includes(http);
+        const auth=[401,402,403].includes(http);
+        const attempts=globalPause?job.attempts:job.attempts+1;
+        const delay=Math.max((failure?.retryAfterSeconds||0)*1000,auth?3_600_000:Math.min(900_000,pauseFloor*2**Math.min(attempts,5)));
+        const retryAt=now()+delay;
+        if(globalPause) {
+          paused=true;
+          await store.setSetting(providerStateKey,{state:"paused",keyId,retryAt,httpStatus:http});
+        }
+        const permanent=!globalPause && (http===400 || http===413 || http===422 || attempts>=5);
+        await store.stmt("UPDATE hub_response_detector_cache SET status=?,attempts=?,run_after=?,lease_token=NULL,updated_at=? WHERE answer_hash=? AND lease_token=?",permanent?"unavailable":"pending",attempts,auth?now():retryAt,now(),job.answer_hash,token).run();
+      }
+    }
+  }
+  await Promise.all([consume(apiKey),consume(apiKey)]);
+  return {indexed,scanned,hasMore:!paused && scanned>0 && claimed>=scanPage};
+}

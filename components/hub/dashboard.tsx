@@ -25,7 +25,7 @@ import { sortHubJobs } from "./job-order";
 import { normalizeApplicantScope } from "./applicant-stage-filter";
 import { CandidateDetail, Candidates } from "./candidates";
 import { Jobs } from "./jobs";
-import { Reports } from "./reports";
+import { Reports, reportSections, type ReportSection } from "./reports";
 import { HubSettings, Tasks, type SettingsSection } from "./settings";
 import { ReviewReminderQueue } from "./review-reminders";
 import { Badge, EmptyState, ResourceState } from "./shared";
@@ -67,6 +67,7 @@ export function HiringDashboard({
   const [initialStage, setInitialStage] = useState("");
   const [interviewView, setInterviewView] = useState("upcoming");
   const [initialJobId, setInitialJobId] = useState("");
+  const [reportSection, setReportSection] = useState<ReportSection>("overview");
   const [settingsSection, setSettingsSection] = useState<SettingsSection | undefined>();
   function readLocation() {
     setMenuOpen(false);
@@ -90,6 +91,8 @@ export function HiringDashboard({
     const requested = params.get("view");
     const allowed = ["home", "overview", "applications", "interviews", "jobs", "reports", "tasks", "settings"];
     const next = requested && allowed.includes(requested) ? (requested === "home" ? "overview" : requested as View) : params.has("application") ? "applications" : "overview";
+    const reportTab=params.get("section");
+    setReportSection(next==="reports" && reportSections.some(tab=>tab===reportTab) ? reportTab as ReportSection : "overview");
     setView(next);
     setDetailId(params.get("application"));
     const requestedSection=params.get("candidateSection");
@@ -344,7 +347,9 @@ export function HiringDashboard({
           ) : view === "interviews" ? (
             <InterviewWorkspace role={initialJobId} progress={interviewView} page={initialPage} select={selectInterviewView} refresh={refresh} jobs={data?.jobs || []} openApplicant={(id:string)=>selectApplication(id,undefined,undefined,"review")} />
           ) : view === "reports" ? (
-            <Reports refresh={refresh} />
+            <Reports refresh={refresh} isOwner={!!member.isOwner} initialSection={reportSection} onSection={section=>{
+                const url=viewUrl("reports"); if(section!=="overview") url.searchParams.set("section",section); navigate(url);
+              }}/>
           ) : view === "tasks" ? (
             <Tasks admin={admin} refresh={refresh} changed={changed} />
           ) : (

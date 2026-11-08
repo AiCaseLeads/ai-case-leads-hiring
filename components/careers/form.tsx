@@ -27,7 +27,8 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import type { CareerJob, CareerField } from "./types";
 import { isWebsiteField, websiteLinkError } from "@/lib/hiring/website-links";
 import { countWords } from "@/lib/hiring/word-count";
-import { contactPaths, internationalPhoneError } from "@/lib/hiring/contact-fields";
+import { isWrittenResponse, ResponseEntryCounter, type ResponseEntry } from "@/lib/hiring/response-entry";
+import { internationalPhoneError } from "@/lib/hiring/contact-fields";
 
 type Value = string | number | boolean | string[] | { score: number };
 export type Payload = {
@@ -36,6 +37,7 @@ export type Payload = {
   utmData: Record<string, string>;
   submissionKey: string;
   formVersion?: number;
+  responseEntry?: ResponseEntry;
 };
 const maxFileSize = 10 * 1024 * 1024;
 const maxApplicationFileSize = 25 * 1024 * 1024;
@@ -44,10 +46,6 @@ const acceptedTypes = [
   "application/msword",
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
 ];
-
-function isWrittenResponse(field: CareerField) {
-  return field.type === "LongText" || (field.type === "String" && !contactPaths.includes(field.path));
-}
 
 function isWrittenControl(target: EventTarget | null): target is HTMLInputElement | HTMLTextAreaElement {
   return (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) && target.hasAttribute("data-written-response");
@@ -82,14 +80,19 @@ export function ApplicationForm({
     pendingPayload = useRef<Payload | null>(null),
     inFlight = useRef(false);
   const formRef = useRef<HTMLFormElement>(null);
+  const observations = useRef<ResponseEntryCounter | null>(null);
   const [blockedField, setBlockedField] = useState("");
   useEffect(() => {
     const form = formRef.current;
     if (!form) return;
+    observations.current = new ResponseEntryCounter(performance.now());
     function blockTransfer(event: Event) {
       const field = event.target;
       if (!isWrittenControl(field)) return;
       if (event.type === "beforeinput" && !transferInputTypes.has((event as InputEvent).inputType)) return;
+      if (event.type === "paste" || (event.type === "beforeinput" && (event as InputEvent).inputType.startsWith("insertFromPaste"))) {
+        observations.current?.paste(field.id, event.type, performance.now());
+      }
       event.preventDefault();
       setBlockedField(field.id);
     }
@@ -102,7 +105,7 @@ export function ApplicationForm({
       form.removeEventListener("paste", blockTransfer);
       form.removeEventListener("drop", blockTransfer);
     };
-  }, []);
+  }, [job.id]);
   const [securityToken, setSecurityToken] = useState("");
   const [securityRefresh, setSecurityRefresh] = useState(0);
   const verification = useRef<{grant:string;expiresAt:number}|null>(null);
@@ -225,6 +228,9 @@ export function ApplicationForm({
       setError("Please check the highlighted fields.");
       return;
     }
+    // Snapshot at the submit click, before file uploads and verification. Recovery reuses the frozen payload.
+    const responseEntry = !pendingPayload.current && fields.some(isWrittenResponse)
+      ? observations.current?.snapshot(performance.now()) : undefined;
     inFlight.current = true;
     setBusy(true);
     let attemptedSubmission = false;
@@ -296,6 +302,7 @@ export function ApplicationForm({
         payload = {
           jobPostingId: job.id,
           fieldSubmissions: answers,
+          ...(responseEntry ? {responseEntry} : {}),
           utmData,
           submissionKey: submissionKey.current,
           ...(formVersion?{formVersion}:{}),
@@ -410,8 +417,16 @@ export function ApplicationForm({
         // Some mobile editors report an insertion only after the value has changed.
         const field = event.target;
         if (!isWrittenControl(field)) return;
-        if (!transferInputTypes.has((event.nativeEvent as InputEvent).inputType)) return;
-        field.value = String(values[field.id] ?? "");
+        const input = event.nativeEvent as InputEvent;
+        const previous = String(values[field.id] ?? "");
+        if (!transferInputTypes.has(input.inputType)) {
+          // The counters retain lengths only, and skip size estimates for provisional IME composition.
+          const inserted = input.isComposing ? 0 : input.data?.length ?? Math.max(0, field.value.length - previous.length);
+          observations.current?.edit(field.id, inserted, performance.now());
+          return;
+        }
+        if (input.inputType.startsWith("insertFromPaste")) observations.current?.paste(field.id, "input", performance.now());
+        field.value = previous;
         event.stopPropagation();
         setBlockedField(field.id);
       }}>
@@ -423,7 +438,7 @@ export function ApplicationForm({
       </div>
       <h2>Tell us about yourself.</h2>
       <p className="form-intro">
-        {fields.some(isWrittenResponse) ? "Type your written responses directly into the form. Pasting is disabled for those questions." : "Start with your experience. We’ll take it from there."}
+        {fields.some(isWrittenResponse) ? "Type your written responses directly here. We record elapsed time, paste attempts and the size of large edits. Recruiters may check written answers for matching passages and AI assistance using GPTZero." : "Start with your experience. We’ll take it from there."}
       </p>
       {!enabled && (
         <div className="form-notice">

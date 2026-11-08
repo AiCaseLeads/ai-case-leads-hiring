@@ -1,17 +1,24 @@
 "use client";
+import { ResponseCheckReport } from "./response-checks";
 import { useState } from "react";
 import { useHubResource } from "./api";
 import { EmptyState, ResourceState } from "./shared";
 import { stageLabel, type Report } from "./types";
 
-export function Reports({ refresh }: { refresh:number }) {
+export const reportSections = ["overview","sources","team","response-checks"] as const;
+export type ReportSection = typeof reportSections[number];
+export function Reports({refresh, initialSection, onSection, isOwner=false}:{
+  refresh:number; initialSection?:ReportSection; onSection?:(section:ReportSection)=>void; isOwner?:boolean;
+}) {
   const resource = useHubResource<Report>("/api/hub/reports", refresh), report = resource.data;
-  const [section, setSection] = useState<"overview" | "sources" | "team">("overview");
+  const [localSection, setSection] = useState<ReportSection>("overview");
+  const section=initialSection ?? localSection;
+  const [checkRefresh, setCheckRefresh] = useState(0);
   return <section aria-labelledby="reports-title">
-    <div className="hub-section-heading"><div><p className="hub-kicker">HIRING PERFORMANCE</p><h2 id="reports-title">Reports</h2><p>All recorded applications, with screening results and recruiter actions.</p></div><button className="hub-button secondary" type="button" onClick={() => void resource.reload()} disabled={resource.loading}>Refresh reports</button></div>
-    <nav className="hub-page-tabs" aria-label="Report sections">{[{id:"overview" as const,label:"Overview"},{id:"sources" as const,label:"Sources"},{id:"team" as const,label:"Team"}].map(item => <button type="button" key={item.id} className={"hub-text-button " + (section === item.id ? "active" : "")} aria-current={section === item.id ? "page" : undefined} onClick={() => setSection(item.id)}>{item.label}</button>)}</nav>
-    <ResourceState loading={resource.loading} error={resource.error} retry={() => void resource.reload()} />
-    {report && !resource.loading && <>
+    <div className="hub-section-heading"><div><p className="hub-kicker">HIRING PERFORMANCE</p><h2 id="reports-title">Reports</h2><p>All recorded applications, with screening results and recruiter actions.</p></div><button className="hub-button secondary" type="button" onClick={() => section==="response-checks" ? setCheckRefresh(n=>n+1) : void resource.reload()} disabled={section!=="response-checks" && resource.loading}>Refresh reports</button></div>
+    <nav className="hub-page-tabs" aria-label="Report sections">{[{id:"overview" as const,label:"Overview"},{id:"sources" as const,label:"Sources"},{id:"team" as const,label:"Team"},{id:"response-checks" as const,label:"Response checks"}].map(item => <button type="button" key={item.id} className={"hub-text-button " + (section === item.id ? "active" : "")} aria-current={section === item.id ? "page" : undefined} onClick={() => (onSection ?? setSection)(item.id)}>{item.label}</button>)}</nav>
+    {section==="response-checks" ? <ResponseCheckReport refresh={refresh+checkRefresh} isOwner={isOwner}/> : <ResourceState loading={resource.loading} error={resource.error} retry={() => void resource.reload()} /> }
+    {report && !resource.loading && section!=="response-checks" && <>
       {report.applications === 0 && <EmptyState title="No applications yet"><p>Applications and recruiter actions populate these reports automatically.</p></EmptyState>}
       {section === "overview" && <>
         <div className="hub-metric-grid hub-report-summary">

@@ -17,7 +17,7 @@ test("public application restricts paste to non-narrative fields", async t => {
       contents: `import React from "react"; import { createRoot } from "react-dom/client";
         import { ApplicationForm } from "./components/careers/form";
         createRoot(document.querySelector("main")).render(<ApplicationForm
-          job={{id:"example",title:"Example role"}} fields={${JSON.stringify(fields)}} enabled={false} mode="preview"/>);`,
+          job={{id:"example",title:"Example role"}} fields={${JSON.stringify(fields)}} enabled={true}/>);`,
       resolveDir: process.cwd(), loader: "tsx",
     },
     bundle: true, write: false, format: "iife", jsx: "automatic",
@@ -45,7 +45,14 @@ test("public application restricts paste to non-narrative fields", async t => {
       });
       try {
         const page = await context.newPage();
+        const submissions=[];
+        await page.route("**/api/application-verification",route=>route.fulfill({json:{required:false}}));
+        await page.route("**/api/applications",route=>{
+          submissions.push(route.request().postDataJSON());
+          return route.fulfill({status:202,json:{status:"pending"}});
+        });
         await page.goto(base);
+        await page.getByText(/record elapsed time, paste attempts/i).waitFor();
         await page.waitForSelector("fieldset:not([disabled])");
         async function paste(field, value) {
           await field.focus();
@@ -103,6 +110,19 @@ test("public application restricts paste to non-narrative fields", async t => {
           await field.pressSequentially(" today");
           assert.equal(await field.inputValue(), "My own answer today");
         }
+        // A large single edit is measured by size. Contact/link paste does not enter the summary.
+        await page.locator("#experience").fill("A long written response from the mobile keyboard. ".repeat(3));
+        await page.locator("button[type=submit]").click();
+        await page.getByRole("button",{name:"Check submission status"}).waitFor();
+        assert.equal(submissions.length,1);
+        const entry=submissions[0].responseEntry;
+        assert.ok(entry.formElapsedMs>=entry.firstEditToSubmitMs && entry.firstEditToSubmitMs>0);
+        assert.deepEqual(entry.fields.map(row=>row.path).sort(),["brief","experience"]);
+        for (const row of entry.fields) assert.ok(row.pasteAttempts>=1);
+        assert.ok(entry.fields.find(row=>row.path==="experience").largestInsertionChars>=80);
+        await page.reload();
+        await Promise.all([page.waitForResponse(response=>response.url().endsWith("/api/applications")), page.getByRole("button",{name:"Check submission status"}).click()]);
+        assert.deepEqual(submissions[1].responseEntry,entry,"Recovery sends the original timing and counts");
       } finally {
         await context.close();
       }

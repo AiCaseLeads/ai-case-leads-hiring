@@ -108,7 +108,17 @@ export async function handleHubRequest(
     const [section, id, operation] = path;
     let data: unknown;
     if(section==='meetgeek') {const {handleMeetGeekRequest}=await import('../meetgeek/service');return await handleMeetGeekRequest(request,path,member,store);}
-    if(section==='workflow'&&id==='overview'&&request.method==='GET')data=await workflowOverview(store,member);
+    if(section==="response-checks" && !id && request.method==="GET") {
+      const {listResponseChecks}=await import("../response-checks/report");
+      const {getResponseCoverage}=await import("../response-checks/store");
+      const [list,coverage]=await Promise.all([listResponseChecks(store,new URL(request.url).searchParams),getResponseCoverage(store)]);
+      data={...list,coverage};
+    } else if(section==="applications" && id && operation==="response-checks" && path.length===3 && request.method==="GET") {
+      const {getResponseChecks}=await import("../response-checks/store");
+      const {readResponseEntry}=await import("../response-checks/report");
+      const [checks,entry]=await Promise.all([getResponseChecks(store,id),readResponseEntry(store,id)]);
+      data={...checks,entry};
+    } else if(section==='workflow'&&id==='overview' &&request.method==='GET')data=await workflowOverview(store,member);
     else if(section==='workflow'&&id==='settings'&&request.method==='GET')data=await workflowSettings(store);
     else if(section==='workflow'&&id==='settings'&&request.method==='PATCH')data=await saveWorkflowSettings(store,await json(request),member);
     else if(section==='interviews'&&!id&&request.method==='GET'){const params=new URL(request.url).searchParams;data=await listRoleInterviews(store,{jobId:params.get('jobId')||undefined,owner:params.get('owner')||undefined,status:params.get('status')||undefined,progress:params.get('progress')||undefined,page:params.has('page')?Number(params.get('page')):undefined,pageSize:params.has('pageSize')?Number(params.get('pageSize')):undefined});}

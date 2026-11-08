@@ -6,6 +6,7 @@ import {InterviewComposer,InterviewDiscardConfirmation,type InterviewDraftPayloa
 import { INTERVIEW_VIEW_LABELS } from "../../lib/hub/interview-progress";
 import { ApplicantStageBadges, interviewProgressLabels } from "./interview-progress";
 import { normalizeApplicantScope, applicantStageChoice, applyApplicantStageChoice } from "./applicant-stage-filter";
+import { ResponseCheckPanel } from "./response-checks";
 import { ClaimRadar } from "./claim-radar";
 import { NavigationLink, applicantHref } from "./navigation-link";
 import {ShareApplicant} from "./share-applicant";
@@ -1199,6 +1200,7 @@ export function CandidateDetail({
               <section className="hub-card">
                 <h3>Application answers</h3>
                 <ApplicationAnswers detail={detail}/>
+                {!detail.trashed && <ResponseCheckPanel key={detail.id} applicationId={detail.id}/>}
                 <h4>Original files</h4>
                 {detail.files.length ? (
                   <ul className="hub-file-list">
