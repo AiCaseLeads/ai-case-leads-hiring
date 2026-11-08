@@ -1,11 +1,21 @@
 import { initializeRailwayStorage, closeRailwayStorage } from "./bindings";
 import { railwayConfig } from "./config";
 import { BackgroundRunner } from "./background";
-import { workspaceEnv, workspaceStatus, workspaceClient } from "../workspace-config";
+import { workspaceEnv, workspaceStatus, workspaceClient, resolvedWorkspaceEnv } from "../workspace-config";
 import { HubStore } from "../hub/store";
 import { processAiMatches } from "../ai/matching";
 import { processHubTasks } from "../task-runner";
 export { railwayConfig } from "./config";
+
+/** Explicit operator diagnostic, restricted to the configured owner's own mailbox.
+ * Never scheduled by the worker and never exposed through MCP or HTTP. */
+export async function sendOwnerRecruitingTest(email:string,testId:string) {
+  const storage=initializeRailwayStorage();
+  try {
+    const {sendOwnerMailTest}=await import('../personal-mail/diagnostic');
+    return await sendOwnerMailTest(new HubStore(storage.DB),email,testId,{...await resolvedWorkspaceEnv(),ADMIN_EMAILS:process.env.ADMIN_EMAILS});
+  }finally{closeRailwayStorage();}
+}
 
 export async function initializeRuntime() {
   const config = railwayConfig();

@@ -18,7 +18,7 @@ import { DriveArchiveContinuation, DriveArchiveFailure, type DriveArchiveProgres
 
 export type CandidateMailResolver=(account:string)=>Promise<GoogleWorkspace|null>;
 async function candidateTransport(store:HubStore,account:string|undefined,resolver?:CandidateMailResolver){
- if(!account||account.toLowerCase()==="sales@aicaseleads.com")throw {code:"candidate_mail_account_not_configured"};
+ if(!account)throw {code:"candidate_mail_account_not_configured"};
  const client=resolver?await resolver(account):await (async()=>{
   const {personalMailWorkspace}=await import("./personal-mail/service");
   const {resolvedWorkspaceEnv}=await import("./workspace-config");

@@ -46,9 +46,9 @@ export function JobTeamFields({ data, value, change, readOnly = false }: {
     change({ ...value, members, replyTo: value.replyTo && members.includes(value.replyTo) ? value.replyTo : null });
   }
   return <div className="hub-job-team-fields">
-    <p>Assign the recruiters for this job. Only the selected team receives its email alerts.</p>
+    <p>Assign the hiring team for this job. Only the selected team receives its email alerts.</p>
     <fieldset disabled={readOnly} className="hub-team-member-picker">
-      <legend>Recruiters for this job</legend>
+      <legend>Hiring team for this job</legend>
       {data.staff.map(person => <label className="hub-checkbox" key={person.email}>
         <input type="checkbox" checked={value.members.includes(person.email)} onChange={event => toggle(person.email, event.target.checked)} />
         <span>{person.email}<small className="hub-muted">{person.role === "admin" ? "Manager" : "Recruiter"}</small></span>
@@ -60,11 +60,11 @@ export function JobTeamFields({ data, value, change, readOnly = false }: {
       </label>)}
     </fieldset>
     <p className="hub-muted">Missing someone? Add them in Settings → Team.</p>
-    {!value.members.length && <p className="hub-notice">No recruiters selected. This job will not send team alerts. Applications still appear in the dashboard.</p>}
-    <Field label="Recruiter who handles candidate replies" hint="Receives candidate replies when an owner sends a message. This recruiter needs to connect Gmail in My connections.">
+    {!value.members.length && <p className="hub-notice">No team members selected. This job will not send team alerts. Applications still appear in the dashboard.</p>}
+    <Field label="Default reply contact" hint="An active owner, manager or recruiter with Gmail connected in My calendar & email. Used when the sender cannot handle replies.">
       <select disabled={readOnly} value={value.replyTo || ""} onChange={event => change({...value,replyTo:event.target.value || null})}>
-        <option value="">Choose a recruiter (or use the application assignee)</option>
-        {value.members.filter(email=>active.has(email)&&email.toLowerCase()!=="sales@aicaseleads.com").map(email=><option key={email} value={email}>{email}</option>)}
+        <option value="">Choose a team member (or use the application assignee)</option>
+        {value.members.filter(email=>active.has(email)).map(email=><option key={email} value={email}>{email}</option>)}
       </select>
     </Field>
     <details className="hub-team-alert-settings">
@@ -81,11 +81,11 @@ export function JobTeamFields({ data, value, change, readOnly = false }: {
         <span>{label}</span>
       </label>)}
     </fieldset>
-    <p className="hub-muted">Each recruiter connects Gmail in My connections. Saving this team does not email previous applicants.</p>
+    <p className="hub-muted">Each sender connects Gmail in My calendar & email. Saving this team does not email previous applicants.</p>
     </details>
     <details>
       <summary>How candidate replies work</summary>
-      <p className="hub-muted">Automatic receipts and screening rejections use no-reply. A recruiter’s messages and interview invitations direct replies to that recruiter. Interview organizers appear on calendar invitations.</p>
+      <p className="hub-muted">Automatic receipts and screening rejections use no-reply. Manual messages direct replies to the sender. Interview invitations copy the requester and include them in Reply-To, so replies arrive in Gmail. Interview organizers appear on calendar invitations.</p>
     </details>
   </div>;
 }

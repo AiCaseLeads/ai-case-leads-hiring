@@ -15,16 +15,18 @@ export type JobTeamConfig=JobTeamInput&{revision:number;createdAt:number;updated
 export const emptyJobTeam:JobTeamInput={members:[],replyTo:null,notifyNewApplications:true,notifyAssessmentSubmissions:true,notifyReplies:true,notifyOverdueReviews:true};
 export type Staff={email:string;role:string};
 export async function activeJobStaff(store:HubStore,owners:string[]=[]):Promise<Staff[]>{
- const rows=await store.rows<Staff>("SELECT lower(trim(email)) AS email,role FROM hub_members WHERE active=1 AND role IN ('admin','recruiter')");
- const byEmail=new Map(rows.map(person=>[person.email,person]));
- for(const owner of owners){const parsed=email.safeParse(owner);if(parsed.success)byEmail.set(parsed.data,{email:parsed.data,role:"admin"});}
+ const rows=await store.rows<Staff&{active:number}>("SELECT lower(trim(email)) AS email,role,active FROM hub_members");
+ // Match Railway authentication: an explicit revocation overrides ADMIN_EMAILS,
+ // while configured owners without a membership row remain authorized.
+ const revoked=new Set(rows.filter(person=>!person.active||!['admin','recruiter'].includes(person.role)).map(person=>person.email));
+ const byEmail=new Map(rows.filter(person=>!revoked.has(person.email)).map(({email,role})=>[email,{email,role}]));
+ for(const owner of owners){const parsed=email.safeParse(owner);if(parsed.success&&!revoked.has(parsed.data))byEmail.set(parsed.data,{email:parsed.data,role:"admin"});}
  return [...byEmail.values()];
 }
 export async function jobTeam(store:HubStore,jobId:string):Promise<JobTeamConfig|null>{return store.setting<JobTeamConfig|null>(teamKey(jobId),null);}
 export async function validateTeam(store:HubStore,input:JobTeamInput,owners:string[]=[]){
  const staff=await activeJobStaff(store,owners),members=[...new Set(input.members)];
  if(members.some(member=>!staff.some(person=>person.email===member)))throw new HiringError("invalid_job_team",422,"Choose active managers or recruiters from Team access before assigning this job.");
- if(input.replyTo==="sales@aicaseleads.com")throw new HiringError("invalid_job_reply_to",422,"Choose a recruiter other than the owner for candidate replies.");
  if(input.replyTo&&!members.includes(input.replyTo))throw new HiringError("invalid_job_reply_to",422,"Choose a reply contact from this job's hiring team.");
  return {...input,members};
 }
@@ -58,32 +60,33 @@ export async function candidateReplyTo(_store:HubStore,_applicationId:string,_ow
  return [AUTOMATIC_REPLY_TO];
 }
 export async function candidateMail(store:HubStore,input:MailInput,owners:string[]=[],context?:{mailMode?:unknown;actor?:unknown;applicationId:string;rejection?:boolean;interview?:boolean}):Promise<MailInput>{
- const staff=await store.rows<{email:string}>("SELECT lower(trim(email)) AS email FROM hub_members");
+ const staff=await store.rows<{email:string;active:number;role:string}>("SELECT lower(trim(email)) AS email,active,role FROM hub_members");
  const connected=await store.setting<string>("google_sender","");
  const privateAddresses=new Set([...staff.map(person=>person.email),...owners,connected].filter(Boolean).map(value=>value.toLowerCase()));
  let replyTo=AUTOMATIC_REPLY_TO;
  if(context?.mailMode==="recruiter"){
   const active=await activeJobStaff(store,owners);
-  const eligible=(value:unknown):value is string=>typeof value==="string"&&value.toLowerCase()!=="sales@aicaseleads.com"&&active.some(person=>person.email===value.toLowerCase());
-  if(eligible(context.actor))replyTo=context.actor.toLowerCase();
+  const actor=typeof context.actor==='string'?context.actor.trim().toLowerCase():'';
+  if(staff.some(person=>person.email===actor&&(!person.active||!['admin','recruiter'].includes(person.role))))throw new HiringError('recruiter_reply_contact_required',422,'The sending account is inactive. Choose an active hiring team reply contact before sending.');
+  const eligible=(value:unknown):value is string=>typeof value==="string"&&active.some(person=>person.email===value.trim().toLowerCase());
+  if(eligible(context.actor))replyTo=context.actor.trim().toLowerCase();
   else {
    const app=await store.applicationRow(context.applicationId),team=await jobTeam(store,app.job_id);
    if(team?.replyTo&&team.members.includes(team.replyTo)&&eligible(team.replyTo))replyTo=team.replyTo;
    else if(eligible(app.assignee))replyTo=app.assignee.toLowerCase();
-   else throw new HiringError("recruiter_reply_contact_required",422,"Assign an active recruiter other than the owner as the reply contact before sending.");
+   else throw new HiringError("recruiter_reply_contact_required",422,"Choose an active owner, manager or recruiter as the reply contact before sending.");
   }
  }
  let cc:string[]|undefined;
- if(context?.interview&&context.mailMode==='recruiter'){
+ if(context?.mailMode==='recruiter'){
   const active=await activeJobStaff(store,owners),actor=typeof context.actor==='string'?context.actor.trim().toLowerCase():'';
-  const membership=actor?await store.stmt("SELECT active,role FROM hub_members WHERE lower(trim(email))=?",actor).first<{active:number;role:string}>():null;
-  if(email.safeParse(actor).success&&(!membership||!!membership.active&&['admin','recruiter'].includes(membership.role))&&active.some(person=>person.email===actor)&&actor!==input.to.trim().toLowerCase())cc=[actor];
+  if(email.safeParse(actor).success&&active.some(person=>person.email===actor)&&actor!==input.to.trim().toLowerCase())cc=[actor];
  }
  const addresses=`${input.subject} ${input.body}`.match(/[A-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi)||[];
  if(addresses.some(address=>address.toLowerCase()!==CANDIDATE_SENDER&&address.toLowerCase()!==replyTo&&privateAddresses.has(address.toLowerCase())))throw new HiringError("candidate_mail_exposes_staff_address",422,"Remove staff email addresses from the applicant email template before retrying.");
  // Copy only the supported envelope fields: queued legacy replyTo/sender cannot leak through.
  const shortNotice="This is an automated email. Please do not reply.";
  const body=context?.rejection?input.body.replaceAll(AUTOMATED_MAIL_NOTICE,shortNotice):input.body;
- const notice=context?.rejection?shortNotice:replyTo===AUTOMATIC_REPLY_TO?AUTOMATED_MAIL_NOTICE:"You can reply to this email to contact your recruiter. For application help or privacy requests, visit https://jobs.aicaseleads.com/help.";
+ const notice=context?.rejection?shortNotice:replyTo===AUTOMATIC_REPLY_TO?AUTOMATED_MAIL_NOTICE:"You can reply to this email to contact the hiring team. For application help or privacy requests, visit https://jobs.aicaseleads.com/help.";
  return {to:input.to,subject:input.subject,body:body.includes(notice)?body:`${body}\n\n${notice}`,messageId:input.messageId,sender:replyTo===AUTOMATIC_REPLY_TO?CANDIDATE_SENDER:replyTo,replyTo:[...new Set([replyTo,...(cc||[])])],...(cc?{cc}:{}),candidateMail:true,candidateAccount:replyTo===AUTOMATIC_REPLY_TO?undefined:replyTo};
 }
