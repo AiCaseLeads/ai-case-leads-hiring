@@ -27,12 +27,15 @@ test("the applicant filter, detail and interview history track delivery, booking
     const invite=(await store.tasks()).find(t=>t.id.includes(`:interview:${interview!.id}:invitation:`))!;
     await store.stmt("UPDATE hub_communications SET status='failed' WHERE task_id=?",invite.id).run();
     await check("failed");
+    await store.stmt("UPDATE hub_communications SET status='uncertain' WHERE task_id=?",invite.id).run();
+    await check("unverified");
     await store.stmt("UPDATE hub_communications SET status='sent' WHERE task_id=?",invite.id).run();
     await check("requested");
     await store.stmt("UPDATE hub_interviews SET status='pending',start='2090-01-01T17:00:00Z',end='2090-01-01T17:30:00Z' WHERE id=?",interview!.id).run();
     await check("pending");
     await store.stmt("UPDATE hub_interviews SET status='booked' WHERE id=?",interview!.id).run();
     await check("booked");
+    await assert.rejects(currentAction(store,id,{action:"attendance",attended:true},MANAGER),{code:"interview_not_started"});
     await store.stmt("UPDATE hub_interviews SET start='2020-01-01T17:00:00Z',end='2020-01-01T17:30:00Z' WHERE id=?",interview!.id).run();
     await check("attendance_due");
     await currentAction(store,id,{action:"attendance",attended:false},MANAGER);

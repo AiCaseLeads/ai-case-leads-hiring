@@ -1,6 +1,6 @@
 export const INTERVIEW_PROGRESS_VALUES = [
   "none", "delivery_pending", "requested", "pending", "booked", "completed",
-  "attendance_due", "no_show", "cancel_pending", "cancelled", "failed",
+  "attendance_due", "unverified", "no_show", "cancel_pending", "cancelled", "failed",
 ] as const;
 
 export type InterviewProgress = (typeof INTERVIEW_PROGRESS_VALUES)[number];
@@ -18,12 +18,13 @@ export function interviewProgressForRowSql(alias: string): string {
         WHEN c.status='sent' THEN 'requested'
         WHEN c.status IN ('pending','queued') THEN 'delivery_pending'
         WHEN c.status='cancelled' THEN 'cancelled'
-        ELSE 'failed' END
+        WHEN c.status='failed' THEN 'failed'
+        ELSE 'unverified' END
       FROM hub_communications c
       WHERE c.application_id=${alias}.application_id
         AND instr(c.task_id,${invitePrefix})=1
       ORDER BY c.created_at DESC, CAST(substr(c.task_id,length(${invitePrefix})+1) AS INTEGER) DESC LIMIT 1
-    ),'failed')
+    ),'unverified')
     ELSE ${alias}.status END`;
 }
 

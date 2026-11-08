@@ -1505,9 +1505,14 @@ export class HubStore {
               422,
               "Record attendance for a scheduled interview.",
             );
+          if (!interview.start || !Number.isFinite(Date.parse(interview.start)) || Date.parse(interview.start)>now)
+            throw new HiringError("interview_not_started",422,"Record attendance once the scheduled interview starts.");
           statements.push(
             this.stmt(
-              "UPDATE hub_interviews SET attended=?,updated_at=? WHERE id=?",
+              "UPDATE hub_interviews SET id=CASE WHEN revision=? AND start=? AND status=? THEN id ELSE NULL END,attended=?,updated_at=? WHERE id=?",
+              interview.revision,
+              interview.start,
+              interview.status,
               input.attended ? 1 : 0,
               now,
               interview.id,
