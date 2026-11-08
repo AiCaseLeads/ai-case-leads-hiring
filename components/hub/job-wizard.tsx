@@ -1,6 +1,7 @@
 "use client";
 import { countries, countryResidenceField, isCountryResidence, residencePath } from "@/lib/countries";
 import { screeningValue, summarizeCountries } from "@/lib/job-setup/screening-summary";
+import { MAX_MIN_WORDS } from "@/lib/hiring/word-count";
 import { DEFAULT_REJECTION } from "@/lib/hiring/email-templates";
 import { englishProficiencyField, englishProficiencyPath, englishMinimum, isEnglishProficiency } from "@/lib/english-proficiency";
 import { EnglishScreening } from "./english-screening";
@@ -759,6 +760,13 @@ function Editor({
       return false;
     }
     if (section === 1) {
+      const invalidMinimum = fields.find(field => field.minWords !== undefined &&
+        (!Number.isInteger(field.minWords) || field.minWords < 1 || field.minWords > MAX_MIN_WORDS));
+      if (invalidMinimum) {
+        setExpandedQuestion(invalidMinimum.path);
+        setError(`Use a whole number from 1 to ${MAX_MIN_WORDS} for minimum words, or leave it blank.`);
+        return false;
+      }
       const invalidCountry=rules.find(rule=>rule.enabled && ["in","not_in"].includes(rule.operator) && (!Array.isArray(rule.value) || !rule.value.length));
       if(invalidCountry){setExpandedQuestion(invalidCountry.fieldPath);setError("Select at least one allowed answer for each screening rule, or remove the minimum requirement.");return false;}
       const longInstructions=fields.find(field=>(field.description?.length||0)>2000);
@@ -1198,6 +1206,7 @@ function Editor({
                               updateField(i, {
                                 type: e.target.value as FieldType,
                                 options: undefined,
+                                minWords: undefined,
                                 numberFormat: undefined,
                                 currency: undefined,
                               })
@@ -1212,6 +1221,20 @@ function Editor({
                         </Field>
                       </div>
                       <div>
+                        {f.type === "LongText" && (
+                          <Field label="Minimum words" hint="Leave blank for no minimum.">
+                            <input
+                              type="number"
+                              min={1}
+                              max={MAX_MIN_WORDS}
+                              step={1}
+                              value={f.minWords ?? ""}
+                              onChange={event => updateField(i, {
+                                minWords: event.target.value === "" ? undefined : Number(event.target.value),
+                              })}
+                            />
+                          </Field>
+                        )}
                         {f.type === "Number" && <Field label={`Question ${fields.slice(0,i+1).filter(field=>!isFixedApplicationField(field)).length} number display`}><select value={f.numberFormat||"number"} onChange={event=>updateField(i,event.target.value==="currency"?{numberFormat:"currency",currency:"USD"}:{numberFormat:"number",currency:undefined})}><option value="number">Number</option><option value="currency">Currency (USD)</option></select></Field>}
                         {f.path===resumePath && <p className="hub-muted">A résumé/CV is required for every application.</p>}
                         {isEnglishProficiency(f) ? <p className="hub-muted">CEFR levels A1–C2 are fixed; C2 is highest.</p> : isCountryResidence(f) ? <p className="hub-muted">This preset uses the complete country list. Choose eligible countries below; remove the question if you no longer need it.</p> : rules.some((r) => r.fieldPath === f.path) && (

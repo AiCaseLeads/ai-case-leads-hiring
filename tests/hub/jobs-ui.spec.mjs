@@ -749,3 +749,15 @@ test('LinkedIn is a fixed required question on existing jobs and absent from the
 test('job edit link has a reloadable URL and retains ordinary editor draft guards',async t=>{
  const{page,writes}=await setup(t);const edit=page.getByRole('link',{name:'Edit job',exact:true});const href=await edit.getAttribute('href');assert.equal(new URL(href,page.url()).searchParams.get('jobEditor'),'existing-job');assert.equal(new URL(href,page.url()).searchParams.has('jobSession'),false);const before=page.url();const prevented=await edit.evaluate(el=>{let value;document.addEventListener('click',e=>{value=e.defaultPrevented;e.preventDefault();},{once:true});el.dispatchEvent(new MouseEvent('click',{bubbles:true,cancelable:true,metaKey:true}));return value;});assert.equal(prevented,false);assert.equal(page.url(),before);await edit.click();await page.getByLabel('Job title',{exact:true}).fill('Unsaved revised title');await page.getByRole('button',{name:'Back to jobs',exact:true}).click();await page.getByRole('button',{name:'Keep editing',exact:true}).click();assert.equal(await page.getByLabel('Job title',{exact:true}).inputValue(),'Unsaved revised title');assert.equal(writes.length,0);
 });
+
+test("recruiter can set a word minimum on a long answer", async t => {
+  const question = { path: "explain", title: "Explain a campaign", type: "LongText", required: true };
+  const { page, writes } = await setup(t, { jobs: [{ ...prior, fields: [...prior.fields, question] }] });
+  await page.getByRole("link", { name: "Edit job", exact: true }).click();
+  await page.getByRole("button", { name: "Application questions", exact: true }).click();
+  await openQuestion(page, question.title);
+  await page.getByLabel("Minimum words", { exact: true }).fill("10");
+  await page.getByRole("button", { name: "Save changes", exact: true }).click();
+  await page.getByText("Changes saved.", { exact: false }).waitFor();
+  assert.equal(writes[0].job.fields.find(field => field.path === question.path).minWords, 10);
+});
