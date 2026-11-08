@@ -8,6 +8,7 @@ import { withinDeadline, DeadlineError } from "../hiring/deadline";
 import { parse } from "../hub/validation";
 import { extractPdf,pdfResult } from "./extract";
 import { MAX_PDF_BYTES,type PdfResult,type ResumeText } from "./types";
+import { readCachedFileTexts,RESUME_TEXT_VERSION } from "../resume-text/cache";
 const inputSchema=z.object({applicationId:z.string().min(1).max(128),fileId:z.string().regex(/^(?:gmail-)?[a-f0-9]{64}$/)}).strict();
 export type PdfDependencies={store:HubStore;bucket?:R2Bucket;extract?:(bytes:Uint8Array)=>Promise<PdfResult>;storageTimeoutMs?:number};
 const inFlight=new Map<string,Promise<ResumeText>>();
@@ -16,11 +17,15 @@ export async function readResumeText(applicationId:string,fileId:string,deps:Pdf
   const file=await deps.store.stmt("SELECT id,filename,content_type,object_key,size,uploaded_at FROM hub_files WHERE id=? AND application_id=? AND uploaded_at>0",fileId,applicationId).first<{id:string;filename:string;content_type:string;object_key:string;size:number;uploaded_at:number}>();
   if(!file)throw new HiringError("file_not_found",404,"This file does not belong to this application or is unavailable.");
   if(file.content_type!=="application/pdf")throw new HiringError("pdf_required",422,"Choose an uploaded PDF. Other files remain available for manual review.");
+  const full=(await readCachedFileTexts(deps.store,[file])).get(file.id)!;
+  if(!['pending','running','failed'].includes(full.status))return {...pdfResult(full.status as PdfResult['status'],full.text.slice(0,30000),full.pages,full.truncated||full.text.length>30000,full.ocrPages,full.ocrIncomplete),fileId:file.id,filename:file.filename,cached:true};
   // Version 2 retries scans previously cached as no_text before local OCR existed.
   const key=`pdf_text_v2_${file.id}_${file.uploaded_at}_${file.size}`;
   const cached=await deps.store.setting<PdfResult|null>(key,null);
   const wrap=(data:PdfResult,cached=false):ResumeText=>({...data,fileId:file.id,filename:file.filename,cached});
   if(cached)return wrap(cached,true);
+  const queued=await deps.store.stmt("SELECT 1 FROM hub_file_text WHERE file_id=? AND uploaded_at=? AND size=? AND content_type=? AND parser_version=?",file.id,file.uploaded_at,file.size,file.content_type,RESUME_TEXT_VERSION).first();
+  if(queued)throw new HiringError(full.status==='failed'?'pdf_unavailable':'pdf_busy',503,full.status==='failed'?'Résumé text could not be read. Open the original for manual review.':'Résumé text is being prepared. Retry shortly.');
   if(file.size>MAX_PDF_BYTES)return wrap(pdfResult("too_large"));
   if(!deps.bucket)throw new HiringError("storage_unavailable",503,"Private file storage is unavailable. Please retry shortly.");
   if(inFlight.has(key))return inFlight.get(key)!;

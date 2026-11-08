@@ -22,7 +22,8 @@ export function pdfResult(status:PdfResult["status"],text="",pages=0,truncated=f
 }
 let active = 0;
 /** CPU/memory-bounded child process, never on the HTTP event loop. No unbounded queue. */
-export async function extractPdf(bytes:Uint8Array, timeoutMs=45000):Promise<PdfResult> {
+export async function extractPdf(bytes:Uint8Array, timeoutMs=45000, options:{maxTextChars?:number}={}):Promise<PdfResult> {
+  const maxTextChars=Number.isSafeInteger(options.maxTextChars)?Math.max(1,Math.min(options.maxTextChars!,200000)):30000;
   if(bytes.length > MAX_PDF_BYTES)return pdfResult("too_large");
   if(new TextDecoder().decode(bytes.subarray(0,5))!=="%PDF-")return pdfResult("invalid");
   if(active>=1)throw new HiringError("pdf_busy",429,"A PDF is being read. Please retry in a moment; applications can still be submitted.");
@@ -34,20 +35,21 @@ export async function extractPdf(bytes:Uint8Array, timeoutMs=45000):Promise<PdfR
       // A trusted server-only binary directory supports local testing. No app
       // credentials or arbitrary caller-controlled paths reach either parser.
       const binaryDirectory=process.env.PDF_OCR_BIN_DIR;
-      const child=spawn(process.execPath,["--max-old-space-size=192",path.resolve(process.cwd(),"scripts/pdf-text-worker.mjs")],{stdio:["pipe","pipe","ignore"],env:{NODE_ENV:"production",PDF_WORK_DIR:temporaryDirectory!,...(binaryDirectory&&path.isAbsolute(binaryDirectory)?{PDF_OCR_BIN_DIR:binaryDirectory}:{}),OMP_THREAD_LIMIT:"1"},windowsHide:true,detached:process.platform!=="win32"});
+      const child=spawn(process.execPath,["--max-old-space-size=192",path.resolve(process.cwd(),"scripts/pdf-text-worker.mjs")],{stdio:["pipe","pipe","ignore"],env:{NODE_ENV:"production",PDF_WORK_DIR:temporaryDirectory!,PDF_MAX_TEXT_CHARS:String(maxTextChars),...(binaryDirectory&&path.isAbsolute(binaryDirectory)?{PDF_OCR_BIN_DIR:binaryDirectory}:{}),OMP_THREAD_LIMIT:"1"},windowsHide:true,detached:process.platform!=="win32"});
       let output="",settled=false;
       const kill=()=>{try{if(process.platform!=="win32"&&child.pid)process.kill(-child.pid,"SIGKILL");else child.kill("SIGKILL");}catch{/* Process group already exited. */}};
       const finish=(result:PdfResult)=>{if(settled)return;settled=true;clearTimeout(timer);kill();resolve(result);};
       const timer=setTimeout(()=>finish(pdfResult("timeout")),Math.min(Math.max(timeoutMs,1),45000));
       child.on("error",()=>finish(pdfResult("unavailable")));
       child.stdin.on("error",()=>undefined);
-      child.stdout.on("data",chunk=>{output+=chunk.toString();if(Buffer.byteLength(output)>256*1024)finish(pdfResult("invalid"));});
+      child.stdout.setEncoding("utf8");
+      child.stdout.on("data",chunk=>{output+=chunk.toString();if(Buffer.byteLength(output)>Math.max(256*1024,maxTextChars*6+1024))finish(pdfResult("invalid"));});
       child.on("close",code=>{
         if(code!==0)return finish(pdfResult("unavailable"));
         try {
           const line=output.split("\n").findLast(line=>line.startsWith("PDF_RESULT:"));
           const data=JSON.parse(line!.slice(11));
-          if(!Object.hasOwn(messages,data.status)||typeof data.text!=="string"||data.text.length>30000||!Number.isSafeInteger(data.pages)||data.pages<0||typeof data.truncated!=="boolean"||!Number.isSafeInteger(data.ocrPages)||data.ocrPages<0||data.ocrPages>8||typeof data.ocrIncomplete!=="boolean")throw new Error("invalid");
+          if(!Object.hasOwn(messages,data.status)||typeof data.text!=="string"||data.text.length>maxTextChars||!Number.isSafeInteger(data.pages)||data.pages<0||typeof data.truncated!=="boolean"||!Number.isSafeInteger(data.ocrPages)||data.ocrPages<0||data.ocrPages>8||typeof data.ocrIncomplete!=="boolean")throw new Error("invalid");
           finish(pdfResult(data.status,data.text,data.pages,data.truncated,data.ocrPages,data.ocrIncomplete));
         }catch{finish(pdfResult("invalid"));}
       });

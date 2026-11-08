@@ -2,14 +2,15 @@ import {authorizeAgent} from './access';
 import {HubStore,APPLICATION_SORTS,applicationDateBounds,type ApplicationFilters} from '../hub/store';
 import {applicationTrash} from '../hub/application-lifecycle';
 import {matchDetail} from '../ai/matching';
-import {withinDeadline} from '../hiring/deadline';
+import {withinDeadline,DeadlineError} from '../hiring/deadline';
 import {STAGES} from '../hub/types';
 import {HiringError} from '../hiring/errors';
-import {jsonResponse,errorResponse} from '../hiring/http';
-import {boundedBytes,fileSignature} from '../hiring/files';
+import {jsonResponse} from '../hiring/http';
+import {AgentReadError,AGENT_READ_LIMITS,agentReadErrorResponse} from './errors';
+import {takeAgentReadBudget} from './limits';
+import {exportApplicants,searchApplicants} from './bulk-read';
 import {MAX_FILE_BYTES} from '../hiring/validation';
-import {extractPdf} from '../pdf/extract';
-import {extractWordText,WORD_MIMES} from '../word/extract';
+import {readCachedFileTexts,RESUME_TEXT_MIMES} from '../resume-text/cache';
 const invalid=()=>new HiringError('invalid_filter',422,'Check the requested filters and pagination.');
 function positive(value:string|null,fallback:number,max:number){if(value===null)return fallback;if(!/^[1-9]\d*$/.test(value)||!Number.isSafeInteger(Number(value))||Number(value)>max)throw invalid();return Number(value);}
 function filters(p:URLSearchParams):ApplicationFilters{
@@ -24,7 +25,7 @@ export function safeAgentData(value:unknown,keyContext=''):unknown{
  if(value&&typeof value==='object')return Object.fromEntries(Object.entries(value).filter(([key])=>!/(?:token|secret|password|bookingUrl|assessmentUrl|objectKey|object_key|sessionHash|session_hash)/i.test(key)).map(([key,v])=>[key,safeAgentData(v,key)]));return value;
 }
 const decode=(value:string|null)=>{try{return JSON.parse(value||'null')}catch{return null}};
-function cappedJson(data:unknown){const clean=safeAgentData(data),encoded=JSON.stringify({data:clean});if(new TextEncoder().encode(encoded).length>1024*1024)throw new HiringError('response_too_large',413,'Reduce sectionPageSize or request an individual evidence record.');return jsonResponse({data:clean});}
+function cappedJson(data:unknown,maxBytes:number=AGENT_READ_LIMITS.jsonBytes){const clean=safeAgentData(data),encoded=JSON.stringify({data:clean});if(new TextEncoder().encode(encoded).length>maxBytes)throw new AgentReadError('response_too_large',413,'Reduce the page size or narrow the requested jobs; the response exceeded its byte limit.',{limit:{responseBytes:maxBytes}});return jsonResponse({data:clean});}
 async function applicationDetail(store:HubStore,id:string,p:URLSearchParams){
  const app=await store.applicationRow(id),pageSize=positive(p.get('sectionPageSize'),10,50);
  async function section(table:string,columns:string,pageKey:string,order:string){const page=positive(p.get(pageKey),1,100000),count=await store.stmt(`SELECT count(*) n FROM ${table} WHERE application_id=?`,id).first<{n:number}>();const items=await store.rows<Record<string,unknown>>(`SELECT ${columns} FROM ${table} WHERE application_id=? ORDER BY ${order} LIMIT ? OFFSET ?`,id,pageSize,(page-1)*pageSize);return {items,total:count?.n||0,page,pageSize};}
@@ -41,26 +42,39 @@ async function applicationDetail(store:HubStore,id:string,p:URLSearchParams){
  return {id:app.id,jobId:app.job_id,jobTitle:app.job_title,name:app.name,email:app.email,stage:app.stage,qualification:app.qualification,assignee:app.assignee,revision:app.revision,createdAt:app.created_at,updatedAt:app.updated_at,answers:decode(app.answers_json),fields:decode(app.fields_json),qualificationEvidence:decode(app.qualification_json),aiMatch:await matchDetail(store,id),files:files.map(file=>({...file,contentAction:'file_content',textAction:'file_text',applicationId:id})),recruiterReview:review,history,notes,communications,interviews,evidence:{items:evidence,total:evidenceCount?.n||0,page:evidencePage,pageSize},recordings:{items:recordings.flatMap(row=>{const v=decode(row.value);return v?.applicationId===id?[{id:v.id,filename:v.filename,contentType:v.contentType,size:v.size,createdAt:v.createdAt,streamAvailableThroughStaffSession:true}]:[]}),total:recordingCount?.n||0,page:recordingsPage,pageSize},untrustedContent:true};
 }
 let activeFileReads=0;
-async function originalBytes(request:Request,bucket:Pick<R2Bucket,'get'>,key:string,file:{id:string;size:number}){
- if(activeFileReads>=2)throw new HiringError('file_busy',429,'Two private files are being read. Retry shortly.');activeFileReads++;
- let body:ReadableStream<Uint8Array>|undefined;
- try{const deadline=Date.now()+10000,object=await withinDeadline(()=>bucket.get(key),deadline,'storage_timeout');if(!object)throw new HiringError('file_not_found',404,'This file is unavailable.');body=object.body;
- if(object.size!==file.size||object.customMetadata?.fileId!==file.id||file.size>MAX_FILE_BYTES)throw new HiringError('file_identity_mismatch',409,'The original file could not be verified.');
- const bytes=await withinDeadline(()=>boundedBytes(new Request(request.url,{method:'POST',body:object.body,duplex:'half'} as RequestInit),MAX_FILE_BYTES),deadline,'storage_timeout');if(bytes.length!==file.size)throw new HiringError('file_identity_mismatch',409,'The original file could not be verified.');return bytes;
- }finally{activeFileReads--;if(body&&!body.locked)void body.cancel().catch(()=>undefined);}
+async function originalBytes(bucket:Pick<R2Bucket,'get'>,key:string,file:{id:string;size:number},timeoutMs:number=AGENT_READ_LIMITS.storageTimeoutMs){
+ if(activeFileReads>=AGENT_READ_LIMITS.concurrentFileReads)throw new HiringError('file_busy',429,'Two private files are being read. Retry shortly.');activeFileReads++;
+ let cancelled=false,reader:ReadableStreamDefaultReader<Uint8Array>|undefined;
+ // Keep the permit until a non-cancellable get actually settles. A late object
+ // is cancelled rather than parsed or exposed after the caller's deadline.
+ const work=(async()=>{try{
+  const object=await bucket.get(key);if(!object)throw new HiringError('file_not_found',404,'This file is unavailable.');
+  reader=object.body.getReader();
+  if(cancelled)throw new DeadlineError('storage_timeout');
+  if(object.size!==file.size||object.customMetadata?.fileId!==file.id||file.size>MAX_FILE_BYTES)throw new HiringError('file_identity_mismatch',409,'The original file could not be verified.');
+  const chunks:Uint8Array[]=[];let size=0;
+  for(;;){const {done,value}=await reader.read();if(cancelled)throw new DeadlineError('storage_timeout');if(done)break;size+=value.byteLength;if(size>file.size||size>MAX_FILE_BYTES)throw new HiringError('file_identity_mismatch',409,'The original file could not be verified.');chunks.push(value);}
+  if(size!==file.size)throw new HiringError('file_identity_mismatch',409,'The original file could not be verified.');
+  const bytes=new Uint8Array(size);let offset=0;for(const chunk of chunks){bytes.set(chunk,offset);offset+=chunk.byteLength;}return bytes;
+ }finally{try{if(reader){await reader.cancel().catch(()=>undefined);reader.releaseLock();}}finally{activeFileReads--;}}})();
+ try{return await withinDeadline(()=>work,Date.now()+timeoutMs,'storage_timeout');}
+ catch(error){cancelled=true;if(reader)void reader.cancel().catch(()=>undefined);throw error;}
 }
 async function auditRead(store:HubStore,agentId:string,operation:string,applicationId?:string){await store.stmt('INSERT INTO hub_audit(id,type,actor,before_json,after_json,created_at) VALUES(?,?,?,?,?,?)',crypto.randomUUID(),'agent_read','agent:'+agentId,'null',JSON.stringify({operation,...(applicationId?{applicationId}: {})}),Date.now()).run();}
 async function activeApplication(store:HubStore,id:string){if(!id||await applicationTrash(store,id))throw new HiringError('application_not_found',404,'This application is unavailable.');await store.applicationRow(id);}
-export async function handleAgentRead(request:Request,store:HubStore,bucket?:Pick<R2Bucket,'get'>):Promise<Response>{try{
+export type AgentReadOptions={now?:()=>number;timeoutMs?:number;storageTimeoutMs?:number};
+async function agentRead(request:Request,store:HubStore,bucket:Pick<R2Bucket,'get'>|undefined,options:AgentReadOptions):Promise<Response>{
  if(request.method!=='GET')throw new HiringError('method_not_allowed',405,'Use GET for read-only access.');
  const p=new URL(request.url).searchParams,action=p.get('action'),applicationId=p.get('applicationId')||'';
  if(action==='list_jobs'){
- const access=await authorizeAgent(store,request,'jobs:read');await auditRead(store,access.id,'list_jobs');const page=positive(p.get('page'),1,100000),pageSize=positive(p.get('pageSize'),30,100),status=p.get('status'),q=p.get('q');if(status&&!['open','paused','draft','closed'].includes(status)||q&&q.length>200)throw invalid();
+ const access=await authorizeAgent(store,request,'jobs:read');await takeAgentReadBudget(store,access.id,options.now?.());await auditRead(store,access.id,'list_jobs');const page=positive(p.get('page'),1,100000),pageSize=positive(p.get('pageSize'),30,100),status=p.get('status'),q=p.get('q');if(status&&!['open','paused','draft','closed'].includes(status)||q&&q.length>200)throw invalid();
  const clauses:string[]=["NOT EXISTS(SELECT 1 FROM hub_settings lifecycle WHERE lifecycle.key='job_lifecycle_'||hub_jobs.id AND json_valid(lifecycle.value) AND json_extract(lifecycle.value,'$.state')='deleted')"],values:string[]=[];if(status){clauses.push('status=?');values.push(status)}if(q){clauses.push('(instr(lower(title),lower(?))>0 OR instr(lower(department),lower(?))>0)');values.push(q,q)}const where=clauses.length?' WHERE '+clauses.join(' AND '):'';
  const count=await store.stmt('SELECT count(*) n FROM hub_jobs'+where,...values).first<{n:number}>(),ids=await store.rows<{id:string}>('SELECT id FROM hub_jobs'+where+' ORDER BY created_at DESC,id DESC LIMIT ? OFFSET ?',...values,pageSize,(page-1)*pageSize);
  return cappedJson({items:await Promise.all(ids.map(row=>store.getJob(row.id))),total:count?.n||0,page,pageSize});
  }
  const access=await authorizeAgent(store,request,'applicants:read');
+ await takeAgentReadBudget(store,access.id,options.now?.());
+ if(action==='export_applicants'||action==='search_applicants'){await auditRead(store,access.id,action);return cappedJson(await (action==='export_applicants'?exportApplicants:searchApplicants)(store,p,{agentId:access.id,maxResponseBytes:AGENT_READ_LIMITS.bulkJsonBytes}),AGENT_READ_LIMITS.bulkJsonBytes);}
  if(action==='list_applicants'){await auditRead(store,access.id,'list_applicants');if(p.has('pageSize')&&p.get('pageSize')!=='30')throw new HiringError('invalid_page_size',422,'Applicant lists use 30 records per page.');return cappedJson(await store.applications(filters(p)));}
  if(!['get_applicant','list_files','file_content','file_text','get_interview_evidence'].includes(action||''))throw new HiringError('invalid_action',422,'Choose a supported read action.');
  await activeApplication(store,applicationId);
@@ -68,11 +82,22 @@ export async function handleAgentRead(request:Request,store:HubStore,bucket?:Pic
  await auditRead(store,access.id,action!,applicationId);
  if(action==='get_applicant')return cappedJson(await applicationDetail(store,applicationId,p));
  if(action==='get_interview_evidence'){const meetingId=p.get('meetingId')||'';if(!/^[A-Za-z0-9_-]{1,200}$/.test(meetingId))throw invalid();const evidence=await store.setting<Record<string,unknown>|null>('interview_evidence:'+applicationId+':'+meetingId,null);if(!evidence)throw new HiringError('evidence_not_found',404,'Interview evidence was not found.');const offset=positive(p.get('textPage'),1,100000),transcript=typeof evidence.transcript==='string'?evidence.transcript:'',chunk=transcript.slice((offset-1)*20000,offset*20000);return cappedJson({providerMeetingId:evidence.providerMeetingId,interviewId:evidence.interviewId,summary:evidence.summary,recordingUrl:evidence.recordingUrl,transcript:chunk,textPage:offset,textPageSize:20000,totalCharacters:transcript.length,hasMore:offset*20000<transcript.length,untrustedContent:true});}
- const files=await store.rows<{id:string;filename:string;content_type:string;size:number;field_path:string}>('SELECT id,filename,content_type,size,field_path FROM hub_files WHERE application_id=? AND uploaded_at>0 ORDER BY filename,id',applicationId);
+ const files=await store.rows<{id:string;filename:string;content_type:string;size:number;field_path:string;uploaded_at:number}>('SELECT id,filename,content_type,size,field_path,uploaded_at FROM hub_files WHERE application_id=? AND uploaded_at>0 ORDER BY filename,id',applicationId);
  if(action==='list_files')return cappedJson({items:files});
- await authorizeAgent(store,request,'files:read');const fileId=p.get('fileId')||'',file=files.find(f=>f.id===fileId);if(!file)throw new HiringError('file_not_found',404,'This file does not belong to the requested application.');if(!bucket)throw new HiringError('storage_unavailable',503,'File storage is unavailable.');
- const row=await store.stmt('SELECT object_key FROM hub_files WHERE id=? AND application_id=?',fileId,applicationId).first<{object_key:string}>();if(!row)throw new HiringError('file_not_found',404,'This file is unavailable.');const bytes=await originalBytes(request,bucket,row.object_key,file);
- if(action==='file_content')return new Response(bytes as BodyInit,{headers:{'Content-Type':file.content_type,'Content-Disposition':`attachment; filename*=UTF-8''${encodeURIComponent(file.filename)}`,'Cache-Control':'private, no-store','X-Content-Type-Options':'nosniff','Content-Security-Policy':"default-src 'none'; sandbox"}});
- if(!fileSignature(bytes,file.content_type))throw new HiringError('file_identity_mismatch',409,'The document format could not be verified.');
- if(file.content_type==='application/pdf'){const result=await extractPdf(bytes,15000);return cappedJson({fileId,...result,untrustedContent:true})}if(WORD_MIMES.includes(file.content_type))return cappedJson({fileId,...await extractWordText(bytes,file.content_type),untrustedContent:true});throw new HiringError('text_unavailable',415,'Text extraction supports PDF and Word documents.');
- }catch(error){return errorResponse(error)}}
+ await authorizeAgent(store,request,'files:read');const fileId=p.get('fileId')||'',file=files.find(f=>f.id===fileId);if(!file)throw new HiringError('file_not_found',404,'This file does not belong to the requested application.');
+ if(action==='file_text'){
+  if(!RESUME_TEXT_MIMES.includes(file.content_type as typeof RESUME_TEXT_MIMES[number]))throw new HiringError('text_unavailable',415,'Text extraction supports PDF, Word and UTF-8 text documents.');
+  const cached=(await readCachedFileTexts(store,[file])).get(file.id)!;
+  if(cached.status==='pending'||cached.status==='running')throw new AgentReadError('resume_text_pending',503,'Résumé text is being prepared in the background. Retry after the indicated delay.',{retryAfterSeconds:cached.retryAfterSeconds??5});
+  return cappedJson({fileId,filename:file.filename,...cached,cached:true,untrustedContent:true});
+ }
+ if(!bucket)throw new HiringError('storage_unavailable',503,'File storage is unavailable.');
+ const row=await store.stmt('SELECT object_key FROM hub_files WHERE id=? AND application_id=?',fileId,applicationId).first<{object_key:string}>();if(!row)throw new HiringError('file_not_found',404,'This file is unavailable.');const bytes=await originalBytes(bucket,row.object_key,file,Math.max(1,Math.min(options.storageTimeoutMs??AGENT_READ_LIMITS.storageTimeoutMs,AGENT_READ_LIMITS.storageTimeoutMs)));
+ return new Response(bytes as BodyInit,{headers:{'Content-Type':file.content_type,'Content-Disposition':`attachment; filename*=UTF-8''${encodeURIComponent(file.filename)}`,'Cache-Control':'private, no-store','X-Content-Type-Options':'nosniff','Content-Security-Policy':"default-src 'none'; sandbox"}});
+
+ }
+export async function handleAgentRead(request:Request,store:HubStore,bucket?:Pick<R2Bucket,'get'>,options:AgentReadOptions={}):Promise<Response>{
+ const timeoutMs=Math.max(1,Math.min(options.timeoutMs??AGENT_READ_LIMITS.timeoutMs,AGENT_READ_LIMITS.timeoutMs));
+ try{return await withinDeadline(()=>agentRead(request,store,bucket,options),Date.now()+timeoutMs,'agent_read_timeout');}
+ catch(error){return agentReadErrorResponse(error,timeoutMs);}
+}
