@@ -1,4 +1,5 @@
-import { healthRailwayStorage } from "@/lib/railway/bindings";
+import { resumeCoverage } from "@/lib/resume-text/health";
+import { getRailwayStorage, healthRailwayStorage } from "@/lib/railway/bindings";
 import { backgroundHealth } from "@/lib/railway/background";
 export const dynamic = "force-dynamic";
 export async function GET() {
@@ -7,5 +8,6 @@ export async function GET() {
   const worker = backgroundHealth();
   const background = !!worker && !worker.stopping && (!worker.enabled || (!!worker.lastCycleAt && Date.now() - worker.lastCycleAt < 150_000 && !worker.error));
   const ready = storage && background;
-  return Response.json({ status: ready ? "ready" : "unavailable", checks: { storage, background, backgroundEnabled: worker?.enabled ?? false } }, { status: ready ? 200 : 503, headers: { "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" } });
+  const coverage = storage ? await resumeCoverage(getRailwayStorage().DB).catch(() => null) : null;
+  return Response.json({ resumeCoverage: coverage, status: ready ? "ready" : "unavailable", checks: { storage, background, backgroundEnabled: worker?.enabled ?? false } }, { status: ready ? 200 : 503, headers: { "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" } });
 }

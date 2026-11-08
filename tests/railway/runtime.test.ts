@@ -7,6 +7,7 @@ import { createServer, request as httpRequest } from "node:http";
 import { BackgroundRunner, backgroundHealth } from "../../lib/railway/background";
 import { railwayConfig } from "../../lib/railway/config";
 import { initializeRailwayStorage, closeRailwayStorage } from "../../lib/railway/bindings";
+import { startTextCycle, finishTextCycle } from "../../lib/resume-text/health";
 import { GET as health } from "../../app/api/health/route";
 import { normalizeRailwayRequest, railwayRequestHandler } from "../../scripts/railway-http.mjs";
 const pause = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
@@ -73,7 +74,16 @@ test("health checks real temporary storage and background readiness without expo
     initializeRailwayStorage({ dataDir: dir, production: false });
     await runner.start();
     const ready = await health(); assert.equal(ready.status, 200); assert.equal(ready.headers.get("cache-control"), "no-store");
-    assert.deepEqual(await ready.json(), { status: "ready", checks: { storage: true, background: true, backgroundEnabled: true } });
+    assert.deepEqual(await ready.json(), { resumeCoverage: { totalFiles: 0, pending: 0, running: 0, ready: 0, partial: 0, failed: 0, worker: null }, status: "ready", checks: { storage: true, background: true, backgroundEnabled: true } });
+    type HealthBody = { resumeCoverage: { worker: { running: boolean; lastFinishedAt: number; lastStartedAt: number; lastErrorAt: number | null } } };
+    const workerHealth = async () => (await (await health()).json() as HealthBody).resumeCoverage.worker;
+    startTextCycle();
+    assert.equal((await workerHealth()).running, true);
+    finishTextCycle(false);
+    const heartbeat = await workerHealth();
+    assert.ok(heartbeat.lastFinishedAt >= heartbeat.lastStartedAt);
+    assert.equal(heartbeat.running, false);
+    assert.equal(heartbeat.lastErrorAt, null);
     await runner.stop(); const stopped = await health(); assert.equal(stopped.status, 503); assert.equal(JSON.stringify(await stopped.json()).includes(dir), false);
   } finally { await runner.stop(); closeRailwayStorage(); await rm(dir, { recursive: true, force: true }); }
 });

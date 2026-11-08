@@ -38,7 +38,7 @@ test("built Node production server serves assets, protects staff data, fixes OAu
   try {
     instance = await launch(volume);
     const base = instance.origin;
-    const health = await fetch(base + "/api/health"); assert.equal(health.status, 200); assert.deepEqual(await health.json(), { status: "ready", checks: { storage: true, background: true, backgroundEnabled: false } });
+    const health = await fetch(base + "/api/health"); assert.equal(health.status, 200); assert.deepEqual(await health.json(), { resumeCoverage: { totalFiles: 0, pending: 0, running: 0, ready: 0, partial: 0, failed: 0, worker: null }, status: "ready", checks: { storage: true, background: true, backgroundEnabled: false } });
     const home = await fetch(base + "/"); assert.equal(home.status, 200); const html = await home.text(); assert.match(html, /AI Case Leads/);
     const team = await fetch(base + "/team"); assert.equal(team.status, 200); assert.match(await team.text(), /Sign in with Google/);
     const jobs = await (await fetch(base + "/api/jobs")).json() as { jobs: unknown[]; submissionEnabled: boolean }; assert.deepEqual(jobs.jobs, []); assert.equal(jobs.submissionEnabled, false);

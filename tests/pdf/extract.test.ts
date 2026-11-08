@@ -107,3 +107,13 @@ test("OCR cache version retries old no-text scans and never caches incomplete OC
   await readResumeText(partial.applicationId,partial.fileId,deps);await readResumeText(partial.applicationId,partial.fileId,deps);
   assert.equal(calls,2);partial.database.close();
 });
+
+test("two background PDFs leave native parser capacity for an interactive read",async()=>{
+  const bytes=makePdf();
+  const background=[extractPdf(bytes,45000,{background:true}),extractPdf(bytes,45000,{background:true})];
+  const interactive=extractPdf(bytes);
+  await assert.rejects(extractPdf(bytes,45000,{background:true}),{code:'pdf_busy'});
+  await assert.rejects(extractPdf(bytes),{code:'pdf_busy'});
+  const results=await Promise.all([...background,interactive]);
+  assert.deepEqual(results.map(result=>result.status),['ready','ready','ready']);
+});
