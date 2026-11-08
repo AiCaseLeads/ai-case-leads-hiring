@@ -7,6 +7,63 @@ REGION = 'us-east-1'
 BASE = pathlib.Path('/opt/hiring')
 def run(*args, capture=False):
     return subprocess.check_output(args, text=True, timeout=120).strip() if capture else subprocess.run(args, check=True, timeout=120, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+def pull_has_space(image):
+    """Return False only for Docker's ENOSPC; never leak registry errors."""
+    result = subprocess.run(['docker', 'pull', image], stdout=subprocess.DEVNULL,
+                            stderr=subprocess.PIPE, timeout=120)
+    if result.returncode == 0:
+        return True
+    if b'no space left on device' in result.stderr.lower():
+        return False
+    raise subprocess.CalledProcessError(result.returncode, ['docker', 'pull', image])
+
+
+def retired_releases():
+    previous = json.loads((BASE / 'release.json').read_text())['previousContainer']
+    pattern = r'hiring-previous-[0-9]{10,12}'
+    if not re.fullmatch(pattern, previous):
+        raise RuntimeError('Unknown rollback container')
+    names = run('docker', 'ps', '-a', '--format', '{{.Names}}', capture=True).splitlines()
+    rollbacks = sorted((n for n in names if re.fullmatch(pattern, n)),
+                       key=lambda n: int(n.rsplit('-', 1)[-1]), reverse=True)
+    # Keep the three newest plus the rollback identified by the deployment record.
+    return [name for name in reversed(rollbacks[3:]) if name != previous]
+
+
+def remove_retired_release(name, active_image, requested_tag):
+    container = json.loads(run('docker', 'container', 'inspect', name, capture=True))[0]
+    if container['Name'] != '/' + name or container['State']['Status'] != 'exited':
+        return False
+    revision = (container['Config'].get('Labels') or {}).get('org.opencontainers.image.revision', '')
+    repository = REGISTRY + '/hiring'
+    digest = container['Config']['Image']
+    if not re.fullmatch(r'[0-9a-f]{40}', revision) or not re.fullmatch(re.escape(repository) + r'@sha256:[0-9a-f]{64}', digest):
+        return False
+    tag = repository + ':' + revision
+    image_id = container['Image']
+    if image_id == active_image or tag == requested_tag:
+        return False
+    image = json.loads(run('docker', 'image', 'inspect', image_id, capture=True))[0]
+    if (tag not in (image.get('RepoTags') or []) or digest not in (image.get('RepoDigests') or [])
+            or (image['Config'].get('Labels') or {}).get('org.opencontainers.image.revision') != revision):
+        return False
+    # Docker removal without force protects containers restarted by an operator.
+    # Removing by immutable tag also preserves other references to this image.
+    run('docker', 'rm', container['Id'])
+    if not run('docker', 'ps', '-aq', '--filter', 'ancestor=' + image_id, capture=True):
+        run('docker', 'image', 'rm', tag)
+    return True
+
+
+def pull_release(image, active_image):
+    if pull_has_space(image):
+        return
+    for name in retired_releases():
+        if remove_retired_release(name, active_image, image) and pull_has_space(image):
+            return
+    raise RuntimeError('No space left on device for hiring image after checking retired releases')
+
+
 def verify_release(container):
     # The image contains this read-only verifier. Suppress raw stderr and never
     # forward arbitrary container output to CI; only allowlisted aggregates leave.
@@ -50,7 +107,7 @@ def main():
         subprocess.run(['docker', 'login', '--username', 'AWS', '--password-stdin', REGISTRY], stdin=login.stdout, check=True, timeout=60, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         login.stdout.close()
         if login.wait(timeout=10): raise RuntimeError('ECR authentication failed')
-        run('docker', 'pull', image)
+        pull_release(image, current['Image'])
         info = json.loads(run('docker', 'image', 'inspect', image, capture=True))[0]
         if info['Config'].get('Labels', {}).get('org.opencontainers.image.revision') != sha:
             raise RuntimeError('Image revision does not match requested commit')
