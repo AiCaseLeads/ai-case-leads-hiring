@@ -8,7 +8,7 @@ import {receiveUpload} from '../../lib/hiring/files';
 import {sha256} from '../../lib/hiring/crypto';
 import {HiringError} from '../../lib/hiring/errors';
 import {claimFileText,discoverFileText,queueFileText,readCachedFileTexts,requeueFailedFileText,RESUME_TEXT_VERSION,RESUME_TEXT_LEASE_MS} from '../../lib/resume-text/cache';
-import {processResumeTextBatch} from '../../lib/resume-text/worker';
+import {processResumeTextBatch,processClaimedFileText} from '../../lib/resume-text/worker';
 import {sampleDocx,DOCX_MIME} from '../document-fixture';
 
 async function fixture(mime='application/pdf'){
@@ -34,7 +34,7 @@ test('automatic backfill extracts once, persists full text and never mutates app
   assert.equal((await discoverFileText(f.store,2000)),0);
   f.database.close();
 });
-test('one global atomic lease prevents duplicate parsing across concurrent worker cycles',async()=>{
+test('an atomic file lease prevents duplicate parsing across concurrent worker cycles',async()=>{
   const f=await fixture();let release!:()=>void,start!:()=>void;
   const started=new Promise<void>(resolve=>{start=resolve;}),blocked=new Promise<void>(resolve=>{release=resolve;});let parsed=0;
   const first=processResumeTextBatch({...f.deps,extractPdf:async()=>{parsed++;start();await blocked;return pdfResult('ready','Once',1);}});
@@ -145,4 +145,60 @@ test('plain-text résumé is cached once as strict UTF-8, rejects invalid encodi
     const cached=(await readCachedFileTexts(f.store,[{...f.file,size:bytes.length}])).get(f.file.id)!;assert.equal(cached.status,expected);assert.equal(reads,1);assert.equal(f.counts().calls,0);
     if(bytes.length>200000){assert.equal(cached.text.length,200000);assert.equal(cached.truncated,true);assert.equal(cached.complete,false);}else if(expected==='ready')assert.match(cached.text,/Résumé.*😀/);else assert.equal(cached.errorCode,'invalid_text_encoding');f.database.close();
   }
+});
+
+test('a batch drains ten files with at most two background parses across overlapping workers; foreground has a reserved slot',async()=>{
+  const f=await fixture();
+  try{
+    // The target is oldest so the background should not reach it before the read.
+    for(let index=1;index<=12;index++){
+      const id=index.toString(16).padStart(64,'0');
+      await f.store.stmt('INSERT INTO hub_files SELECT ?,job_id,field_path,filename,content_type,size,?,?,application_id,expires_at,session_hash FROM hub_files WHERE id=?',id,'private/'+id,1000+index,f.file.id).run();
+    }
+    const readIds:string[]=[];
+    const bucket={get:async(key:string)=>{
+      const id=key.split('/')[1];readIds.push(id);
+      return {size:f.file.size,customMetadata:{fileId:id},body:new Response(f.bytes.buffer as ArrayBuffer).body!};
+    }} as unknown as R2Bucket;
+    let unblock!:()=>void,notify!:()=>void,active=0,peak=0;
+    const block=new Promise<void>(resolve=>{unblock=resolve;}),twoRunning=new Promise<void>(resolve=>{notify=resolve;});
+    const deps={...f.deps,bucket,extractPdf:async()=>{
+      active++;peak=Math.max(active,peak);if(active===2)notify();
+      await block;active--;return pdfResult('ready','Parsed',1);
+    }};
+    const one=processResumeTextBatch(deps);
+    await twoRunning;
+    try{
+      assert.deepEqual(await processResumeTextBatch(deps),{processed:0,hasMore:true});
+      const target=await claimFileText(f.store,2000,f.file);
+      assert.ok(target);assert.equal(target.file_id,f.file.id);
+      assert.equal(await claimFileText(f.store,2000,f.file),null);
+      await processClaimedFileText({...f.deps,bucket},target);
+    }finally{unblock();}
+    assert.deepEqual(await one,{processed:10,hasMore:true});
+    assert.deepEqual(await processResumeTextBatch(deps),{processed:2,hasMore:false});
+    assert.equal(peak,2);assert.equal(readIds.length,13);assert.equal(new Set(readIds).size,13);
+    assert.equal(f.database.prepare("SELECT COUNT(*) AS count FROM hub_file_text WHERE status='ready'").get()!.count,13);
+  }finally{f.database.close();}
+});
+
+
+test('shutdown drains in-flight parsers and leaves the rest of the batch claimable',async()=>{
+  const f=await fixture();
+  try {
+    for(let i=1;i<=4;i++){
+      await f.store.stmt('INSERT INTO hub_files SELECT ?,job_id,field_path,filename,content_type,size,?,?,application_id,expires_at,session_hash FROM hub_files WHERE id=?',String(i).repeat(64),'private/'+String(i).repeat(64),1000+i,f.file.id).run();
+    }
+    const bucket={get:async(key:string)=>({size:f.file.size,customMetadata:{fileId:key.split('/')[1]},body:new Response(f.bytes.buffer as ArrayBuffer).body!})} as unknown as R2Bucket;
+    let stopping=false,calls=0;
+    let notify!:()=>void,unblock!:()=>void;
+    const started=new Promise<void>(resolve=>{notify=resolve;}),blocked=new Promise<void>(resolve=>{unblock=resolve;});
+    const batch=processResumeTextBatch({...f.deps,bucket,shouldStop:()=>stopping,extractPdf:async()=>{
+      if(++calls===2)notify();await blocked;return pdfResult('ready','Saved',1);
+    }});
+    await started;stopping=true;unblock();
+    assert.deepEqual(await batch,{processed:2,hasMore:true});
+    assert.equal(f.database.prepare("SELECT COUNT(*) AS n FROM hub_file_text WHERE status='pending' AND attempts=0").get()!.n,3);
+    assert.deepEqual(await processResumeTextBatch({...f.deps,bucket}),{processed:3,hasMore:false});
+  } finally {f.database.close();}
 });

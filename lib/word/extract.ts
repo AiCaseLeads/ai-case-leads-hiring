@@ -3,12 +3,12 @@ import path from 'node:path';
 import {HiringError} from '../hiring/errors';
 export const WORD_MIMES=['application/msword','application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
 const MAX_BYTES=10*1024*1024,MAX_TEXT_BYTES=200000;
-let active=0;
+let backgroundActive=0,interactiveActive=0;
 /** A bounded local process keeps malformed Word parsing off the request event loop. */
-export async function extractWordText(bytes:Uint8Array,mime:string,timeoutMs=8000):Promise<{text:string;truncated:boolean}> {
+export async function extractWordText(bytes:Uint8Array,mime:string,timeoutMs=8000,background=false):Promise<{text:string;truncated:boolean}> {
   if(bytes.length>MAX_BYTES||!WORD_MIMES.includes(mime))throw new HiringError('preview_unavailable',415,'This Word file cannot be previewed. Download the original instead.');
-  if(active>=2)throw new HiringError('word_preview_busy',503,'Two documents are being opened. Please retry in a moment.');
-  active++;
+  if(backgroundActive+interactiveActive>=3 || (background ? backgroundActive>=2 : interactiveActive>=2))throw new HiringError('word_preview_busy',503,'Documents are being opened. Please retry in a moment.');
+  if(background)backgroundActive++;else interactiveActive++;
   try{return await new Promise((resolve,reject)=>{
     const cwd=process.cwd(),worker=path.resolve(cwd,'scripts/word-text-worker.mjs'),guard=path.resolve(cwd,'lib/hiring/document-structure.ts');
     const child=spawn(process.execPath,['--max-old-space-size=96','--permission',`--allow-fs-read=${path.resolve(cwd,'node_modules')}`,`--allow-fs-read=${worker}`,`--allow-fs-read=${guard}`,`--allow-fs-read=${path.resolve(cwd,'package.json')}`,worker,mime],{stdio:['pipe','pipe','ignore'],env:{NODE_ENV:'production'},windowsHide:true});
@@ -26,5 +26,5 @@ export async function extractWordText(bytes:Uint8Array,mime:string,timeoutMs=800
       try{const parsed=JSON.parse(output);if(parsed.status!=='ready'||typeof parsed.text!=='string'||!parsed.text.trim()||Buffer.byteLength(parsed.text)>MAX_TEXT_BYTES||typeof parsed.truncated!=='boolean')return finish(unavailable());finish(undefined,{text:parsed.text,truncated:parsed.truncated});}catch{finish(unavailable());}
     });
     child.stdin.end(bytes);
-  });}finally{active--;}
+  });}finally{if(background)backgroundActive--;else interactiveActive--;}
 }

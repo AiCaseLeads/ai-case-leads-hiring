@@ -20,14 +20,14 @@ export function pdfResult(status:PdfResult["status"],text="",pages=0,truncated=f
   if(ocrIncomplete)message+=" Some image text could not be read. OCR supports at most 8 pages per PDF; inspect the original for missing evidence.";
   return {status,text,pages,truncated,message,ocrPages,ocrIncomplete};
 }
-let active = 0;
+let backgroundActive = 0, interactiveActive = 0;
 /** CPU/memory-bounded child process, never on the HTTP event loop. No unbounded queue. */
-export async function extractPdf(bytes:Uint8Array, timeoutMs=45000, options:{maxTextChars?:number}={}):Promise<PdfResult> {
+export async function extractPdf(bytes:Uint8Array, timeoutMs=45000, options:{maxTextChars?:number;background?:boolean}={}):Promise<PdfResult> {
   const maxTextChars=Number.isSafeInteger(options.maxTextChars)?Math.max(1,Math.min(options.maxTextChars!,200000)):30000;
   if(bytes.length > MAX_PDF_BYTES)return pdfResult("too_large");
   if(new TextDecoder().decode(bytes.subarray(0,5))!=="%PDF-")return pdfResult("invalid");
-  if(active>=1)throw new HiringError("pdf_busy",429,"A PDF is being read. Please retry in a moment; applications can still be submitted.");
-  active++;
+  if(options.background ? backgroundActive>=2 : interactiveActive>=1)throw new HiringError("pdf_busy",429,"A PDF is being read. Please retry in a moment; applications can still be submitted.");
+  if(options.background)backgroundActive++;else interactiveActive++;
   let temporaryDirectory:string|undefined;
   try {
     temporaryDirectory=await mkdtemp(path.join(os.tmpdir(),"hiring-pdf-"));
@@ -58,6 +58,6 @@ export async function extractPdf(bytes:Uint8Array, timeoutMs=45000, options:{max
   } finally {
     // The whole parser/native process group has exited or been killed first.
     if(temporaryDirectory)await rm(temporaryDirectory,{recursive:true,force:true}).catch(()=>undefined);
-    active--;
+    if(options.background)backgroundActive--;else interactiveActive--;
   }
 }

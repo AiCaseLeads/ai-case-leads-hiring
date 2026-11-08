@@ -4,7 +4,6 @@ import assert from 'node:assert/strict';
 import {createStore,jobInput,applicationInput} from './fixtures';
 import {issueAccess} from '../../lib/agent-api/access';
 import {handleAgentRead} from '../../lib/agent-api/read';
-import {queueFileText} from '../../lib/resume-text/cache';
 const request=(token:string,query:string)=>new Request('https://jobs.example.invalid/api/agent-read?'+query,{headers:{authorization:'Bearer '+token}});
 test('read scopes reject invalid, expired, revoked and write-only tokens',async()=>{const {store,database}=createStore();try{
  assert.equal((await handleAgentRead(request('invalid','action=list_jobs'),store)).status,401);
@@ -28,7 +27,21 @@ test('detail redacts invitation capabilities and files require both scopes, owne
  const query='&applicationId='+app.id+'&fileId='+fileId;let gets=0;const bucket={get:async()=>{gets++;return {size:bytes.length,customMetadata:{fileId},body:new ReadableStream({start(controller){controller.enqueue(bytes);controller.close()}})}}} as unknown as Pick<R2Bucket,'get'>;
  assert.equal((await handleAgentRead(request(read.token,'action=file_content'+query),store,bucket)).status,403);assert.equal((await handleAgentRead(request(fileOnly.token,'action=file_content'+query),store,bucket)).status,403);assert.equal(gets,0);
  assert.equal((await handleAgentRead(request(both.token,'action=file_content&applicationId='+other.id+'&fileId='+fileId),store,bucket)).status,404);assert.equal(gets,0);
- const content=await handleAgentRead(request(both.token,'action=file_content'+query),store,bucket);assert.equal(content.status,200);assert.deepEqual(new Uint8Array(await content.arrayBuffer()),bytes);const pending=await handleAgentRead(request(both.token,'action=file_text'+query),store,bucket);assert.equal(pending.status,503);assert.equal(pending.headers.get('Retry-After'),'5');assert.equal(gets,1);await queueFileText(store.db,fileId);database.prepare("UPDATE hub_file_text SET status='ready',text=? WHERE file_id=?").run('Synthetic resume text for scoped reading.',fileId);const extracted=await(await handleAgentRead(request(both.token,'action=file_text'+query),store,bucket)).json() as {data:{text:string;status:string}};assert.equal(extracted.data.status,'ready');assert.match(extracted.data.text,/Synthetic resume text/);assert.equal(gets,1);assert.equal((await handleAgentRead(request(both.token,'action=file_text'+query),store)).status,200);
+ const content=await handleAgentRead(request(both.token,'action=file_content'+query),store,bucket);assert.equal(content.status,200);assert.deepEqual(new Uint8Array(await content.arrayBuffer()),bytes);
+ assert.equal((await handleAgentRead(request(read.token,'action=file_text'+query),store,bucket)).status,403);
+ assert.equal((await handleAgentRead(request(both.token,'action=file_text&applicationId='+other.id+'&fileId='+fileId),store,bucket)).status,404);
+ assert.equal(gets,1);
+ const responses=await Promise.all(Array.from({length:2},()=>handleAgentRead(request(both.token,'action=file_text'+query),store,bucket)));
+ for(const response of responses){
+   assert.equal(response.status,200);
+   const {data}=await response.json() as {data:{text:string;status:string}};
+   assert.equal(data.status,'ready');
+   assert.match(data.text,/Synthetic resume text/);
+ }
+ assert.equal(gets,2,'two simultaneous cache misses extract one original');
+ assert.equal(database.prepare('SELECT status FROM hub_file_text WHERE file_id=?').get(fileId)?.status,'ready');
+ assert.equal((await handleAgentRead(request(both.token,'action=file_text'+query),store)).status,200);
+
  const detail=await handleAgentRead(request(read.token,'action=get_applicant&applicationId='+app.id),store);assert.equal(detail.status,200);const text=await detail.text();assert.ok(text.includes('[redacted-token]'));assert.ok(!text.includes('a'.repeat(64)));assert.ok(!text.includes('%62'));assert.ok(text.includes(fileId));assert.ok(!text.includes('private/original'));const logs=database.prepare("SELECT actor,after_json FROM hub_audit WHERE type='agent_read'").all();assert.ok(logs.length>0);assert.ok(logs.every(row=>String(row.actor).startsWith('agent:')));assert.ok(!JSON.stringify(logs).includes('Private link'));
  await store.setSetting('application_trash:'+app.id,{deletedAt:1});assert.equal((await handleAgentRead(request(both.token,'action=get_applicant&applicationId='+app.id),store)).status,404);assert.equal((await handleAgentRead(request(both.token,'action=file_content'+query),store,bucket)).status,404);
  }finally{database.close()}});

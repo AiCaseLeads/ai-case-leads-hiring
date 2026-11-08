@@ -51,10 +51,32 @@ export async function discoverFileText(store: HubStore, now = Date.now(), limit 
   return files.length;
 }
 
-/** Atomic global lease: a second process cannot claim another parser while this one runs. */
-export async function claimFileText(store: HubStore, now = Date.now()): Promise<FileTextRow | null> {
-  await store.stmt("UPDATE hub_file_text SET status='failed',error_code='text_retry_exhausted',lease_token=NULL,lease_until=0,updated_at=? WHERE status='running' AND lease_until<=? AND attempts>=?",now,now,RESUME_TEXT_MAX_ATTEMPTS).run();
-  return store.stmt(`UPDATE hub_file_text SET status='running',attempts=attempts+1,lease_token=?,lease_until=?,updated_at=? WHERE file_id=(SELECT c.file_id FROM hub_file_text c JOIN hub_files f ON f.id=c.file_id AND f.uploaded_at=c.uploaded_at AND f.size=c.size AND f.content_type=c.content_type WHERE c.parser_version=? AND c.attempts<? AND ((c.status='pending' AND c.run_after<=?) OR (c.status='running' AND c.lease_until<=?)) AND ${eligibleFileSql()} AND NOT EXISTS(SELECT 1 FROM hub_file_text active WHERE active.status='running' AND active.lease_until>?) ORDER BY (f.application_id IS NOT NULL) DESC,c.uploaded_at DESC,c.file_id LIMIT 1) RETURNING *`, crypto.randomUUID(), now + RESUME_TEXT_LEASE_MS, now, RESUME_TEXT_VERSION, RESUME_TEXT_MAX_ATTEMPTS, now, now, now, now).first<FileTextRow>();
+export const RESUME_BACKGROUND_CONCURRENCY = 2;
+export const RESUME_BATCH_SIZE = 10;
+
+/** A single SQLite write both chooses the file and reserves parser capacity.
+ * The interactive slot remains available while two background files are running.
+ * Each file's own lease fences replacements, expired workers and duplicate reads. */
+export async function claimFileText(store: HubStore, now = Date.now(), target?: CacheFileIdentity): Promise<FileTextRow | null> {
+  const targetFilter = target ? 'AND c.file_id=? AND c.uploaded_at=? AND c.size=? AND c.content_type=?' : '';
+  const targetArgs = target ? [target.id, target.uploaded_at, target.size, target.content_type] : [];
+  const token = (target ? 'interactive:' : 'background:') + crypto.randomUUID();
+  // A foreground request may only change its own authorized file, even on recovery.
+  await store.stmt(`UPDATE hub_file_text SET status='failed',error_code='text_retry_exhausted',
+    lease_token=NULL,lease_until=0,updated_at=?
+    WHERE status='running' AND lease_until<=? AND attempts>=?
+    ${target ? 'AND file_id=? AND uploaded_at=? AND size=? AND content_type=?' : ''}`,
+    now, now, RESUME_TEXT_MAX_ATTEMPTS, ...targetArgs).run();
+  return store.stmt(`UPDATE hub_file_text SET status='running',attempts=attempts+1,lease_token=?,lease_until=?,updated_at=?
+    WHERE file_id=(SELECT c.file_id FROM hub_file_text c JOIN hub_files f
+      ON f.id=c.file_id AND f.uploaded_at=c.uploaded_at AND f.size=c.size AND f.content_type=c.content_type
+      WHERE c.parser_version=? AND c.attempts<? AND ((c.status='pending' AND c.run_after<=?) OR (c.status='running' AND c.lease_until<=?))
+      AND ${eligibleFileSql()} ${targetFilter}
+      AND (SELECT COUNT(*) FROM hub_file_text active WHERE active.status='running' AND active.lease_until>?
+        AND ${target ? "active.lease_token LIKE 'interactive:%'" : "active.lease_token NOT LIKE 'interactive:%'"}) < ?
+      ORDER BY (f.application_id IS NOT NULL) DESC,c.uploaded_at DESC,c.file_id LIMIT 1) RETURNING *`,
+    token, now + RESUME_TEXT_LEASE_MS, now, RESUME_TEXT_VERSION, RESUME_TEXT_MAX_ATTEMPTS,
+    now, now, now, ...targetArgs, now, target ? 1 : RESUME_BACKGROUND_CONCURRENCY).first<FileTextRow>();
 }
 
 /** Explicit operator-only recovery after an outage/restore, never called by reads

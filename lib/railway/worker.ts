@@ -6,7 +6,8 @@ import { HubStore } from "../hub/store";
 import { processAiMatches } from "../ai/matching";
 import { processHubTasks } from "../task-runner";
 import { processResumeTextBatch } from "../resume-text/worker";
-import { requeueFailedFileText } from "../resume-text/cache";
+import { requeueFailedFileText, RESUME_BATCH_SIZE } from "../resume-text/cache";
+import { startTextCycle, finishTextCycle } from "../resume-text/health";
 export { railwayConfig } from "./config";
 
 /** Optional operator-triggered bounded backfill, sharing the live worker's lease.
@@ -17,8 +18,8 @@ export async function backfillResumeText(maxFiles=1,options:{retryFailed?:boolea
   const storage=initializeRailwayStorage();let processed=0,requeued=0;
   try{
     if(options.retryFailed)requeued=await requeueFailedFileText(new HubStore(storage.DB),maxFiles);
-    for(let index=0;index<maxFiles;index++){
-      const result=await processResumeTextBatch({store:new HubStore(storage.DB),bucket:storage.BUCKET});
+    while(processed<maxFiles){
+      const result=await processResumeTextBatch({store:new HubStore(storage.DB),bucket:storage.BUCKET},Math.min(RESUME_BATCH_SIZE,maxFiles-processed));
       processed+=result.processed;if(!result.processed)break;
     }
     const rows=await storage.DB.prepare('SELECT status,COUNT(*) AS count FROM hub_file_text GROUP BY status').all();
@@ -67,9 +68,23 @@ export async function initializeRuntime() {
   const textCycle=async()=>{
     if(textStopping)return;
     let busy=false;
-    textPending=(async()=>{try{const result=await processResumeTextBatch({store:new HubStore(storage.DB,{origin:config.origin}),bucket:storage.BUCKET});busy=result.hasMore;}catch{console.error('[railway] resume_text_cycle_failed');}})();
-    await textPending;textPending=undefined;
-    if(!textStopping)textTimer=setTimeout(()=>{void textCycle();},busy?5000:60000);
+    startTextCycle();
+    textPending=(async()=>{
+      let failed=false;
+      try {
+        const result=await processResumeTextBatch({store:new HubStore(storage.DB,{origin:config.origin}),bucket:storage.BUCKET,shouldStop:()=>textStopping});
+        busy=result.hasMore && result.processed>0;
+      } catch {
+        failed=true;
+        console.error('[railway] resume_text_cycle_failed');
+      } finally {
+        finishTextCycle(failed);
+      }
+    })();
+    await textPending;
+    textPending=undefined;
+    if(!textStopping)textTimer=setTimeout(()=>{void textCycle();},busy?250:5000);
+
   };
   await runner.start();
   // Separate awaited loop: PDF/OCR/provider latency cannot delay Gmail or Calendar.

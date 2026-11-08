@@ -10,7 +10,8 @@ import {AgentReadError,AGENT_READ_LIMITS,agentReadErrorResponse} from './errors'
 import {takeAgentReadBudget} from './limits';
 import {exportApplicants,searchApplicants} from './bulk-read';
 import {MAX_FILE_BYTES} from '../hiring/validation';
-import {readCachedFileTexts,RESUME_TEXT_MIMES} from '../resume-text/cache';
+import {readSingleResumeText} from './resume-text';
+import {RESUME_TEXT_MIMES} from '../resume-text/cache';
 const invalid=()=>new HiringError('invalid_filter',422,'Check the requested filters and pagination.');
 function positive(value:string|null,fallback:number,max:number){if(value===null)return fallback;if(!/^[1-9]\d*$/.test(value)||!Number.isSafeInteger(Number(value))||Number(value)>max)throw invalid();return Number(value);}
 function filters(p:URLSearchParams):ApplicationFilters{
@@ -63,7 +64,7 @@ async function originalBytes(bucket:Pick<R2Bucket,'get'>,key:string,file:{id:str
 async function auditRead(store:HubStore,agentId:string,operation:string,applicationId?:string){await store.stmt('INSERT INTO hub_audit(id,type,actor,before_json,after_json,created_at) VALUES(?,?,?,?,?,?)',crypto.randomUUID(),'agent_read','agent:'+agentId,'null',JSON.stringify({operation,...(applicationId?{applicationId}: {})}),Date.now()).run();}
 async function activeApplication(store:HubStore,id:string){if(!id||await applicationTrash(store,id))throw new HiringError('application_not_found',404,'This application is unavailable.');await store.applicationRow(id);}
 export type AgentReadOptions={now?:()=>number;timeoutMs?:number;storageTimeoutMs?:number};
-async function agentRead(request:Request,store:HubStore,bucket:Pick<R2Bucket,'get'>|undefined,options:AgentReadOptions):Promise<Response>{
+async function agentRead(request:Request,store:HubStore,bucket:Pick<R2Bucket,'get'>|undefined,options:AgentReadOptions,deadline:number):Promise<Response>{
  if(request.method!=='GET')throw new HiringError('method_not_allowed',405,'Use GET for read-only access.');
  const p=new URL(request.url).searchParams,action=p.get('action'),applicationId=p.get('applicationId')||'';
  if(action==='list_jobs'){
@@ -87,8 +88,7 @@ async function agentRead(request:Request,store:HubStore,bucket:Pick<R2Bucket,'ge
  await authorizeAgent(store,request,'files:read');const fileId=p.get('fileId')||'',file=files.find(f=>f.id===fileId);if(!file)throw new HiringError('file_not_found',404,'This file does not belong to the requested application.');
  if(action==='file_text'){
   if(!RESUME_TEXT_MIMES.includes(file.content_type as typeof RESUME_TEXT_MIMES[number]))throw new HiringError('text_unavailable',415,'Text extraction supports PDF, Word and UTF-8 text documents.');
-  const cached=(await readCachedFileTexts(store,[file])).get(file.id)!;
-  if(cached.status==='pending'||cached.status==='running')throw new AgentReadError('resume_text_pending',503,'Résumé text is being prepared in the background. Retry after the indicated delay.',{retryAfterSeconds:cached.retryAfterSeconds??5});
+  const cached=await readSingleResumeText({store,bucket,applicationId,file,deadline,storageTimeoutMs:options.storageTimeoutMs});
   return cappedJson({fileId,filename:file.filename,...cached,cached:true,untrustedContent:true});
  }
  if(!bucket)throw new HiringError('storage_unavailable',503,'File storage is unavailable.');
@@ -98,6 +98,7 @@ async function agentRead(request:Request,store:HubStore,bucket:Pick<R2Bucket,'ge
  }
 export async function handleAgentRead(request:Request,store:HubStore,bucket?:Pick<R2Bucket,'get'>,options:AgentReadOptions={}):Promise<Response>{
  const timeoutMs=Math.max(1,Math.min(options.timeoutMs??AGENT_READ_LIMITS.timeoutMs,AGENT_READ_LIMITS.timeoutMs));
- try{return await withinDeadline(()=>agentRead(request,store,bucket,options),Date.now()+timeoutMs,'agent_read_timeout');}
+ const deadline=Date.now()+timeoutMs;
+ try{return await withinDeadline(()=>agentRead(request,store,bucket,options,deadline),deadline,'agent_read_timeout');}
  catch(error){return agentReadErrorResponse(error,timeoutMs);}
 }
