@@ -21,7 +21,7 @@ import { JobActionMenu } from "./action-menu";
 import { ApplicantNavigation, ResumePreview, resumeFile } from "./application-review-tools";
 import { requestDraftNavigation } from "./draft-navigation";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { ArrowLeft, CalendarClock, Download, ExternalLink, StickyNote, Settings2, RefreshCw, Trash2 } from "lucide-react";
+import { ArrowLeft, CalendarClock, Download, ExternalLink, StickyNote, Settings2, RefreshCw, Trash2, UserCheck } from "lucide-react";
 import {
   hubRequest,
   displayAnswer,
@@ -399,8 +399,9 @@ export function Candidates({jobs,refresh,changed,reviewerEmail,initialStage="",i
         {bulkAction==="stage"&&<label>New stage<select aria-label="New stage" value={bulkStage} onChange={e=>setBulkStage(e.target.value)}>{stages.filter(s=>s!=="Rejected").map(s=><option key={s} value={s}>{stageLabel(s)}</option>)}</select></label>}
         {["stage","assign"].includes(bulkAction)&&<button type="button" className="hub-button" disabled={blocked} onClick={()=>void applyBulk()}>{busy?"Updating…":"Update "+selection.length+" applications"}</button>}
         {bulkAction==="download"&&<button type="button" disabled={blocked} className="hub-button" onClick={()=>void download("zip")}>Download {selection.length} applications (ZIP)</button>}
-        {bulkAction==="reject"&&<BulkRejection key={filter} filter={filter} selectedIds={ids} selectionId={snapshotId} jobTitle={scopeName} disabled={blocked} changed={()=>{void reload();changed();}}/>}
+        {bulkAction==="reject"&&<BulkRejection key={reviewerEmail+filter} actor={reviewerEmail} filter={filter} selectedIds={ids} selectionId={snapshotId} jobTitle={scopeName} disabled={blocked} changed={()=>{void reload();changed();}}/>}
       </div>}
+      {(!selection.length || bulkAction!=="reject") && <BulkRejection key={"recovery"+reviewerEmail+filter} actor={reviewerEmail} recoveryOnly filter={filter} jobTitle={scopeName} disabled={blocked} changed={()=>{void reload();changed();}}/>}
       {data.items.length?<CandidateTable items={data.items} showRole={!selectedJob} roleInIdentity optionalColumns={columns} select={id=>open(id)} hrefFor={item=>applicantHref(item.id,new URLSearchParams({...Object.fromEntries(params),page:String(page)}).toString())}
         selected={ids} togglePage={()=>toggle(data.items)} toggle={id=>{const item=data.items.find(r=>r.id===id);if(item)toggle([item]);}}
         sort={val("sort")} onSort={order=>update({sort:order,top:null})} allowAiSort={!!jobId} busy={blocked}
@@ -451,6 +452,14 @@ export function CandidateDetail({
   useEffect(()=>{ if(returningHandoff) questionRef.current?.focus(); },[returningHandoff]);
   const [reviewDirty,setReviewDirty]=useState(false);
   const [section, setSection] = useState<"application" | "review" | "activity">(initialSection);
+  const aiMatchPanel = useRef<HTMLDetailsElement>(null);
+  const [showHistoryReview,setShowHistoryReview] = useState(false);
+  useEffect(()=>{
+    if (!showHistoryReview || !aiMatchPanel.current) return;
+    aiMatchPanel.current.open=true;
+    aiMatchPanel.current.querySelector("summary")?.focus();
+    setShowHistoryReview(false);
+  },[section,showHistoryReview]);
   const profileTop = useRef<HTMLElement>(null);
   const openedProfile = useRef<string|null>(null);
   useLayoutEffect(() => {
@@ -710,7 +719,7 @@ export function CandidateDetail({
               </>}
               {!detail.trashed&&<ShareApplicant key={detail.id} id={detail.id}/>}
               <JobActionMenu label="More applicant actions" triggerLabel="More">
-                {!detail.trashed&&reviewerEmail&&detail.assignee!==reviewerEmail&&<button type="button" disabled={mutation.busy||decisionBusy} onClick={async()=>{const r=await mutation.run(`/api/hub/applications/${encodeURIComponent(id)}/action`,"POST",{action:"assign",assignee:reviewerEmail,expectedRevision:detail.revision},"Assigned to you.");if(r!==undefined){await resource.reload();changed()}}}>Assign to me</button>}
+                {!detail.trashed&&reviewerEmail&&detail.assignee!==reviewerEmail&&<button type="button" disabled={mutation.busy||decisionBusy} onClick={async()=>{const r=await mutation.run(`/api/hub/applications/${encodeURIComponent(id)}/action`,"POST",{action:"assign",assignee:reviewerEmail,expectedRevision:detail.revision},"Assigned to you.");if(r!==undefined){await resource.reload();changed()}}}><UserCheck size={16} aria-hidden="true"/>Assign to me</button>}
                 {!detail.trashed && !["Rejected","Withdrawn","Hired"].includes(detail.stage) && <button type="button" disabled={mutation.busy||decisionBusy} onClick={()=>{interviewLeave.current=null;setConfirmInterviewDiscard(false);setAction("interview");setActionOpen(true);mutation.clear();}}><CalendarClock size={16} aria-hidden="true"/>{detail.interview && isHistoricalInterview(detail.interview) ? "Request another interview" : "Request interview"}</button>}
                 {!detail.trashed && <button type="button" disabled={mutation.busy||decisionBusy} onClick={()=>{setAction("note");setActionOpen(true);mutation.clear();}}><StickyNote size={16} aria-hidden="true"/>Add note</button>}
                 {!detail.trashed && <button type="button" disabled={mutation.busy||decisionBusy} onClick={()=>{setAction("stage");setActionOpen(true);mutation.clear();}}><Settings2 size={16} aria-hidden="true"/>Other applicant actions</button>}
@@ -932,7 +941,7 @@ export function CandidateDetail({
                 <Feedback error={mutation.error} success=""/>
               </form>}{reviewDirty?<p className="hub-muted">Save your interview handoff before attaching a recording.</p>:<RecordingPanel applicationId={detail.id} primaryRecordingInHandoff refresh={evidenceRefresh} changed={()=>{setEvidenceRefresh(n=>n+1);void resource.reload();changed();}}/>}</>}
               <RecruiterNotes detail={detail} busy={mutation.busy||decisionBusy||dirty} addNote={()=>{setAction("note");setActionOpen(true);}} changed={()=>{void resource.reload();changed();}}/>
-              {section==="review"&&<details className="hub-card"><summary>AI job match</summary><CandidateMatch applicationId={detail.id}/></details>}
+              {section==="review"&&<details className="hub-card" ref={aiMatchPanel}><summary>AI job match</summary><CandidateMatch applicationId={detail.id}/></details>}
               <details className="hub-card"><summary>Optional: human grades and scorecards</summary>
               <section className="hub-card">
                 <h3>Reviewer grade</h3>
@@ -1094,7 +1103,7 @@ export function CandidateDetail({
                   ))
                 ) : (
                   <p className="hub-muted">
-                    No scorecards yet. Use AI review & notes to record a review.
+                    No scorecards yet. Use Interviews &amp; notes to record a review.
                   </p>
                 )}
               </section>
@@ -1107,7 +1116,7 @@ export function CandidateDetail({
                       <li key={event.id}>
                         <strong>{summary.title}</strong>
                         {summary.description && (event.type==="note" || summary.description.length>240 ? <details><summary>View details</summary><p className="hub-preserve">{summary.description}</p></details> : <p>{summary.description}</p>)}
-                        {summary.review && <button type="button" className="hub-text-button" onClick={()=>{setSection("review");document.getElementById("candidate-tab-review")?.focus({preventScroll:true});}}>View AI review</button>}
+                        {summary.review && <button type="button" className="hub-text-button" onClick={()=>{setSection("review");setShowHistoryReview(true);}}>View AI review</button>}
                         <small>
                           {event.actor} · {displayDate(event.createdAt)}
                         </small>

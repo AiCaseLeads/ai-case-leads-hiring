@@ -73,7 +73,7 @@ export function HiringDashboard({
   function readLocation() {
     setMenuOpen(false);
     const params = new URLSearchParams(window.location.search);
-    if (params.get("view") === "applications" && params.has("interviewProgress")) {
+    if (params.get("view") === "applications" && (params.has("interviewProgress") || params.has("stage"))) {
       const original = params.toString();
       normalizeApplicantScope(params);
       if (params.toString() !== original) {
