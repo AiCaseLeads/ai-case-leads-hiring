@@ -7,28 +7,29 @@ import { appCheckJoinsSql, appCheckStatusSql, type ResponseState } from "./repor
 export const providerStateKey="response_checks_provider_state";
 export type ProviderState={state:"active"|"unconfigured"|"paused";keyId?:string;retryAt?:number;reason?:"quota"|"allowance_unavailable";httpStatus?:number};
 type StatusRow={status:ResponseState;total:number};
-type AnswerState="ready"|"pending"|"too_short"|"unavailable";
+type AnswerState="ready"|"pending"|"too_short"|"not_prose"|"unavailable";
 type Match={applicationId:string;jobTitle:string;passage:string};
-type AnswerDetail={path:string;title:string;text:string;words:number;status:AnswerState;classification:string|null;confidence:string|null;matches:Match[]};
+type AnswerDetail={path:string;title:string;text?:string;words:number;status:AnswerState;classification:string|null;confidence:string|null;matches:Match[]};
 export async function getResponseCoverage(store:HubStore) {
   const apps=await store.rows<StatusRow>(`SELECT ${appCheckStatusSql} AS status,COUNT(*) AS total FROM hub_applications a
     ${appCheckJoinsSql} WHERE ${activeApplicationsSql("a")} GROUP BY 1`);
-  const answers=await store.stmt(`SELECT COUNT(*) FILTER(WHERE ar.answer_hash IS NULL) AS tooShort,
+  const answers=await store.stmt(`SELECT COUNT(*) FILTER(WHERE c.status='unavailable' AND c.classification='TOO_SHORT') AS tooShort,
+    COUNT(*) FILTER(WHERE ar.answer_hash IS NULL AND ri.indexed_at>0) AS notProse,
     COUNT(*) FILTER(WHERE c.status='ready') AS scannedAnswers,
     COUNT(*) FILTER(WHERE c.status IN ('pending','running')) AS pendingAnswers,
-    COUNT(*) FILTER(WHERE c.status='unavailable') AS unavailable
-    FROM hub_response_answers ar JOIN hub_applications a ON a.id=ar.application_id LEFT JOIN hub_response_detector_cache c ON c.answer_hash=ar.answer_hash
-    WHERE ${activeApplicationsSql("a")}`).first<{tooShort:number;scannedAnswers:number;pendingAnswers:number;unavailable:number}>();
-  const indexed=await store.stmt(`SELECT COUNT(*) AS n FROM hub_response_index r JOIN hub_applications a ON a.id=r.application_id WHERE ${activeApplicationsSql("a")}`).first<{n:number}>();
+    COUNT(*) FILTER(WHERE c.status='unavailable' AND c.classification IS NOT 'TOO_SHORT') AS unavailable
+    FROM hub_response_answers ar JOIN hub_response_index ri ON ri.application_id=ar.application_id JOIN hub_applications a ON a.id=ar.application_id LEFT JOIN hub_response_detector_cache c ON c.answer_hash=ar.answer_hash
+    WHERE ${activeApplicationsSql("a")}`).first<{tooShort:number;notProse:number;scannedAnswers:number;pendingAnswers:number;unavailable:number}>();
+  const indexed=await store.stmt(`SELECT COUNT(*) AS n FROM hub_response_index r JOIN hub_applications a ON a.id=r.application_id WHERE r.indexed_at>0 AND ${activeApplicationsSql("a")}`).first<{n:number}>();
   const state=await store.setting<ProviderState>(providerStateKey,{state:"unconfigured"});
   const counts=Object.fromEntries(apps.map(row=>[row.status,row.total]));
   return {total:apps.reduce((n,v)=>n+v.total,0),indexed:indexed?.n||0,pending:counts.pending||0,ready:counts.ready||0,
-    partial:counts.partial||0,noWritten:counts.no_written_answers||0,tooShort:answers?.tooShort||0,
+    partial:counts.partial||0,noWritten:counts.no_written_answers||0,tooShort:answers?.tooShort||0,notProse:answers?.notProse||0,
     unavailable:answers?.unavailable||0,scannedAnswers:answers?.scannedAnswers||0,pendingAnswers:answers?.pendingAnswers||0,
     detectorState:state.state, pauseReason:state.reason??null, retryAt:state.retryAt??null};
 }
 
-export async function getResponseChecks(store:HubStore,id:string):Promise<{status:ResponseState;answers:AnswerDetail[]}> {
+export async function getResponseChecks(store:HubStore,id:string,{includeText=true}={}):Promise<{status:ResponseState;answers:AnswerDetail[]}> {
   const app=await store.stmt(`SELECT a.id,a.name,a.email,a.fields_json,a.answers_json,ri.indexed_at AS indexedAt
     FROM hub_applications a LEFT JOIN hub_response_index ri ON ri.application_id=a.id WHERE a.id=? AND ${activeApplicationsSql("a")}`,id).first<Submission&{indexedAt:number|null}>();
   if(!app)throw new HiringError("application_not_found",404,"This application is unavailable.");
@@ -56,11 +57,12 @@ export async function getResponseChecks(store:HubStore,id:string):Promise<{statu
   }
   const answers=writtenAnswers(app).map(({path,title,text,words,...rest}):AnswerDetail=>{
     const result=results.get(path);
-    const eligible=result?!!result.answer_hash:canScan({path,title,text,words,...rest});
-    const status=!eligible?"too_short":result?.status==="ready"?"ready":result?.status==="unavailable"?"unavailable":"pending";
-    return {path,title,text,words,status,classification:result?.classification||null,confidence:result?.confidence||null,matches:byPath.get(path)||[]};
+    const status:AnswerState=result?.status==="ready"?"ready"
+      :result?.status==="unavailable"?(result.classification==="TOO_SHORT"?"too_short":"unavailable")
+      :canScan({path,title,text,words,...rest})?"pending":"not_prose";
+    return {path,title,...(includeText?{text}:{}),words,status,classification:status==="ready"?result?.classification||null:null,confidence:result?.confidence||null,matches:byPath.get(path)||[]};
   });
-  const status=app.indexedAt===null || answers.some(a=>a.status==="pending")?"pending"
+  const status=!app.indexedAt || answers.some(a=>a.status==="pending")?"pending"
     :!answers.length?"no_written_answers":answers.some(a=>a.status==="unavailable")?"partial":"ready";
   return {status,answers};
 }

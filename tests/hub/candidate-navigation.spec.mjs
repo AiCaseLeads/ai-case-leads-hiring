@@ -19,6 +19,7 @@ async function setup(t,mode){
   return route.fulfill({json:{data:mocks[path]||{}}});
  });
  await page.route('**/api/hub/applications**',route=>{queries.push(new URL(route.request().url()).search);return route.fulfill({json:{data:mode==='detail'?detail:{items:[detail],total:1,page:1,pageSize:50}}});});
+ await page.route('**/api/hub/applications/*/response-checks*',route=>{queries.push(route.request().url());return route.fulfill({json:{data:{status:"ready",entry:null,answers:[{path:"experience",title:"Experience",words:3,status:"ready",classification:"MIXED",confidence:null,matches:[{applicationId:"peer",jobTitle:"Similar posting",passage:"A shared passage"}]}]}}});});
  await page.route('**/api/scorecards*',route=>route.fulfill({json:{data:{template:null,revision:1}}}));
  await page.route('**/api/ai/match*',route=>route.fulfill({json:{data:{enabled:false,status:'disabled',score:null,criteria:[]}}}));
  await page.route('**/api/ai/config',route=>route.fulfill({json:{data:{configured:true,enabled:true,model:'synthetic',provider:'test',reviewOnly:true}}}));
@@ -60,4 +61,23 @@ test('application filters compare a single posting and can clear filters indepen
  await Promise.all([waitForApplicants(q=>!q.has('jobId')),page.getByRole('button',{name:'Remove filter: '+job.title,exact:true}).click()]);
  assert.equal(await posting.inputValue(),'');
  assert.equal(await order.locator('option[value="grade_desc"]').count(),0);
+});
+
+test('staff read each original answer once with its own estimate and matching evidence directly underneath',async t=>{
+ const {page,queries}=await setup(t,'detail');
+ for(const width of [320,1280]){
+  await page.setViewportSize({width,height:800});
+  const answers=page.locator('.hub-application-answers');
+  const row=answers.locator('dl.hub-answer-list > div').filter({has:page.getByText('Experience',{exact:true})});
+  const check=row.locator('dd > .response-check-inline');
+  await check.getByText('Checked · Too little context to interpret',{exact:true}).waitFor();
+  assert.equal(await check.getByText('Resembles mixed-source text').count(),0);
+  assert.equal(await page.getByText('Synthetic role evidence',{exact:true}).count(),1);
+  assert.equal(await page.getByText('Response checks',{exact:true}).count(),0);
+  assert.equal(queries.filter(path=>path.endsWith('/response-checks?includeText=false')).length,1);
+  await check.getByText('Matching passages (1)',{exact:true}).click();
+  assert.match(await check.getByRole('link',{name:/Open matching application/}).getAttribute('href'),/application=peer/);
+  assert.equal(await check.evaluate(el=>el.getBoundingClientRect().right<=window.innerWidth),true);
+  await check.getByText('Matching passages (1)',{exact:true}).click();
+ }
 });

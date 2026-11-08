@@ -30,6 +30,7 @@ jobs:
           tests/hub/decision-queue-mobile.spec.mjs
           tests/hub/applicant-collections-ui.spec.mjs
           tests/hub/job-directory-ui.spec.mjs
+          tests/hub/candidate-navigation.spec.mjs
       - run: npm run test:mcp
       - run: npm run test:railway
       - run: node --test tests/public-written-paste.spec.mjs tests/hub/response-check-report-ui.spec.mjs

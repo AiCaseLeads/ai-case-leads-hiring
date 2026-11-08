@@ -8,6 +8,22 @@ export type WrittenAnswer = {path:string; title:string; text:string; words:numbe
 function array<T>(source:string):T[] {
   try { const value:unknown=JSON.parse(source); return Array.isArray(value)?value:[]; } catch { return []; }
 }
+// Compare entire labels after removing conventional form wording. A narrative
+// question that merely mentions a company, reference, or location stays prose.
+function isPersonalDetailPrompt(title:string) {
+  const label=title.toLowerCase().replace(/[’']/g,"'").replace(/[?*:.!]+$/g,"").trim()
+    .replace(/^(?:please\s+)?(?:what(?:'s| is| are)|enter|provide|list|share|type|give us)\s+/,"")
+    .replace(/^(?:(?:your|the|candidate's|applicant's|candidate|applicant)\s+)*/,"")
+    .replace(/\s+/g," ").trim();
+  return [
+    /^(?:(?:first|last|middle|full|preferred|legal|current) )*(?:name|country(?: of residence)?|city|employer|zip(?: code)?|postal code|referral code|linkedin(?: profile| url)?|portfolio(?: link| url)?)$/,
+    /^(?:(?:current|home|residential|street|mailing|postal|permanent|work|full) )*(?:address|phone(?: number)?|email(?: address)?)$/,
+    /^(?:who referred you(?: to (?:us|this (?:position|role|job)|our company))?|who (?:was|is) your referr(?:er|al)|referr(?:er|al)(?:'s)? (?:full )?name)$/,
+    /^(?:(?:professional|personal|work|employment) )?(?:references?|references?'?s? (?:contact(?: information| details)?|name|phone(?: number)?|email(?: address)?)(?:[ ,/&]+(?:and )?(?:name|phone(?: number)?|email(?: address)?))*)$/,
+    /^(?:current )?(?:company(?: name)?|employer(?: name)?|job title|company and (?:job )?title|employer and (?:job )?title|company \/ (?:job )?title)$/,
+    /^(?:date of birth|birth ?date|dob|birthday|social security(?: number)?|ssn|(?:(?:national|tax|government|employee|candidate|applicant) )?(?:id|identification)(?: number)?|passport(?: number)?|driver'?s license(?: number)?)$/,
+  ].some(pattern=>pattern.test(label));
+}
 export function writtenAnswers(row:Submission):WrittenAnswer[] {
   const fields=array<ApplicationField>(row.fields_json);
   const values=new Map(array<FieldSubmission>(row.answers_json).filter(Boolean).map(a=>[a.path,a.value]));
@@ -31,7 +47,7 @@ export function writtenAnswers(row:Submission):WrittenAnswer[] {
     const value=values.get(f.path);
     if(typeof value!=="string" || !value.trim())continue;
     const title=f.title||f.path;
-    if (f.type==="String" && /^(?:(?:your|current|candidate|applicant|first|last|full|preferred)\s+)*(?:name|country(?: of residence)?|city|address|phone(?: number)?|email(?: address)?|employer|zip(?: code)?|postal code|referral code|linkedin(?: profile)?|portfolio(?: link)?)[?\s]*$/i.test(title.trim())) continue;
+    if (isPersonalDetailPrompt(title)) continue;
     const text=value.trim();
     let sanitized=text
       .replace(/[^\s@]+@[^\s@]+\.[^\s@]+/g,"[email]")
@@ -47,7 +63,10 @@ export function writtenAnswers(row:Submission):WrittenAnswer[] {
 }
 
 export function canScan(answer:WrittenAnswer) {
-  return answer.sanitized.length>=250 && countWords(answer.sanitized)>=100;
+  // Structured fields are excluded by writtenAnswers. A narrative field can
+  // still contain only a contact detail, a number, or punctuation.
+  const prose = answer.sanitized.replace(/\[(?:redacted|email|link|number)\]/g, "").trim();
+  return /\p{L}/u.test(prose);
 }
 export function detectorHash(answer:WrittenAnswer) {
   return sha256("gptzero-v1\n"+answer.sanitized);
