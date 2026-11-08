@@ -270,7 +270,7 @@ for(const width of [390,1280])test(`founder handoff requires saved notes and exp
 test('confirmed interview filter survives opening a profile and records attendance', async t => {
  const {page}=await setup(t,{width:390});
  let progress='booked';
- const interview={id:'interview-1',status:'booked',timeZone:'America/New_York',start:Date.UTC(2026,10,9,15)};
+ const interview={id:'interview-1',status:'booked',timeZone:'America/New_York',start:Date.now()-3600000};
  const detail=()=>({...record('app-1'),stage:'Interview',interviewProgress:progress,interview,files:[]});
  const requests=[];
  await page.route('**/api/hub/applications?**',route=>{
@@ -286,10 +286,14 @@ test('confirmed interview filter survives opening a profile and records attendan
  });
  const select=page.getByLabel('Stage',{exact:true});
  await select.selectOption('interview:booked');
+ const legacy=new URL(page.url());legacy.searchParams.set('stage','Rejected');legacy.searchParams.set('excludeStage','Screening');legacy.searchParams.set('active','true');await page.goto(legacy.href);
  await page.locator('.hub-badge').filter({hasText:/^Interview confirmed$/}).first().waitFor();
  assert.equal(requests.at(-1).get('interviewProgress'),'booked');
+ for (const key of ['stage','excludeStage']) {assert.equal(requests.at(-1).has(key),false);assert.equal(new URL(page.url()).searchParams.has(key),false);}
  await page.getByRole('link',{name:'Applicant app-1',exact:true}).click();
  await page.getByRole('button',{name:'Record attendance',exact:true}).click();
+ assert.equal(await page.getByRole('button',{name:'Save attendance',exact:true}).isDisabled(),true);
+ await page.getByLabel('Candidate attended',{exact:true}).selectOption('true');
  await page.getByRole('button',{name:'Save attendance',exact:true}).click();
  await page.locator('.hub-profile-name-row .hub-badge').filter({hasText:/^Interview completed$/}).waitFor();
  await page.getByRole('button',{name:'Back to applications',exact:true}).click();

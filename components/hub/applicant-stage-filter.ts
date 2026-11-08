@@ -1,6 +1,11 @@
 const terminalStages = new Set(["Rejected", "Withdrawn", "Hired"]);
 
 export function normalizeApplicantScope(params: URLSearchParams) {
+  if (params.has("interviewProgress")) {
+    params.delete("stage");
+    params.delete("excludeStage");
+    params.set("active", "false");
+  }
   if (params.get("trash") === "true") params.delete("active");
   else if (terminalStages.has(params.get("stage") || "")) params.set("active", "false");
   else if (!params.has("active")) params.set("active", params.get("stage") ? "false" : "true");

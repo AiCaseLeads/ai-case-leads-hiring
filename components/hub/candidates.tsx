@@ -311,7 +311,7 @@ function JobCandidates({
     if (duplicate) search.set("duplicate", "true");
     if (isTopTen && sort === "ai_match_desc") search.set("top", "10");
     if(!inTrash)search.set("active",new URLSearchParams(filter).get("active")||(stage?"false":"true"));
-    return search;
+    return reviewQueue(search);
   }
   const draft = draftQuery();
   const applied = new URLSearchParams(filter);
@@ -743,7 +743,7 @@ export function CandidateDetail({
     [body, setBody] = useState(""),
     [score, setScore] = useState(""),
     [criteria, setCriteria] = useState(""),
-    [attendance, setAttendance] = useState("true"),
+    [attendance, setAttendance] = useState(""),
     [renew, setRenew] = useState(false),
     [interviewerEmail, setInterviewerEmail] = useState(""),
     [emailPending, setEmailPending] = useState(false),
@@ -773,7 +773,7 @@ export function CandidateDetail({
   useLayoutEffect(()=>{if(leaveRequest)leaveDialog.current?.focus();},[leaveRequest]);
   const evidenceDraft = useEvidenceDraft();
   const scorecardDraft = useScorecardDraft();
-  const dirty = !!(interviewDirty || reviewDirty || evidenceDraft.notes.trim() || scorecardDraft[0].ratings.length || text.trim() || subject.trim() || body.trim() || reason.trim() || score || criteria.trim() || assignee.trim() || renew || emailPending || (actionOpen && ((action==="stage" && stage!=="Screening") || (action==="attendance" && attendance!=="true"))));
+  const dirty = !!(interviewDirty || reviewDirty || evidenceDraft.notes.trim() || scorecardDraft[0].ratings.length || text.trim() || subject.trim() || body.trim() || reason.trim() || score || criteria.trim() || assignee.trim() || renew || emailPending || (actionOpen && ((action==="stage" && stage!=="Screening") || (action==="attendance" && attendance!==""))));
   const dirtyRef=useRef(dirty);useLayoutEffect(()=>{dirtyRef.current=dirty;},[dirty]);
   function resetInterview(){if(mutation.busy||decisionBusy)return;setConfirmInterviewDiscard(false);setActionOpen(false);setInterviewerEmail("");setRenew(false);setInterviewDraft(null);setInterviewDirty(false);setInterviewReady(false);mutation.clear();const leave=interviewLeave.current;interviewLeave.current=null;if(leave){dirtyRef.current=false;leave();}}
   function keepInterview(){interviewLeave.current=null;setConfirmInterviewDiscard(false);queueMicrotask(()=>actionPanel.current?.querySelector<HTMLElement>('select')?.focus({preventScroll:true}));}
@@ -862,6 +862,7 @@ export function CandidateDetail({
     if(decisionBusy)return;
     if (action === "reject" && !approve) return;
     if (action === "interview" && !interviewReady) return;
+    if (action === "attendance" && (!canRecordAttendance || !attendance)) return;
     if (!resource.data || (action === "scorecard" && (!score || !criteria.trim() || !text.trim()))) return;
     const draft = {
       action,
@@ -915,13 +916,16 @@ export function CandidateDetail({
       setText("");
       setApprove(false);
       setRenew(false);
-      setScore(""); setCriteria(""); setReason(""); setAssignee(""); setInterviewerEmail(""); setStage("Screening"); setAttendance("true");
+      setScore(""); setCriteria(""); setReason(""); setAssignee(""); setInterviewerEmail(""); setStage("Screening"); setAttendance("");
       if (action === "email") { emailRequest.current = null; setEmailPending(false); setNewEmailApproved(false); setSubject(""); setBody(""); }
       await resource.reload();
       changed();
     }
   }
   const detail = resource.data;
+  const canRecordAttendance = !!detail?.interview?.start &&
+    (detail.interviewProgress === "booked" || detail.interviewProgress === "attendance_due") &&
+    new Date(detail.interview.start).getTime() <= Date.now();
   return (
     <section ref={profileTop} className="hub-applicant-profile" aria-labelledby="candidate-title">
       {leaveRequest && <div className="hub-card" role="alertdialog" ref={leaveDialog} tabIndex={-1} aria-labelledby="leave-applicant-title"><h3 id="leave-applicant-title">Leave this applicant without saving?</h3><p>Your unsaved note or action will be discarded. Leaving does not send a new message. Check Activity for any email already pending.</p><div className="hub-button-row"><button type="button" className="hub-button" onClick={()=>{setLeaveRequest(null);leaveOrigin.current?.focus();}}>Keep editing</button><button type="button" className="hub-button secondary" onClick={()=>{const leave=leaveRequest;dirtyRef.current=false;setLeaveRequest(null);leave();}}>Discard changes and leave</button></div></div>}
@@ -951,7 +955,7 @@ export function CandidateDetail({
               {!detail.trashed && detail.stage==="Screening" && <button type="button" className="hub-button secondary" disabled={mutation.busy||decisionBusy||dirty} title={dirty?"Save or clear unsaved changes first.":"Return to initial review without sending an email."} onClick={()=>void unshortlist()}>Remove from shortlist</button>}
               {!detail.trashed&&!['Rejected','Withdrawn','Hired'].includes(detail.stage)&&<button type="button" className="hub-button secondary" disabled={mutation.busy||decisionBusy||dirty} title={dirty?"Save or clear your unsaved note or action before rejecting.":"Reject and queue this job’s rejection email, then open the next active applicant."} onClick={()=>void rejectAndContinue()}>{rejectBusy?"Rejecting…":"Reject"}</button>}
               {detail.trashed && <button type="button" className="hub-button secondary" disabled={mutation.busy||decisionBusy} onClick={()=>void lifecycle("restore")}>Restore application</button>}
-              {!detail.trashed && (detail.interviewProgress === "booked" || detail.interviewProgress === "attendance_due") && <button type="button" className="hub-button secondary" disabled={mutation.busy||decisionBusy||dirty} onClick={()=>{setAction("attendance");setAttendance("true");setActionOpen(true);mutation.clear();}}>Record attendance</button>}
+              {!detail.trashed && canRecordAttendance && <button type="button" className="hub-button secondary" disabled={mutation.busy||decisionBusy||dirty} onClick={()=>{setAction("attendance");setAttendance("");setActionOpen(true);mutation.clear();}}>Record attendance</button>}
               {!detail.trashed&&detail.stage==="Interview"&&<button type="button" className="hub-button secondary" disabled={mutation.busy||decisionBusy||dirty||!detail.notes.length} title={!detail.notes.length?"Save interview feedback in Recruiter notes first.":"Send a complete interview handoff and notify the hiring approvers."} onClick={()=>void founderTransition("Awaiting Founder Review")}>Send for founder review</button>}
               {!detail.trashed&&detail.stage==="Awaiting Founder Review"&&approval.data?.canApprove&&<button type="button" className="hub-button" disabled={mutation.busy||decisionBusy||dirty} onClick={()=>void founderTransition("Second Round Interview")}>Move to second-round interview</button>}
               {!detail.trashed&&<ShareApplicant key={detail.id} id={detail.id}/>}
@@ -986,6 +990,7 @@ export function CandidateDetail({
                         if(e.target.value === "scorecard") setSection("review");
                         setText("");
                         setApprove(false);
+                        setAttendance("");
                         setRenew(false);
                         setNewEmailApproved(false);
                         mutation.clear();
@@ -999,9 +1004,7 @@ export function CandidateDetail({
                         Send interview booking link
                       </option>
                       <option value="scorecard">Record an overall grade</option>
-                      <option value="attendance">
-                        Record interview attendance
-                      </option>
+                      {canRecordAttendance && <option value="attendance">Record interview attendance</option>}
                       <option value="email">Send email</option>
                       <option value="reject">Reject application</option>
                     </select>
@@ -1137,8 +1140,9 @@ export function CandidateDetail({
                         value={attendance}
                         onChange={(e) => setAttendance(e.target.value)}
                       >
-                        <option value="true">Yes</option>
-                        <option value="false">No</option>
+                        <option value="">Choose attendance</option>
+                        <option value="true">Attended</option>
+                        <option value="false">No-show</option>
                       </select>
                     </Field>
                   )}
@@ -1148,7 +1152,7 @@ export function CandidateDetail({
                       "hub-button " + (action === "reject" ? "danger" : "")
                     }
                     type="submit"
-                    disabled={mutation.busy || (action === "reject" && !approve) || (action === "interview" && !interviewReady)}
+                    disabled={mutation.busy || (action === "reject" && !approve) || (action === "interview" && !interviewReady) || (action === "attendance" && (!attendance || !canRecordAttendance))}
                   >
                     {mutation.busy
                       ? "Saving…"

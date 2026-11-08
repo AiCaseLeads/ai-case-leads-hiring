@@ -22,6 +22,7 @@ import {
 import { Brand } from "@/components/careers/chrome";
 import { useHubResource, displayDate } from "./api";
 import { sortHubJobs } from "./job-order";
+import { normalizeApplicantScope } from "./applicant-stage-filter";
 import { CandidateDetail, Candidates } from "./candidates";
 import { Jobs } from "./jobs";
 import { Reports } from "./reports";
@@ -69,6 +70,15 @@ export function HiringDashboard({
   function readLocation() {
     setMenuOpen(false);
     const params = new URLSearchParams(window.location.search);
+    if (params.get("view") === "applications" && params.has("interviewProgress")) {
+      const original = params.toString();
+      normalizeApplicantScope(params);
+      if (params.toString() !== original) {
+        const canonical = new URL(window.location.href);
+        canonical.search = params.toString();
+        window.history.replaceState(window.history.state, "", canonical);
+      }
+    }
     const decision=decisionContext.current;
     if(decision&&decision.href!==window.location.href){
       const destination=params.get("application")||"list";

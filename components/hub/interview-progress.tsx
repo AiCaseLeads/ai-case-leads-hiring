@@ -13,6 +13,7 @@ export const interviewProgressLabels = {
   no_show: "Interview missed",
   cancel_pending: "Cancellation pending",
   cancelled: "Interview cancelled",
+  unverified: "Invitation delivery unverified",
   failed: "Interview needs attention",
 } satisfies Record<InterviewProgress, string>;
 
