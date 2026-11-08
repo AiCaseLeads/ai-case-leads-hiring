@@ -42,7 +42,7 @@ export function validateAnswers(input: ApplicationInput, fields: ApplicationFiel
     if (!field) throw new HiringError("invalid_request", 400, "The form has changed. Refresh it before submitting.");
     const v = answer.value;
     const blank = v === null || v === undefined || v === "" || (Array.isArray(v) && v.length === 0);
-    if (blank && !field.required) continue;
+    if (!field.required && (blank || (field.type === "LongText" && typeof v === "string" && !v.trim()))) continue;
     let valid = true;
     switch (field.type) {
       case "Boolean": valid = typeof v === "boolean"; break;

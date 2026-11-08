@@ -33,6 +33,7 @@ test("written minimum blocks short submissions with a field error and accepts th
 test("optional written questions may be omitted, and legacy fields accept short answers", () => {
   validateAnswers(application(), [{ ...field, required: false }]);
   validateAnswers(application(""), [{ ...field, required: false }]);
+  validateAnswers(application("  \n  "), [{ ...field, required: false }]);
   validateAnswers(application("Yes"), [{ ...field, minWords: undefined }]);
   assert.throws(() => validateAnswers(application(), [field]), { code: "invalid_application" });
 });
@@ -44,4 +45,10 @@ test("job configuration permits a bounded whole-word minimum only on written que
     assert.equal(jobInput.safeParse({...job,fields:[{...field,minWords}]}).success,false);
   }
   assert.throws(() => validateJob(jobInput.parse({...job,fields:[{...field,type:"Boolean"}]})),{code:"invalid_job"});
+});
+
+test("written answers can reach their minimum without spaces in Chinese, Japanese and Thai", () => {
+  for (const sentence of ["我喜欢学习中文", "今日は良い天気です", "ฉันรักการเขียนโปรแกรม"]) {
+    validateAnswers(application(sentence), [{ ...field, minWords: 3 }]);
+  }
 });
