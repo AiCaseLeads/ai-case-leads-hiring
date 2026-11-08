@@ -247,6 +247,8 @@ test("two candidates cannot reserve one time; booking is pending until Calendar 
   assert.equal(results.filter((r) => r.status === 202).length, 1);
   assert.equal(results.filter((r) => r.status === 409).length, 1);
   const winningApp = results[0].status === 202 ? app1.id : app2.id;
+  assert.deepEqual((await store.applications({interviewProgress:"pending"})).items.map(item=>item.id),[winningApp]);
+  assert.equal((await store.applications({interviewProgress:"booked"})).total,0);
   assert.equal(
     (await store.getApplication(winningApp)).interview!.status,
     "pending",
@@ -275,6 +277,7 @@ test("two candidates cannot reserve one time; booking is pending until Calendar 
     (await store.getApplication(winningApp)).interview!.meetUrl,
     "https://meet.google.com/test-fixture",
   );
+  assert.deepEqual((await store.applications({interviewProgress:"booked"})).items.map(item=>item.id),[winningApp]);
   database.close();
 });
 test("calendar uncertainty keeps the reservation protected; stale completions cannot replace newer state", async () => {

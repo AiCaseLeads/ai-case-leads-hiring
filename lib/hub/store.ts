@@ -1,3 +1,4 @@
+import { applicationInterviewProgressSql, interviewProgressForRowSql, type InterviewProgress } from './interview-progress';
 import {draftKey,verifyBookingDraft} from './interview-booking-draft';
 import {isHistoricalInterview} from './interview-history';
 import {interviewMessage} from './interview-template';
@@ -54,6 +55,7 @@ export { DEFAULT_REJECTION } from "../hiring/email-templates";
 type Bind = string | number | null;
 export const APPLICATION_SORTS = ["newest","oldest","screening_newest","screening_asc","screening_desc","owner_asc","owner_desc","ai_match_asc","ai_match_desc","grade_desc"] as const;
 export type ApplicationFilters = {
+  interviewProgress?:InterviewProgress;
   q?:string;jobId?:string;stage?:string;excludeStage?:string;active?:boolean;assignee?:string;qualification?:"pass"|"review"|"fail";
   appliedFrom?:string;appliedTo?:string;timeZone?:string;
   top?:10;grade?:"reviewed"|"ungraded";sort?:typeof APPLICATION_SORTS[number];duplicate?:boolean;page?:number;trash?:boolean;
@@ -145,6 +147,7 @@ type ApplicationRow = {
   drive_folder_id: string | null;
   drive_folder_url: string | null;
   rejection_reason: string | null;
+  interview_progress?: InterviewProgress;
   duplicate_application_count?: number;
 };
 export type InterviewRow = {
@@ -233,6 +236,7 @@ function summary(row: ApplicationRow): ApplicationSummary {
     jobId: row.job_id,
     jobTitle: row.job_title,
     stage: row.stage,
+    ...(row.interview_progress ? {interviewProgress:row.interview_progress} : {}),
     qualification: row.qualification,
     assignee: row.assignee,
     createdAt: row.created_at,
@@ -793,9 +797,9 @@ export class HubStore {
       throw conflict();
     return { id };
   }
-  async applicationRow(id: string): Promise<ApplicationRow> {
+  async applicationRow(id: string, includeInterviewProgress=false): Promise<ApplicationRow> {
     const row = await this.stmt(
-      "SELECT * FROM hub_applications WHERE id=?",
+      `SELECT a.*${includeInterviewProgress ? `,${applicationInterviewProgressSql} AS interview_progress` : ""} FROM hub_applications a WHERE a.id=?`,
       id,
     ).first<ApplicationRow>();
     if (!row)
@@ -813,6 +817,10 @@ export class HubStore {
     if(filters.q) {where.push("(instr(lower(a.name),lower(?))>0 OR instr(lower(a.email),lower(?))>0)");values.push(filters.q,filters.q);}
     for(const [key,column] of [["jobId","job_id"],["stage","stage"],["assignee","assignee"],["qualification","qualification"]] as const)
       if(filters[key]) {if(key==="assignee"&&filters[key]==="unassigned")where.push("(a.assignee IS NULL OR trim(a.assignee)='')");else {where.push(`a.${column}=?`);values.push(filters[key]!);}}
+    if(filters.interviewProgress) {
+      where.push(`${applicationInterviewProgressSql}=?`);
+      values.push(filters.interviewProgress);
+    }
     if(filters.excludeStage){where.push("a.stage<>?");values.push(filters.excludeStage);}
     if(filters.active&&!filters.stage)where.push("a.stage NOT IN ('Rejected','Withdrawn','Hired')");
     const dates=applicationDateBounds(filters);
@@ -871,14 +879,14 @@ export class HubStore {
   async applications(filters:ApplicationFilters={},viewerEmail?:string) {
     const selected=this.applicationSelection(filters), page=Math.max(1,Math.min(100000,filters.page||1)),pageSize=30;
     const count=await this.stmt(`${selected.cte}SELECT COUNT(*) AS total FROM hub_applications a${selected.join}${selected.clause}`,...selected.values).first<{total:number}>();
-    const rows=await this.rows<ApplicationRow>(`${selected.cte}SELECT ${SUMMARY_COLUMNS.split(",").map((column)=>`a.${column}`).join(",")},(SELECT COUNT(*) FROM hub_applications d WHERE d.email=a.email) AS duplicate_application_count FROM hub_applications a${selected.join}${selected.clause} ORDER BY ${selected.order} LIMIT ? OFFSET ?`,...selected.values,pageSize,(page-1)*pageSize);
+    const rows=await this.rows<ApplicationRow>(`${selected.cte}SELECT ${SUMMARY_COLUMNS.split(",").map((column)=>`a.${column}`).join(",")},${applicationInterviewProgressSql} AS interview_progress,(SELECT COUNT(*) FROM hub_applications d WHERE d.email=a.email) AS duplicate_application_count FROM hub_applications a${selected.join}${selected.clause} ORDER BY ${selected.order} LIMIT ? OFFSET ?`,...selected.values,pageSize,(page-1)*pageSize);
     return {items:(await this.summaries(filters.top ? rows.slice(0,Math.max(0,10-(page-1)*pageSize)) : rows,viewerEmail)).map(item=>({...item,trashed:!!filters.trash})),total:filters.top?Math.min(10,count?.total||0):count?.total||0,page,pageSize};
   }
   async exportApplications(filters:ApplicationFilters={}) {
     const selected=this.applicationSelection(filters),limit=filters.top?10:10000;
     const count=await this.stmt(`${selected.cte}SELECT COUNT(*) AS total FROM hub_applications a${selected.join}${selected.clause}`,...selected.values).first<{total:number}>();
     if(!filters.top&&(count?.total||0)>limit)throw new HiringError("export_too_large",422,"Narrow the filters to at most 10,000 applications per download.");
-    const rows=await this.rows<ApplicationRow>(`${selected.cte}SELECT ${SUMMARY_COLUMNS.split(",").map((column)=>`a.${column}`).join(",")},(SELECT COUNT(*) FROM hub_applications d WHERE d.email=a.email) AS duplicate_application_count FROM hub_applications a${selected.join}${selected.clause} ORDER BY ${selected.order} LIMIT ?`,...selected.values,limit);
+    const rows=await this.rows<ApplicationRow>(`${selected.cte}SELECT ${SUMMARY_COLUMNS.split(",").map((column)=>`a.${column}`).join(",")},${applicationInterviewProgressSql} AS interview_progress,(SELECT COUNT(*) FROM hub_applications d WHERE d.email=a.email) AS duplicate_application_count FROM hub_applications a${selected.join}${selected.clause} ORDER BY ${selected.order} LIMIT ?`,...selected.values,limit);
     return {items:await this.summaries(rows),total:filters.top?Math.min(10,count?.total||0):count?.total||0,truncated:!filters.top&&(count?.total||0)>limit,limit};
   }
   async applicationCounts() {
@@ -899,7 +907,7 @@ export class HubStore {
     return rows.map(row=>row.id);
   }
   async exportRecord(id:string) {
-    const app=await this.applicationRow(id);
+    const app=await this.applicationRow(id,true);
     const [summary]=await this.summaries([app]);
     const files=await this.rows<{id:string;filename:string;object_key:string;size:number}>("SELECT id,filename,object_key,size FROM hub_files WHERE application_id=? AND uploaded_at>0 ORDER BY id",id);
     return {...summary,answers:decode(app.answers_json,[]),questions:decode(app.fields_json,[]),files};
@@ -939,7 +947,7 @@ export class HubStore {
       this.rows<{id:string;type:string;text:string;actor:string;created_at:number}>("SELECT * FROM hub_history WHERE application_id=? ORDER BY created_at,id",id),
       this.rows<{id:string;task_id:string;subject:string;body:string;status:string;created_at:number;payload_json:string|null}>("SELECT c.*,t.payload_json FROM hub_communications c LEFT JOIN hub_tasks t ON t.id=c.task_id WHERE c.application_id=? ORDER BY c.created_at DESC,c.id",id),
       this.rows<{id:string;status:"invited"|"submitted";prompt:string;answer:string|null;submitted_at:number|null}>("SELECT * FROM hub_assessments WHERE application_id=? ORDER BY created_at DESC,id DESC",id),
-      this.rows<InterviewRow>("SELECT * FROM hub_interviews WHERE application_id=? ORDER BY created_at DESC,id DESC",id),
+      this.rows<InterviewRow & {progress:InterviewProgress}>(`SELECT i.*,${interviewProgressForRowSql("i")} AS progress FROM hub_interviews i WHERE i.application_id=? ORDER BY i.created_at DESC,i.id DESC`,id),
       this.rows<{id:string;actor:string;score:number;criteria:string;text:string;created_at:number}>("SELECT * FROM hub_scorecards WHERE application_id=? ORDER BY created_at DESC,id",id),
       this.rows<{kind:string;token_hash:string;payload_json:string;expires_at:number;used_at:number|null}>("SELECT kind,token_hash,payload_json,expires_at,used_at FROM hub_links WHERE application_id=?",id),
     ]);
@@ -953,11 +961,11 @@ export class HubStore {
       return current ? {...(kind==="interview" && sentInterviewHashes.has(current.token_hash) ? {hasSentBookingLink:true} : {}),linkExpiresAt:current.expires_at,linkActive:current.used_at === null && current.expires_at > Date.now()} : {};
     };
     const allAssessments:Assessment[] = assessments.map((item) => ({id:item.id,status:item.status,prompt:item.prompt,...(item.answer !== null?{answer:item.answer}:{}),...(item.submitted_at?{submittedAt:item.submitted_at}:{}),...linkInfo("assessment",item.id)}));
-    const allInterviews:Interview[] = interviews.map((item) => ({id:item.id,revision:item.revision,status:item.status as Interview["status"],...(item.start?{start:item.start}:{}),...(item.end?{end:item.end}:{}),...(item.time_zone?{timeZone:item.time_zone}:{}),...(item.calendar_id?{calendarId:item.calendar_id}:{}),...(item.meet_url?{meetUrl:item.meet_url}:{}),...(item.attended !== null?{attended:!!item.attended}:{}),linkActive:false,...linkInfo("interview",item.id)}));
+    const allInterviews:Interview[] = interviews.map((item) => ({id:item.id,revision:item.revision,interviewProgress:item.progress,status:item.status as Interview["status"],...(item.start?{start:item.start}:{}),...(item.end?{end:item.end}:{}),...(item.time_zone?{timeZone:item.time_zone}:{}),...(item.calendar_id?{calendarId:item.calendar_id}:{}),...(item.meet_url?{meetUrl:item.meet_url}:{}),...(item.attended !== null?{attended:!!item.attended}:{}),linkActive:false,...linkInfo("interview",item.id)}));
     const duplicateCount = await this.stmt("SELECT COUNT(*) AS count FROM hub_applications WHERE email=?",app.email).first<{count:number}>();
     const cards = scorecards.map((card) => ({id:card.id,actor:card.actor,score:card.score,criteria:card.criteria,text:card.text,createdAt:card.created_at}));
     const view=viewerEmail?await this.stmt("SELECT viewed_at FROM hub_application_views WHERE application_id=? AND viewer_email=?",id,viewerEmail.trim().toLowerCase()).first<{viewed_at:number}>():null;
-    return {...summary(app),...(viewerEmail?{viewedAt:view?.viewed_at??null}:{}),trashed:!!await applicationTrash(this,id),archiveProject:app.archive_project || undefined,archiveCountry:app.archive_country || undefined,hiringRound:app.hiring_round || undefined,revision:app.revision,formVersion:app.form_version,utmData:decode(app.utm_json,{}),
+    return {...summary(app),interviewProgress:interviews[0]?.progress ?? "none",...(viewerEmail?{viewedAt:view?.viewed_at??null}:{}),trashed:!!await applicationTrash(this,id),archiveProject:app.archive_project || undefined,archiveCountry:app.archive_country || undefined,hiringRound:app.hiring_round || undefined,revision:app.revision,formVersion:app.form_version,utmData:decode(app.utm_json,{}),
       duplicateEmail:(duplicateCount?.count || 1)>1,duplicateApplicationCount:duplicateCount?.count || 1,grade:gradeForScorecards(cards),aiMatch:await matchDetail(this,id),
       answers:decode(app.answers_json,[]),fields:decode(app.fields_json,[]),qualificationEvidence:decode(app.qualification_json,[]),
       files:files.map((file) => ({id:file.id,fieldPath:file.field_path,filename:file.filename,contentType:file.content_type,size:file.size,url:`/api/files/${encodeURIComponent(file.id)}`})),
@@ -984,7 +992,7 @@ export class HubStore {
   async overview() {
     const counts = await this.stmt(`SELECT COUNT(*) AS applications,COALESCE(SUM(stage NOT IN ('Rejected','Withdrawn','Hired')),0) AS active,COALESCE(SUM(stage='Rejected'),0) AS rejected,COALESCE(SUM(stage='Hired'),0) AS hired FROM hub_applications a WHERE ${activeApplicationsSql('a')}` ).first<{applications:number;active:number;rejected:number;hired:number}>();
     const stageCounts=await this.rows<{stage:string;count:number}>(`SELECT stage,COUNT(*) AS count FROM hub_applications a WHERE ${activeApplicationsSql('a')} GROUP BY stage`);
-    const recent=await this.rows<ApplicationRow>(`SELECT ${SUMMARY_COLUMNS.split(",").map((column)=>`a.${column}`).join(",")},(SELECT COUNT(*) FROM hub_applications d WHERE d.email=a.email) AS duplicate_application_count FROM hub_applications a WHERE ${activeApplicationsSql('a')} ORDER BY a.created_at DESC,a.id LIMIT 12`);
+    const recent=await this.rows<ApplicationRow>(`SELECT ${SUMMARY_COLUMNS.split(",").map((column)=>`a.${column}`).join(",")},${applicationInterviewProgressSql} AS interview_progress,(SELECT COUNT(*) FROM hub_applications d WHERE d.email=a.email) AS duplicate_application_count FROM hub_applications a WHERE ${activeApplicationsSql('a')} ORDER BY a.created_at DESC,a.id LIMIT 12`);
     return {counts:counts||{applications:0,active:0,rejected:0,hired:0},stageCounts,recentApplications:await this.summaries(recent),integrations:this.options.integrations||{google:false,drive:false,applicationsEnabled:false},jobs:await this.listJobs()};
   }
   async members(): Promise<Member[]> {
