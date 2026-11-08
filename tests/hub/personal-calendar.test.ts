@@ -115,3 +115,25 @@ test("personal readiness detects credential fingerprint changes and offline cons
  f.store.options.googleFingerprint=await configurationFingerprint(env);await f.store.setSetting(availabilityKey(RECRUITER.email),null);
  assert.equal((await personalStatus(f.store,RECRUITER.email)).connected,true);assert.equal((await personalStatus(f.store,RECRUITER.email)).ready,false);f.database.close();
 });
+
+test("a past interview with an inactive organizer stays in history when a new invitation is sent", async () => {
+ const f = await fixture();
+ try {
+  await connect(f);
+  const job = await f.store.saveJob(jobInput());
+  const app = await f.store.acceptApplication(applicationInput(job.id));
+  await currentAction(f.store, app.id, {action:"interview", interviewerEmail:RECRUITER.email}, MANAGER);
+  const original = await f.store.latestInterview(app.id);
+  assert.ok(original);
+  f.database.prepare("UPDATE hub_interviews SET status='booked',end=? WHERE id=?").run(new Date(Date.now()-3600000).toISOString(),original.id);
+  f.database.prepare("UPDATE hub_members SET active=0 WHERE email=?").run(RECRUITER.email);
+  assert.equal(await f.store.currentInterviewForInvitation(app.id),null);
+  await f.store.setSetting("google_calendar_id","primary");
+  await f.store.setSetting("interview_availability_approved",true);
+  await f.store.setSetting("interview_time_zone","UTC");
+  await currentAction(f.store, app.id, {action:"interview"}, MANAGER);
+  const next = await f.store.latestInterview(app.id);
+  assert.ok(next && next.id !== original.id && next.status === "invited");
+  assert.equal(f.database.prepare("SELECT status FROM hub_interviews WHERE id=?").get(original.id)?.status,"booked");
+ } finally { f.database.close(); }
+});

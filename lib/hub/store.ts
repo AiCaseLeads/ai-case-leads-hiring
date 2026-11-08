@@ -1,3 +1,4 @@
+import {isHistoricalInterview} from './interview-history';
 import {interviewMessage} from './interview-template';
 import {assertHiringTransition,workflowNotificationStatements} from "./recruiting-workflow";
 import {notesReviews} from "./note-review";
@@ -949,7 +950,7 @@ export class HubStore {
       return current ? {linkExpiresAt:current.expires_at,linkActive:current.used_at === null && current.expires_at > Date.now()} : {};
     };
     const allAssessments:Assessment[] = assessments.map((item) => ({id:item.id,status:item.status,prompt:item.prompt,...(item.answer !== null?{answer:item.answer}:{}),...(item.submitted_at?{submittedAt:item.submitted_at}:{}),...linkInfo("assessment",item.id)}));
-    const allInterviews:Interview[] = interviews.map((item) => ({id:item.id,revision:item.revision,status:item.status as Interview["status"],...(item.start?{start:item.start}:{}),...(item.end?{end:item.end}:{}),...(item.time_zone?{timeZone:item.time_zone}:{}),...(item.calendar_id?{calendarId:item.calendar_id}:{}),...(item.meet_url?{meetUrl:item.meet_url}:{}),...(item.attended !== null?{attended:!!item.attended}:{}),...linkInfo("interview",item.id)}));
+    const allInterviews:Interview[] = interviews.map((item) => ({id:item.id,revision:item.revision,status:item.status as Interview["status"],...(item.start?{start:item.start}:{}),...(item.end?{end:item.end}:{}),...(item.time_zone?{timeZone:item.time_zone}:{}),...(item.calendar_id?{calendarId:item.calendar_id}:{}),...(item.meet_url?{meetUrl:item.meet_url}:{}),...(item.attended !== null?{attended:!!item.attended}:{}),linkActive:false,...linkInfo("interview",item.id)}));
     const duplicateCount = await this.stmt("SELECT COUNT(*) AS count FROM hub_applications WHERE email=?",app.email).first<{count:number}>();
     const cards = scorecards.map((card) => ({id:card.id,actor:card.actor,score:card.score,criteria:card.criteria,text:card.text,createdAt:card.created_at}));
     const view=viewerEmail?await this.stmt("SELECT viewed_at FROM hub_application_views WHERE application_id=? AND viewer_email=?",id,viewerEmail.trim().toLowerCase()).first<{viewed_at:number}>():null;
@@ -1577,7 +1578,7 @@ export class HubStore {
             422,
             "Reopen this application before inviting an interview.",
           );
-        const existing = await this.latestInterview(app.id);
+        const existing = await this.currentInterviewForInvitation(app.id);
         const renewing = existing && existing.status !== "cancelled";
         const pinned = renewing ? await interviewCalendar(this,existing.id) : null;
         if(renewing && input.interviewerEmail && input.interviewerEmail !== pinned?.ownerEmail)
@@ -1827,6 +1828,15 @@ export class HubStore {
     statements.unshift(this.stmt('UPDATE hub_settings SET value=CASE WHEN value=? THEN ? ELSE NULL END,updated_at=? WHERE key=?',row.value,JSON.stringify(next),Date.now(),key));
     try{await this.db.batch(statements);}catch{throw new HiringError('bulk_plan_changed',409,'The group changed while saving. Retry this same confirmed group to continue safely.');}
     return result(next);
+  }
+  async currentInterviewForInvitation(applicationId: string) {
+    const latest = await this.latestInterview(applicationId);
+    if (!latest) return null;
+    const now = Date.now();
+    const linkActive = latest.status === "invited"
+      ? await this.hasActiveInvitation(applicationId, "interview", latest.id, now)
+      : undefined;
+    return isHistoricalInterview({...latest, linkActive}, now) ? null : latest;
   }
   async latestInterview(applicationId: string): Promise<InterviewRow | null> {
     return this.stmt(

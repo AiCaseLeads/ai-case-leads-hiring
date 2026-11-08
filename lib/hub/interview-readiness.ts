@@ -27,7 +27,7 @@ export async function interviewReadiness(store: HubStore, member: HubMember, app
  const interviewers=await Promise.all(staff.map(async person=>{const status=await personalStatus(store,person.email);return {email:person.email,ready:companyGoogleReady && status.ready};}));
  const scheduling=await store.scheduling();
  const sharedCalendarReady=!!store.options.integrations?.google && scheduling.configured;
- const current=await store.latestInterview(applicationId);
+ const current=await store.currentInterviewForInvitation(applicationId);
  let renewCalendarReady=false;
  if(companyGoogleReady && current && current.status!=='cancelled') {
   const pinned=await interviewCalendar(store,current.id);

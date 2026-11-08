@@ -1,4 +1,5 @@
 "use client";
+import {isHistoricalInterview} from "../../lib/hub/interview-history";
 import {ApplicantFilterDisclosure} from "./applicant-filter-disclosure";
 import {interviewCancelOutcome,interviewNavigationOutcome} from "./interview-draft-state";
 import {InterviewComposer,InterviewDiscardConfirmation,type InterviewDraftPayload} from "./interview-composer";
@@ -936,7 +937,7 @@ export function CandidateDetail({
               {!detail.trashed&&<ShareApplicant key={detail.id} id={detail.id}/>}
               <JobActionMenu label="More applicant actions" triggerLabel="More">
                 {!detail.trashed&&reviewerEmail&&detail.assignee!==reviewerEmail&&<button type="button" disabled={mutation.busy||decisionBusy} onClick={async()=>{const r=await mutation.run(`/api/hub/applications/${encodeURIComponent(id)}/action`,"POST",{action:"assign",assignee:reviewerEmail,expectedRevision:detail.revision},"Assigned to you.");if(r!==undefined){await resource.reload();changed()}}}>Assign to me</button>}
-                {!detail.trashed && !["Rejected","Withdrawn","Hired"].includes(detail.stage) && <button type="button" disabled={mutation.busy||decisionBusy} onClick={()=>{interviewLeave.current=null;setConfirmInterviewDiscard(false);setAction("interview");setActionOpen(true);mutation.clear();}}><CalendarClock size={16} aria-hidden="true"/>Request interview</button>}
+                {!detail.trashed && !["Rejected","Withdrawn","Hired"].includes(detail.stage) && <button type="button" disabled={mutation.busy||decisionBusy} onClick={()=>{interviewLeave.current=null;setConfirmInterviewDiscard(false);setAction("interview");setActionOpen(true);mutation.clear();}}><CalendarClock size={16} aria-hidden="true"/>{detail.interview && isHistoricalInterview(detail.interview) ? "Request another interview" : "Request interview"}</button>}
                 {!detail.trashed && <button type="button" disabled={mutation.busy||decisionBusy} onClick={()=>{setAction("note");setActionOpen(true);mutation.clear();}}><StickyNote size={16} aria-hidden="true"/>Add note</button>}
                 {!detail.trashed && <button type="button" disabled={mutation.busy||decisionBusy} onClick={()=>{setAction("stage");setActionOpen(true);mutation.clear();}}><Settings2 size={16} aria-hidden="true"/>Other applicant actions</button>}
                 <button type="button" disabled={pdfBusy} onClick={()=>void exportPdf()}><Download size={16}/>{pdfBusy?"Preparing PDF…":"Download application PDF"}</button>
@@ -985,7 +986,7 @@ export function CandidateDetail({
                       <option value="reject">Reject application</option>
                     </select>
                   </Field>}
-                  {(action==="assessment"||action==="interview"&&!!detail.interview&&detail.interview.status!=="cancelled") && <label className="hub-checkbox"><input type="checkbox" checked={renew} onChange={(e) => {setRenew(e.target.checked);if(action==="interview")setInterviewDirty(true);}} /> Send a replacement secure link and revoke the previous link. Existing responses and bookings remain in history.</label>}
+                  {(action==="assessment"||action==="interview"&&!!detail.interview&&!isHistoricalInterview(detail.interview)) && <label className="hub-checkbox"><input type="checkbox" checked={renew} onChange={(e) => {setRenew(e.target.checked);if(action==="interview")setInterviewDirty(true);}} /> Send a replacement secure link and revoke the previous link. Existing responses and bookings remain in history.</label>}
                   {action === "stage" && (
                     <Field label="Stage">
                       <select
@@ -1289,7 +1290,7 @@ export function CandidateDetail({
                     Booking and changes are controlled through the candidate’s
                     secure email link.
                   </p>
-                  {interview.linkExpiresAt && <p className="hub-muted">Secure link {interview.linkActive ? "active" : "unavailable"} · expires {displayDate(interview.linkExpiresAt)}. Use Send interview booking link to renew it.</p>}
+                  {interview.linkExpiresAt && <p className="hub-muted">Secure link {interview.linkActive ? "active" : "unavailable"} · expires {displayDate(interview.linkExpiresAt)}. {isHistoricalInterview(interview) ? "This interview is in history." : "Use Request interview to manage the link."}</p>}
                 </section>
               ))}
               <section className="hub-card">
