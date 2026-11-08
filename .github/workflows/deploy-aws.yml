@@ -68,7 +68,10 @@ jobs:
                 aws ssm get-command-invocation --command-id "$command_id" --instance-id i-04bbe6b1c7d2d0451 --output json > "$RUNNER_TEMP/hiring-deploy-result.json"
                 python3 scripts/aws/summarize-release.py "$RUNNER_TEMP/hiring-deploy-result.json" "$DEPLOY_SHA"
                 exit 0 ;;
-              Failed|Cancelled|TimedOut|Cancelling) echo "Deployment failed: $status"; exit 1 ;;
+              Failed|Cancelled|TimedOut|Cancelling)
+                echo "Deployment failed: $status (SSM command $command_id)"
+                aws ssm get-command-invocation --command-id "$command_id" --instance-id i-04bbe6b1c7d2d0451 --output json | python3 scripts/aws/deploy-failure.py
+                exit 1 ;;
             esac
             sleep 4
           done
