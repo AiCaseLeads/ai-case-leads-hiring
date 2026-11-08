@@ -1,4 +1,5 @@
 "use client";
+import { calendarHourLabel } from "./calendar-hour";
 import { useEffect, useState } from "react";
 import { isMailSetupError } from "../../lib/google/mail-setup";
 import { MailRecovery } from "./mail-recovery";
@@ -168,8 +169,8 @@ function SettingsForm({
           <div className="hub-form-grid">
             <Field label="Interview calendar" hint="Calendar owner's email, or Calendar ID from Google Calendar settings."><input value={calendarId} onChange={e => setCalendarId(e.target.value)} placeholder="Calendar email or ID" /></Field>
             <Field label="Interview time zone" hint="For example America/Bogota or Europe/Madrid."><input value={timeZone} onChange={e => setTimeZone(e.target.value)} required /></Field>
-            <Field label="First available hour"><select value={startHour} onChange={e => setStartHour(e.target.value)}>{Array.from({length:24},(_,hour)=><option value={hour} key={hour}>{String(hour).padStart(2,"0")}:00</option>)}</select></Field>
-            <Field label="Finish by"><select value={endHour} onChange={e => setEndHour(e.target.value)}>{Array.from({length:24},(_,i)=>i+1).map(hour=><option value={hour} key={hour}>{hour===24 ? "Midnight" : String(hour).padStart(2,"0")+":00"}</option>)}</select></Field>
+            <Field label="First available hour"><select value={startHour} onChange={e => setStartHour(e.target.value)}>{Array.from({length:24},(_,hour)=><option value={hour} key={hour}>{calendarHourLabel(hour)}</option>)}</select></Field>
+            <Field label="Finish by"><select value={endHour} onChange={e => setEndHour(e.target.value)}>{Array.from({length:24},(_,i)=>i+1).map(hour=><option value={hour} key={hour}>{calendarHourLabel(hour)}</option>)}</select></Field>
             <Field label="Interview length"><input type="number" min="15" max="120" step="5" value={duration} onChange={e => setDuration(e.target.value)} required /></Field>
           </div>
           <div className="hub-weekdays" role="group" aria-label="Interview days">{["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"].map((day,index)=><label className="hub-checkbox" key={day}><input type="checkbox" checked={weekdays.includes(index)} onChange={e => setWeekdays(current => e.target.checked ? [...current,index].sort() : current.filter(value => value !== index))} />{day}</label>)}</div>

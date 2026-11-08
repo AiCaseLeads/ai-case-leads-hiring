@@ -179,7 +179,8 @@ export function displayDate(value?: number | string, timeZone?: string) {
   const date = new Date(value);
   return Number.isNaN(date.getTime())
     ? "Date unavailable"
-    : date.toLocaleString(undefined, {
+    : date.toLocaleString("en-US", {
+        hour12: true,
         dateStyle: "medium",
         timeStyle: "short",
         ...(timeZone ? { timeZone } : {}),
