@@ -1972,21 +1972,68 @@ body:has(.hiring-hub .hub-draft-overlay) { overflow: hidden; }
 .hub-queue-shortcuts{gap:.4rem 1rem;padding:.5rem 0 1rem;flex-wrap:wrap}.hub-overview-details{margin-top:1rem}.hub-overview-details>summary{color:#267965}
 @media(max-width:700px){.hub-review-grid{grid-template-columns:1fr}.hub-workflow-counts{gap:.7rem}.hub-workflow-counts strong{font-size:1rem}.hub-queue-shortcuts{font-size:.85rem}}
 
-.interview-picker { display:grid;grid-template-columns:minmax(224px, 325px) minmax(0, 1fr);gap:clamp(16px,4vw,38px);align-items:start }
-.interview-calendar { min-width:0 }
-.interview-month { display:flex;align-items:center;justify-content:space-between;margin-bottom:8px }
-.interview-month button { display:grid;place-items:center;width:36px;height:36px }
-.interview-month button:disabled { opacity:.3 }
-.interview-days { display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:3px }
-.interview-days > span { text-align:center;font-size:12px;font-weight:600;color:#506766 }
-.interview-days button { min-height:35px;border-radius:6px;color:#135147;background:#e8f3ed;font-weight:650 }
-.interview-days button:disabled { color:#697775;background:transparent;font-weight:400 }
-.interview-days button[aria-pressed=true] { background:#164940;color:#fff }
-.interview-days button:focus-visible,.interview-month button:focus-visible,.interview-time-option:focus-within { outline:2px solid #1d6758;outline-offset:1px }
-.interview-times { min-width:0 }
-.interview-times h3,.interview-times p { margin:8px 0 12px;font-size:15px;color:#263f3d }
-.interview-time-options { display:grid;grid-template-columns:repeat(auto-fit,minmax(min(118px,100%),1fr));gap:6px }
-.interview-time-option { display:flex;align-items:center;gap:6px;min-height:36px;padding:5px 8px;border:1px solid #bacbc4;border-radius:6px;font-size:13px;cursor:pointer }
-.interview-time-option:has(:checked) { background:#e8f3ed;border-color:#236759 }
-.interview-time-option input { accent-color:#236759 }
-@media(max-width:640px) { .interview-picker { grid-template-columns:minmax(0,1fr);gap:12px } .interview-days button { min-height:40px } }
+/* Candidate interview booking */
+.booking-card {
+  --booking-ink: #173b39;
+  --booking-muted: #465e5c;
+  --booking-rule: #d6e3df;
+  --booking-tint: #edf6f1;
+  max-width: 760px;
+  margin: 0 auto;
+  padding: clamp(18px, 4vw, 36px);
+  border: 1px solid var(--booking-rule);
+  border-radius: 16px;
+  color: var(--booking-ink);
+  background: white;
+}
+.booking-heading, .booking-details > div { display: flex; align-items: center; gap: 14px; }
+.booking-heading { padding-bottom: 20px; border-bottom: 1px solid var(--booking-rule); }
+.booking-heading > div { min-width: 0; overflow-wrap: anywhere; }
+.booking-mark { display: grid; flex: 0 0 44px; height: 44px; place-items: center; border-radius: 12px; color: #246548; background: var(--booking-tint); }
+.booking-mark.confirmed { border-radius: 50%; }
+.booking-card .booking-heading h1 { margin: 0; font-size: clamp(22px, 4vw, 30px); line-height: 1.16; letter-spacing: -.025em; }
+.booking-heading p, .booking-message p, .booking-prep p, .booking-times p { color: var(--booking-muted); font-size: 15px; line-height: 1.5; }
+.booking-heading p { margin: 5px 0 0; }
+.booking-picker { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: clamp(20px, 4vw, 32px); padding: 22px 0 0; }
+.booking-date-column, .interview-calendar { min-width: 0; }
+.interview-month { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+.interview-month button { display: grid; place-items: center; width: 40px; height: 40px; border: 0; border-radius: 50%; background: var(--booking-tint); color: var(--booking-ink); cursor: pointer; }
+.interview-month button:disabled { color: #98a9a2; background: transparent; cursor: default; }
+.interview-days { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 3px; }
+.interview-days > span { text-align: center; font-size: 12px; font-weight: 600; color: var(--booking-muted); }
+.interview-days button { min-height: 40px; border: 0; border-radius: 8px; font: inherit; font-size: 14px; color: #185840; background: var(--booking-tint); font-weight: 650; cursor: pointer; }
+.interview-days button:disabled { color: #687a76; background: transparent; font-weight: 400; cursor: default; }
+.interview-days button[aria-pressed=true] { background: #164940; color: white; }
+.booking-card :is(button,summary,select,a):focus-visible, .booking-time-choice:has(input:focus-visible) { outline: 2px solid #1d6758; outline-offset: 2px; }
+.booking-zone { display: flex; flex-wrap: wrap; gap: 2px 8px; align-items: center; margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--booking-rule); color: var(--booking-muted); }
+.booking-zone > label { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 6px; min-width: 0; font-size: 13px; }
+.booking-zone > button { padding: 4px; font-size: 12px; }
+.booking-zone > small { flex-basis: 100%; }
+.booking-zone select { min-width: 0; width: auto; max-width: 100%; min-height: 36px; margin: 0; padding: 3px; border: 0; background: transparent; font: inherit; font-weight: 600; color: var(--booking-ink); }
+.booking-times { min-width: 0; padding: 7px 0 0 clamp(16px, 3vw, 24px); border-left: 1px solid var(--booking-rule); }
+.booking-card :is(.booking-times,.booking-prep) h2 { margin: 0; font-size: 17px; line-height: 1.35; }
+.booking-times p, .booking-prep p { margin: 8px 0 0; }
+.booking-time-grid { min-width: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(96px, 100%), 1fr)); gap: 7px; margin: 12px 0; padding: 3px; border: 0; max-height: 290px; overflow-y: auto; }
+.booking-time-choice { position: relative; display: grid; place-items: center; min-height: 40px; padding: 5px 6px; border: 1px solid #a8c3b7; border-radius: 7px; color: #1d574a; font-size: 14px; font-weight: 600; text-align: center; cursor: pointer; }
+.booking-time-choice input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; margin: 0; cursor: inherit; }
+.booking-time-choice:has(:checked) { color: white; background: #164940; border-color: #164940; }
+.booking-submit { width: 100%; }
+.booking-details { display: grid; gap: 14px; margin: 20px 0; padding: 16px 18px; background: var(--booking-tint); border-radius: 10px; }
+.booking-details > div { gap: 12px; }
+.booking-details svg { flex-shrink: 0; }
+.booking-details strong, .booking-details span { display: block; font-size: 15px; }
+.booking-details span { margin-top: 3px; color: var(--booking-muted); }
+.booking-details a { display: inline-flex; align-items: center; gap: 5px; color: #195646; font-weight: 600; text-decoration: underline; text-underline-offset: 3px; }
+.booking-message, .booking-prep { margin: 16px 0; color: var(--booking-muted); font-size: 15px; line-height: 1.5; }
+.booking-change { border-top: 1px solid var(--booking-rule); }
+.booking-change summary { padding: 12px 0; font-size: 14px; font-weight: 600; cursor: pointer; }
+.booking-change .booking-picker { padding: 8px 0 18px; }
+.booking-change .hub-checkbox { margin: 6px 0 14px; }
+@media(max-width: 640px) {
+  .booking-picker { grid-template-columns: minmax(0, 1fr); gap: 12px; padding-top: 14px; }
+  .booking-zone { margin-top: 8px; padding-top: 6px; }
+  .booking-times { padding: 14px 0 0; border: 0; border-top: 1px solid var(--booking-rule); }
+  .booking-time-grid { max-height: 216px; }
+  .booking-heading { gap: 10px; padding-bottom: 16px; }
+  .booking-mark { flex-basis: 36px; height: 36px; }
+}

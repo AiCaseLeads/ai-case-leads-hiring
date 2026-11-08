@@ -1,4 +1,4 @@
-import { INTERVIEW_PROGRESS_VALUES, type InterviewProgress } from './interview-progress';
+import { isInterviewFilter, type InterviewFilter } from './interview-progress';
 import {claimHistory} from './claim-history';
 import {sendInterviewInvitation} from './interview-delivery';
 import type {PersonalMailEnv} from '../personal-mail/service';
@@ -70,7 +70,7 @@ function applicationFilters(request: Request) {
           ((grade || (sort && ["grade_desc","ai_match_desc","ai_match_asc"].includes(sort))) && !jobId))
         throw new HiringError("invalid_filter", 422, "Choose one role before comparing reviewer grades, and check the application filters.");
       const interviewProgress=params.get("interviewProgress")||undefined;
-      if(interviewProgress && !INTERVIEW_PROGRESS_VALUES.includes(interviewProgress as InterviewProgress))
+      if(interviewProgress && !isInterviewFilter(interviewProgress))
         throw new HiringError("invalid_filter",422,"Choose a valid interview status.");
       const stage=params.get("stage")||undefined,excludeStage=params.get("excludeStage")||undefined;
       if([stage,excludeStage].some(value=>value&&!STAGES.includes(value as typeof STAGES[number])))throw new HiringError("invalid_filter",422,"Choose a valid application stage.");
@@ -78,7 +78,7 @@ function applicationFilters(request: Request) {
       applicationDateBounds(dates);
       return {
         ...dates,
-        interviewProgress:interviewProgress as InterviewProgress|undefined,
+        interviewProgress:interviewProgress as InterviewFilter|undefined,
         q,
         top: params.get("top") === "10" ? 10 as const : undefined,
         jobId,

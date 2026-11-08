@@ -4,7 +4,7 @@ import type { HubMember } from './auth-core';
 import type { Task } from './types';
 import type { MailInput } from '../google/gmail';
 import { HiringError } from '../hiring/errors';
-import { INTERVIEW_PROGRESS_VALUES, interviewProgressForRowSql, type InterviewProgress } from './interview-progress';
+import { interviewSlotPredicate, interviewStageWithoutRecordSql, isInterviewFilter, sessionFilterPredicate, sessionProgressSql, type InterviewProgress } from './interview-progress';
 import { activeApplicationsSql } from './application-lifecycle';
 import { sha256 } from '../hiring/crypto';
 import { notesReviews } from './note-review';
@@ -112,18 +112,20 @@ export async function listRoleInterviews(store:HubStore,filters:{jobId?:string;o
  const where=[activeApplicationsSql('a')],values:(string|number|null)[]=[];
  if(filters.jobId){await store.getJob(filters.jobId);where.push('a.job_id=?');values.push(filters.jobId);}
  if(filters.owner){where.push("lower(COALESCE(a.assignee,''))=?");values.push(filters.owner.toLowerCase());}
- const progressSql = interviewProgressForRowSql('i');
+ // Older applications can be in an interview stage without a scheduling record.
+ const joined = 'hub_applications a LEFT JOIN hub_interviews i ON i.application_id=a.id';
+ where.push(`(i.id IS NOT NULL OR ${interviewStageWithoutRecordSql})`);
  if (filters.progress) {
-  if (!INTERVIEW_PROGRESS_VALUES.includes(filters.progress as InterviewProgress))
+  if (!isInterviewFilter(filters.progress))
    throw new HiringError('invalid_interview_filter',422,'Choose a valid interview status.');
-  where.push(`(${progressSql})=?`);
-  values.push(filters.progress);
+  const predicate = sessionFilterPredicate(filters.progress);
+  where.push(predicate.sql);
+  values.push(...predicate.values);
  }
  if (filters.status) {
   if (filters.status === 'completed') where.push('i.attended=1');
   else if (filters.status === 'upcoming') {
-   where.push("i.status='booked' AND i.attended IS NULL AND i.start>=?");
-   values.push(new Date().toISOString());
+   where.push(interviewSlotPredicate('upcoming'));
   } else {
    if (!['invited','pending','booked','cancel_pending','cancelled','failed'].includes(filters.status))
     throw new HiringError('invalid_interview_filter',422,'Choose a valid interview status.');
@@ -131,8 +133,20 @@ export async function listRoleInterviews(store:HubStore,filters:{jobId?:string;o
    values.push(filters.status);
   }
  }
- const clause=where.join(' AND '),count=await store.stmt(`SELECT COUNT(*) AS n FROM hub_interviews i JOIN hub_applications a ON a.id=i.application_id WHERE ${clause}`,...values).first<{n:number}>();
- const rows=await store.rows<{id:string;applicationId:string;name:string;jobId:string;jobTitle:string;assignee:string|null;status:string;interviewProgress:InterviewProgress;start:string|null;end:string|null;meetUrl:string|null;recordingUrl:string|null;summary:string|null}>(`SELECT i.id,i.application_id AS applicationId,a.name,a.job_id AS jobId,a.job_title AS jobTitle,a.assignee,i.status,(${progressSql}) AS interviewProgress,i.start,i.end,i.meet_url AS meetUrl,r.recording_url AS recordingUrl,r.summary FROM hub_interviews i JOIN hub_applications a ON a.id=i.application_id LEFT JOIN hub_recruiter_reviews r ON r.application_id=a.id WHERE ${clause} ORDER BY COALESCE(i.start,'' ) DESC,i.created_at DESC,i.id DESC LIMIT ? OFFSET ?`,...values,pageSize,(page-1)*pageSize);
+ const clause = where.join(' AND ');
+ const count = await store.stmt(`SELECT COUNT(*) AS n FROM ${joined} WHERE ${clause}`, ...values).first<{n:number}>();
+ const startOrder = filters.progress === 'upcoming' || filters.status === 'upcoming' ? 'ASC' : 'DESC';
+ const rows = await store.rows<{
+   id: string; applicationId: string; name: string; jobId: string; jobTitle: string;
+   assignee: string | null; status: string; interviewProgress: InterviewProgress;
+   start: string | null; end: string | null; meetUrl: string | null;
+ }>(`SELECT COALESCE(i.id, 'unlinked:' || a.id) AS id, a.id AS applicationId,
+       a.name, a.job_id AS jobId, a.job_title AS jobTitle, a.assignee,
+       COALESCE(i.status, 'unlinked') AS status, (${sessionProgressSql}) AS interviewProgress,
+       i.start, i.end, i.meet_url AS meetUrl
+     FROM ${joined} WHERE ${clause}
+     ORDER BY julianday(i.start) ${startOrder}, COALESCE(i.created_at, a.created_at) DESC, a.id, i.id DESC
+     LIMIT ? OFFSET ?`, ...values, pageSize, (page - 1) * pageSize);
  const evidenceRows=rows.length?await store.rows<{value:string}>(`SELECT value FROM hub_settings WHERE ${[...new Set(rows.map(row=>row.applicationId))].map(()=>"key LIKE ?").join(' OR ')}`,...[...new Set(rows.map(row=>row.applicationId))].map(id=>`interview_evidence:${id}:%`)):[];
  const byInterview=new Map<string,{recordingUrl?:string;summary?:string}>();
  for(const item of evidenceRows){try{const evidence=JSON.parse(item.value) as {interviewId?:string;recordingUrl?:string;summary?:string};if(evidence.interviewId)byInterview.set(evidence.interviewId,evidence);}catch{/* Ignore malformed legacy evidence. */}}

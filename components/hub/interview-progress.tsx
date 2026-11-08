@@ -5,7 +5,7 @@ import { stageLabel, type ApplicationSummary } from "./types";
 export const interviewProgressLabels = {
   none: "No interview requested",
   delivery_pending: "Invitation sending",
-  requested: "Interview requested",
+  requested: "Invitation sent",
   pending: "Booking in progress",
   booked: "Interview confirmed",
   attendance_due: "Attendance unrecorded",
@@ -14,6 +14,8 @@ export const interviewProgressLabels = {
   cancel_pending: "Cancellation pending",
   cancelled: "Interview cancelled",
   unverified: "Invitation delivery unverified",
+  unlinked: "No linked booking",
+  link_inactive: "Booking link inactive",
   failed: "Interview needs attention",
 } satisfies Record<InterviewProgress, string>;
 

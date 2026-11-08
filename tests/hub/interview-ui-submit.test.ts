@@ -57,7 +57,12 @@ for(const changeTiming of ['before-preview','after-preview'])test(`full applican
    res.writeHead(response.status,Object.fromEntries(response.headers));res.end(await response.text());
   }catch(error){res.writeHead(500);res.end(JSON.stringify({error:{message:error instanceof Error?error.message:'Synthetic server failure'}}));}
  });
- await new Promise<void>(resolve=>server.listen(0,'127.0.0.1',resolve));t.after(()=>new Promise<void>(resolve=>server.close(()=>resolve())));
+ await new Promise<void>(resolve=>server.listen(0,'127.0.0.1',resolve));
+ // Chromium can keep a connection open between the two invitation cases.
+ t.after(() => new Promise<void>(resolve => {
+   server.close(() => resolve());
+   server.closeAllConnections();
+ }));
  const chrome='/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
  const browser=await chromium.launch({headless:true,...(existsSync(chrome)?{executablePath:chrome}:{})});t.after(()=>browser.close());
  const page=await browser.newPage({viewport:{width:1280,height:900}});page.setDefaultTimeout(10000);

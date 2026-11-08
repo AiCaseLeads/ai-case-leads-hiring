@@ -40,6 +40,27 @@ async function invitation(
   return token;
 }
 const calendar = { busy: async () => [] };
+test("a booking accepts an IP zone from native edge metadata and ignores location headers supplied by the caller", async t => {
+  const {store,database} = createStore();
+  t.after(()=>database.close());
+  const job=await store.saveJob(jobInput());
+  const {id}=await store.acceptApplication(applicationInput(job.id));
+  await approveScheduling(store);
+  const token=await invitation(store,id,"interview");
+  const request=req(token);
+  request.headers.set("cf-timezone","America/Los_Angeles");
+  request.headers.set("CloudFront-Viewer-Time-Zone","America/Los_Angeles");
+  async function hint() {
+    const response=await handleCandidateRequest(request,token,store,calendar);
+    assert.equal(response.status,200);
+    return ((await response.json()) as {data:{locationTimeZone?:string}}).data.locationTimeZone;
+  }
+  assert.equal(await hint(),undefined);
+  Object.defineProperty(request,"cf",{value:{timezone:"Asia/Tokyo"},configurable:true});
+  assert.equal(await hint(),"Asia/Tokyo");
+  Object.defineProperty(request,"cf",{value:{timezone:"Mars/Anywhere"}});
+  assert.equal(await hint(),undefined);
+});
 test("stored bookings stay visible and cancellable when Calendar availability fails", async () => {
   const {store,database} = createStore();
   try {
@@ -65,6 +86,35 @@ test("stored bookings stay visible and cancellable when Calendar availability fa
     assert.equal(body.data.slots.length,0); assert.ok(body.data.availabilityError);
     assert.equal((await handleCandidateRequest(req(token,{action:"cancel"}),token,store,outage)).status,202);
   } finally {database.close();}
+});
+
+test("candidate links show closed or unverified slots without offering a new booking or changing their history", async () => {
+  const {store, database} = createStore();
+  try {
+    const job = await store.saveJob(jobInput());
+    const app = await store.acceptApplication(applicationInput(job.id));
+    await approveScheduling(store);
+    const token = await invitation(store,app.id,"interview");
+    const row = await store.latestInterview(app.id);
+    assert.ok(row);
+    const event = database.prepare("UPDATE hub_interviews SET status='booked',provider_id=?,start=?,end=?,meet_url='https://meet.google.com/obsolete' WHERE id=?");
+    for (const [provider, start, end, expected] of [
+      [null, "2030-12-01T15:00:00Z", "2030-12-01T15:30:00Z", "unlinked"],
+      ["synthetic-event", "bad date", null, "unlinked"],
+      ["synthetic-event", "2000-12-01T15:00:00Z", "2000-12-01T15:30:00Z", "past"],
+    ] as const) {
+      event.run(provider, start, end, row.id);
+      const response = await handleCandidateRequest(req(token), token, store);
+      assert.equal(response.status, 200);
+      const body = await response.json() as {data:{status:string;slots:unknown[];interview:{meetUrl?:string}}};
+      assert.equal(body.data.status, expected);
+      assert.deepEqual(body.data.slots, []);
+      assert.equal(body.data.interview.meetUrl, undefined);
+      const cancel = await handleCandidateRequest(req(token,{ action:"cancel" }), token, store);
+      assert.equal(cancel.status, 409);
+      assert.equal((await store.latestInterview(app.id))?.status, "booked");
+    }
+  } finally { database.close(); }
 });
 
 test("rescheduling keeps the original Calendar destination and extends the private link through the booking", async () => {

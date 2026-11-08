@@ -64,7 +64,7 @@ test('handoff email task is internal, deduplicated, and suppressed after leaving
 });
 test('interview workspace filters by role and owner and recruiter-review endpoints reject cross-origin writes',async()=>{
  const f=await fixture();try{
- const {store,database,job,app}=f;database.prepare("INSERT INTO hub_interviews(id,application_id,status,start,end,revision,created_at,updated_at) VALUES('interview',?,'booked','2025-01-01T12:00:00.000Z','2025-01-01T12:30:00.000Z',1,0,0)").run(app.id);
+ const {store,database,job,app}=f;database.prepare("INSERT INTO hub_interviews(id,application_id,provider_id,status,start,end,revision,created_at,updated_at) VALUES('interview',?,'calendar-event','booked','2025-01-01T12:00:00.000Z','2025-01-01T12:30:00.000Z',1,0,0)").run(app.id);
  await saveRecruiterReview(store,app.id,{expectedVersion:0,...complete},RECRUITER);
  assert.equal((await listRoleInterviews(store,{jobId:job.id,status:'completed'})).total,0,'a past appointment alone does not establish attendance');
  assert.equal((await listRoleInterviews(store,{progress:'attendance_due'})).total,1);

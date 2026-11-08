@@ -65,6 +65,7 @@ export function HiringDashboard({
   useEffect(()=>{if(!decisionNotice)return;const timer=window.setTimeout(dismissDecision,8000);return()=>window.clearTimeout(timer);},[decisionNotice,decisionSequence]);
   const [createJob, setCreateJob] = useState(0);
   const [initialStage, setInitialStage] = useState("");
+  const [interviewView, setInterviewView] = useState("upcoming");
   const [initialJobId, setInitialJobId] = useState("");
   const [settingsSection, setSettingsSection] = useState<SettingsSection | undefined>();
   function readLocation() {
@@ -96,6 +97,7 @@ export function HiringDashboard({
     setCandidateAction(params.get("candidateAction") === "interview" ? "interview" : "note");
     setInitialStage(next === "applications" && stages.includes(params.get("stage") || "") ? params.get("stage")! : "");
     setInitialJobId(next === "applications" || next === "interviews" ? params.get("jobId") || "" : "");
+    setInterviewView(params.get("interviewProgress") ?? "upcoming");
     const filters = new URLSearchParams();
     for (const key of ["q", "jobId", "stage", "excludeStage","interviewProgress", "assignee", "qualification", "grade", "sort", "top", "active", "duplicate", "trash", "appliedFrom", "appliedTo", "timeZone"]) if (next === "applications" && params.has(key)) filters.set(key, params.get(key)!);
     setInitialFilter(filters.toString());
@@ -194,6 +196,14 @@ export function HiringDashboard({
     new URLSearchParams(filter).forEach((value, key) => url.searchParams.set(key, value));
     if (page > 1) url.searchParams.set("page", String(page));
     navigate(url, replace);
+  }
+  function selectInterviewView(role: string, progress: string, page: number) {
+    const url = viewUrl("interviews");
+    if (role) url.searchParams.set("jobId", role);
+    // An empty status represents the explicit All interviews view.
+    if (progress !== "upcoming") url.searchParams.set("interviewProgress", progress);
+    if (page > 1) url.searchParams.set("page", String(page));
+    navigate(url);
   }
   function manageScorecards() { const url = viewUrl("settings"); url.searchParams.set("section", "scorecards"); navigate(url); }
   return (
@@ -298,6 +308,7 @@ export function HiringDashboard({
               navigationJobs={data?.jobs || []}
               openApplicant={(id,filter,section)=>selectApplication(id,undefined,filter,section)}
               back={closeApplication}
+              backLabel={view === "interviews" ? "Back to interviews" : undefined}
               changed={changed}
             />
           ) : view === "overview" ? (
@@ -331,7 +342,7 @@ export function HiringDashboard({
           ) : view === "applications" ? null : view === "jobs" ? (
             <Jobs admin={true} refresh={refresh} changed={changed} startCreating={!!createJob} onManageScorecards={manageScorecards} />
           ) : view === "interviews" ? (
-            <InterviewWorkspace jobId={initialJobId} refresh={refresh} jobs={data?.jobs || []} openApplicant={(id:string)=>selectApplication(id,undefined,undefined,"review")} />
+            <InterviewWorkspace role={initialJobId} progress={interviewView} page={initialPage} select={selectInterviewView} refresh={refresh} jobs={data?.jobs || []} openApplicant={(id:string)=>selectApplication(id,undefined,undefined,"review")} />
           ) : view === "reports" ? (
             <Reports refresh={refresh} />
           ) : view === "tasks" ? (

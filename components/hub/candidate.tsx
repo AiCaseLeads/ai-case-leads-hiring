@@ -1,14 +1,18 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { candidateTimeZone, useBookingTimeZone } from "./booking-time-zone";
 import {InterviewCalendar,interviewDayLabel} from "./interview-calendar";
 import {
   CalendarDays,
+  Check,
+  Globe2,
+  Video,
   ClipboardCheck,
   ExternalLink,
   LockKeyhole,
 } from "lucide-react";
 import { PageChrome } from "@/components/careers/chrome";
-import { displayDate, useHubMutation, useHubResource } from "./api";
+import { useHubMutation, useHubResource } from "./api";
 import { Badge, EmptyState, Feedback, Field, ResourceState } from "./shared";
 import type { CandidateView } from "./types";
 
@@ -25,9 +29,9 @@ export function SecureCandidatePage({
   return (
     <PageChrome>
       <main id="main" className="site-width candidate-main">
-        <div className="candidate-lock">
+        {kind === "assessment" && <div className="candidate-lock">
           <LockKeyhole size={15} /> Your secure application link
-        </div>
+        </div>}
         <ResourceState
           loading={resource.loading}
           error={resource.error}
@@ -136,272 +140,195 @@ function AssessmentForm({
     </>
   );
 }
-export function InterviewBooking({
-  token,
-  data,
-  reload,
-}: {
+function supportedZones(selected: string) {
+  const zones = typeof Intl.supportedValuesOf === "function"
+    ? Intl.supportedValuesOf("timeZone")
+    : ["America/New_York", "America/Los_Angeles", "America/Bogota", "Europe/London", "Asia/Manila"];
+  return [...new Set([selected, "UTC", ...zones])];
+}
+
+function TimePicker({ slots, location, busy, preview, reschedule, availabilityError, refresh, submit }: {
+  slots: NonNullable<CandidateView["slots"]>;
+  location: ReturnType<typeof useBookingTimeZone>;
+  busy: boolean;
+  preview: boolean;
+  reschedule: boolean;
+  availabilityError?: string;
+  refresh: () => void;
+  submit: (start: string) => void;
+}) {
+  const [day, setDay] = useState("");
+  const [start, setStart] = useState("");
+  const timeZone = location.zone;
+  const zones = useMemo(() => supportedZones(timeZone), [timeZone]);
+  const days = useMemo(() => {
+    const dates = new Map<string, string[]>();
+    const formatter = new Intl.DateTimeFormat("en-CA", {timeZone, year:"numeric", month:"2-digit", day:"2-digit"});
+    for (const slot of slots) {
+      const value = typeof slot === "string" ? slot : slot.start;
+      const parts = Object.fromEntries(formatter.formatToParts(new Date(value)).map(part => [part.type, part.value]));
+      const key = [parts.year, parts.month, parts.day].join("-");
+      const existing = dates.get(key);
+      if (existing) existing.push(value);
+      else dates.set(key, [value]);
+    }
+    return dates;
+  }, [slots, timeZone]);
+  const visibleSlots = days.get(day) || [];
+  const clock = new Intl.DateTimeFormat("en-US", { timeZone, hour12:true, hour:"numeric", minute:"2-digit" });
+  const times = visibleSlots.map(value => clock.format(new Date(value)));
+  const canBook = !busy && !preview && visibleSlots.includes(start);
+  function selectDay(value: string) {
+    location.stopLocating();
+    setDay(value);
+    setStart("");
+  }
+  if (!slots.length) return <EmptyState title={availabilityError ? "Availability temporarily unavailable" : "No available times right now"}>
+    <p>{availabilityError || "Check again later or reply to your interview invitation for help."}</p>
+    <button className="hub-button secondary" type="button" onClick={refresh}>Refresh availability</button>
+  </EmptyState>;
+  return <form className="booking-picker" onSubmit={event => { event.preventDefault(); if (canBook) submit(start); }}>
+    <div className="booking-date-column">
+      <InterviewCalendar key={timeZone} days={[...days.keys()]} selectedDay={day} onSelect={selectDay}/>
+      <div className="booking-zone">
+        <Globe2 size={17} aria-hidden="true"/>
+        <label>Your time zone<select value={timeZone} onChange={event => location.choose(event.target.value)}>
+          {zones.map(zone => <option key={zone} value={zone}>{zone.replaceAll("_", " ")}</option>)}
+        </select></label>
+        <button className="hub-text-button" type="button" disabled={location.locating || busy} onClick={() => void location.locate(true)}>
+          {location.locating ? "Finding location…" : "Use my location"}
+        </button>
+        {location.error && <small role="status">{location.error}</small>}
+      </div>
+    </div>
+    <section className="booking-times" aria-label="Available interview times">
+      <h2 aria-live="polite">{visibleSlots.length ? interviewDayLabel(day) : "Available times"}</h2>
+      {visibleSlots.length ? <>
+        <fieldset className="booking-time-grid" aria-label="Interview time" disabled={busy}>
+          {visibleSlots.map((value, index) => {
+            // A repeated local hour on the autumn clock change needs an offset to distinguish the two slots.
+            const clockTime = times[index];
+            const ambiguous = times.indexOf(clockTime) !== times.lastIndexOf(clockTime);
+            const label = ambiguous ? new Intl.DateTimeFormat("en-US", {timeZone, hour12:true, hour:"numeric", minute:"2-digit", timeZoneName:"shortOffset"}).format(new Date(value)) : clockTime;
+            return <label className="booking-time-choice" key={value}>
+              <input type="radio" name="interview-time" value={value} checked={start === value} onChange={() => setStart(value)} required/>
+              <span>{label}</span>
+            </label>;
+          })}
+        </fieldset>
+        <button className="hub-button booking-submit" disabled={!canBook} type="submit">
+          {busy ? "Saving…" : reschedule ? "Confirm reschedule" : "Book interview"}
+        </button>
+      </> : <p>Select a highlighted date to see available times.</p>}
+    </section>
+  </form>;
+}
+
+type BookingChange = { status: string; start?: string; end?: string; timeZone?: string };
+
+export function InterviewBooking({ token, data, reload }: {
   token: string;
   data: CandidateView;
   reload: () => Promise<void>;
 }) {
-  const [timeZone, setTimeZone] = useState(
-      data.interview?.timeZone ||
-        Intl.DateTimeFormat().resolvedOptions().timeZone ||
-        "UTC",
-    ),
-    [day, setDay] = useState(""),
-    [start, setStart] = useState(""),
-    [cancelApproved, setCancelApproved] = useState(false),
-    mutation = useHubMutation();
-  const status = data.interview?.status || data.status || "pending",
-    interview = data.interview,
-    pending = ["pending", "cancel_pending"].includes(status),
-    booked = status === "booked" && !!interview?.start,
-    failed = status === "failed",
-    hasBooking =
-      !!interview?.start && !["cancelled", "canceled"].includes(status);
-  let validZone = true;
-  try {
-    new Intl.DateTimeFormat("en", { timeZone }).format(new Date());
-  } catch {
-    validZone = false;
-  }
-  const slots = data.slots || [];
-  let zones: string[] = [
-    "UTC",
-    timeZone,
-    "America/Bogota",
-    "America/New_York",
-    "Europe/London",
-    "Asia/Manila",
-  ];
-  try {
-    zones = Array.from(
-      new Set(["UTC", timeZone, ...Intl.supportedValuesOf("timeZone")]),
-    );
-  } catch {
-    zones = Array.from(new Set(zones));
-  }
-  const dateFormatter = validZone ? new Intl.DateTimeFormat("en-US",{timeZone,year:"numeric",month:"2-digit",day:"2-digit"}) : null;
-  const timeFormatter = validZone ? new Intl.DateTimeFormat("en-US",{hour:"numeric",hour12:true,minute:"2-digit",timeZone,timeZoneName:"short"}) : null;
-  function slotDay(value: string) {
-    if(!dateFormatter) return "";
-    const parts=Object.fromEntries(dateFormatter.formatToParts(new Date(value)).map(part=>[part.type,part.value]));
-    return parts.year+"-"+parts.month+"-"+parts.day;
-  }
-  const days = Array.from(
-    new Set(
-      slots.map((slot) =>
-        slotDay(typeof slot === "string" ? slot : slot.start),
-      ),
-    ),
+  const location = useBookingTimeZone(
+    data.interview?.start ? data.interview.timeZone : undefined,
+    data.locationTimeZone,
+    !!data.slots?.length && !data.interview?.start,
   );
-  const selectedDay = days.includes(day) ? day : "";
-  const visibleSlots = slots.filter(
-    (slot) =>
-      slotDay(typeof slot === "string" ? slot : slot.start) === selectedDay,
-  );
-  function slotLabel(value: string) {
-    try {
-      return new Intl.DateTimeFormat("en-US", {
-        dateStyle: "full",
-        timeStyle: "short",
-        hour12: true,
-        timeZone,
-      }).format(new Date(value));
-    } catch {
-      return value;
+  const [cancelApproved, setCancelApproved] = useState(false);
+  const [receipt, setReceipt] = useState<{ snapshot: CandidateView; change: BookingChange } | null>(null);
+  const mutation = useHubMutation();
+  const localChange = receipt?.snapshot === data ? receipt.change : undefined;
+  const interview = data.interview;
+  const status = localChange?.status || interview?.status || data.status || "invited";
+  const start = localChange?.start || interview?.start;
+  const booked = status === "booked" && !!start;
+  const past = status === "past";
+  const unlinked = status === "unlinked";
+  const pending = status === "pending" || status === "cancel_pending";
+  const failed = status === "failed";
+  const cancelled = status === "cancelled" || status === "canceled";
+  const bookingZone = candidateTimeZone(localChange?.timeZone || interview?.timeZone);
+  const bookedDate = start ? new Date(start) : null;
+  const validDate = bookedDate && Number.isFinite(bookedDate.getTime()) ? bookedDate : null;
+  const format = (options: Intl.DateTimeFormatOptions) =>
+    validDate && new Intl.DateTimeFormat("en-US", { ...options, timeZone:bookingZone }).format(validDate);
+
+  // Google creates the event asynchronously. Poll sequentially while this tab is visible.
+  useEffect(() => {
+    if (!pending) return;
+    let active = true;
+    let delay = 3000;
+    let timer: ReturnType<typeof setTimeout>;
+    async function update() {
+      if (document.visibilityState === "visible") {
+        await reload();
+        delay = Math.min(30000, delay * 2);
+      }
+      if (active) timer = setTimeout(update, delay);
     }
-  }
-  async function submit(e: React.FormEvent) {
-    e.preventDefault();
-    if (status === "preview" || !validZone || !start) return;
-    const result = await mutation.run(
-      "/api/candidate/" + encodeURIComponent(token),
-      "POST",
-      { action: booked ? "reschedule" : "book", start, timeZone },
-      "Your booking request was saved. Check the current interview status below.",
+    timer = setTimeout(update, delay);
+    return () => { active = false; clearTimeout(timer); };
+  }, [pending, reload]);
+
+  async function change(action: "book" | "reschedule" | "cancel", newStart?: string) {
+    const result = await mutation.run<BookingChange>(
+      "/api/candidate/" + encodeURIComponent(token), "POST",
+      action === "cancel" ? { action } : { action, start:newStart, timeZone:location.zone }, "",
     );
-    if (result !== undefined) {
-      setStart("");
-      await reload();
-    }
-  }
-  async function cancel() {
-    if (!cancelApproved) return;
-    const result = await mutation.run(
-      "/api/candidate/" + encodeURIComponent(token),
-      "POST",
-      { action: "cancel" },
-      "Your cancellation was recorded.",
-    );
-    if (result !== undefined) {
+    if (result) {
+      setReceipt({ snapshot:data, change:result });
       setCancelApproved(false);
       await reload();
     }
   }
-  return (
-    <>
-      <div className="candidate-heading">
-        <CalendarDays size={28} />
-        <p className="hub-kicker">{data.jobTitle}</p>
-        <h1>
-          {pending
-            ? "Your interview request"
-            : booked
-              ? "Your interview"
-              : "Choose your interview time"}
-        </h1>
-        <Badge>{status}</Badge>
-      </div>
-      {status === "preview" && <p className="hub-notice">Available times are live. Booking opens when the invitation is sent.</p>}
-      {hasBooking && (
-        <section className="hub-card">
-          <h2>{pending ? "Calendar update in progress" : failed ? "Calendar update needs attention" : "Current booking"}</h2>
-          <p className="candidate-time">
-            {validZone && interview?.start
-              ? slotLabel(new Date(interview.start).toISOString())
-              : displayDate(interview?.start)}
-          </p>
-          <p className="hub-muted">
-            {validZone ? timeZone : interview?.timeZone}
-          </p>
-          {booked && interview?.meetUrl && (
-            <a
-              className="hub-button secondary"
-              href={interview.meetUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              referrerPolicy="no-referrer"
-            >
-              Join Google Meet <ExternalLink size={16} />
-            </a>
-          )}
-          <p className="hub-muted">
-            {pending
-              ? "Your calendar invitation will be available after the update is confirmed."
-              : failed
-                ? "This calendar change could not be confirmed. This time is a recorded request, not a confirmed interview. Contact your recruiting sender, choose another time, or cancel the request below."
-              : "The recruiting team’s invitation reflects the confirmed Calendar event."}
-          </p>
-        </section>
-      )}
-      {pending ? (
-        <section className="hub-card">
-          <p className="hub-notice" role="status">
-            {status === "cancel_pending"
-              ? "Your cancellation is being processed. Check the status before making another change."
-              : "Your selected time is reserved while the calendar event is being created. It is confirmed when this status changes to booked."}
-          </p>
-          <button
-            className="hub-button secondary"
-            onClick={() => void reload()}
-          >
-            Refresh booking status
-          </button>
-        </section>
-      ) : (
-        <form className="hub-card" onSubmit={submit}>
-          <h2>{booked ? "Reschedule" : "Available times"}</h2>
-          <Field
-            label="Your time zone"
-            hint="All choices are displayed in this time zone."
-          >
-            <select
-              value={timeZone}
-              onChange={(e) => {
-                setTimeZone(e.target.value);
-                setStart("");
-                setDay("");
-              }}
-              required
-              aria-invalid={!validZone}
-            >
-              {zones.map((zone) => (
-                <option key={zone} value={zone}>
-                  {zone.replaceAll("_", " ")}
-                </option>
-              ))}
-            </select>
-          </Field>
-          {!validZone && (
-            <p className="hub-notice hub-error" role="alert">
-              Enter a valid time zone, such as America/Bogota or Europe/London.
-            </p>
-          )}
-          {slots.length ? (
-            <fieldset
-              className="candidate-slots"
-              disabled={mutation.busy || !validZone}
-            >
-              <legend>Choose a date and time</legend>
-              <div className="interview-picker">
-                <InterviewCalendar key={timeZone} days={days} selectedDay={selectedDay} onSelect={value=>{setDay(value);setStart("");}}/>
-                <section className="interview-times" aria-label="Available interview times">
-                  {selectedDay ? <>
-                    <h3 aria-live="polite">{interviewDayLabel(selectedDay)}</h3>
-                    <div className="interview-time-options">
-                      {visibleSlots.map(slot=>{
-                        const value=typeof slot==="string" ? slot : slot.start;
-                        return <label className="interview-time-option" key={value}>
-                          <input type="radio" name="interview-time" value={value} checked={start===value} onChange={()=>setStart(value)} required/>
-                          <span>{timeFormatter?.format(new Date(value))}</span>
-                        </label>;
-                      })}
-                    </div>
-                  </> : <p>Select an available date to see times.</p>}
-                </section>
-              </div>
-              <button
-                className="hub-button"
-                disabled={status === "preview" || mutation.busy || !start || !validZone}
-                type="submit"
-              >
-                {mutation.busy
-                  ? "Saving booking…"
-                  : booked
-                    ? "Confirm reschedule"
-                    : "Book interview"}
-              </button>
-            </fieldset>
-          ) : (
-            <EmptyState title={data.availabilityError ? "Availability temporarily unavailable" : "No available times right now"}>
-              <p>
-                {data.availabilityError || "Refresh availability or contact your recruiting sender for another time."}
-              </p>
-              <button
-                type="button"
-                className="hub-button secondary"
-                onClick={() => void reload()}
-              >
-                Refresh availability
-              </button>
-            </EmptyState>
-          )}
-          <Feedback error={mutation.error} success={mutation.success} />
-        </form>
-      )}
-      {(booked || (failed && hasBooking)) && (
-        <section className="hub-card">
-          <h2>{failed ? "Cancel this interview request" : "Cancel this interview"}</h2>
-          <label className="hub-checkbox">
-            <input
-              type="checkbox"
-              checked={cancelApproved}
-              onChange={(e) => setCancelApproved(e.target.checked)}
-            />{" "}
-            I want to cancel the current interview.
-          </label>
-          <button
-            className="hub-button danger"
-            disabled={!cancelApproved || mutation.busy}
-            onClick={() => void cancel()}
-          >
-            Cancel interview
-          </button>
-        </section>
-      )}
-    </>
-  );
+
+  const picker = <TimePicker key={location.zone} slots={data.slots || []} location={location}
+    busy={mutation.busy} preview={status === "preview"} reschedule={booked}
+    availabilityError={data.availabilityError} refresh={() => void reload()}
+    submit={value => void change(booked ? "reschedule" : "book", value)}/>;
+  const title = past ? "Your interview time has passed" : unlinked ? "Check your booking with the hiring team"
+    : booked ? "Your interview is confirmed" : status === "cancel_pending" ? "Cancelling your interview"
+    : pending ? "Confirming your interview" : cancelled ? "Interview cancelled"
+    : failed ? "Calendar update needs attention" : "Choose your interview time";
+  return <article className="booking-card">
+    <header className="booking-heading">
+      <span className={'booking-mark' + (booked ? ' confirmed' : '')} aria-hidden="true">
+        {booked ? <Check size={23}/> : <CalendarDays size={23}/>}
+      </span>
+      <div><h1 aria-live="polite">{title}</h1><p>{data.jobTitle}</p></div>
+    </header>
+    {status === "preview" && <p className="booking-message">Booking opens when your recruiter sends the invitation.</p>}
+    {(booked || pending || failed || past) && validDate && <section className="booking-details" aria-label="Interview details">
+      <div><CalendarDays size={19} aria-hidden="true"/><div>
+        <strong>{format({weekday:"long", month:"long", day:"numeric", year:"numeric"})}</strong>
+        <span>{format({hour:"numeric", minute:"2-digit", hour12:true, timeZoneName:"long"})}</span>
+      </div></div>
+      {booked && interview?.meetUrl && <div><Video size={19} aria-hidden="true"/>
+        <a href={interview.meetUrl} target="_blank" rel="noopener noreferrer" referrerPolicy="no-referrer">
+          Join Google Meet <ExternalLink size={14} aria-hidden="true"/>
+        </a></div>}
+    </section>}
+    {booked && <div className="booking-prep"><h2>Before your interview</h2>
+      <p>Please join on time from a quiet place. Check your camera and microphone, and come ready to discuss your experience and the role.</p>
+    </div>}
+    {past && <p className="booking-message">Reply to your invitation if you have questions about next steps.</p>}
+    {unlinked && <p className="booking-message">We couldn’t verify this interview on the calendar. Reply to your invitation so the hiring team can check the time or send you a new link.</p>}
+    {pending && <div className="booking-message" role="status">
+      <p>{status === "cancel_pending" ? "We’re updating the calendar. This page will show when your cancellation is confirmed." : "We’re reserving your time on the calendar. Your confirmation will appear here automatically."}</p>
+      <button type="button" className="hub-text-button" onClick={() => void reload()}>Refresh booking status</button>
+    </div>}
+    {failed && <p className="booking-message">Your requested time is not a confirmed interview. Choose another time or reply to your invitation for help.</p>}
+    {cancelled && <p className="booking-message">Reply to your recruiting email if you would like a new invitation.</p>}
+    {booked ? <details className="booking-change"><summary>Reschedule interview</summary>{picker}</details> :
+      !pending && !cancelled && !past && !unlinked && picker}
+    {(booked || (failed && !!start)) && <details className="booking-change">
+      <summary>{failed ? "Cancel this interview request" : "Cancel this interview"}</summary>
+      <label className="hub-checkbox"><input type="checkbox" checked={cancelApproved} onChange={event => setCancelApproved(event.target.checked)}/>
+        I want to cancel the current interview.</label>
+      <button type="button" className="hub-button danger" disabled={!cancelApproved || mutation.busy} onClick={() => void change("cancel")}>Cancel interview</button>
+    </details>}
+    <Feedback error={mutation.error} success=""/>
+  </article>;
 }

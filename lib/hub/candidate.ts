@@ -7,7 +7,8 @@ import { assertSameOrigin, errorResponse, jsonResponse } from "../hiring/http";
 import { boundedBytes } from "../hiring/files";
 import { candidateInput, parse } from "./validation";
 import type { CandidateHooks } from "./types";
-import { HubStore } from "./store";
+import { HubStore, type InterviewRow } from "./store";
+import { linkedSlotSql } from "./interview-progress";
 
 export type CandidateSlot = { start: string; end: string };
 export async function availableSlots(
@@ -110,6 +111,19 @@ export async function availableSlots(
   }
   return slots;
 }
+// A legacy "booked" row can lack the calendar event or its times. Use the
+// same slot evidence as the team workspace before confirming a time to the candidate.
+function candidateInterview(store: HubStore, applicationId: string, interviewId?: string) {
+  return store.stmt(
+    `SELECT i.*, CASE
+      WHEN i.status='booked' AND NOT ${linkedSlotSql("i")} THEN 'unlinked'
+      WHEN i.status='booked' AND julianday(i.end)<=julianday('now') THEN 'past'
+      ELSE i.status END AS candidate_status
+     FROM hub_interviews i WHERE i.application_id=? ${interviewId !== undefined ? "AND i.id=?" : ""}
+     ORDER BY i.created_at DESC,i.id DESC LIMIT 1`,
+    applicationId, ...(interviewId !== undefined ? [interviewId] : []),
+  ).first<InterviewRow & { candidate_status: string }>();
+}
 async function details(token: string, store: HubStore, hooks: CandidateHooks) {
   const hash = await sha256(token),
     link = await store.candidateLink(hash),
@@ -160,22 +174,7 @@ async function details(token: string, store: HubStore, hooks: CandidateHooks) {
       404,
       "This invitation is no longer available.",
     );
-  const interview = await store
-    .stmt(
-      "SELECT * FROM hub_interviews WHERE id=? AND application_id=?",
-      payload.interviewId || "",
-      app.id,
-    )
-    .first<{
-      id: string;
-      status: string;
-      start: string | null;
-      end: string | null;
-      time_zone: string | null;
-      meet_url: string | null;
-      revision: number;
-      calendar_id: string | null;
-    }>();
+  const interview = await candidateInterview(store, app.id, payload.interviewId || "");
   if (!interview)
     throw new HiringError(
       "link_unavailable",
@@ -184,7 +183,7 @@ async function details(token: string, store: HubStore, hooks: CandidateHooks) {
     );
   let slots: CandidateSlot[] = [];
   let availabilityError: string | undefined;
-  if (!["pending", "cancel_pending", "cancelled"].includes(interview.status)) {
+  if (["invited", "booked", "failed"].includes(interview.candidate_status)) {
     try {
       slots = await availableSlots(store, hooks, interview.id, interview.calendar_id);
     } catch (error) {
@@ -204,12 +203,12 @@ async function details(token: string, store: HubStore, hooks: CandidateHooks) {
     public: {
       kind: "interview",
       jobTitle: app.job_title,
-      status: interview.status,
+      status: interview.candidate_status,
       interview: {
         ...(interview.start ? { start: interview.start } : {}),
         ...(interview.end ? { end: interview.end } : {}),
         ...(interview.time_zone ? { timeZone: interview.time_zone } : {}),
-        ...(interview.meet_url ? { meetUrl: interview.meet_url } : {}),
+        ...(interview.candidate_status === "booked" && interview.meet_url ? { meetUrl: interview.meet_url } : {}),
       },
       slots,
       ...(availabilityError ? { availabilityError } : {}),
@@ -230,8 +229,17 @@ export async function handleCandidateRequest(
         "This private link is unavailable.",
       );
     if (request.method === "GET") {
+      // Cloudflare populates cf.timezone from its own edge metadata. Client-supplied
+      // headers are never trusted on the direct AWS/Caddy deployment.
+      const edgeZone = (request as Request & {cf?: {timezone?: string}}).cf?.timezone;
+      let zoneHint: {locationTimeZone?: string} = {};
+      if (typeof edgeZone === "string" && edgeZone.length <= 80) {
+        try { zoneHint = {locationTimeZone:new Intl.DateTimeFormat("en-US",{timeZone:edgeZone}).resolvedOptions().timeZone}; }
+        catch { /* Unsupported edge metadata falls back to the browser. */ }
+      }
       try {
-        return jsonResponse({data:(await details(token,store,hooks)).public});
+        const detail = (await details(token,store,hooks)).public;
+        return jsonResponse({data:detail.kind === "interview" ? {...detail,...zoneHint} : detail});
       } catch(error) {
         if (!(error instanceof HiringError) || error.code !== 'link_unavailable') throw error;
         const draft = await getBookingDraft(store,await sha256(token));
@@ -241,7 +249,7 @@ export async function handleCandidateRequest(
         const calendar = draft.existingInterviewId ? await interviewCalendar(store,draft.existingInterviewId)
           : draft.organizer ? await personalCalendarSnapshot(store,draft.organizer,(process.env.ADMIN_EMAILS||'').split(',')) : null;
         const slots = await availableSlots(store,hooks,draft.existingInterviewId,calendar?.calendarId,calendar);
-        return jsonResponse({data:{kind:'interview',jobTitle:app.job_title,status:'preview',slots}});
+        return jsonResponse({data:{kind:'interview',jobTitle:app.job_title,status:'preview',slots,...zoneHint}});
       }
     }
     if (request.method !== "POST")
@@ -368,7 +376,7 @@ export async function handleCandidateRequest(
         404,
         "This interview invitation is unavailable.",
       );
-    const interview = await store.latestInterview(app.id);
+    const interview = await candidateInterview(store, app.id);
     if (!interview || interview.id !== payload.interviewId)
       throw new HiringError(
         "link_unavailable",
@@ -381,6 +389,10 @@ export async function handleCandidateRequest(
         409,
         "Your calendar change is being processed. Please check back shortly.",
       );
+    if (interview.candidate_status === "unlinked")
+      throw new HiringError("booking_unverified", 409, "Reply to your invitation so the hiring team can verify your booking.");
+    if (interview.candidate_status === "past")
+      throw new HiringError("interview_ended", 409, "This interview time has passed. Reply to your invitation to arrange a new interview.");
     const revision = interview.revision + 1;
     if (input.action === "cancel") {
       if (interview.status === "cancelled")

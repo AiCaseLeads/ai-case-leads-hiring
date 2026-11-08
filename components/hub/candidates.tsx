@@ -3,6 +3,7 @@ import {isHistoricalInterview} from "../../lib/hub/interview-history";
 import {ApplicantFilterDisclosure} from "./applicant-filter-disclosure";
 import {interviewCancelOutcome,interviewNavigationOutcome} from "./interview-draft-state";
 import {InterviewComposer,InterviewDiscardConfirmation,type InterviewDraftPayload} from "./interview-composer";
+import { INTERVIEW_VIEW_LABELS } from "../../lib/hub/interview-progress";
 import { ApplicantStageBadges, interviewProgressLabels } from "./interview-progress";
 import { normalizeApplicantScope, applicantStageChoice, applyApplicantStageChoice } from "./applicant-stage-filter";
 import { ClaimRadar } from "./claim-radar";
@@ -474,6 +475,7 @@ function JobCandidates({
         <Field label="Stage"><select disabled={invalidDates} value={applicantStageChoice(new URLSearchParams(filter))} onChange={event=>applyView(applyApplicantStageChoice(draftQuery(),event.target.value).toString())}>
           <option value="active">In progress</option><option value="all">All stages</option>
           <option value="active:exclude:Screening">In progress — not shortlisted</option>
+          <optgroup label="Interview schedule">{Object.entries(INTERVIEW_VIEW_LABELS).map(([value,label])=><option key={value} value={`interview:${value}`}>{label}</option>)}</optgroup>
           <optgroup label="Interview progress">{Object.entries(interviewProgressLabels).map(([value,label])=><option key={value} value={`interview:${value}`}>{label}</option>)}</optgroup>
           <optgroup label="Only this stage">{stages.map(value=><option key={value} value={`stage:${value}`}>{stageLabel(value)}</option>)}</optgroup>
           {excludeStage&&applicantStageChoice(new URLSearchParams(filter))!=="active:exclude:Screening"&&<option value={applicantStageChoice(new URLSearchParams(filter))}>{new URLSearchParams(filter).get("active")==="false"?"All":"Active"} — not {stageLabel(excludeStage).toLowerCase()}</option>}
@@ -697,6 +699,7 @@ function JobCandidates({
 export function CandidateDetail({
   id,
   back,
+  backLabel = "Back to applications",
   changed,
   initialAction = "note",
   navigationFilter = "",
@@ -708,6 +711,7 @@ export function CandidateDetail({
 }: {
   id: string;
   back: () => void;
+  backLabel?: string;
   changed: () => void;
   initialAction?: "note" | "interview";
   navigationFilter?: string;
@@ -930,7 +934,7 @@ export function CandidateDetail({
     <section ref={profileTop} className="hub-applicant-profile" aria-labelledby="candidate-title">
       {leaveRequest && <div className="hub-card" role="alertdialog" ref={leaveDialog} tabIndex={-1} aria-labelledby="leave-applicant-title"><h3 id="leave-applicant-title">Leave this applicant without saving?</h3><p>Your unsaved note or action will be discarded. Leaving does not send a new message. Check Activity for any email already pending.</p><div className="hub-button-row"><button type="button" className="hub-button" onClick={()=>{setLeaveRequest(null);leaveOrigin.current?.focus();}}>Keep editing</button><button type="button" className="hub-button secondary" onClick={()=>{const leave=leaveRequest;dirtyRef.current=false;setLeaveRequest(null);leave();}}>Discard changes and leave</button></div></div>}
       <div className="hub-profile-topbar">
-        <button className="hub-text-button hub-back" disabled={decisionBusy} onClick={()=>requestDraftNavigation(back)}><ArrowLeft size={16}/> Back to applications</button>
+        <button className="hub-text-button hub-back" disabled={decisionBusy} onClick={()=>requestDraftNavigation(back)}><ArrowLeft size={16}/> {backLabel}</button>
         {detail && !resource.loading && openApplicant && <ApplicantNavigation disabled={decisionBusy} detail={detail} filter={navigationFilter} jobs={navigationJobs} open={(id,filter)=>requestDraftNavigation(()=>openApplicant(id,filter,section))} viewed={changed}/>}
       </div>
       <ResourceState

@@ -1,4 +1,5 @@
-import { applicationInterviewProgressSql, interviewProgressForRowSql, type InterviewProgress } from './interview-progress';
+import { bookedReminderTimes, bookingFollowupDueAt, hasApprovedBookingEnvelope, currentBookedReminderSql, interviewRemindersEnabledSql, viableBookingInvitationSql } from './interview-reminders';
+import { applicationInterviewProgressSql, interviewProgressForRowSql, applicantInterviewFilter, type InterviewFilter, type InterviewProgress } from './interview-progress';
 import {draftKey,verifyBookingDraft} from './interview-booking-draft';
 import {isHistoricalInterview} from './interview-history';
 import {interviewMessage} from './interview-template';
@@ -55,7 +56,7 @@ export { DEFAULT_REJECTION } from "../hiring/email-templates";
 type Bind = string | number | null;
 export const APPLICATION_SORTS = ["newest","oldest","screening_newest","screening_asc","screening_desc","owner_asc","owner_desc","ai_match_asc","ai_match_desc","grade_desc"] as const;
 export type ApplicationFilters = {
-  interviewProgress?:InterviewProgress;
+  interviewProgress?:InterviewFilter;
   q?:string;jobId?:string;stage?:string;excludeStage?:string;active?:boolean;assignee?:string;qualification?:"pass"|"review"|"fail";
   appliedFrom?:string;appliedTo?:string;timeZone?:string;
   top?:10;grade?:"reviewed"|"ungraded";sort?:typeof APPLICATION_SORTS[number];duplicate?:boolean;page?:number;trash?:boolean;
@@ -566,6 +567,103 @@ export class HubStore {
       ),
     ];
   }
+  async bookingFollowupStatements(
+    input: { app: { id: string; email: string; name: string; job_title: string }; invitationTaskId: string;
+      invitationPayload: Record<string, unknown>; sentAt: number; now: number },
+    guard?: { sql: string; values: Bind[] },
+  ): Promise<D1PreparedStatement[]> {
+    const { app, invitationTaskId, invitationPayload: payload, sentAt, now } = input;
+    if (!isInterviewInvitationTask(invitationTaskId, app.id) || typeof payload.body !== 'string' ||
+        typeof payload.invitationHash !== 'string' || !this.options.origin || !Number.isFinite(sentAt) ||
+        sentAt > now || payload.to !== app.email) return [];
+    if (payload.followupOnDelivery !== true && !hasApprovedBookingEnvelope(payload, app.email)) return [];
+    const [interviewId, , version] = invitationTaskId.slice(`gmail:${app.id}:interview:`.length).split(':');
+    // Only reuse the actual link in the sent invitation. Templates can contain other URLs.
+    const prefix = this.options.origin.replace(/\/$/, '') + '/interview/';
+    let bookingUrl: string | undefined;
+    for (const match of payload.body.matchAll(/https?:\/\/[^\s<>"']*?\/interview\/([a-f0-9]{64})\b/g)) {
+      if (match[0] === prefix + match[1] && await sha256(match[1]) === payload.invitationHash) {
+        bookingUrl = match[0];
+        break;
+      }
+    }
+    if (!bookingUrl) return [];
+    const dueAt = bookingFollowupDueAt(sentAt);
+    const link = await this.stmt("SELECT expires_at FROM hub_links WHERE token_hash=? AND application_id=? AND kind='interview'",
+      payload.invitationHash, app.id).first<{ expires_at: number }>();
+    if (!link || link.expires_at <= Math.max(now, dueAt)) return [];
+    const subject = `Choose your interview time: ${app.job_title}`;
+    const body = `Hi ${app.name},\n\nWe’d still like to meet with you about the ${app.job_title} role. Please choose a time using your private booking link:\n${bookingUrl}\n\nIf you have questions, reply to this email.\n\nAI Case Leads Hiring Team`;
+    return this.mailStatements(
+      `gmail:${app.id}:booking-followup:${interviewId}:${version}`, app, subject, body, now,
+      'Follow-up with a private interview booking link.', {
+        runAfter: dueAt,
+        metadata: {
+          bookingFollowup: true, dueAt, expiresAt: link.expires_at, invitationHash: payload.invitationHash,
+          interviewId, invitationTaskId, mailMode: 'recruiter', actor: payload.actor,
+          interviewerEmail: payload.interviewerEmail, approvedEnvelope: payload.approvedEnvelope,
+        },
+        guard: {
+          sql: `${interviewRemindersEnabledSql} AND ${viableBookingInvitationSql}${guard ? ' AND ' + guard.sql : ''}`,
+          values: [invitationTaskId, app.id, payload.invitationHash, interviewId, now, ...(guard?.values || [])],
+        },
+      },
+    );
+  }
+
+  confirmedBookingMailStatements(
+    input: { app: { id: string; email: string; name: string; job_title: string }; interviewId: string;
+      revision: number; start: string; meetUrl: string; timeZone: string; now: number; confirmation?: "create" | "update" },
+    guard?: { sql: string; values: Bind[] },
+  ): D1PreparedStatement[] {
+    const { app, interviewId, revision, start, meetUrl, timeZone, now } = input;
+    const startMs = Date.parse(start);
+    if (!Number.isFinite(startMs) || startMs <= now || !interviewId || !Number.isSafeInteger(revision) || revision < 1) return [];
+    let formatted: string;
+    try {
+      const url = new URL(meetUrl);
+      if (url.origin !== 'https://meet.google.com' || url.pathname.length < 2 || url.username || url.password) return [];
+      formatted = new Intl.DateTimeFormat('en-US', {
+        weekday: 'long', month: 'long', day: 'numeric', year: 'numeric',
+        hour: 'numeric', minute: '2-digit', hour12: true, timeZoneName: 'short', timeZone,
+      }).format(startMs);
+    } catch { return []; }
+    const details = `Please join on time and come prepared to discuss your experience.\n\nJoin Google Meet: ${meetUrl}\n\nAI Case Leads Hiring Team`;
+    const stateGuard = {
+      sql: `${currentBookedReminderSql} AND EXISTS (SELECT 1 FROM hub_interviews WHERE id=? AND meet_url=?)${guard ? ' AND ' + guard.sql : ''}`,
+      values: [interviewId, app.id, revision, start, interviewId, meetUrl, ...(guard?.values || [])],
+    };
+    const metadata = { interviewId, revision, interviewStart: start, meetUrl };
+    const statements: D1PreparedStatement[] = [];
+    // Only a successful provider mutation requests a confirmation; the existing-booking
+    // backfill schedules remaining reminders without replaying a booking event.
+    if (input.confirmation) {
+      const action = input.confirmation === 'create' ? 'confirmed' : 'rescheduled';
+      const subject = `Interview ${action}: ${app.job_title}`;
+      const body = `Hi ${app.name},\n\nYour interview for ${app.job_title} is ${action} for ${formatted}.\n\n${details}`;
+      statements.push(...this.mailStatements(
+        `gmail:${app.id}:booking-confirmation:${interviewId}:${revision}`,
+        app, subject, body, now, body,
+        { metadata: { ...metadata, bookingConfirmation: true }, guard: stateGuard },
+      ));
+    }
+    for (const { label, before } of bookedReminderTimes) {
+      const due = startMs - before;
+      if (due <= now) continue;
+      const subject = `Interview reminder: ${app.job_title}`;
+      const body = `Hi ${app.name},\n\nYour interview for ${app.job_title} is scheduled for ${formatted}. ${details}`;
+      statements.push(...this.mailStatements(
+        `gmail:${app.id}:reminder:${interviewId}:${revision}:${label}`, app, subject, body, now, body,
+        {
+          runAfter: due,
+          metadata: { ...metadata, reminder: true },
+          guard: { sql: `${interviewRemindersEnabledSql} AND ${stateGuard.sql}`, values: stateGuard.values },
+        },
+      ));
+    }
+    return statements;
+  }
+
   async acceptApplication(
     input: ApplicationInput,
     sessionHash = this.options.sessionHash,
@@ -818,8 +916,9 @@ export class HubStore {
     for(const [key,column] of [["jobId","job_id"],["stage","stage"],["assignee","assignee"],["qualification","qualification"]] as const)
       if(filters[key]) {if(key==="assignee"&&filters[key]==="unassigned")where.push("(a.assignee IS NULL OR trim(a.assignee)='')");else {where.push(`a.${column}=?`);values.push(filters[key]!);}}
     if(filters.interviewProgress) {
-      where.push(`${applicationInterviewProgressSql}=?`);
-      values.push(filters.interviewProgress);
+      const predicate = applicantInterviewFilter(filters.interviewProgress);
+      where.push(predicate.sql);
+      values.push(...predicate.values);
     }
     if(filters.excludeStage){where.push("a.stage<>?");values.push(filters.excludeStage);}
     if(filters.active&&!filters.stage)where.push("a.stage NOT IN ('Rejected','Withdrawn','Hired')");
@@ -965,7 +1064,7 @@ export class HubStore {
     const duplicateCount = await this.stmt("SELECT COUNT(*) AS count FROM hub_applications WHERE email=?",app.email).first<{count:number}>();
     const cards = scorecards.map((card) => ({id:card.id,actor:card.actor,score:card.score,criteria:card.criteria,text:card.text,createdAt:card.created_at}));
     const view=viewerEmail?await this.stmt("SELECT viewed_at FROM hub_application_views WHERE application_id=? AND viewer_email=?",id,viewerEmail.trim().toLowerCase()).first<{viewed_at:number}>():null;
-    return {...summary(app),interviewProgress:interviews[0]?.progress ?? "none",...(viewerEmail?{viewedAt:view?.viewed_at??null}:{}),trashed:!!await applicationTrash(this,id),archiveProject:app.archive_project || undefined,archiveCountry:app.archive_country || undefined,hiringRound:app.hiring_round || undefined,revision:app.revision,formVersion:app.form_version,utmData:decode(app.utm_json,{}),
+    return {...summary(app),interviewProgress:interviews[0]?.progress ?? (app.stage === "Interview" || app.stage === "Second Round Interview" ? "unlinked" : "none"),...(viewerEmail?{viewedAt:view?.viewed_at??null}:{}),trashed:!!await applicationTrash(this,id),archiveProject:app.archive_project || undefined,archiveCountry:app.archive_country || undefined,hiringRound:app.hiring_round || undefined,revision:app.revision,formVersion:app.form_version,utmData:decode(app.utm_json,{}),
       duplicateEmail:(duplicateCount?.count || 1)>1,duplicateApplicationCount:duplicateCount?.count || 1,grade:gradeForScorecards(cards),aiMatch:await matchDetail(this,id),
       answers:decode(app.answers_json,[]),fields:decode(app.fields_json,[]),qualificationEvidence:decode(app.qualification_json,[]),
       files:files.map((file) => ({id:file.id,fieldPath:file.field_path,filename:file.filename,contentType:file.content_type,size:file.size,url:`/api/files/${encodeURIComponent(file.id)}`})),
@@ -1023,7 +1122,7 @@ export class HubStore {
       this.setting<number[]>("interview_weekdays", [1, 2, 3, 4, 5]),
       this.setting("google_calendar_id", ""),
       this.setting("interview_availability_approved", false),
-      this.setting("interview_reminders_enabled", false),
+      this.setting("interview_reminders_enabled", true),
     ]);
     return {
       timeZone,
@@ -1658,7 +1757,7 @@ export class HubStore {
             message.body,
             now,
             "Interview invitation with a private candidate link.",
-            {metadata:{mailMode:"recruiter",actor:member.email,...(message.interviewerEmail?{interviewerEmail:message.interviewerEmail}:{}),...(preview?{templateVersion:message.templateVersion,approvedEnvelope:message.envelope,invitationHash:hash}:{})}},
+            {metadata:{mailMode:"recruiter",actor:member.email,followupOnDelivery:true,invitationHash:hash,...(message.interviewerEmail?{interviewerEmail:message.interviewerEmail}:{}),...(preview?{templateVersion:message.templateVersion,approvedEnvelope:message.envelope}:{})}},
           ),
         );
         stage = renewing || app.stage==="Second Round Interview" ? app.stage : "Interview";
@@ -2077,91 +2176,24 @@ export class HubStore {
           ),
         );
     }
-    if (
-      current.kind === "calendar" &&
-      result.status === "done" &&
-      result.result?.stale !== true &&
-      (await this.setting("interview_reminders_enabled", false)) === true
-    ) {
-      const payload = decode<Record<string, unknown>>(current.payload_json, {}),
-        start = String(payload.start || ""),
-        startMs = Date.parse(start),
-        timeZone = String(payload.timeZone || ""),
-        interviewId = String(payload.interviewId || ""),
-        revision = Number(payload.revision);
-      const meetUrl =
-        typeof result.result?.meetUrl === "string" ? result.result.meetUrl : "";
-      let verifiedMeet = false;
-      try {
-        const url = new URL(meetUrl);
-        verifiedMeet =
-          url.origin === "https://meet.google.com" &&
-          !url.username &&
-          !url.password;
-      } catch {}
-      if (
-        ["create", "update"].includes(String(payload.operation)) &&
-        Number.isFinite(startMs) &&
-        startMs > now &&
-        verifiedMeet &&
-        interviewId &&
-        Number.isSafeInteger(revision) &&
-        revision > 0
-      ) {
-        let formatted: string | undefined;
-        try {
-          formatted = new Intl.DateTimeFormat("en", {
-            dateStyle: "full",
-            timeStyle: "long",
-            timeZone,
-          }).format(startMs);
-        } catch {}
-        if (formatted) {
-          const app = await this.applicationRow(current.application_id);
-          for (const [label, hours] of [
-            ["24h", 24],
-            ["1h", 1],
-          ] as const) {
-            const runAfter = startMs - hours * 3600000;
-            if (runAfter <= now) continue;
-            const reminderId = `gmail:${app.id}:reminder:${interviewId}:${revision}:${label}`,
-              subject = `Interview reminder: ${app.job_title}`,
-              body = `Hi ${app.name},\n\nYour interview for ${app.job_title} is scheduled for ${formatted}.\nTime zone: ${timeZone}\nGoogle Meet: ${meetUrl}\n\nAI Case Leads Hiring Team`;
-            statements.push(
-              ...this.mailStatements(
-                reminderId,
-                summary(app),
-                subject,
-                body,
-                now,
-                body,
-                {
-                  runAfter,
-                  metadata: {
-                    reminder: true,
-                    interviewId,
-                    revision,
-                    interviewStart: start,
-                  },
-                  guard: {
-                    sql: `EXISTS (SELECT 1 FROM hub_settings WHERE key='interview_reminders_enabled' AND value='true') AND EXISTS (SELECT 1 FROM hub_interviews i JOIN hub_applications a ON a.id=i.application_id WHERE i.id=? AND i.application_id=? AND i.revision=? AND i.status='booked' AND i.start=? AND i.meet_url=? AND a.stage NOT IN ('Rejected','Withdrawn','Hired')) AND ${completed}`,
-                    values: [
-                      interviewId,
-                      app.id,
-                      revision,
-                      start,
-                      meetUrl,
-                      id,
-                      leaseToken,
-                      result.status,
-                      now,
-                    ],
-                  },
-                },
-              ),
-            );
-          }
-        }
+    if (result.status === "done" && result.result?.stale !== true) {
+      const payload = decode<Record<string, unknown>>(current.payload_json, {});
+      const guard = { sql: completed, values: [id, leaseToken, result.status, now] };
+      if (current.kind === "calendar" && ["create","update"].includes(String(payload.operation))) {
+        statements.push(...this.confirmedBookingMailStatements({
+          app: await this.applicationRow(current.application_id),
+          interviewId: String(payload.interviewId), revision: Number(payload.revision), start: String(payload.start),
+          timeZone: String(payload.timeZone), meetUrl: String(result.result?.meetUrl || ''), now,
+          confirmation: payload.operation === 'create' ? 'create' : 'update',
+        }, guard));
+      }
+      // Direct delivery and reconciliation both supply the confirmed provider ID.
+      if (current.kind === 'gmail' && isInterviewInvitationTask(id, current.application_id) &&
+          typeof result.result?.id === 'string' && result.result.id) {
+        statements.push(...await this.bookingFollowupStatements({
+          app: await this.applicationRow(current.application_id), invitationTaskId: id,
+          invitationPayload: payload, sentAt: now, now,
+        }, guard));
       }
     }
     if (current.kind !== "drive") {

@@ -111,15 +111,15 @@ test("an automatic send followed by local result-persistence failure remains unc
     assert.equal(database.prepare("SELECT status FROM hub_tasks WHERE kind='gmail'").get()?.status,"uncertain");
   }finally{database.close();}
 });
-for(const scenario of ["current","disabled","cancelled","rescheduled","past","inactive"]){
+for(const scenario of ["current","disabled","cancelled","rescheduled","past","inactive","late","unlinked"]){
   test(`interview reminder processor: ${scenario} booking is checked before automatic mail`,async(t)=>{
  const prior=process.env.CANDIDATE_MAIL_ACCOUNT;process.env.CANDIDATE_MAIL_ACCOUNT="mariam@aicaseleads.com";t.after(()=>{if(prior===undefined)delete process.env.CANDIDATE_MAIL_ACCOUNT;else process.env.CANDIDATE_MAIL_ACCOUNT=prior;});
     const {database,db,store}=customDatabase();try{
       const role=await openSyntheticRole(store),app=await application(store,role.id);
       database.exec("DELETE FROM hub_communications; DELETE FROM hub_tasks");
       await store.setSetting("interview_reminders_enabled",scenario!=="disabled");
-      const start=new Date(Date.now()+(scenario==="past"?-1:48)*3600000).toISOString();
-      await db.prepare("INSERT INTO hub_interviews (id,application_id,status,start,end,time_zone,calendar_id,revision,created_at,updated_at) VALUES (?, ?, ?, ?, ?, 'UTC','synthetic-calendar',?, ?, ?)").bind("synthetic-interview",app.id,scenario==="cancelled"?"cancelled":"booked",start,new Date(Date.parse(start)+1800000).toISOString(),scenario==="rescheduled"?2:1,Date.now(),Date.now()).run();
+      const start=new Date(Date.now()+(scenario==="past"?-1:scenario==="late"?0.5:1)*3600000).toISOString();
+      await db.prepare("INSERT INTO hub_interviews (id,application_id,status,start,end,time_zone,calendar_id,provider_id,meet_url,revision,created_at,updated_at) VALUES (?, ?, ?, ?, ?, 'UTC','synthetic-calendar',?,'https://meet.google.com/test',?, ?, ?)").bind("synthetic-interview",app.id,scenario==="cancelled"?"cancelled":"booked",start,new Date(Date.parse(start)+1800000).toISOString(),scenario==="unlinked"?null:"confirmed-event",scenario==="rescheduled"?2:1,Date.now(),Date.now()).run();
       if(scenario==="inactive")await db.prepare("UPDATE hub_applications SET stage='Rejected' WHERE id=?").bind(app.id).run();
       const id=`gmail:${app.id}:reminder:synthetic-interview:1:1h`;
       const payload={to:"synthetic@example.invalid",subject:"Synthetic interview reminder",body:"Synthetic",messageId:`<${id}@example.invalid>`,reminder:true,interviewId:"synthetic-interview",revision:1,interviewStart:start};

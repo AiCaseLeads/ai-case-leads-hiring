@@ -665,7 +665,7 @@ test("source quality counts distinct applicants with recorded attendance and use
   database.close();
 });
 
-test("reminder opt-in is an explicit boolean manager setting", async () => {
+test("interview emails default on and only managers can change the boolean setting", async () => {
   const { store, database } = createStore();
   const patch = (body: unknown) =>
     new Request("https://jobs.example.invalid/api/hub/settings", {
@@ -676,7 +676,7 @@ test("reminder opt-in is an explicit boolean manager setting", async () => {
       },
       body: JSON.stringify(body),
     });
-  assert.equal((await store.settings()).scheduling.remindersEnabled, false);
+  assert.equal((await store.settings()).scheduling.remindersEnabled, true);
   assert.equal(
     (
       await handleHubRequest(
