@@ -66,3 +66,50 @@ test("country search uses the job’s effective residence rules and the advertis
   assert.deepEqual(postingLocationCountries("On-site · Los Angeles, CA, United States"),["US"]);
   assert.deepEqual(postingLocationCountries("Remote"),[]);
 });
+
+test("the active role directory and first-review queue count the same applications", async t => {
+  const {store,database}=createStore(); t.after(()=>database.close());
+  const india=await store.saveJob({...jobInput(),title:"Engineer – India",location:"India"});
+  const usa=await store.saveJob({...jobInput(),title:"Engineer – USA",location:"USA"});
+  const retired=await store.saveJob({...jobInput(),title:"Retired engineer"});
+  const paused=await store.saveJob({...jobInput(),title:"Paused posting"});
+  const empty=await store.saveJob({...jobInput(),title:"Empty role"});
+  const other=await store.saveJob({...jobInput(),title:"Unrelated opening"});
+  const submissions=await Promise.all([india,usa,india,usa,retired,paused,other].map(j=>store.acceptApplication(applicationInput(j.id))));
+  await store.stmt("UPDATE hub_applications SET stage='Screening' WHERE id=?",submissions[2].id).run();
+  await store.setSetting("application_trash:"+submissions[3].id,{deletedAt:Date.now()});
+  // Old/imported jobs can retain open status and an archived lifecycle record.
+  await store.setSetting("job_lifecycle_"+retired.id,{state:"archived"});
+  await store.stmt("UPDATE hub_jobs SET status='closed' WHERE id=?",paused.id).run();
+  await store.saveJob({...jobInput(),status:"draft"});
+  const role=(await changeJobGroups(store,RECRUITER,{
+    action:"save",kind:"role",name:"Engineer",jobIds:[india.id,usa.id,retired.id,paused.id],expectedRevision:0,
+  })).groups[0];
+  await changeJobGroups(store,RECRUITER,{
+    action:"save",kind:"folder",name:"Folder only",jobIds:[empty.id,other.id,india.id],expectedRevision:1,
+  });
+  const url="https://jobs.example.invalid/api/hub/applicant-roles";
+  const directory=await handleHubRequest(new Request(url),["applicant-roles"],RECRUITER,store);
+  assert.equal(directory.status,200);
+  const {data:{roles}}=await directory.json() as {data:Awaited<ReturnType<typeof import("../../lib/hub/applicant-roles").applicantRoleDirectory>>};
+  assert.equal(roles.length,3);
+  assert.equal(roles.at(-1)?.jobId,empty.id);
+  const group=roles.find(x=>x.jobGroupId===role.id)!;
+  assert.deepEqual({...group,locations:group.locations.sort()},{
+    jobGroupId:role.id,name:"Engineer",locations:["India","USA"],reviewCount:2,postingCount:2,
+  });
+  assert.equal(roles.find(x=>x.jobId===other.id)?.reviewCount,1);
+  const endpoint="https://jobs.example.invalid/api/hub/applications?";
+  const params=new URLSearchParams({jobGroupId:role.id,stage:"Application Review",openPostings:"true"});
+  const result=await handleHubRequest(new Request(endpoint+params),["applications"],RECRUITER,store);
+  const {data:queue}=await result.json() as {data:Awaited<ReturnType<typeof store.applications>>};
+  assert.equal(queue.total,group.reviewCount);
+  assert.equal(queue.scopeTotal,3); // both initial applications and the one in Screening
+  assert.deepEqual(queue.items.map(x=>x.id).sort(),submissions.slice(0,2).map(x=>x.id).sort());
+  const scope={jobGroupId:role.id,openPostings:true,stage:"Application Review"};
+  assert.equal((await store.applicationNavigation(submissions[0].id,scope)).total,2);
+  assert.deepEqual((await store.exportApplications(scope)).items.map(x=>x.id).sort(),queue.items.map(x=>x.id).sort());
+  assert.equal((await store.applications({jobGroupId:role.id})).total,5); // explicit historical scope still works
+  const anonymous=await handleHubRequest(new Request(url),["applicant-roles"],{...RECRUITER,email:""},store);
+  assert.equal(anonymous.status,403);
+});

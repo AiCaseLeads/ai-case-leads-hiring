@@ -59,7 +59,7 @@ test('the Home create shortcut keeps drafts through browser Back and Forward',as
  await page.goBack();await page.getByRole('heading',{name:'What should applicants send?',exact:true}).waitFor();await page.goBack();await page.getByRole('heading',{name:'Tell applicants about the job',exact:true}).waitFor();assert.equal(await page.getByLabel('Job title',{exact:true}).inputValue(),'Unsaved Home draft');
 });
 
-test('direct applicant link Back returns applications rather than Home',async t=>{const{page}=await setup(t);await page.goto(new URL('/?application=app-1',page.url()).href);await page.getByRole('heading',{name:'Synthetic Applicant',exact:true}).waitFor();await page.getByRole('button',{name:'Back to applications',exact:true}).click();await page.getByRole('heading',{name:'Applicants',exact:true}).waitFor({timeout:2500});});
+test('direct applicant link Back returns to the active role directory',async t=>{const{page}=await setup(t);await page.goto(new URL('/?application=app-1',page.url()).href);await page.getByRole('heading',{name:'Synthetic Applicant',exact:true}).waitFor();await page.getByRole('button',{name:'Back to applications',exact:true}).click();await page.getByRole('heading',{name:'Active roles',exact:true}).waitFor({timeout:2500});});
 
 test('returning after a candidate stage change clears stale bulk selections and approval',async t=>{
  const{page}=await setup(t,'&jobId=job-1&stage=Application%20Review');

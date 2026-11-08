@@ -52,7 +52,7 @@ import {
   type JobInput,
   type SettingsInput,
 } from "./validation";
-import { assertJobEditable, jobLifecycleKey, type JobLifecycle } from "./job-lifecycle";
+import { assertJobEditable, openPostingSql, jobLifecycleKey, type JobLifecycle } from "./job-lifecycle";
 
 import { DEFAULT_REJECTION } from "../hiring/email-templates";
 export { DEFAULT_REJECTION } from "../hiring/email-templates";
@@ -64,7 +64,7 @@ export type ApplicationFilters = {
   listId?:string;listViewer?:string;
   interviewProgress?:InterviewFilter;
   handoffReturned?:boolean;
-  q?:string;jobId?:string;jobGroupId?:string;stage?:string;excludeStage?:string;active?:boolean;assignee?:string;qualification?:"pass"|"review"|"fail";
+  q?:string;jobId?:string;jobGroupId?:string;openPostings?:boolean;stage?:string;excludeStage?:string;active?:boolean;assignee?:string;qualification?:"pass"|"review"|"fail";
   appliedFrom?:string;appliedTo?:string;timeZone?:string;
   top?:10;grade?:"reviewed"|"ungraded";sort?:typeof APPLICATION_SORTS[number];duplicate?:boolean;page?:number;trash?:boolean;
 };
@@ -926,6 +926,7 @@ export class HubStore {
     if ((filters.grade || (filters.sort && ["grade_desc","ai_match_desc","ai_match_asc"].includes(filters.sort))) && !filters.jobId)
       throw new HiringError("job_required_for_grading",422,"Choose one role before filtering or sorting reviewer grades.");
     const where:string[] = [filters.trash?`NOT (${activeApplicationsSql('a')})`:activeApplicationsSql('a')], values:Bind[] = [];
+    if (filters.openPostings) where.push(`a.job_id IN (SELECT j.id FROM hub_jobs j WHERE ${openPostingSql("j")})`);
     if (filters.jobGroupId) {
       where.push(`a.job_id IN (${jobGroupPostingIdsSql})`);
       values.push(filters.jobGroupId);
@@ -1032,7 +1033,7 @@ export class HubStore {
     const count=await this.stmt(`${selected.cte}SELECT COUNT(*) AS total FROM hub_applications a${selected.join}${selected.clause}`,...selected.values).first<{total:number}>();
     const rows=await this.rows<ApplicationRow>(`${selected.cte}SELECT ${SUMMARY_COLUMNS.split(",").map((column)=>`a.${column}`).join(",")},${applicationInterviewProgressSql} AS interview_progress,(SELECT COUNT(*) FROM hub_applications d WHERE d.email=a.email) AS duplicate_application_count FROM hub_applications a${selected.join}${selected.clause} ORDER BY ${selected.order} LIMIT ? OFFSET ?`,...selected.values,pageSize,(page-1)*pageSize);
     const scope = this.applicationSelection({
-      jobId: filters.jobId, jobGroupId: filters.jobGroupId, listId: filters.listId,
+      jobId: filters.jobId, jobGroupId: filters.jobGroupId, openPostings: filters.openPostings, listId: filters.listId,
       listViewer: filters.listViewer, trash: filters.trash,
     });
     const scopeCount = await this.stmt(`SELECT COUNT(*) AS n FROM hub_applications a${scope.join}${scope.clause}`,...scope.values).first<{n:number}>();

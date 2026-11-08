@@ -27,6 +27,7 @@ async function setup(t,{role='admin',isOwner=true,browserZoom=1}={}) {
  await page.route('**/api/**',route=>{
   const path=new URL(route.request().url()).pathname;if(route.request().method()!=='GET')writes.push(path);let data={};
   if(path==='/api/hub/overview')data={counts:{applications:1,active:1,rejected:0,hired:0},stageCounts:[{stage:'Application Review',count:1}],recentApplications:[detail],integrations:{google:true,drive:true,applicationsEnabled:true},jobs:[job]};
+  if(path==='/api/hub/applicant-roles')data={roles:[{jobId:job.id,name:job.title,locations:[job.location],postingCount:1,reviewCount:1}]};
   if(path==='/api/hub/application-counts')data={items:[{jobId:job.id,total:1,needsReview:1,aiReady:0}]};
   if(path==='/api/hub/recruiting-help')data={items:[],hasMore:false};
   if(path==='/api/interview-readiness')data={sender:longEmail,mailReady:true,mailIssue:null,sharedCalendarReady:true,interviewers:[{email:longEmail,ready:true}]};
@@ -85,8 +86,8 @@ test('redesigned workspace stays usable across mobile, tablet and desktop widths
    await page.keyboard.press('Enter');await page.getByRole('navigation',{name:'Hiring workspace'}).getByRole('button',{name:'Applicants',exact:true}).click();
    assert.equal(await page.getByRole('button',{name:'Open workspace menu'}).getAttribute('aria-expanded'),'false');
   }
-  await page.goto(origin+'/?view=applications');await page.getByRole('heading',{name:'Applicants',exact:true}).waitFor();await noOverflow(page);
-  await page.getByLabel('Role or posting',{exact:true}).selectOption('job:job-1');
+  await page.goto(origin+'/?view=applications');await page.getByRole('heading',{name:'Active roles',exact:true}).waitFor();await noOverflow(page);
+  await page.getByRole('link').filter({hasText:job.title}).click();
   await page.getByRole('link',{name:detail.name,exact:true}).waitFor();await noOverflow(page);
   const options=page.getByLabel('Application options',{exact:true});
   await options.focus();await page.keyboard.press('Enter');

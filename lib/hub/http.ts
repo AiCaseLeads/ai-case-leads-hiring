@@ -1,4 +1,5 @@
 import { createApplicationSelection, getApplicationSelection } from "./application-selections";
+import { applicantRoleDirectory } from "./applicant-roles";
 import { jobGroupCatalog, changeJobGroups } from "./job-groups";
 import { isInterviewFilter, type InterviewFilter } from './interview-progress';
 import {claimHistory} from './claim-history';
@@ -64,6 +65,8 @@ function applicationFilters(request: Request, member: HubMember) {
       const jobGroupId = params.get("jobGroupId") || undefined;
       if (jobGroupId && (jobId || !/^[a-f0-9-]{36}$/i.test(jobGroupId)))
         throw new HiringError("invalid_job_group",422,"Choose one role group or one posting.");
+      if (params.has("openPostings") && (params.get("openPostings") !== "true" || (!jobId && !jobGroupId)))
+        throw new HiringError("invalid_job_scope",422,"Select an active role or posting.");
       if ((params.has('active')&&!['true','false'].includes(params.get('active')||'')) || (params.has('trash')&&params.get('trash')!=='true') || (q?.length || 0) > 200 || !/^\d{1,6}$/.test(page))
         throw new HiringError(
           "invalid_filter",
@@ -91,6 +94,7 @@ function applicationFilters(request: Request, member: HubMember) {
         top: params.get("top") === "10" ? 10 as const : undefined,
         jobId,
         jobGroupId,
+        openPostings: params.get('openPostings') === 'true',
         stage,
         excludeStage,
         assignee: params.get("assignee") || undefined,
@@ -149,6 +153,8 @@ export async function handleHubRequest(
       return jsonResponse({data});
     }
     let data: unknown;
+    if (section === "applicant-roles" && path.length === 1 && request.method === "GET")
+      return jsonResponse({data: await applicantRoleDirectory(store)});
     if (section === "job-groups" && path.length === 1) {
       if (request.method === "GET") return jsonResponse({data:await jobGroupCatalog(store)});
       if (request.method === "POST") return jsonResponse({data:await changeJobGroups(store,member,await json(request))});

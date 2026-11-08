@@ -25,6 +25,7 @@ import { useHubResource, displayDate } from "./api";
 import { sortHubJobs } from "./job-order";
 import { normalizeApplicantScope } from "./applicant-stage-filter";
 import { CandidateDetail, Candidates } from "./candidates";
+import { ApplicantRoleDirectory } from "./applicant-role-directory";
 import { Jobs } from "./jobs";
 import { Reports, reportSections, type ReportSection } from "./reports";
 import { HubSettings, Tasks, type SettingsSection } from "./settings";
@@ -34,7 +35,7 @@ import { stageLabel, stages, type Member, type Overview } from "./types";
 
 type View =
   "overview" | "applications" | "interviews" | "jobs" | "reports" | "tasks" | "settings";
-const applicantFilters = ["q", "jobId", "jobGroupId", "country", "listId", "columns", "stage", "excludeStage", "interviewProgress", "handoffReturned", "assignee", "qualification", "grade", "sort", "top", "active", "duplicate", "trash", "appliedFrom", "appliedTo", "timeZone"] as const;
+const applicantFilters = ["q", "jobId", "jobGroupId", "openPostings", "country", "listId", "columns", "stage", "excludeStage", "interviewProgress", "handoffReturned", "assignee", "qualification", "grade", "sort", "top", "active", "duplicate", "trash", "appliedFrom", "appliedTo", "timeZone"] as const;
 const navigation = [
   { id: "overview", label: "Home", icon: LayoutDashboard },
   { id: "applications", label: "Applicants", icon: ClipboardList },
@@ -46,11 +47,13 @@ const navigation = [
 export function HiringDashboard({
   member,
   signOutHref,
+  startInRoleDirectory = false,
 }: {
   member: Member;
   signOutHref: string;
+  startInRoleDirectory?: boolean;
 }) {
-  const [view, setView] = useState<View>("overview"),
+  const [view, setView] = useState<View>(startInRoleDirectory ? "applications" : "overview"),
     [refresh, setRefresh] = useState(0),
     [detailId, setDetailId] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -66,6 +69,7 @@ export function HiringDashboard({
   function showDecision(message:string,next:string|null=null){decisionContext.current={href:window.location.href,next};setDecisionNotice(message);setDecisionSequence(value=>value+1);}
   useEffect(()=>{if(!decisionNotice)return;const timer=window.setTimeout(dismissDecision,8000);return()=>window.clearTimeout(timer);},[decisionNotice,decisionSequence]);
   const [createJob, setCreateJob] = useState(0);
+  const [roleSearch, setRoleSearch] = useState("");
   const [initialStage, setInitialStage] = useState("");
   const [interviewView, setInterviewView] = useState("upcoming");
   const [initialJobId, setInitialJobId] = useState("");
@@ -209,6 +213,7 @@ export function HiringDashboard({
     if (page > 1) url.searchParams.set("page", String(page));
     navigate(url, replace);
   }
+  const showApplicantQueue = initialFilter.length > 0 || initialPage > 1;
   function selectInterviewView(role: string, progress: string, page: number) {
     const url = viewUrl("interviews");
     if (role) url.searchParams.set("jobId", role);
@@ -246,6 +251,7 @@ export function HiringDashboard({
                   view === item.id ? "page" : undefined
                 }
                 onClick={() => {
+                  if (item.id === "applications") setRoleSearch("");
                   changeView(item.id);
                   if (menuButton.current?.offsetParent) menuButton.current.focus();
                 }}
@@ -295,7 +301,9 @@ export function HiringDashboard({
         <main id="hub-main" className="hub-main">
           {workspaceNotice && <p className="hub-notice" role="status">{workspaceNotice}</p>}
           {decisionNotice && <div className="hub-notice" style={{display:"flex",alignItems:"center",gap:12,justifyContent:"space-between"}}><p role="status" style={{margin:0}}>{decisionNotice}</p><button type="button" className="hub-text-button" aria-label="Dismiss decision notification" onClick={dismissDecision}>Dismiss</button></div>}
-          {view === "applications" && <div hidden={!!detailId}><Candidates
+          {view === "applications" && !showApplicantQueue && !detailId &&
+            <ApplicantRoleDirectory search={roleSearch} setSearch={setRoleSearch} refresh={refresh} onOpen={filter => applyFilters(filter, 1)}/>}
+          {view === "applications" && showApplicantQueue && <div hidden={!!detailId}><Candidates
             key={data?.jobs.some(job => job.id === initialJobId) ? initialJobId : "job-index"}
             initialStage={initialStage}
             initialJobId={initialJobId}
@@ -307,6 +315,7 @@ export function HiringDashboard({
             changed={changed}
             onSelect={selectApplication}
             onFilterChange={applyFilters}
+            onBackToRoles={() => changeView("applications")}
           /></div>}
           {detailId ? (
             <CandidateDetail

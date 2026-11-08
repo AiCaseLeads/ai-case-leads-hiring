@@ -16,6 +16,11 @@ export const jobGroupPostingIdsSql = `SELECT m.value FROM hub_settings s,
   json_each(s.value,'$.groups') g, json_each(g.value,'$.jobIds') m
   WHERE s.key='${catalogKey}' AND json_extract(g.value,'$.id')=?`;
 
+export const rolePostingMembershipSql = `SELECT m.value AS jobId, json_extract(g.value,'$.id') AS groupId,
+  json_extract(g.value,'$.name') AS groupName FROM hub_settings s,
+  json_each(s.value,'$.groups') g, json_each(g.value,'$.jobIds') m
+  WHERE s.key='${catalogKey}' AND json_extract(g.value,'$.kind')='role'`;
+
 const revision = z.number().int().nonnegative();
 const save = z.object({
   action: z.literal("save"), expectedRevision: revision,
