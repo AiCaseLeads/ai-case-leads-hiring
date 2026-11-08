@@ -92,23 +92,23 @@ export function CandidateMatch({applicationId}:{applicationId:string}) {
   const strengths=criteria.filter(criterion=>criterion.status === "evidence_found");
   const questions=criteria.filter(criterion=>criterion.status !== "evidence_found");
   return <section className="hub-card hub-match-overview" aria-label="AI job match">
-    <div className="hub-section-heading compact"><div><h3>AI job match</h3><p>Résumé and answers compared with this job’s requirements.</p></div>{match && <MatchScore match={match}/>}</div>
+    <div className="hub-section-heading compact"><div><h3>AI job match</h3><p>Evidence from the résumé and application answers.</p></div>{match && <MatchScore match={match}/>}</div>
     <ResourceState loading={resource.loading} error={resource.error} retry={()=>void reload()}/>
     {match && <>
       {match.progress && !["ready","needs_review","disabled","setup_required"].includes(match.status) && <MatchQueueProgress progress={match.progress}/> }
-      {match.error && !["ai_hourly_capacity","pdf_busy"].includes(match.error) && <p role="alert">{diagnosticError(match.error)} {/^[a-z0-9_]{1,100}$/.test(match.error) && <small>Code: {match.error}</small>}</p>}
+      {match.error && !["ai_hourly_capacity","pdf_busy"].includes(match.error) && <p role="alert" className="hub-notice hub-error">{diagnosticError(match.error)}</p>}
       {match.status==="disabled" && <p>Enable AI matching for this job to compare applicants automatically.</p>}
       {match.status==="needs_review" && <p>The source material could not be assessed automatically. Open the résumé and application answers to check the missing information.</p>}
       {criteria.length>0 && <>
         <p className="hub-match-coverage"><strong>{strengths.length} of {criteria.length} requirements supported</strong>{questions.length>0 ? ` · ${questions.length} to clarify` : " · Supporting evidence found for every requirement"}</p>
         <div className="hub-match-summary-grid">
-          <section aria-labelledby="match-strengths"><h4 id="match-strengths">Relevant strengths</h4>{strengths.length ? <ul>{strengths.map(criterion=><li key={criterion.criterion}><strong>{criterion.criterion}</strong><p>{readableMatchExplanation(criterion.explanation)}</p></li>)}</ul> : <p>No supporting evidence was found in the submitted material.</p>}</section>
-          <section aria-labelledby="match-questions"><h4 id="match-questions">What to clarify</h4>{questions.length ? <ul>{questions.map(criterion=><li key={criterion.criterion}><strong>{criterion.criterion}</strong><p>{readableMatchExplanation(criterion.explanation)}</p></li>)}</ul> : <p>Confirm the candidate’s experience and contribution in the interview.</p>}</section>
+          <section aria-labelledby="match-strengths"><h4 id="match-strengths">Supported evidence</h4>{strengths.length ? <ul className="hub-evidence-list">{strengths.map(criterion=><EvidenceItem key={criterion.criterion} criterion={criterion}/>)}</ul> : <p>No supporting evidence was found in the submitted material.</p>}</section>
+          <section aria-labelledby="match-questions"><h4 id="match-questions">What to clarify</h4>{questions.length ? <ul className="hub-evidence-list">{questions.map(criterion=><EvidenceItem key={criterion.criterion} criterion={criterion}/>)}</ul> : <p>Confirm the candidate’s experience and contribution in the interview.</p>}</section>
         </div>
 
       </>}
       {!!match.sourceWarnings?.length && <p className="hub-muted">Some source material could not be fully read. Check the original résumé before deciding.</p>}
-      <p className="hub-muted">AI comparison supports your review. Your team makes the hiring decision.</p>
+      <p className="hub-muted hub-ai-decision-note">Evidence comparison only. Your team makes the hiring decision.</p>
     </>}
     <button type="button" className="hub-text-button" disabled={resource.loading} onClick={()=>void reload()}>Refresh AI review</button>
   </section>;
@@ -124,6 +124,8 @@ function MatchQueueProgress({progress}:{progress:MatchProgress}) {
    : progress.state==="retry_limit" ? <p role="status">Automatic retries stopped after {progress.attempts} attempts. An administrator must resolve the error below, then retry failed reviews for this job.</p>
    : progress.state==="preparing_requirements" ? <p role="status">Preparing this job’s requirements before applicant reviews can start.</p>
    : <p role="status">Queued for AI review.{progress.readyAhead!==null?` ${progress.readyAhead} eligible review${progress.readyAhead===1?"":"s"} ahead across all jobs.`:""} Up to three reviews run together.</p>}
-  <p className="hub-muted">{progress.capacityRemaining} of {progress.hourlyLimit} provider requests remain this hour. Status refreshes automatically; opening this page does not start or charge for a review.</p>
+  <details className="hub-setup-details"><summary>Processing details</summary><p className="hub-muted">{progress.capacityRemaining} of {progress.hourlyLimit} provider requests remain this hour. Status refreshes automatically; opening this page does not start or charge for a review.</p></details>
  </div>;
 }
+
+function EvidenceItem({criterion}:{criterion:NonNullable<MatchDetail["criteria"]>[number]}) {return <li><strong>{criterion.criterion}</strong><p>{readableMatchExplanation(criterion.explanation)}</p>{criterion.citations.length>0&&<details><summary>Source excerpts ({criterion.citations.length})</summary>{criterion.citations.map((citation,index)=><blockquote key={index}><strong>{citation.source==='resume'?'Résumé':'Application answer'}</strong><p>{readableMatchExplanation(citation.quote)}</p></blockquote>)}</details>}</li>;}

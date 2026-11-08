@@ -1,4 +1,7 @@
 "use client";
+import {ApplicantFilterDisclosure} from "./applicant-filter-disclosure";
+import {interviewCancelOutcome,interviewNavigationOutcome} from "./interview-draft-state";
+import {InterviewComposer,InterviewDiscardConfirmation,type InterviewDraftPayload} from "./interview-composer";
 import { normalizeApplicantScope, applicantStageChoice, applyApplicantStageChoice } from "./applicant-stage-filter";
 import { NavigationLink, applicantHref } from "./navigation-link";
 import {ShareApplicant} from "./share-applicant";
@@ -13,7 +16,7 @@ import { JobActionMenu } from "./action-menu";
 import { ApplicantNavigation, ResumePreview, resumeFile } from "./application-review-tools";
 import { requestDraftNavigation } from "./draft-navigation";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { ArrowLeft, CalendarClock, Download, ExternalLink, Search, StickyNote, Settings2, RefreshCw, Trash2, Users } from "lucide-react";
+import { ArrowLeft, CalendarClock, Download, ExternalLink, StickyNote, Settings2, RefreshCw, Trash2, Users } from "lucide-react";
 import {
   hubRequest,
   displayAnswer,
@@ -58,29 +61,14 @@ function qualificationTone(value: string) {
 function qualificationLabel(value: string, screeningConfigured?: boolean) {
   return value === "pass" ? "Requirements met" : value === "fail" ? "Requirement not met" : screeningConfigured === false ? "No screening rules" : screeningConfigured === true ? "Check answers" : "No screening decision";
 }
-type InterviewReadiness = {cc?:string[];replyTo?:string[];sender:string|null;mailReady:boolean;mailIssue:string|null;companyGoogleReady:boolean;sharedCalendarReady:boolean;renewCalendarReady:boolean;hasActiveInterview:boolean;interviewers:{email:string;ready:boolean}[]};
-function InterviewBookingChoice({applicationId,value,change,renew,ready}:{applicationId:string;value:string;change:(value:string)=>void;renew:boolean;ready:(value:boolean)=>void}) {
-  const resource=useHubResource<InterviewReadiness>("/api/interview-readiness?applicationId="+encodeURIComponent(applicationId));
-  const canSend=!!resource.data?.mailReady && !!resource.data.companyGoogleReady && (renew ? resource.data.hasActiveInterview && resource.data.renewCalendarReady : (value==="__shared__" ? resource.data.sharedCalendarReady : !!resource.data.interviewers.find(person=>person.email===value&&person.ready)));
-  useEffect(()=>{ready(canSend);return()=>ready(false);},[canSend,ready]);
-  return <div className="hub-interviewer-choice">
-    <ResourceState loading={resource.loading} error={resource.error} retry={()=>void resource.reload()}/>
-    {resource.data && <>
-      {!resource.data.companyGoogleReady && <p className="hub-notice">Company Google connection needs attention. Ask the owner to reconnect it in Settings → Company → Files &amp; calendar.</p>}
-      <Field label="Who will conduct this interview?" hint={renew?"A replacement link keeps the original organizer.":"Choose a connected calendar. The applicant picks an available time."}>
-        <select required={!renew} value={value} onChange={event=>change(event.target.value)} disabled={renew||resource.loading}>
-          <option value="">{renew?"Keep original interviewer":"Choose an interviewer"}</option>
-          <option value="__shared__" disabled={!resource.data.sharedCalendarReady}>Shared company calendar{resource.data.sharedCalendarReady?"":" — setup needed"}</option>
-          {resource.data.interviewers.map(person=><option key={person.email} value={person.email} disabled={!person.ready}>{person.email}{person.ready?"":" — setup needed"}</option>)}
-        </select>
-      </Field>
-      {resource.data.mailReady ? <p className="hub-muted">Invitation from {resource.data.sender}.{resource.data.cc?.length?` Copied: ${resource.data.cc.join(", ")}.`:""} Replies go to {resource.data.replyTo?.length?resource.data.replyTo.join(", "):"the connected recruiter"}.</p> : <p className="hub-notice">{resource.data.mailIssue==="recruiter_reply_contact_required" ? "Choose a recruiter to handle candidate replies in this job’s hiring team before sending invitations." : `${resource.data.sender || "The recruiter"} needs to connect their recruiting email in Settings → My connections before invitations can be sent.`}</p>}
-      {renew && !resource.data.hasActiveInterview && <p className="hub-notice">No active interview to replace. Turn off replacement mode and choose an interviewer.</p>}
-      {renew && resource.data.companyGoogleReady && resource.data.hasActiveInterview && !resource.data.renewCalendarReady && <p className="hub-notice">The original interviewer needs to reconnect their calendar and save availability before sending a replacement link.</p>}
-      {!renew && resource.data.companyGoogleReady && !resource.data.sharedCalendarReady && !resource.data.interviewers.some(person=>person.ready) && <p className="hub-notice">Connect an interview calendar and save availability in Settings → My connections.</p>}
-    </>}
-  </div>;
+function InterviewActionFrame({interview,panelRef,cancel,busy,children}:{interview:boolean;panelRef:React.RefObject<HTMLElement|null>;cancel:()=>void;busy:boolean;children:React.ReactNode}) {
+ const dialog=useRef<HTMLDialogElement|null>(null);
+ const outsideDown=useRef(false);
+ useLayoutEffect(()=>{if(!interview||!dialog.current)return;const el=dialog.current,origin=document.activeElement as HTMLElement|null;el.showModal();return()=>{el.close();if(origin?.isConnected&&origin.getClientRects().length)origin.focus({preventScroll:true});else document.querySelector<HTMLElement>('summary[aria-label="More applicant actions"]')?.focus({preventScroll:true})}},[interview]);
+ if(!interview)return <aside ref={panelRef} className="hub-action-panel">{children}</aside>;
+ return <dialog className="hub-interview-dialog" aria-labelledby="hub-invitation-title" ref={el=>{dialog.current=el;panelRef.current=el}} onCancel={event=>{event.preventDefault();if(!busy)cancel()}} onPointerDown={event=>{const box=event.currentTarget.getBoundingClientRect();outsideDown.current=event.target===event.currentTarget&&(event.clientX<box.left||event.clientX>box.right||event.clientY<box.top||event.clientY>box.bottom)}} onClick={event=>{if(busy||!outsideDown.current||event.target!==event.currentTarget)return;outsideDown.current=false;const box=event.currentTarget.getBoundingClientRect();if(event.clientX<box.left||event.clientX>box.right||event.clientY<box.top||event.clientY>box.bottom)cancel()}}>{children}</dialog>;
 }
+function ApplicantActionCard({interview,open,toggle,children}:{interview:boolean;open:boolean;toggle:(open:boolean)=>void;children:React.ReactNode}){return interview?<section className="hub-card hub-candidate-actions">{children}</section>:<details className="hub-card hub-candidate-actions" open={open} onToggle={event=>toggle(event.currentTarget.open)}>{children}</details>;}
 export function CandidateTable({
   items,
   select,
@@ -324,6 +312,10 @@ function JobCandidates({
   const applied = new URLSearchParams(filter);
   const filtersDirty = Array.from(new Set([...draft.keys(), ...applied.keys()])).some(key => draft.get(key) !== applied.get(key));
   const invalidDates = !!appliedFrom && !!appliedTo && appliedFrom > appliedTo;
+  const pendingFilterQuery=draft.toString();
+  // Apply the complete serialized query once; unrelated render callbacks must not restart debounce.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(()=>{if(!filtersDirty||invalidDates)return;const timer=window.setTimeout(()=>applyView(pendingFilterQuery),300);return()=>window.clearTimeout(timer);},[pendingFilterQuery,filtersDirty,invalidDates]);
   function syncFields(params: URLSearchParams) {
     setQ(params.get("q") || ""); setStage(params.get("stage") || ""); setExcludeStage(params.get("excludeStage")||""); setAssignee(params.get("assignee") || "");
     setQualification(params.get("qualification") || ""); setGrade(params.get("grade") || ""); setSort(params.get("sort") || defaultSort); setDuplicate(params.get("duplicate") === "true");
@@ -464,16 +456,16 @@ function JobCandidates({
           <button className="hub-text-button" type="button" onClick={() => onFilterChange?.("", 1)}><ArrowLeft size={16} /> All jobs</button>
           <h2 id="candidates-title">{selectedJob?.title || "Job applications"}</h2>
           <p>
-            {selectedJob?.location || (selectedJob ? jobLocation(selectedJob) : "")} · Applications for this posting
+            {selectedJob?.location || (selectedJob ? jobLocation(selectedJob) : "")}<span className="hub-posting-context"> · Applications for this posting</span>
           </p>
         </div>
         <div className="hub-button-row"><span className="hub-count">
           {resource.data ? resource.data.total + " applications" : ""}
-        </span><button type="button" className="hub-button secondary" disabled={resource.loading} onClick={() => void resource.reload()}>Refresh applications</button></div>
+        </span><button type="button" className="hub-button secondary hub-refresh-applicants" aria-label="Refresh applications" disabled={resource.loading} onClick={() => void resource.reload()}><RefreshCw size={16}/><span>Refresh applications</span></button></div>
       </div>
-      <div className="hub-button-row hub-application-view-tabs"><button className="hub-pipeline-tab" type="button" aria-pressed={!inTrash} onClick={()=>applyView(new URLSearchParams({jobId}).toString())}>Applications</button><button className="hub-pipeline-tab" type="button" aria-pressed={inTrash} onClick={()=>applyView(new URLSearchParams({jobId,trash:"true"}).toString())}>Trash</button></div>
+      <div className="hub-stage-toolbar"><div className="hub-button-row hub-application-view-tabs"><button className="hub-pipeline-tab" type="button" aria-pressed={!inTrash} onClick={()=>applyView(new URLSearchParams({jobId}).toString())}>Applications</button><button className="hub-pipeline-tab" type="button" aria-pressed={inTrash} onClick={()=>applyView(new URLSearchParams({jobId,trash:"true"}).toString())}>Trash</button></div>
       {inTrash && <p className="hub-muted">Deleted applications stay here with their original files and history. Open an application to restore it. Cancelled emails and booking links are not sent again.</p>}
-      {!inTrash && <div style={{maxWidth:"22rem"}}>
+      {!inTrash && <div className="hub-stage-filter">
         <Field label="Stage"><select disabled={invalidDates} value={applicantStageChoice(new URLSearchParams(filter))} onChange={event=>applyView(applyApplicantStageChoice(draftQuery(),event.target.value).toString())}>
           <option value="active">In progress</option><option value="all">All stages</option>
           <option value="active:exclude:Screening">In progress — not shortlisted</option>
@@ -488,17 +480,24 @@ function JobCandidates({
         <button className="hub-text-button" type="button" onClick={()=>applyView(new URLSearchParams({jobId,stage:"Awaiting Founder Review",active:"false"}).toString())}>Awaiting founder review</button>
         <a className="hub-text-button" href={"/team?view=interviews&jobId="+encodeURIComponent(jobId)}>Interviews for this role</a>
       </div>
+      </div>
       <div className="hub-applicant-toolbar">
       <form className="hub-applicant-filter-form" onSubmit={filterSubmit}>
         <div className="hub-applicant-filters">
           <Field label="Search"><input value={q} onChange={e=>setQ(e.target.value)} placeholder="Name or email" type="search" /></Field>
+          <ApplicantFilterDisclosure activeCount={[qualification,sort!==defaultSort?sort:'',grade,assignee,duplicate,appliedFrom,appliedTo].filter(Boolean).length} headerAction={<>
+        <details className="hub-download-menu hub-application-downloads"><summary><Download size={16} /> Download<span className="hub-download-context"> applications</span></summary>
+          <div className="hub-download-menu-body">
+            <div className="hub-button-row"><button className="hub-text-button" type="button" disabled={filtersDirty || resource.loading || !resource.data?.items.length} onClick={() => {setAllMatching(false);setSelected(resource.data?.items.map(item=>item.id)||[]);setExportScope("selected");}}>Select this page ({resource.data?.items.length||0})</button><button className="hub-text-button" type="button" disabled={filtersDirty || resource.loading || !resource.data?.total} onClick={() => {setSelected([]);setAllMatching(true);setExportScope("filtered");}}>Select all matching for download ({resource.data?.total||0})</button>{(selected.length>0 || allMatching) && <button className="hub-text-button" type="button" onClick={() => {setSelected([]);setAllMatching(false);setExportScope("filtered");}}>Clear selection ({allMatching ? resource.data?.total || 0 : selected.length})</button>}</div>
+            <div className="hub-button-row hub-download-actions"><Field label="Download scope"><select value={exportScope} onChange={event=>{setExportScope(event.target.value);setAllMatching(false);}}><option value="filtered">All matching results ({resource.data?.total || 0}){isTopTen?" · Top 10":" · every page"}</option><option value="all">{inTrash?"All applications in Trash":"All applicants for this job"}</option><option value="selected">Selected applicants ({selected.length})</option></select></Field><button className="hub-button" type="button" disabled={exporting || resource.loading || !!resource.error || filtersDirty || invalidDates || (exportScope==="filtered"&&!resource.data?.total) || (exportScope==="selected"&&!selected.length)} onClick={()=>void exportApplications("zip")}><Download size={16}/> Download applications (ZIP)</button></div>
+            <p className="hub-muted">{exportScope==="selected"?`${selected.length} selected applicants`:exportScope==="all"?(inTrash?"Every application in Trash for this job":"Every applicant for this job, across all pages and stages"):`${resource.data?.total||0} matching applicants across all pages`} will be downloaded. The ZIP includes a readable PDF for each application and the original uploaded files.</p>
+            <details><summary>Download limits</summary><p>Up to 10,000 applications and 3 GB of attachments per download. Narrow the filters for larger archives. Bulk record changes apply to selected applicants on this page.</p></details>
+            {exporting && <p role="status">Preparing your download…</p>}
+            <Feedback error={exportError} success={exportMessage}/>
+          </div>
+        </details></>}>
           <Field label="Screening"><select value={qualification} onChange={e=>setQualification(e.target.value)}><option value="">All screening results</option><option value="pass">Requirements met</option><option value="review">No automatic decision</option><option value="fail">Requirement not met</option></select></Field>
           {!inTrash && <Field label="Order"><select value={sort} onChange={e=>setSort(e.target.value)}><option value="screening_newest">Requirements met, then newest</option><option value="newest">Newest applications</option><option value="oldest">Oldest applications</option><option value="owner_asc">Owner A–Z</option><option value="owner_desc">Owner Z–A</option><option value="screening_asc">Requirements met first</option><option value="screening_desc">Unmet requirements first</option><option value="ai_match_asc">Lowest AI match first</option><option value="ai_match_desc">Highest AI match first</option><option value="grade_desc">Highest reviewer grade first</option></select></Field>}
-          <button className="hub-button" type="submit" disabled={invalidDates}><Search size={16} /> Apply filters</button>
-        </div>
-
-        {invalidDates && <p role="alert">The end date must be on or after the start date.</p>}
-        {filtersDirty && <p className="hub-notice" role="status">Your filters have changed. Click Apply filters to update the results and downloads.</p>}
         <details className="hub-advanced-filters"><summary>More filters{[grade,assignee,duplicate,appliedFrom,appliedTo].filter(Boolean).length ? ` · ${[grade,assignee,duplicate,appliedFrom,appliedTo].filter(Boolean).length} selected` : ""}</summary>
           <div className="hub-filter-grid">
 
@@ -509,24 +508,23 @@ function JobCandidates({
             <Field label="Reviewer grades" hint="Optional grades recorded by your team."><select value={grade} onChange={e=>setGrade(e.target.value)}><option value="">Graded and ungraded</option><option value="reviewed">Graded applications</option><option value="ungraded">Ungraded applications</option></select></Field>
             <Field label="Assigned to"><input value={assignee} onChange={e=>setAssignee(e.target.value)} type="email" placeholder="Recruiter email" /></Field>
             <label className="hub-checkbox"><input type="checkbox" checked={duplicate} onChange={e=>setDuplicate(e.target.checked)} /> Shared-email applications</label>
-          </div><p className="hub-muted hub-filter-hint">Dates use {timeZone}.</p><button className="hub-button secondary" type="submit" disabled={invalidDates}>Apply more filters</button>
+          </div><p className="hub-muted hub-filter-hint">Dates use {timeZone}.</p><span className="hub-muted">Filters update automatically.</span>
         </details>
-      </form>
-      <div className="hub-applicant-toolbar-actions">
+          <div className="hub-filter-shortcut-actions">
+
         {!inTrash && <button className="hub-button secondary" type="button" onClick={() => applyView((() => {const params=new URLSearchParams(filter);params.set("sort","ai_match_desc");params.set("top","10");return params.toString();})())}>Top 10 AI matches</button>}
         {isTopTen && <button className="hub-text-button" type="button" onClick={() => applyView((() => {const params=new URLSearchParams(filter);params.delete("top");return params.toString();})())}>Show all applicants</button>}
         <button className="hub-text-button" type="button" onClick={()=>applyView(new URLSearchParams({jobId,...(inTrash?{trash:"true"}:{})}).toString())}>Clear filters</button>
-        <details className="hub-download-menu hub-application-downloads"><summary><Download size={16} /> Download applications</summary>
-          <div className="hub-download-menu-body">
-            <div className="hub-button-row"><button className="hub-text-button" type="button" disabled={filtersDirty || resource.loading || !resource.data?.items.length} onClick={() => {setAllMatching(false);setSelected(resource.data?.items.map(item=>item.id)||[]);setExportScope("selected");}}>Select this page ({resource.data?.items.length||0})</button><button className="hub-text-button" type="button" disabled={filtersDirty || resource.loading || !resource.data?.total} onClick={() => {setSelected([]);setAllMatching(true);setExportScope("filtered");}}>Select all matching for download ({resource.data?.total||0})</button>{(selected.length>0 || allMatching) && <button className="hub-text-button" type="button" onClick={() => {setSelected([]);setAllMatching(false);setExportScope("filtered");}}>Clear selection ({allMatching ? resource.data?.total || 0 : selected.length})</button>}</div>
-            <div className="hub-button-row hub-download-actions"><Field label="Download scope"><select value={exportScope} onChange={event=>{setExportScope(event.target.value);setAllMatching(false);}}><option value="filtered">All matching results ({resource.data?.total || 0}){isTopTen?" · Top 10":" · every page"}</option><option value="all">{inTrash?"All applications in Trash":"All applicants for this job"}</option><option value="selected">Selected applicants ({selected.length})</option></select></Field><button className="hub-button" type="button" disabled={exporting || resource.loading || !!resource.error || filtersDirty || invalidDates || (exportScope==="filtered"&&!resource.data?.total) || (exportScope==="selected"&&!selected.length)} onClick={()=>void exportApplications("zip")}><Download size={16}/> Download applications (ZIP)</button></div>
-            <p className="hub-muted">{exportScope==="selected"?`${selected.length} selected applicants`:exportScope==="all"?(inTrash?"Every application in Trash for this job":"Every applicant for this job, across all pages and stages"):`${resource.data?.total||0} matching applicants across all pages`} will be downloaded. The ZIP includes a readable PDF for each application and the original uploaded files.</p>
-            <details><summary>Download limits</summary><p>Up to 10,000 applications and 3 GB of attachments per download. Narrow the filters for larger archives. Bulk record changes apply to selected applicants on this page.</p></details>
-            {exporting && <p role="status">Preparing your download…</p>}
-            <Feedback error={exportError} success={exportMessage}/>
           </div>
-        </details>
-      </div>
+          </ApplicantFilterDisclosure>
+          <span className="hub-muted hub-filter-autoupdate" aria-live="polite">{filtersDirty?"Updating results…":"Filters update automatically"}</span>
+        </div>
+
+        {invalidDates && <p role="alert">The end date must be on or after the start date.</p>}
+        {filtersDirty && <p className="hub-notice" role="status">Updating results and download scope…</p>}
+
+      </form>
+
       </div>
       {!inTrash && selectedJob && <BulkRejection filter={filter} selectedIds={allMatching?[]:selected} jobTitle={selectedJob.title} disabled={filtersDirty || resource.loading || !!resource.error || !resource.data?.total} changed={()=>{setSelected([]);setAllMatching(false);void resource.reload();changed();}}/>}
       {allMatching && <p className="hub-selection-banner" role="status">All {resource.data?.total || 0} matching applicants across every page are selected for download. To change applicant stages, clear this selection and select applicants on a single page.</p>}
@@ -755,6 +753,11 @@ export function CandidateDetail({
   const actionPanel=useRef<HTMLElement>(null);
   useEffect(()=>{if(actionOpen)actionPanel.current?.scrollIntoView({block:"nearest",behavior:"instant"});},[actionOpen]);
   const [interviewReady, setInterviewReady] = useState(false);
+  const [interviewDraft,setInterviewDraft]=useState<InterviewDraftPayload|null>(null);
+  const [interviewDirty,setInterviewDirty]=useState(false);
+  const [confirmInterviewDiscard,setConfirmInterviewDiscard]=useState(false);
+  const interviewLeave=useRef<(()=>void)|null>(null);
+  const interviewOpenRef=useRef(false),interviewBusyRef=useRef(false);useLayoutEffect(()=>{interviewOpenRef.current=actionOpen&&action==="interview";interviewBusyRef.current=mutation.busy||decisionBusy},[actionOpen,action,mutation.busy,decisionBusy]);
   const [deleteOpen,setDeleteOpen] = useState(false);
   const [pdfBusy,setPdfBusy] = useState(false);
   const [pdfError,setPdfError] = useState("");
@@ -764,11 +767,14 @@ export function CandidateDetail({
   useLayoutEffect(()=>{if(leaveRequest)leaveDialog.current?.focus();},[leaveRequest]);
   const evidenceDraft = useEvidenceDraft();
   const scorecardDraft = useScorecardDraft();
-  const dirty = !!(reviewDirty || evidenceDraft.notes.trim() || scorecardDraft[0].ratings.length || text.trim() || subject.trim() || body.trim() || reason.trim() || score || criteria.trim() || assignee.trim() || renew || interviewerEmail || emailPending || (actionOpen && ((action==="stage" && stage!=="Screening") || (action==="attendance" && attendance!=="true"))));
+  const dirty = !!(interviewDirty || reviewDirty || evidenceDraft.notes.trim() || scorecardDraft[0].ratings.length || text.trim() || subject.trim() || body.trim() || reason.trim() || score || criteria.trim() || assignee.trim() || renew || emailPending || (actionOpen && ((action==="stage" && stage!=="Screening") || (action==="attendance" && attendance!=="true"))));
   const dirtyRef=useRef(dirty);useLayoutEffect(()=>{dirtyRef.current=dirty;},[dirty]);
+  function resetInterview(){if(mutation.busy||decisionBusy)return;setConfirmInterviewDiscard(false);setActionOpen(false);setInterviewerEmail("");setRenew(false);setInterviewDraft(null);setInterviewDirty(false);setInterviewReady(false);mutation.clear();const leave=interviewLeave.current;interviewLeave.current=null;if(leave){dirtyRef.current=false;leave();}}
+  function keepInterview(){interviewLeave.current=null;setConfirmInterviewDiscard(false);queueMicrotask(()=>actionPanel.current?.querySelector<HTMLElement>('select')?.focus({preventScroll:true}));}
+  function cancelInterview(){const outcome=interviewCancelOutcome({busy:mutation.busy||decisionBusy,dirty:interviewDirty,confirming:confirmInterviewDiscard});if(outcome==="ask")setConfirmInterviewDiscard(true);else if(outcome==="keep")keepInterview();else if(outcome==="discard")resetInterview();}
   useEffect(()=>{
     const previous=window.__aiclDraftGuard;
-    const guard=(leave:()=>void)=>{if(!dirtyRef.current)return previous?.(leave) || false;leaveOrigin.current=document.activeElement as HTMLElement;setLeaveRequest(()=>leave);return true;};
+    const guard=(leave:()=>void)=>{const outcome=interviewNavigationOutcome(interviewOpenRef.current,dirtyRef.current,interviewBusyRef.current);if(outcome==="blocked")return true;if(outcome==="leave")return previous?.(leave) || false;if(outcome==="modal"){interviewLeave.current=leave;setLeaveRequest(null);setConfirmInterviewDiscard(true);return true;}leaveOrigin.current=document.activeElement as HTMLElement;setLeaveRequest(()=>leave);return true;};
     window.__aiclDraftGuard=guard;
     const beforeUnload=(event:BeforeUnloadEvent)=>{if(dirtyRef.current){event.preventDefault();event.returnValue="";}};
     window.addEventListener("beforeunload",beforeUnload);
@@ -869,7 +875,7 @@ export function CandidateDetail({
                 : action === "attendance"
                   ? { attended: attendance === "true" }
                   : action === "interview"
-                    ? {}
+                    ? {...interviewDraft}
                     : { text }),
     };
     if (action === "email" && !emailRequest.current) {
@@ -878,15 +884,18 @@ export function CandidateDetail({
       setNewEmailApproved(false);
     }
     const payload = action === "email" ? emailRequest.current : draft;
+    if(action==="interview")interviewBusyRef.current=true;
     const result = await mutation.run(
-      "/api/hub/applications/" + encodeURIComponent(id) + "/action",
+      action==="interview"?"/api/interview-invitations":"/api/hub/applications/" + encodeURIComponent(id) + "/action",
       "POST",
-      payload,
+      action==="interview"?{...payload,applicationId:id}:payload,
       ["reject", "assessment", "interview", "email"].includes(action)
-        ? "Decision saved. Delivery status appears in communication history."
+        ? action==="interview"?"Interview invitation queued. Sending status is in Activity.":"Decision saved. Delivery status appears in communication history."
         : "Saved to this application.",
     );
+    if(action==="interview")interviewBusyRef.current=false;
     if (result !== undefined) {
+      if(action==="interview"){interviewLeave.current=null;setConfirmInterviewDiscard(false);setInterviewReady(false);setInterviewDraft(null);setInterviewDirty(false);setActionOpen(false);}
       setText("");
       setApprove(false);
       setRenew(false);
@@ -927,7 +936,7 @@ export function CandidateDetail({
               {!detail.trashed&&<ShareApplicant key={detail.id} id={detail.id}/>}
               <JobActionMenu label="More applicant actions" triggerLabel="More">
                 {!detail.trashed&&reviewerEmail&&detail.assignee!==reviewerEmail&&<button type="button" disabled={mutation.busy||decisionBusy} onClick={async()=>{const r=await mutation.run(`/api/hub/applications/${encodeURIComponent(id)}/action`,"POST",{action:"assign",assignee:reviewerEmail,expectedRevision:detail.revision},"Assigned to you.");if(r!==undefined){await resource.reload();changed()}}}>Assign to me</button>}
-                {!detail.trashed && !["Rejected","Withdrawn","Hired"].includes(detail.stage) && <button type="button" disabled={mutation.busy||decisionBusy} onClick={()=>{setAction("interview");setActionOpen(true);mutation.clear();}}><CalendarClock size={16} aria-hidden="true"/>Request interview</button>}
+                {!detail.trashed && !["Rejected","Withdrawn","Hired"].includes(detail.stage) && <button type="button" disabled={mutation.busy||decisionBusy} onClick={()=>{interviewLeave.current=null;setConfirmInterviewDiscard(false);setAction("interview");setActionOpen(true);mutation.clear();}}><CalendarClock size={16} aria-hidden="true"/>Request interview</button>}
                 {!detail.trashed && <button type="button" disabled={mutation.busy||decisionBusy} onClick={()=>{setAction("note");setActionOpen(true);mutation.clear();}}><StickyNote size={16} aria-hidden="true"/>Add note</button>}
                 {!detail.trashed && <button type="button" disabled={mutation.busy||decisionBusy} onClick={()=>{setAction("stage");setActionOpen(true);mutation.clear();}}><Settings2 size={16} aria-hidden="true"/>Other applicant actions</button>}
                 <button type="button" disabled={pdfBusy} onClick={()=>void exportPdf()}><Download size={16}/>{pdfBusy?"Preparing PDF…":"Download application PDF"}</button>
@@ -941,13 +950,14 @@ export function CandidateDetail({
           {detail.trashed && <p className="hub-muted">This application is in Trash. Its files and history are retained. Restore it before taking recruiting actions.</p>}
           {deleteOpen && <div className="hub-card" role="alertdialog" aria-labelledby="delete-application-title"><h3 id="delete-application-title">Move this application to Trash?</h3><p>It will leave your recruiting queues. Files and history stay saved, and you can restore it from this job’s Trash tab. Unsent emails and active booking links will be cancelled.</p><div className="hub-button-row"><button className="hub-button secondary" type="button" disabled={mutation.busy||decisionBusy} onClick={()=>setDeleteOpen(false)}>Keep application</button><button className="hub-button" type="button" disabled={mutation.busy||decisionBusy} onClick={()=>void lifecycle("trash")}>Move to Trash</button></div></div>}
           <div className="hub-detail-grid">
-            {!detail.trashed && actionOpen && <aside ref={actionPanel} className="hub-action-panel">
-              <details className="hub-card hub-candidate-actions" open={actionOpen} onToggle={event=>{const open=event.currentTarget.open;setActionOpen(open);if(!open)profileTop.current?.querySelector<HTMLElement>('summary[aria-label="More applicant actions"]')?.focus({preventScroll:true});}}>
-              <summary>{action === "interview" ? "Request an interview" : "Applicant actions"}</summary>
-              <p className="hub-muted">Choose an action below. Interview invitations are sent only when you click Send booking link.</p>
+            {!detail.trashed && actionOpen && <InterviewActionFrame interview={action==="interview"} panelRef={actionPanel} cancel={cancelInterview} busy={mutation.busy||decisionBusy}>
+              <ApplicantActionCard interview={action==="interview"} open={actionOpen} toggle={open=>{setActionOpen(open);if(!open)profileTop.current?.querySelector<HTMLElement>('summary[aria-label="More applicant actions"]')?.focus({preventScroll:true});}}>
+              {action==="interview"?<h3 id="hub-invitation-title">Invite to interview</h3>:<summary>Applicant actions</summary>}
+              <p className="hub-muted">{action==="interview"?"Invite this applicant to choose a time. Review setup and preview the email before sending.":"Choose an action for this application."}</p>
+              {action==="interview"&&confirmInterviewDiscard&&<InterviewDiscardConfirmation busy={mutation.busy||decisionBusy} keep={keepInterview} discard={resetInterview}/>}
               <form onSubmit={submit}>
-                <fieldset disabled={mutation.busy||decisionBusy||detail.trashed}>
-                  <Field label="Action">
+                <fieldset disabled={mutation.busy||decisionBusy||detail.trashed||confirmInterviewDiscard}>
+                  {action!=="interview"&&<Field label="Action">
                     <select
                       value={action}
                       onChange={(e) => {
@@ -974,8 +984,8 @@ export function CandidateDetail({
                       <option value="email">Send email</option>
                       <option value="reject">Reject application</option>
                     </select>
-                  </Field>
-                  {["assessment", "interview"].includes(action) && <label className="hub-checkbox"><input type="checkbox" checked={renew} onChange={(e) => setRenew(e.target.checked)} /> Send a replacement secure link and revoke the previous link. Existing responses and bookings remain in history.</label>}
+                  </Field>}
+                  {(action==="assessment"||action==="interview"&&!!detail.interview&&detail.interview.status!=="cancelled") && <label className="hub-checkbox"><input type="checkbox" checked={renew} onChange={(e) => {setRenew(e.target.checked);if(action==="interview")setInterviewDirty(true);}} /> Send a replacement secure link and revoke the previous link. Existing responses and bookings remain in history.</label>}
                   {action === "stage" && (
                     <Field label="Stage">
                       <select
@@ -1051,7 +1061,7 @@ export function CandidateDetail({
                     </Field>
                   )}
                   {action === "interview" && (
-                    <><p className="hub-muted">Send this applicant a private link to choose an interview time.</p><InterviewBookingChoice applicationId={id} value={interviewerEmail} change={setInterviewerEmail} renew={renew} ready={setInterviewReady}/></>
+                    <InterviewComposer applicationId={id} jobId={detail.jobId} name={detail.name} jobTitle={detail.jobTitle} email={detail.email} value={interviewerEmail} change={setInterviewerEmail} renew={renew} reviewerEmail={reviewerEmail} sendErrorCode={mutation.errorCode} ready={setInterviewReady} draft={setInterviewDraft} dirty={setInterviewDirty} cancel={cancelInterview}/>
                   )}
                   {action === "email" && (
                     <>
@@ -1111,7 +1121,8 @@ export function CandidateDetail({
                       </select>
                     </Field>
                   )}
-                  <button
+                  {action==="interview"&&!["template_changed","preview_changed"].includes(mutation.errorCode)&&<Feedback error={mutation.error}/>}
+                  <div className="hub-button-row hub-action-submit"><button
                     className={
                       "hub-button " + (action === "reject" ? "danger" : "")
                     }
@@ -1129,16 +1140,16 @@ export function CandidateDetail({
                             : action === "reject"
                               ? "Reject application"
                               : "Save action"}
-                  </button>
+                  </button>{action==="interview"&&<button type="button" className="hub-button secondary" disabled={mutation.busy} onClick={cancelInterview}>Cancel invitation</button>}</div>
                 </fieldset>
               </form>
-              </details>
-            </aside>}
+              </ApplicantActionCard>
+            </InterviewActionFrame>}
             <div className="hub-detail-main">
               <div ref={recordTabs} className="hub-button-row hub-profile-tabs" role="tablist" aria-label="Applicant record">{([{id:"application",label:"Application & files"},{id:"review",label:"AI review & notes"},{id:"activity",label:"Activity & messages"}] as const).map(tab=><button key={tab.id} type="button" role="tab" id={`candidate-tab-${tab.id}`} aria-selected={section===tab.id} tabIndex={section===tab.id?0:-1} onKeyDown={event=>{const ids=["application","review","activity"] as const;const index=ids.indexOf(section);const next=event.key==="ArrowRight"?ids[(index+1)%3]:event.key==="ArrowLeft"?ids[(index+2)%3]:event.key==="Home"?ids[0]:event.key==="End"?ids[2]:null;if(next){event.preventDefault();chooseSection(next);document.getElementById(`candidate-tab-${next}`)?.focus({preventScroll:true});}}} aria-controls={`candidate-panel-${tab.id}`} className={"hub-button " + (section===tab.id ? "" : "secondary")} onClick={()=>chooseSection(tab.id)}>{tab.label}</button>)}</div>
               <div role="tabpanel" id="candidate-panel-review" aria-labelledby="candidate-tab-review" hidden={section!=="review"}>
               <fieldset disabled={decisionBusy} style={{border:0,padding:0,margin:0,minWidth:0}}>
-              {section === "review" && <><WorkflowReview id={detail.id} refresh={evidenceRefresh} onDirty={setReviewDirty} changed={()=>{void resource.reload();changed();}}/>{reviewDirty?<p className="hub-muted">Save your interview handoff before attaching a recording.</p>:<RecordingPanel applicationId={detail.id} refresh={evidenceRefresh} changed={()=>{setEvidenceRefresh(n=>n+1);void resource.reload();changed();}}/>}<CandidateMatch applicationId={detail.id}/></>}
+              {section === "review" && <><WorkflowReview id={detail.id} refresh={evidenceRefresh} onDirty={setReviewDirty} changed={()=>{void resource.reload();changed();}}/>{reviewDirty?<p className="hub-muted">Save your interview handoff before attaching a recording.</p>:<RecordingPanel applicationId={detail.id} primaryRecordingInHandoff refresh={evidenceRefresh} changed={()=>{setEvidenceRefresh(n=>n+1);void resource.reload();changed();}}/>}<CandidateMatch applicationId={detail.id}/></>}
               <RecruiterNotes detail={detail} busy={mutation.busy||decisionBusy||dirty} addNote={()=>{setAction("note");setActionOpen(true);}} changed={()=>{void resource.reload();changed();}}/>
               <details className="hub-card"><summary>Optional: human grades and scorecards</summary>
               <section className="hub-card">
@@ -1301,7 +1312,7 @@ export function CandidateDetail({
                   </p>
                 )}
               </section>
-              <RecruiterNotes detail={detail} busy={mutation.busy||decisionBusy||dirty} addNote={()=>{setAction("note");setActionOpen(true);}} changed={()=>{void resource.reload();changed();}}/>
+              <p className="hub-muted">Human feedback is kept in one place. <button type="button" className="hub-text-button" onClick={()=>chooseSection("review")}>Open recruiter notes{detail.notesReview?.hasUnread?" · unreviewed notes":""}</button></p>
               <section className="hub-card">
                 <h3>Hiring history</h3>
                 {detail.history.length ? (

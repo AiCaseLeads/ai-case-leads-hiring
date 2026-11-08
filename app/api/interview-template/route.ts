@@ -1,0 +1,4 @@
+import {requireHubMember} from '@/lib/hub/auth';import {getHubStore} from '@/lib/hub/runtime';import {getInterviewTemplate,saveInterviewTemplate,INTERVIEW_VARIABLES} from '@/lib/hub/interview-template';import {assertSameOrigin,jsonResponse,errorResponse} from '@/lib/hiring/http';import {readBody} from '@/lib/job-import/handler';
+export const dynamic='force-dynamic';
+export async function GET(request:Request){try{await requireHubMember(request);return jsonResponse({data:{...await getInterviewTemplate(await getHubStore(request)),variables:INTERVIEW_VARIABLES}})}catch(e){return errorResponse(e)}}
+export async function PATCH(request:Request){try{const member=await requireHubMember(request);assertSameOrigin(request);return jsonResponse({data:await saveInterviewTemplate(await getHubStore(request),await readBody(request),member)})}catch(e){return errorResponse(e)}}

@@ -1,3 +1,4 @@
+import {resolvedWorkspaceEnv} from '@/lib/workspace-config';
 import { requireHubMember } from "@/lib/hub/auth";
 import { handleHubRequest } from "@/lib/hub/http";
 import { getHubStore } from "@/lib/hub/runtime";
@@ -10,7 +11,7 @@ async function handle(
   try {
     const member = await requireHubMember(request);
     const { path } = await context.params;
-    return await handleHubRequest(request, path, member, await getHubStore(request));
+    return await handleHubRequest(request, path, member, await getHubStore(request),async()=>({...await resolvedWorkspaceEnv(),ADMIN_EMAILS:process.env.ADMIN_EMAILS}));
   } catch (error) {
     return errorResponse(error);
   }

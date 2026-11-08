@@ -1,3 +1,4 @@
+import {interviewMessage} from './interview-template';
 import {assertHiringTransition,workflowNotificationStatements} from "./recruiting-workflow";
 import {notesReviews} from "./note-review";
 import {candidateMail} from "../job-team/service";
@@ -1586,19 +1587,24 @@ export class HubStore {
             422,
             "Connect Google Workspace and save the calendar, interview time zone, and availability before inviting interviews.",
           );
-        if (renewing && !input.renew && await this.hasActiveInvitation(app.id,"interview",existing.id,now)) return [];
+        if (renewing && !input.renew && await this.hasActiveInvitation(app.id,"interview",existing.id,now)) {if(input.templateVersion!==undefined)throw new HiringError("interview_already_invited",409,"An active invitation already exists. Select replacement mode to revoke it and send a new link.");return [];}
         if (!this.options.origin)
           throw new HiringError(
             "site_unavailable",
             503,
             "The candidate website is not configured.",
           );
+        const preview = input.templateVersion !== undefined ? await interviewMessage(this,member,app.id,input) : null;
+        if(preview && preview.fingerprint!==input.previewFingerprint)throw new HiringError('preview_changed',409,'Refresh the invitation preview before sending.');
         const interviewId = renewing ? existing.id : crypto.randomUUID(),
           token = privateToken(),
           hash = await sha256(token),
           calendarId = personal?.calendarId || (renewing ? existing.calendar_id : null) || await this.setting("google_calendar_id", "");
         const url = `${this.options.origin}/interview/${token}`;
+        const message = preview ? await interviewMessage(this,member,app.id,input,url,"Fourteen days after sending") : {subject:`Interview invitation: ${app.job_title}`,body:`Hi ${app.name},\n\nYou are invited to interview for ${app.job_title}. Choose a time using your private link within fourteen days:\n${url}\n\nAI Case Leads Hiring Team`,templateVersion:undefined,envelope:undefined};
+        if(preview && "fingerprint" in message && message.fingerprint!==input.previewFingerprint)throw new HiringError("preview_changed",409,"The invitation sender changed. Refresh your preview before sending.");
         statements.push(
+          ...(input.internalNote?.trim()?[this.stmt("INSERT INTO hub_history(id,application_id,type,text,actor,created_at) VALUES(?,?,?,?,?,?)",crypto.randomUUID(),app.id,"note",input.internalNote.trim(),member.email,now)]:[]),
           ...this.cancelInvitationStatements(app.id,"interview",now),
           this.stmt(
             "UPDATE hub_links SET used_at=? WHERE application_id=? AND kind='interview' AND used_at IS NULL",
@@ -1624,11 +1630,11 @@ export class HubStore {
           ...this.mailStatements(
             `gmail:${app.id}:interview:${interviewId}:invitation:${app.revision + 1}`,
             summary(app),
-            `Interview invitation: ${app.job_title}`,
-            `Hi ${app.name},\n\nYou are invited to interview for ${app.job_title}. Choose a time using your private link within fourteen days:\n${url}\n\nAI Case Leads Hiring Team`,
+            message.subject,
+            message.body,
             now,
             "Interview invitation with a private candidate link.",
-            {metadata:{mailMode:"recruiter",actor:member.email}},
+            {metadata:{mailMode:"recruiter",actor:member.email,...(preview?{templateVersion:message.templateVersion,approvedEnvelope:message.envelope,invitationHash:hash}:{})}},
           ),
         );
         stage = renewing || app.stage==="Second Round Interview" ? app.stage : "Interview";

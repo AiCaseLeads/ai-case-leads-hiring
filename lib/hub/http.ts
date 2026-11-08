@@ -1,3 +1,5 @@
+import {submitInterviewInvitation} from './interview-submit';
+import type {PersonalMailEnv} from '../personal-mail/service';
 import {getRecruiterReview,saveRecruiterReview,workflowOverview,listRoleInterviews,workflowSettings,saveWorkflowSettings} from "./recruiting-workflow";
 import {markNotesReviewed} from "./note-review";
 import {STAGES} from "./types";
@@ -92,6 +94,7 @@ export async function handleHubRequest(
   path: string[],
   member: HubMember,
   store: HubStore,
+  interviewEnv?:()=>Promise<PersonalMailEnv>,
 ): Promise<Response> {
   try {
     if (!member?.email) throw new HiringError("staff_access_required",403,"Sign in with an authorized hiring account.");
@@ -192,12 +195,14 @@ export async function handleHubRequest(
       id &&
       operation === "action" &&
       request.method === "POST"
-    )
-      data = await store.action(
-        id,
-        parse(actionInput, await json(request)),
-        member,
-      );
+    ) {
+      const input=parse(actionInput,await json(request));
+      if(input.action==='interview') {
+        if(!input.templateVersion||!input.previewFingerprint)throw new HiringError('preview_required',422,'Preview the invitation before sending.');
+        if(!interviewEnv)throw new HiringError('interview_setup_unavailable',503,'Interview setup could not be checked. Refresh and retry.');
+        data=await submitInterviewInvitation(store,member,id,input,await interviewEnv());
+      } else data=await store.action(id,input,member);
+    }
     else if(section === "bulk-rejection" && request.method === "POST") {
       const body=await json(request) as Record<string,unknown>;
       if(!body||typeof body!=="object"||Array.isArray(body))throw new HiringError("invalid_bulk",422,"Choose applicants to preview.");

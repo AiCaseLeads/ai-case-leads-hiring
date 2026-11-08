@@ -1,4 +1,6 @@
 "use client";
+import { GlobalSearch } from "./global-search";
+import { SessionBoundary } from "./session-boundary";
 import { WorkflowHome } from "./workflow-home";
 import { InterviewWorkspace } from "./interview-workspace";
 import { NavigationLink, applicantHref } from "./navigation-link";
@@ -23,7 +25,7 @@ import { sortHubJobs } from "./job-order";
 import { CandidateDetail, Candidates } from "./candidates";
 import { Jobs } from "./jobs";
 import { Reports } from "./reports";
-import { HubSettings, Tasks } from "./settings";
+import { HubSettings, Tasks, type SettingsSection } from "./settings";
 import { ReviewReminderQueue } from "./review-reminders";
 import { Badge, EmptyState, ResourceState } from "./shared";
 import { stageLabel, stages, type Member, type Overview } from "./types";
@@ -53,6 +55,7 @@ export function HiringDashboard({
   const [candidateAction, setCandidateAction] = useState<"note" | "interview">("note");
   const menuButton = useRef<HTMLButtonElement>(null);
   const [workspaceNotice, setWorkspaceNotice] = useState("");
+  useEffect(()=>{if(!workspaceNotice.startsWith("Sign-in restored."))return;const timeout=window.setTimeout(()=>setWorkspaceNotice(""),8000);return()=>window.clearTimeout(timeout)},[workspaceNotice]);
   const [decisionNotice,setDecisionNotice]=useState("");
   const [decisionSequence,setDecisionSequence]=useState(0);
   const decisionContext=useRef<{href:string;next:string|null}|null>(null);
@@ -62,7 +65,7 @@ export function HiringDashboard({
   const [createJob, setCreateJob] = useState(0);
   const [initialStage, setInitialStage] = useState("");
   const [initialJobId, setInitialJobId] = useState("");
-  const [settingsSection, setSettingsSection] = useState<"scorecards" | undefined>();
+  const [settingsSection, setSettingsSection] = useState<SettingsSection | undefined>();
   function readLocation() {
     setMenuOpen(false);
     const params = new URLSearchParams(window.location.search);
@@ -88,7 +91,7 @@ export function HiringDashboard({
     setInitialFilter(filters.toString());
     const page = Number(params.get("page"));
     setInitialPage(Number.isFinite(page) ? Math.max(1, Math.min(10000, Math.floor(page))) : 1);
-    setSettingsSection(next === "settings" && params.get("section") === "scorecards" ? "scorecards" : undefined);
+    const settingsTarget=params.get("section");setSettingsSection(next === "settings" && ["personal","templates","team","integrations","diagnostics","scorecards","help"].includes(settingsTarget||"") ? settingsTarget as SettingsSection : settingsTarget === "company" ? "integrations" : undefined);
     setCreateJob(0);
   }
   const [initialFilter, setInitialFilter] = useState("");
@@ -185,6 +188,7 @@ export function HiringDashboard({
   function manageScorecards() { const url = viewUrl("settings"); url.searchParams.set("section", "scorecards"); navigate(url); }
   return (
     <div className="hiring-hub" data-hiring-workspace>
+      <SessionBoundary email={member.email} onRestored={()=>setWorkspaceNotice("Sign-in restored. Your unsent entries are unchanged. Save or discard them before refreshing the workspace.")}/>
       <a href="#hub-main" className="skip-link">
         Skip to hiring workspace
       </a>
@@ -235,6 +239,7 @@ export function HiringDashboard({
         <header className="hub-topbar">
           <span className="hub-breadcrumb"><strong>Hiring workspace</strong><span aria-hidden="true">/</span>{detailId ? "Applicant profile" : navigation.find(item => item.id === view)?.label || "Delivery activity"}</span>
           <div>
+            <GlobalSearch onNavigate={href=>navigate(new URL(href,window.location.origin))}/>
             <Badge
               tone={
                 data?.integrations.applicationsEnabled ? "success" : "warning"
