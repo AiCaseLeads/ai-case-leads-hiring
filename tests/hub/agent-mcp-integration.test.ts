@@ -51,7 +51,9 @@ test('real stdio MCP reaches authenticated API and stored PDF text with grouped 
   const search=JSON.parse((await call('search_applicants',{query:'personal injury'})).result.content[0].text).data as CandidatePage;
   assert.equal(search.items[0].applications.length,2);assert.equal(originalReads,1,'all MCP reads use cached text without fetching originals');
   const record=await store.setting<Record<string,unknown>>('agent_access_'+access.id,{});await store.setSetting('agent_access_'+access.id,{...record,scopes:['jobs:read']});
-  const denied=await call('export_applicants',args);assert.equal(denied.result.isError,true);assert.equal(denied.result.structuredContent!.error.code,'agent_unauthorized');assert.equal(denied.result.structuredContent!.error.httpStatus,403);
+  const denied=await call('export_applicants',args);assert.equal(denied.result.isError,true);assert.equal(denied.result.structuredContent!.error.code,'agent_scope_required');assert.equal(denied.result.structuredContent!.error.httpStatus,403);
+  await store.setSetting('agent_access_'+access.id,{...record,revoked:true});
+  const revoked=await call('export_applicants',args);assert.equal(revoked.result.isError,true);assert.equal(revoked.result.structuredContent!.error.code,'agent_unauthorized');assert.equal(revoked.result.structuredContent!.error.httpStatus,403);
  }finally{
   if(child&&!child.killed)child.kill();server.closeAllConnections();await new Promise<void>(resolve=>server.close(()=>resolve()));database.close();await rm(dir,{recursive:true,force:true});
  }

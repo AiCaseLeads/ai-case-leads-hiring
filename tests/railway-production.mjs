@@ -80,7 +80,7 @@ try{
  await team.getByLabel('Job title',{exact:true}).fill('Railway Test Engineer');await team.getByText('More details: department and page address',{exact:true}).click();await team.getByLabel('Public page address',{exact:true}).fill('railway-test-engineer');await team.getByLabel('Job description',{exact:true}).fill('Isolated Railway verification role. No real applications or outreach.');
  for(let n=0;n<2;n++)await team.getByRole('button',{name:'Continue',exact:true}).click();
  await team.locator('.hub-review-team > summary').click();
- await team.getByRole('checkbox',{name:/maria@example.invalid/}).check();await team.getByRole('checkbox',{name:/alex@example.invalid/}).check();await team.getByLabel('Recruiter who handles candidate replies',{exact:true}).selectOption('maria@example.invalid');
+ await team.getByRole('checkbox',{name:/maria@example.invalid/}).check();await team.getByRole('checkbox',{name:/alex@example.invalid/}).check();await team.getByLabel('Default reply contact',{exact:true}).selectOption('maria@example.invalid');
  await team.getByRole('button',{name:'Continue',exact:true}).click();
  assert.equal(await team.getByRole('checkbox',{name:/I have reviewed|I approve/}).count(),0);
  await team.getByRole('button',{name:'Publish job',exact:true}).click();await team.getByRole('heading',{name:'Jobs',exact:true}).waitFor();
@@ -101,7 +101,7 @@ try{
  let firstId,firstFile;
  for(const [index,job] of [engineer,creative].entries()){
   const applicant=await browser.newContext({viewport:index?{width:390,height:844}:{width:1440,height:1000}}),page=await applicant.newPage();page.on('pageerror',error=>errors.push(error.message));
-  await page.goto(origin+`/jobs/${job.slug}?utm_source=railway-verified`);await page.getByLabel('First name',{exact:false}).fill('Isolated Browser');await page.getByLabel('Last name',{exact:false}).fill(`Candidate ${index}`);await page.getByLabel('Email address',{exact:false}).fill(`isolated-browser-${index}@example.invalid`);await page.getByLabel('Phone number',{exact:false}).fill('+1 305 555 0123');await page.locator('input[type=file]').setInputFiles({name:'isolated-resume.pdf',mimeType:'application/pdf',buffer:sample});
+  await page.goto(origin+`/jobs/${job.slug}?utm_source=railway-verified`);await page.getByLabel('First name',{exact:false}).fill('Isolated Browser');await page.getByLabel('Last name',{exact:false}).fill(`Candidate ${index}`);await page.getByLabel('Email address',{exact:false}).fill(`isolated-browser-${index}@example.invalid`);await page.getByLabel('Phone number',{exact:false}).fill('+1 305 555 0123');await page.getByLabel('LinkedIn profile',{exact:false}).fill(`https://www.linkedin.com/in/isolated-browser-${index}`);await page.locator('input[type=file]').setInputFiles({name:'isolated-resume.pdf',mimeType:'application/pdf',buffer:sample});
   await page.getByRole('button',{name:'Submit application',exact:false}).click();await page.waitForURL(/\/applications\/[a-f0-9]{64}$/, {timeout:15000}).catch(async error=>{throw new Error(`${error.message}\n${(await page.locator('body').innerText()).slice(-2000)}`);});
   assert.equal((await fetch(origin+'/api'+new URL(page.url()).pathname)).status,200);await applicant.close();
  }

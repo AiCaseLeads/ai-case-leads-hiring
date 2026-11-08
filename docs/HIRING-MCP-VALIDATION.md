@@ -1,6 +1,6 @@
 # Bulk applicant MCP validation
 
-Validated locally on November 7, 2026, from main `e002b12bb0790d560dde60a5e3a55a605fb7d37e`.
+Validated locally on November 7, 2026, integrated with main `146bb0545825f4c04fd3fc6522ee22888384785b`. The integration preserves owner interview sending, Gmail CC/reply routing, persistent connection permissions and multi-country job publishing.
 
 ## Scope and behavior
 
@@ -15,8 +15,8 @@ Validated locally on November 7, 2026, from main `e002b12bb0790d560dde60a5e3a55a
 
 | Check | Result |
 | --- | --- |
-| `npm test` | 749 passed; 3 native OCR tests skipped |
-| `npm run test:mcp` | 7 passed |
+| `npm test` | 769 passed; 3 native OCR tests skipped |
+| `npm run test:mcp` | 8 passed |
 | `npm run test:railway` | 22 passed |
 | `python3 -m unittest discover -s tests/aws -p 'test_*.py'` | 5 passed |
 | `npm run typecheck` | Passed |

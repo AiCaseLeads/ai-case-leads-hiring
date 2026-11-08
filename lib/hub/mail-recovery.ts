@@ -75,6 +75,7 @@ async function envelope(store: HubStore, row: Row, env: PersonalMailEnv, now: nu
       if (typeof payload.to !== "string" || payload.to.toLowerCase() !== row.app_email.toLowerCase() || !["subject", "body", "messageId"].every(key => typeof payload[key] === "string")) return { reason: "Recipient or original message identity needs individual review" };
       mail = await candidateMail(store, payload as unknown as MailInput, owners, { mailMode: candidateTaskMailMode(row.id, row.application_id, payload), actor: payload.actor, applicationId: row.application_id, rejection:isRejectionTask(row.id,row.application_id),interview:isInterviewInvitationTask(row.id,row.application_id) });
     }
+    if (mail && payload.approvedEnvelope && JSON.stringify(payload.approvedEnvelope)!==JSON.stringify({sender:mail.sender,to:mail.to,cc:mail.cc||[],replyTo:mail.replyTo||[]})) throw {code:'interview_sender_changed'};
     if (!mail || mail.to.toLowerCase() === "sales@aicaseleads.com") return { reason: "Notification is no longer current or owner notifications are disabled" };
     return { kind: messageKind, mail: internal ? { ...mail, sender:CANDIDATE_SENDER,replyTo:[AUTOMATIC_REPLY_TO],candidateAccount:undefined } : mail };
   } catch (error) { return { reason: safeIssue(error) }; }
@@ -91,7 +92,7 @@ async function verify(mail: MailInput, store: HubStore, deps: RecoveryDependenci
       const transport=await (deps.automatic||(()=>automaticMailTransport(store)))();transport.setDeadline?.(Date.now()+20_000);
       await transport.verify();identity=`sendgrid:${transport.fingerprint}`;
     }else{
-      if(!account||account==='sales@aicaseleads.com'||!sender)throw {code:'candidate_mail_account_not_configured'};
+      if(!account||!sender)throw {code:'candidate_mail_account_not_configured'};
       const transport = deps.resolve ? await deps.resolve(account) : await personalMailWorkspace(store, account, deps.env);
       if (!transport) throw { code: "candidate_mail_account_connection_required" };
       transport.setDeadline?.(Date.now() + 20_000);

@@ -92,8 +92,16 @@ test("real custom API hides drafts and paused intake; public navigation and priv
       await page.waitForURL(`${baseUrl}/team`);
       await page.getByRole("heading", { name: "Your team’s hiring hub.", exact: true }).waitFor();
       const railway = process.env.TEST_HOSTING_PLATFORM === "railway";
-      const login = page.getByRole("link", { name: railway ? "Sign in with Google" : "Sign in to the hiring hub", exact: true });
-      assert.equal(await login.getAttribute("href"), railway ? "/api/auth/google/start?return_to=%2Fteam" : "/signin-with-chatgpt?return_to=%2Fteam");
+      if (railway) {
+        const login = page.getByRole("button", { name: "Sign in with Google", exact: true });
+        assert.equal(await login.isEnabled(), true);
+        assert.equal(await page.locator('form.team-sign-in').getAttribute("action"), "/api/auth/google/start");
+        assert.equal(await page.locator('input[name="return_to"]').inputValue(), "/team");
+        assert.equal(await page.getByRole("checkbox", { name: "Keep me signed in for 30 days", exact: true }).isChecked(), false);
+      } else {
+        const login = page.getByRole("link", { name: "Sign in to the hiring hub", exact: true });
+        assert.equal(await login.getAttribute("href"), "/signin-with-chatgpt?return_to=%2Fteam");
+      }
       assert.equal(await page.getByRole("link", { name: "Request Ashby setup", exact: false }).count(), 0);
       await assertFits(page);
       await page.getByRole("link", { name: "Applicant privacy", exact: true }).click();

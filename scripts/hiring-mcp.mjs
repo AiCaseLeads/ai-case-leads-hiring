@@ -9,15 +9,16 @@ const page = {type:'integer', minimum:1};
 const limit = {type:'integer', minimum:1, maximum:50};
 const filters = {page,pageSize:{type:'integer',const:30},jobId:string,stage:string,excludeStage:string,search:string,active:{type:'boolean'},qualification:string,assignee:string,appliedFrom:string,appliedTo:string,timeZone:string,sort:string};
 const detailPages={sectionPageSize:limit,historyPage:page,communicationsPage:page,interviewsPage:page,notesPage:page,evidencePage:page,recordingsPage:page};
+const countryMode={type:'string',enum:['separate','single'],default:'separate',description:'separate: one job per country (default). single: one job accepting all listed countries, screened by country of residence.'};
 const applicant = schema({applicationId:string}, ['applicationId']);
 const jobs = {jobId:{...string,maxLength:128},jobIds:{type:'array',minItems:1,maxItems:50,items:{...string,maxLength:128}}};
 const bulkPage = {pageSize:{type:'integer',minimum:1,maximum:30,default:30},cursor:{...string,maxLength:2048}};
 const jobChoice = [{required:['jobId'],not:{required:['jobIds']}},{required:['jobIds'],not:{required:['jobId']}}];
 const readOnly = {readOnlyHint:true,destructiveHint:false,idempotentHint:true,openWorldHint:false};
 const tools = [
- {name:'draft_jobs', description:'Prepare job drafts from supplied text; does not publish.', inputSchema:schema({text:string,countries:{type:'array',items:string}},['text','countries'])},
- {name:'validate_jobs', description:'Validate a structured draft and country list without publishing.', inputSchema:schema({draft:{type:'object'},countries:{type:'array',items:string}},['draft','countries'])},
- {name:'publish_jobs', description:'Publish explicitly reviewed jobs. Requires publish scope and explicit user approval.', inputSchema:schema({jobs:{type:'array',items:{type:'object'}},confirm:{type:'boolean',const:true}},['jobs','confirm'])},
+ {name:'draft_jobs', description:'Prepare job drafts from supplied text; does not publish. Use countryMode=single for one job accepting multiple countries, or separate for country versions.', inputSchema:schema({text:string,countries:{type:'array',items:string,minItems:1,maxItems:20},countryMode},['text','countries'])},
+ {name:'validate_jobs', description:'Validate a structured draft without publishing. Questions support Boolean, Number, LongText, String, Url, File, ValueSelect and MultiValueSelect; selects need options [{value,label}] and can use rules [{operator:equals|not_equals,value}]. countryMode=single creates one role with an allowed-country rule.', inputSchema:schema({draft:{type:'object'},countries:{type:'array',items:string,minItems:1,maxItems:20},countryMode},['draft','countries'])},
+ {name:'publish_jobs', description:'Publish explicitly reviewed jobs. Requires publish scope and explicit user approval.', inputSchema:schema({jobs:{type:'array',items:{type:'object'}},replaceExisting:{type:'boolean',description:'Explicitly replace jobs with matching slugs, preserving their URLs and applicants. Only use when the user requested these job updates.'},confirm:{type:'boolean',const:true}},['jobs','confirm'])},
  {name:'list_jobs', description:'List a bounded page of roles. Read-only; requires jobs:read.', inputSchema:schema({page,pageSize:limit,status:string,search:string})},
  {name:'list_applicants', description:'List a bounded page of applicants, optionally filtered by role, stage or search. Requires applicants:read.',inputSchema:schema(filters)},
  {name:'export_applicants',description:'Read up to 30 candidates with all matching applications grouped by normalized email, screening answers, LinkedIn, duplicate-email information and cached résumé text. Requires applicants:read only. Follow nextCursor; cache status explicitly identifies pending or partial text.',inputSchema:{...schema({...jobs,...bulkPage}),oneOf:jobChoice},annotations:readOnly},

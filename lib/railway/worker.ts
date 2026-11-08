@@ -1,7 +1,7 @@
 import { initializeRailwayStorage, closeRailwayStorage } from "./bindings";
 import { railwayConfig } from "./config";
 import { BackgroundRunner } from "./background";
-import { workspaceEnv, workspaceStatus, workspaceClient } from "../workspace-config";
+import { workspaceEnv, workspaceStatus, workspaceClient, resolvedWorkspaceEnv } from "../workspace-config";
 import { HubStore } from "../hub/store";
 import { processAiMatches } from "../ai/matching";
 import { processHubTasks } from "../task-runner";
@@ -23,6 +23,16 @@ export async function backfillResumeText(maxFiles=1,options:{retryFailed?:boolea
     }
     const rows=await storage.DB.prepare('SELECT status,COUNT(*) AS count FROM hub_file_text GROUP BY status').all();
     return {processed,requeued,statusCounts:rows.results};
+  }finally{closeRailwayStorage();}
+}
+
+/** Explicit operator diagnostic, restricted to the configured owner's own mailbox.
+ * Never scheduled by the worker and never exposed through MCP or HTTP. */
+export async function sendOwnerRecruitingTest(email:string,testId:string) {
+  const storage=initializeRailwayStorage();
+  try {
+    const {sendOwnerMailTest}=await import('../personal-mail/diagnostic');
+    return await sendOwnerMailTest(new HubStore(storage.DB),email,testId,{...await resolvedWorkspaceEnv(),ADMIN_EMAILS:process.env.ADMIN_EMAILS});
   }finally{closeRailwayStorage();}
 }
 
