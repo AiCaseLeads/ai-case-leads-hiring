@@ -3,6 +3,7 @@ import { readSession, errorResponse } from "./http";
 import { sha256 } from "./crypto";
 import { MAX_FILE_BYTES } from "./validation";
 import { documentStructure } from "./document-structure";
+import { queueFileText } from "../resume-text/cache";
 
 export function requestOrigin(request: Request): void {
   if (request.headers.get("origin") !== new URL(request.url).origin || ![null,"same-origin","none"].includes(request.headers.get("sec-fetch-site"))) throw new HiringError("invalid_origin",403,"Open this website before uploading.");
@@ -52,6 +53,9 @@ export async function receiveUpload(request:Request,token:string,db?:D1Database,
       await bucket.put(row.object_key,bytes,{httpMetadata:{contentType:row.content_type},customMetadata:{fileId:id,jobId:row.job_id}});
       await db.prepare("UPDATE hub_files SET uploaded_at=? WHERE id=? AND uploaded_at=-1 AND application_id IS NULL").bind(Date.now(),id).run();
     }catch(error){await db.prepare("UPDATE hub_files SET uploaded_at=NULL WHERE id=? AND uploaded_at=-1 AND application_id IS NULL").bind(id).run().catch(()=>undefined);throw error;}
+    // Derived metadata only; extraction happens in the independent background loop.
+    // Discovery repairs a failed enqueue without turning a completed upload into an error.
+    await queueFileText(db,id).catch(()=>undefined);
     return new Response(null,{status:204,headers:{"Cache-Control":"no-store"}});
   }catch(error){return errorResponse(error);}
 }

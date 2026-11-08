@@ -20,7 +20,7 @@ Choose only the scopes needed when the owner creates the connection:
 | Scope | Access |
 | --- | --- |
 | `jobs:read` | Role list |
-| `applicants:read` | Applicant list, individual answers and file metadata |
+| `applicants:read` | Applicant list, answers and metadata; grouped bulk export and full-text search include cached résumé text |
 | `files:read` | File text and original content; also requires `applicants:read` |
 | `jobs:draft` | Prepare and validate job drafts |
 | `jobs:publish` | Explicitly publish reviewed jobs |
@@ -31,15 +31,17 @@ Read tools do not send messages or change applicant stages. Applicant data is pr
 | --- | --- |
 | `list_jobs` | Optional `page`, `pageSize` (up to 50), `search` |
 | `list_applicants` | Optional `page`, `pageSize` (30), `jobId`, `stage`, `excludeStage`, `search`, `active`, `qualification`, `assignee`, `appliedFrom`, `appliedTo`, `timeZone`, `sort` |
+| `export_applicants` | One `jobId` or 1–50 `jobIds`; optional `pageSize` (1–30, default 30) and `cursor`; requires only `applicants:read` |
+| `search_applicants` | `query` (2–200 characters); optional `jobId`/`jobIds`, `pageSize`, `cursor`; requires only `applicants:read` |
 | `get_applicant` | `applicationId`; optional `sectionPageSize` and independent `historyPage`, `communicationsPage`, `interviewsPage`, `notesPage`, `evidencePage`, `recordingsPage` |
 | `get_interview_evidence` | `applicationId`, `meetingId`, optional `textPage` |
 | `list_applicant_files` | `applicationId` |
 | `get_resume_text` | `applicationId`, `fileId` from the file list |
 | `get_applicant_file` | `applicationId`, `fileId`; original bytes as base64 |
 
-Start by listing a bounded page and selecting an applicant. Use the file metadata to identify the résumé, then request its extracted text. Text responses indicate truncation; do not present a truncated document as complete. Original content is capped at 2 MB in the adapter to avoid flooding a chat; larger originals should be reviewed in the hiring site or using bounded extracted text. Other MCP responses are capped at 3 MB. The API can impose tighter pagination and response limits; follow returned pagination metadata.
+For bulk review, start with `export_applicants` or `search_applicants`. They group matching applications by normalized email and include cached résumé text, answers and screening evidence under the existing `applicants:read` scope. Follow `nextCursor`; a smaller page may be returned to preserve complete candidate groups within the response budget. The original single-applicant/file workflow remains available, with unchanged `files:read` checks. Text responses indicate truncation or partial extraction; do not present an incomplete document as complete. Original content is capped at 2 MiB in the adapter to avoid flooding a chat; other API responses are bounded to 3 MiB by the adapter. See [Hiring MCP README](HIRING-MCP-README.md) for exact API, rate, deadline, cache/backfill and retry limits.
 
-The read API uses `GET /api/agent-read` with a Bearer header, never a token in the URL. Its action mapping is `list_jobs`, `list_applicants`, `get_applicant`, `list_files`, `file_text`, `file_content`, and `get_interview_evidence`. The `file_content` action returns raw bytes to the adapter, which encodes only that explicitly requested file. File access always includes its owning `applicationId`; another applicant's file cannot be requested under that record. Revoking the owner-issued token stops subsequent calls.
+The read API uses `GET /api/agent-read` with a Bearer header, never a token in the URL. Its action mapping is `list_jobs`, `list_applicants`, `export_applicants`, `search_applicants`, `get_applicant`, `list_files`, `file_text`, `file_content`, and `get_interview_evidence`. Multiple job filters use repeated `jobIds` query keys; tool `query` becomes API `q`. The `file_content` action returns raw bytes to the adapter, which encodes only that explicitly requested file. File access always includes its owning `applicationId`; another applicant's file cannot be requested under that record. Revoking the owner-issued token stops subsequent calls.
 
 Local adapter verification: `node --test tests/mcp/hiring-adapter.test.mjs` checks MCP discovery, existing write tools, read routing, file encoding, missing credentials, denied scope responses, oversized output and credential redaction. It uses a synthetic fetch provider and does not read production applicants.
 

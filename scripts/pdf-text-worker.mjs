@@ -2,7 +2,8 @@
 import { spawn } from "node:child_process";
 import { writeFile, readFile, unlink, stat } from "node:fs/promises";
 import path from "node:path";
-const MAX_BYTES=10*1024*1024, MAX_PAGES=30, MAX_TEXT=30000, MAX_OCR_PAGES=8;
+const configuredTextLimit=Number(process.env.PDF_MAX_TEXT_CHARS);
+const MAX_BYTES=10*1024*1024, MAX_PAGES=30, MAX_TEXT=Number.isSafeInteger(configuredTextLimit)&&configuredTextLimit>0?Math.min(configuredTextLimit,200000):30000, MAX_OCR_PAGES=8;
 const directory=process.env.PDF_WORK_DIR;
 const binaryDirectory=process.env.PDF_OCR_BIN_DIR||"/usr/bin";
 const nativeEnvironment={OMP_THREAD_LIMIT:"1"};

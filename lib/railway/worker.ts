@@ -5,7 +5,26 @@ import { workspaceEnv, workspaceStatus, workspaceClient } from "../workspace-con
 import { HubStore } from "../hub/store";
 import { processAiMatches } from "../ai/matching";
 import { processHubTasks } from "../task-runner";
+import { processResumeTextBatch } from "../resume-text/worker";
+import { requeueFailedFileText } from "../resume-text/cache";
 export { railwayConfig } from "./config";
+
+/** Optional operator-triggered bounded backfill, sharing the live worker's lease.
+ * No applicant state, notifications or Google tasks are changed. */
+export async function backfillResumeText(maxFiles=1,options:{retryFailed?:boolean}={}) {
+  if(!Number.isSafeInteger(maxFiles)||maxFiles<1||maxFiles>30)throw new Error('resume_backfill_limit_1_to_30');
+  if(options.retryFailed!==undefined&&typeof options.retryFailed!=='boolean')throw new Error('resume_backfill_retry_flag_invalid');
+  const storage=initializeRailwayStorage();let processed=0,requeued=0;
+  try{
+    if(options.retryFailed)requeued=await requeueFailedFileText(new HubStore(storage.DB),maxFiles);
+    for(let index=0;index<maxFiles;index++){
+      const result=await processResumeTextBatch({store:new HubStore(storage.DB),bucket:storage.BUCKET});
+      processed+=result.processed;if(!result.processed)break;
+    }
+    const rows=await storage.DB.prepare('SELECT status,COUNT(*) AS count FROM hub_file_text GROUP BY status').all();
+    return {processed,requeued,statusCounts:rows.results};
+  }finally{closeRailwayStorage();}
+}
 
 export async function initializeRuntime() {
   const config = railwayConfig();
@@ -34,13 +53,24 @@ export async function initializeRuntime() {
     await aiPending;aiPending=undefined;
     if(!aiStopping)aiTimer=setTimeout(()=>{void aiCycle();},busy?5000:60000);
   };
+  let textTimer:ReturnType<typeof setTimeout>|undefined,textPending:Promise<void>|undefined,textStopping=false;
+  const textCycle=async()=>{
+    if(textStopping)return;
+    let busy=false;
+    textPending=(async()=>{try{const result=await processResumeTextBatch({store:new HubStore(storage.DB,{origin:config.origin}),bucket:storage.BUCKET});busy=result.hasMore;}catch{console.error('[railway] resume_text_cycle_failed');}})();
+    await textPending;textPending=undefined;
+    if(!textStopping)textTimer=setTimeout(()=>{void textCycle();},busy?5000:60000);
+  };
   await runner.start();
   // Separate awaited loop: PDF/OCR/provider latency cannot delay Gmail or Calendar.
   if(config.backgroundEnabled)aiTimer=setTimeout(()=>{void aiCycle();},1000);
+  if(config.backgroundEnabled)textTimer=setTimeout(()=>{void textCycle();},1500);
   return { async stop() {
     aiStopping=true;if(aiTimer)clearTimeout(aiTimer);
+    textStopping=true;if(textTimer)clearTimeout(textTimer);
     const googleStopped=await runner.stop();
     if(aiPending)await aiPending;
+    if(textPending)await textPending;
     return googleStopped;
   }, closeStorage() { closeRailwayStorage(); } };
 }

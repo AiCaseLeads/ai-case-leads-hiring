@@ -102,6 +102,8 @@ export const hubApplications = sqliteTable(
     uniqueIndex("hub_submission_key_unique").on(t.submissionKeyHash),
     index("hub_application_stage_idx").on(t.stage, t.jobId, t.createdAt),
     index("hub_application_email_idx").on(t.email),
+    index("hub_applications_candidate_read_idx").on(sql`CASE WHEN trim(${t.email})<>'' THEN 'e:'||lower(trim(${t.email})) ELSE 'a:'||${t.id} END`,t.createdAt,t.jobId),
+    index("hub_applications_job_created_read_idx").on(t.jobId,t.createdAt,t.id),
     check(
       "hub_qualification_valid",
       sql`${t.qualification} IN ('pass','review','fail')`,
@@ -132,6 +134,14 @@ export const hubFiles = sqliteTable(
     check("hub_file_size_valid", sql`${t.size} > 0 AND ${t.size} <= 10485760`),
   ],
 );
+export const hubFileText = sqliteTable("hub_file_text", {
+  fileId: text("file_id").primaryKey().notNull().references(() => hubFiles.id, { onDelete: "cascade" }),
+  uploadedAt: integer("uploaded_at").notNull(), size: integer("size").notNull(), contentType: text("content_type").notNull(), parserVersion: text("parser_version").notNull(),
+  status: text("status").notNull().default("pending"), text: text("text").notNull().default(""),
+  truncated: integer("truncated").notNull().default(0), ocrIncomplete: integer("ocr_incomplete").notNull().default(0), pages: integer("pages").notNull().default(0), ocrPages: integer("ocr_pages").notNull().default(0),
+  errorCode: text("error_code"), attempts: integer("attempts").notNull().default(0), runAfter: integer("run_after").notNull().default(0),
+  leaseToken: text("lease_token"), leaseUntil: integer("lease_until").notNull().default(0), createdAt: integer("created_at").notNull(), updatedAt: integer("updated_at").notNull(),
+}, t => [index("hub_file_text_work_idx").on(t.status,t.runAfter,t.uploadedAt), check("hub_file_text_status",sql`${t.status} IN ('pending','running','ready','failed','no_text','password_protected','invalid','too_many_pages','too_large')`),check("hub_file_text_attempts",sql`${t.attempts}>=0`),check("hub_file_text_size",sql`length(${t.text})<=200000`)]);
 export const hubHistory = sqliteTable(
   "hub_history",
   {
