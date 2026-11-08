@@ -6,6 +6,7 @@ export type ApplicationField = {
   required: boolean;
   options?: { value: string; label: string }[];
   description?: string;
+  minWords?: number;
   numberFormat?: "number" | "currency";
   currency?: "USD";
 };

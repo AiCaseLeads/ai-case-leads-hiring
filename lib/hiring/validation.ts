@@ -1,3 +1,4 @@
+import { countWords } from "./word-count";
 import { HiringError } from "./errors";
 import { internationalPhoneError, isLinkedInProfile } from "./contact-fields";
 import { isWebsiteField, websiteLinkError } from "./website-links";
@@ -60,6 +61,9 @@ export function validateAnswers(input: ApplicationInput, fields: ApplicationFiel
         if (valid && isWebsiteField(field)) valid = websiteLinkError(v, field) === null;
     }
     if (!valid || blank) fieldErrors[field.path] = isWebsiteField(field) ? websiteLinkError(v, field) || `Check ${field.title.toLowerCase()}.` : `Check ${field.title.toLowerCase()}.`;
+    if (valid && field.type === "LongText" && field.minWords && countWords(v as string) < field.minWords) {
+      fieldErrors[field.path] = `Write at least ${field.minWords} ${field.minWords === 1 ? "word" : "words"}.`;
+    }
     if (!valid && field.type === "Phone") fieldErrors[field.path] = internationalPhoneError(v)!;
   }
   for (const field of fields) if (field.required && !answers.has(field.path)) fieldErrors[field.path] = `${field.title} is required.`;
