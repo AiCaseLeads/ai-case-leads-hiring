@@ -69,6 +69,7 @@ export function HiringDashboard({
   function showDecision(message:string,next:string|null=null){decisionContext.current={href:window.location.href,next};setDecisionNotice(message);setDecisionSequence(value=>value+1);}
   useEffect(()=>{if(!decisionNotice)return;const timer=window.setTimeout(dismissDecision,8000);return()=>window.clearTimeout(timer);},[decisionNotice,decisionSequence]);
   const [createJob, setCreateJob] = useState(0);
+  const [roleSearch, setRoleSearch] = useState("");
   const [initialStage, setInitialStage] = useState("");
   const [interviewView, setInterviewView] = useState("upcoming");
   const [initialJobId, setInitialJobId] = useState("");
@@ -250,6 +251,7 @@ export function HiringDashboard({
                   view === item.id ? "page" : undefined
                 }
                 onClick={() => {
+                  if (item.id === "applications") setRoleSearch("");
                   changeView(item.id);
                   if (menuButton.current?.offsetParent) menuButton.current.focus();
                 }}
@@ -300,7 +302,7 @@ export function HiringDashboard({
           {workspaceNotice && <p className="hub-notice" role="status">{workspaceNotice}</p>}
           {decisionNotice && <div className="hub-notice" style={{display:"flex",alignItems:"center",gap:12,justifyContent:"space-between"}}><p role="status" style={{margin:0}}>{decisionNotice}</p><button type="button" className="hub-text-button" aria-label="Dismiss decision notification" onClick={dismissDecision}>Dismiss</button></div>}
           {view === "applications" && !showApplicantQueue && !detailId &&
-            <ApplicantRoleDirectory refresh={refresh} onOpen={filter => applyFilters(filter, 1)}/>}
+            <ApplicantRoleDirectory search={roleSearch} setSearch={setRoleSearch} refresh={refresh} onOpen={filter => applyFilters(filter, 1)}/>}
           {view === "applications" && showApplicantQueue && <div hidden={!!detailId}><Candidates
             key={data?.jobs.some(job => job.id === initialJobId) ? initialJobId : "job-index"}
             initialStage={initialStage}

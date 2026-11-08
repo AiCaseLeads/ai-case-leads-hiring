@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import { ChevronRight } from "lucide-react";
 import { useHubResource } from "./api";
 import { NavigationLink } from "./navigation-link";
@@ -23,9 +22,15 @@ function locationSummary(role: ApplicantRole) {
   return [place, role.postingCount > 1 ? role.postingCount + " postings" : ""].filter(Boolean).join(" · ");
 }
 
-export function ApplicantRoleDirectory({refresh, onOpen}: {refresh: number; onOpen: (filter: string) => void}) {
+type DirectoryProps = {
+  refresh: number;
+  search: string;
+  setSearch: (value: string) => void;
+  onOpen: (filter: string) => void;
+};
+
+export function ApplicantRoleDirectory({refresh, search, setSearch, onOpen}: DirectoryProps) {
   const resource = useHubResource<{roles: ApplicantRole[]}>("/api/hub/applicant-roles", refresh);
-  const [search, setSearch] = useState("");
   const term = search.trim().toLocaleLowerCase();
   const roles = resource.data?.roles || [];
   const visible = roles.filter(role => [role.name, ...role.locations].some(value => value.toLocaleLowerCase().includes(term)));

@@ -109,7 +109,8 @@ test('column choices and direct ZIP downloads retain the explicit cross-role sco
 
 
 const roleJobs=[jobs[0],jobs[1],{...jobs[0],id:'job-east',title:'Eastern recruiter'}, {...jobs[0],id:'job-west',title:'Western recruiter'}];
-const roleGroup={id:'recruiting',kind:'role',name:'Recruiter',jobIds:['job-east','job-west','job-two']};
+const roleGroup={id:'recruiting',kind:'role',name:'Recruiter',jobIds:['job-east','job-west']};
+const closedGroup={id:'past-creative',kind:'role',name:'Creative',jobIds:['job-two']};
 const roleItems=[
   {...applicant,name:'Initial Engineer'},
   {...applicant,id:'app-screened',name:'Shortlisted Engineer',stage:'Screening'},
@@ -128,10 +129,10 @@ function dashboardFixture(url){
       return {canApprove:false,reviewQueue:[],myQueue:[],unassigned:[],returned:[],counts:{awaitingReview:0,myUnreviewed:0,unassigned:0,returned:0}};
     case '/api/hub/applicant-roles':
       return {roles:[{name:'Engineer',jobId:'job-one',locations:['United States'],reviewCount:1,postingCount:1},{name:'Recruiter',jobGroupId:'recruiting',locations:['Spain','United States'],reviewCount:2,postingCount:2}]};
-    case '/api/hub/job-groups': return {groups:[roleGroup],postings:[],revision:0};
+    case '/api/hub/job-groups': return {groups:[roleGroup,closedGroup],postings:[],revision:0};
     case '/api/hub/applications': {
       const items=roleItems.filter(a=>(!filters.has('jobId') || a.jobId===filters.get('jobId'))&&
-        (!filters.has('jobGroupId')||roleGroup.jobIds.includes(a.jobId))&&
+        (!filters.has('jobGroupId')||[roleGroup,closedGroup].find(group=>group.id===filters.get('jobGroupId'))?.jobIds.includes(a.jobId))&&
         (filters.get('openPostings')!=='true'||a.jobId!=='job-two')&&(!filters.has('stage')||a.stage===filters.get('stage')));
       return {items,total:items.length,scopeTotal:items.length,page:1,pageSize:30};
     }
@@ -156,6 +157,7 @@ test('Applicants opens active roles before loading people and preserves role and
     const applicantQueries=()=>requests.filter(r=>r.pathname==='/api/hub/applications');
     assert.equal(applicantQueries().length,0,'The role picker needs no applicant list request');
     assert.ok(await role.evaluate(el=>el.getBoundingClientRect().right<=innerWidth+1));
+    await page.getByRole('searchbox',{name:'Search active roles'}).fill('Engineer');
     await role.click();
     await page.getByRole('link',{name:'Initial Engineer',exact:true}).waitFor();
     const initial=applicantQueries().at(-1).searchParams;
@@ -173,6 +175,9 @@ test('Applicants opens active roles before loading people and preserves role and
     await candidate.waitFor();assert.equal(await stage.inputValue(),'all');assert.equal(new URL(page.url()).searchParams.get('jobId'),queueUrl.searchParams.get('jobId'));
     assert.ok(applicantQueries().every(r=>r.searchParams.has('jobId')),'No broad request when switching stages or returning from detail');
     await page.getByRole('link',{name:'Active roles',exact:true}).click();await roleDirectory.waitFor();
+    const search=page.getByRole('searchbox',{name:'Search active roles'});
+    assert.equal(await search.inputValue(),'Engineer');
+    await search.fill('');
     const group=page.getByRole('link',{name:/Recruiter/});await group.click();
     await page.getByRole('link',{name:'Eastern Applicant',exact:true}).waitFor();await page.getByRole('link',{name:'Western Applicant',exact:true}).waitFor();
     const grouped=applicantQueries().at(-1).searchParams;
@@ -191,4 +196,21 @@ test('explicit all-applicant and existing global stage URLs open directly into t
   assert.equal(await page.getByRole('link',{name:'Initial Engineer',exact:true}).count(),0);
   const filters=requests.filter(r=>r.pathname==='/api/hub/applications').at(-1).searchParams;
   assert.equal(filters.get('stage'),'Screening');assert.equal(filters.has('jobId'),false);
+});
+
+
+test('a closed posting or role bookmark can open its own historical applications',async t=>{
+  for(const [key,id] of [['jobId','job-two'],['jobGroupId','past-creative']]){
+    const {page,requests}=await setup(t,{dashboard:true,initialFilter:key+'='+id+'&openPostings=true&stage=Application+Review'});
+    await page.getByRole('heading',{name:'This role has no active postings'}).waitFor();
+    const past=page.getByRole('link',{name:'View past applications'});
+    const destination=new URL(await past.getAttribute('href'),page.url());
+    assert.equal(destination.searchParams.get(key),id);
+    assert.equal(destination.searchParams.has('openPostings'),false);
+    assert.equal(destination.searchParams.has('stage'),false);
+    await past.click();
+    await page.getByRole('link',{name:'Closed Posting Applicant',exact:true}).waitFor();
+    assert.equal(await page.getByRole('link',{name:'Initial Engineer'}).count(),0);
+    assert.ok(requests.filter(request=>request.pathname==='/api/hub/applications').every(request=>request.searchParams.get(key)===id));
+  }
 });
