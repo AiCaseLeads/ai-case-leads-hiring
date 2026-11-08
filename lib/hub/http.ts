@@ -163,9 +163,9 @@ export async function handleHubRequest(
     } else if(section==="applications" && id && operation==="response-checks" && path.length===3 && request.method==="GET") {
       const {getResponseChecks}=await import("../response-checks/store");
       const {readResponseEntry}=await import("../response-checks/report");
-      const [checks,entry]=await Promise.all([getResponseChecks(store,id),readResponseEntry(store,id)]);
       const includeText=new URL(request.url).searchParams.get("includeText")!=="false";
-      data={...checks,entry,answers:includeText?checks.answers:checks.answers.map(({text:_text,...check})=>check)};
+      const [checks,entry]=await Promise.all([getResponseChecks(store,id,{includeText}),readResponseEntry(store,id)]);
+      data={...checks,entry};
     } else if(section==='workflow'&&id==='overview' &&request.method==='GET')data=await workflowOverview(store,member);
     else if(section==='workflow'&&id==='settings'&&request.method==='GET')data=await workflowSettings(store);
     else if(section==='workflow'&&id==='settings'&&request.method==='PATCH')data=await saveWorkflowSettings(store,await json(request),member);

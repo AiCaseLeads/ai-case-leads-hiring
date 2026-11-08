@@ -36,6 +36,9 @@ test("backfill indexes all written answers locally, caches matching copy and sep
   await Promise.all([processResponseCheckBatch({store,allowance,key,scan}),processResponseCheckBatch({store,allowance,key,scan})]);
   assert.equal(requests,2);
   const checked=await getResponseChecks(store,first);
+  const compact=await getResponseChecks(store,first,{includeText:false});
+  assert.equal(Object.hasOwn(compact.answers[0],"text"),false);
+  assert.deepEqual(compact.answers[0].matches,checked.answers[0].matches);
   assert.equal(checked.status,"ready");assert.equal(checked.answers[0].classification,"MIXED");
   assert.deepEqual(checked.answers[0].matches.map(m=>m.applicationId),[other]);
   assert.ok(checked.answers[0].matches[0].passage.length>40);

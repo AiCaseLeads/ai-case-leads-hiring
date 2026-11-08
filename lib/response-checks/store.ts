@@ -9,7 +9,7 @@ export type ProviderState={state:"active"|"unconfigured"|"paused";keyId?:string;
 type StatusRow={status:ResponseState;total:number};
 type AnswerState="ready"|"pending"|"too_short"|"not_prose"|"unavailable";
 type Match={applicationId:string;jobTitle:string;passage:string};
-type AnswerDetail={path:string;title:string;text:string;words:number;status:AnswerState;classification:string|null;confidence:string|null;matches:Match[]};
+type AnswerDetail={path:string;title:string;text?:string;words:number;status:AnswerState;classification:string|null;confidence:string|null;matches:Match[]};
 export async function getResponseCoverage(store:HubStore) {
   const apps=await store.rows<StatusRow>(`SELECT ${appCheckStatusSql} AS status,COUNT(*) AS total FROM hub_applications a
     ${appCheckJoinsSql} WHERE ${activeApplicationsSql("a")} GROUP BY 1`);
@@ -29,7 +29,7 @@ export async function getResponseCoverage(store:HubStore) {
     detectorState:state.state, pauseReason:state.reason??null, retryAt:state.retryAt??null};
 }
 
-export async function getResponseChecks(store:HubStore,id:string):Promise<{status:ResponseState;answers:AnswerDetail[]}> {
+export async function getResponseChecks(store:HubStore,id:string,{includeText=true}={}):Promise<{status:ResponseState;answers:AnswerDetail[]}> {
   const app=await store.stmt(`SELECT a.id,a.name,a.email,a.fields_json,a.answers_json,ri.indexed_at AS indexedAt
     FROM hub_applications a LEFT JOIN hub_response_index ri ON ri.application_id=a.id WHERE a.id=? AND ${activeApplicationsSql("a")}`,id).first<Submission&{indexedAt:number|null}>();
   if(!app)throw new HiringError("application_not_found",404,"This application is unavailable.");
@@ -60,7 +60,7 @@ export async function getResponseChecks(store:HubStore,id:string):Promise<{statu
     const status:AnswerState=result?.status==="ready"?"ready"
       :result?.status==="unavailable"?(result.classification==="TOO_SHORT"?"too_short":"unavailable")
       :canScan({path,title,text,words,...rest})?"pending":"not_prose";
-    return {path,title,text,words,status,classification:status==="ready"?result?.classification||null:null,confidence:result?.confidence||null,matches:byPath.get(path)||[]};
+    return {path,title,...(includeText?{text}:{}),words,status,classification:status==="ready"?result?.classification||null:null,confidence:result?.confidence||null,matches:byPath.get(path)||[]};
   });
   const status=!app.indexedAt || answers.some(a=>a.status==="pending")?"pending"
     :!answers.length?"no_written_answers":answers.some(a=>a.status==="unavailable")?"partial":"ready";
