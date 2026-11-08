@@ -85,7 +85,15 @@ export class SQLiteD1Database {
     try {
       this.connection.exec("CREATE TABLE IF NOT EXISTS railway_migrations (name TEXT PRIMARY KEY NOT NULL,position INTEGER UNIQUE NOT NULL,sha256 TEXT NOT NULL,applied_at INTEGER NOT NULL)");
       const applied = this.connection.prepare("SELECT name,position,sha256 FROM railway_migrations ORDER BY position").all();
-      if (applied.some((entry, index) => entry.name !== migrations[index]?.name || entry.position !== index || entry.sha256 !== migrations[index]?.hash)) throw new Error("migration_hash_drift");
+      for (const [index, entry] of applied.entries()) {
+        const known = migrations[index];
+        if (known && entry.position === index && entry.name === known.name && entry.sha256 === known.hash) continue;
+        // The image immediately before response checks can reopen its additive schema without modifying it.
+        if (!known && migrations.length === 14 && index === 14 && entry.position === 14 &&
+            entry.name === "0015_response_checks.sql" &&
+            entry.sha256 === "0a666cb07bad348500fe1358beae349cf06889694aa45a40efa9e88ba5526df4") continue;
+        throw new Error("migration_hash_drift");
+      }
       for (const migration of migrations.slice(applied.length)) {
         this.connection.exec(migration.sql);
         this.connection.prepare("INSERT INTO railway_migrations(name,position,sha256,applied_at) VALUES (?,?,?,?)").run(migration.name, migration.position, migration.hash, Date.now());
