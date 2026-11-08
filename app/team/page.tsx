@@ -39,6 +39,7 @@ export default async function TeamPage({ searchParams }: { searchParams?: Promis
       <script dangerouslySetInnerHTML={{ __html: HUB_HISTORY_GUARD }} />
       <HiringDashboard
         member={member}
+        startInRoleDirectory={query?.view === "applications" && Object.keys(query).length === 1}
         signOutHref={chatGPTSignOutPath("/team")}
       />
       </>

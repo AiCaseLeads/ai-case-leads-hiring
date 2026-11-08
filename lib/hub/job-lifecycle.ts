@@ -12,6 +12,11 @@ export type JobLifecycle = {
   changedBy: string;
 };
 export const jobLifecycleKey = (id: string) => `job_lifecycle_${id}`;
+/** Open for applications and visible in the active role directory. */
+export const openPostingSql = (alias: string) => `${alias}.status='open' AND NOT EXISTS (
+  SELECT 1 FROM hub_settings life WHERE life.key='job_lifecycle_'||${alias}.id
+    AND COALESCE(json_extract(CASE WHEN json_valid(life.value) THEN life.value END,'$.state'),'active')<>'active'
+)`;
 export const jobLifecycleInput = z.object({
   action: z.enum(["pause", "resume", "archive", "delete", "restore"]),
   formVersion: z.number().int().positive().safe(),

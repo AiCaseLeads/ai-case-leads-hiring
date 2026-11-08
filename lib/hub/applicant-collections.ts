@@ -36,7 +36,7 @@ const invalid = () => new HiringError('invalid_collection',422,'Check the name, 
 const conflict = () => new HiringError('collection_changed',409,'This collection changed. Refresh it and try again.');
 const filterKeys = new Set([
   'q','stage','excludeStage','assignee','qualification','grade','sort','top','active','duplicate','trash',
-  'appliedFrom','appliedTo','timeZone','interviewProgress','jobId','jobGroupId','country','listId','handoffReturned','columns',
+  'appliedFrom','appliedTo','timeZone','interviewProgress','jobId','jobGroupId','openPostings','country','listId','handoffReturned','columns',
 ]);
 
 export async function applicantCollections(store:HubStore,member:HubMember):Promise<ApplicantCollection[]> {

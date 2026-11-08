@@ -179,6 +179,7 @@ export function CandidateTable({
 type CandidatesProps = {
   jobs: HubJob[]; refresh: number; changed: () => void; reviewerEmail: string;
   initialStage?: string; initialJobId?: string; initialFilter?: string; initialPage?: number;
+  onBackToRoles?: () => void;
   onSelect?: (id: string, action?: "interview", filter?: string) => void; onFilterChange?: (filter: string, page: number, replace?: boolean) => void;
 };
 
@@ -199,13 +200,14 @@ function queueParams(value: string) {
     if (roleSorts.includes(params.get("sort")||"")) params.delete("sort");
     params.delete("top");params.delete("grade");
   }
+  if (!params.has("jobId") && !params.has("jobGroupId")) params.delete("openPostings");
   if(params.get("sort")==="list_order" && !params.has("listId"))params.delete("sort");
   if (!params.has("sort")) params.set("sort",defaultQueueSort);
   if (!params.has("appliedFrom")&&!params.has("appliedTo")) params.delete("timeZone");
   params.sort();
   return params;
 }
-export function Candidates({jobs,refresh,changed,reviewerEmail,initialStage="",initialJobId="",initialFilter="",initialPage=1,onSelect,onFilterChange}:CandidatesProps) {
+export function Candidates({jobs,refresh,changed,reviewerEmail,initialStage="",initialJobId="",initialFilter="",initialPage=1,onSelect,onFilterChange,onBackToRoles}:CandidatesProps) {
   const incoming = new URLSearchParams(initialFilter);
   if (initialJobId) incoming.set("jobId",initialJobId);
   if (initialStage) incoming.set("stage",initialStage);
@@ -220,8 +222,11 @@ export function Candidates({jobs,refresh,changed,reviewerEmail,initialStage="",i
   const [detail,setDetail]=useState<{id:string;action?:"interview"}|null>(null);
   const [countryChoice,setCountryChoice]=useState("");
   const [showFilters,setShowFilters]=useState(false),[selectMode,setSelectMode]=useState(false);
+  const [showCollections,setShowCollections]=useState(false);
   const epoch=useRef(0);
   const jobId=val("jobId"),groupId=val("jobGroupId"),listId=val("listId"),inTrash=val("trash")==="true";
+  const roleQueue=val("openPostings")==="true" && !!(jobId||groupId) && !inTrash;
+  const initialReview=roleQueue && val("stage")==="Application Review";
   const selectedJob=jobs.find(job=>job.id===jobId);
   const groups=useHubResource<{groups:GroupInfo[]}>("/api/hub/job-groups",refresh);
   const owners=useHubResource<{staff:{email:string}[]}>("/api/job-team",refresh);
@@ -286,9 +291,12 @@ export function Candidates({jobs,refresh,changed,reviewerEmail,initialStage="",i
     }catch(e){if(current===epoch.current)setError(e instanceof Error?e.message:"Selection failed.");}finally{setSelecting(false);}
   }
   function turnPage(n:number){setPage(n);onFilterChange?.(filter,n);}
-  function resetFilters(){
+  function resetFilters(allStages=false){
     const next=new URLSearchParams({active:"false"});
-    for(const key of ["jobId","jobGroupId","listId","trash"])if(val(key))next.set(key,val(key));
+    if(roleQueue && !allStages){
+      for(const key of ["stage","active","excludeStage"])if(val(key))next.set(key,val(key));
+    }
+    for(const key of ["jobId","jobGroupId","openPostings","listId","trash"])if(val(key))next.set(key,val(key));
     applyView(next.toString());
   }
   async function download(format:"csv"|"zip"){
@@ -327,10 +335,10 @@ export function Candidates({jobs,refresh,changed,reviewerEmail,initialStage="",i
   }
   const chips:{key:string;label:string;changes:Record<string,string|null>}[]=[];
   function chip(key:string,label:string,changes:Record<string,string|null>={[key]:null}){chips.push({key,label,changes});}
-  if(jobId||groupId)chip("role",scopeName,{jobId:null,jobGroupId:null,grade:null,top:null});
+  if(!roleQueue && (jobId||groupId))chip("role",scopeName,{jobId:null,jobGroupId:null,grade:null,top:null});
   if(listId)chip("listId","Candidate list");
   const stageChoice=applicantStageChoice(params);
-  if(!inTrash && stageChoice!=="all")chip("stage",val("stage")?stageLabel(val("stage")):val("excludeStage")?"In progress · excluding "+stageLabel(val("excludeStage")):"In progress",{stage:null,excludeStage:null,active:"false"});
+  if(!roleQueue && !inTrash && stageChoice!=="all")chip("stage",val("stage")?stageLabel(val("stage")):val("excludeStage")?"In progress · excluding "+stageLabel(val("excludeStage")):"In progress",{stage:null,excludeStage:null,active:"false"});
   if(val("interviewProgress"))chip("interviewProgress",({...INTERVIEW_VIEW_LABELS,...interviewProgressLabels} as Record<string,string>)[val("interviewProgress")]||val("interviewProgress"));
   if(val("assignee"))chip("assignee","Owner: "+(val("assignee")==="unassigned"?"Unassigned":val("assignee")));
   if(val("qualification"))chip("qualification",qualificationLabel(val("qualification")));
@@ -342,11 +350,26 @@ export function Candidates({jobs,refresh,changed,reviewerEmail,initialStage="",i
   if(val("appliedFrom"))chip("appliedFrom","From "+val("appliedFrom"));
   if(val("appliedTo"))chip("appliedTo","Through "+val("appliedTo"));
   for (const code of countries)chip("country-"+code,countryOptions.find(c=>c.value===code)?.label||code,{country:countries.filter(c=>c!==code).join(",")});
+  const stageSelector=<label>Stage<select aria-label="Stage" disabled={inTrash} value={stageChoice} onChange={event=>{
+    const next=new URLSearchParams(filter);
+    applyApplicantStageChoice(next,event.target.value);
+    applyView(next.toString());
+  }}>
+    <option value="active">In progress</option><option value="all">All stages</option><option value="active:exclude:Screening">In progress — not shortlisted</option>
+    {val("excludeStage") && stageChoice!=="active:exclude:Screening" && <option value={stageChoice}>Excluding {stageLabel(val("excludeStage"))}</option>}
+    {stages.map(stage=><option key={stage} value={"stage:"+stage}>{roleQueue && stage==="Application Review" ? "Needs initial review" : stageLabel(stage)}</option>)}
+  </select></label>;
   if(detail)return <CandidateDetail key={detail.id} id={detail.id} initialAction={detail.action || "note"} navigationFilter={filter} navigationJobs={jobs} back={()=>setDetail(null)} changed={changed} onDecisionNotice={setNotice} openApplicant={id=>setDetail({id})}/>;
+  const queueHeading=inTrash?"Applications in Trash":jobId||groupId?scopeName:"Applicants";
+  const queueCount=roleQueue
+    ? total.toLocaleString()+(initialReview?" awaiting initial review":" matching applicants")
+    : `${total.toLocaleString()} of ${scopeTotal.toLocaleString()} applications · ${scopeName}`;
   return <section className="hub-candidate-browser applicant-queue" aria-labelledby="candidates-title">
-    <div className="hub-section-heading compact"><div><h2 id="candidates-title">{inTrash?"Applications in Trash":selectedJob?.title||"Applicants"}</h2>
-      <p aria-live="polite">{data?`${total.toLocaleString()} of ${scopeTotal.toLocaleString()} applications · ${scopeName}`:"Loading applications…"}</p></div>
+    {onBackToRoles && <NavigationLink className="hub-text-button aq-role-back" href="/team?view=applications" navigate={onBackToRoles}><ArrowLeft size={14} aria-hidden="true"/> Active roles</NavigationLink>}
+    <div className="hub-section-heading compact"><div><h2 id="candidates-title">{queueHeading}</h2>
+      <p aria-live="polite">{data ? queueCount : "Loading applications…"}</p></div>
       <JobActionMenu label="Application options" triggerLabel="Options">
+        {roleQueue && <button type="button" aria-expanded={showCollections} onClick={()=>setShowCollections(value=>!value)}>{showCollections?"Hide saved views & lists":"Saved views & lists"}</button>}
         <fieldset className="aq-columns"><legend>Visible columns</legend>{queueColumns.map(col=><label key={col}>
           <input type="checkbox" aria-label={"Show "+columnLabels[col]+" column"} checked={columns.includes(col)} onChange={e=>{
             const next=queueColumns.filter(c=>c===col?e.target.checked:columns.includes(c));
@@ -355,21 +378,18 @@ export function Candidates({jobs,refresh,changed,reviewerEmail,initialStage="",i
         <button type="button" disabled={blocked||!total} onClick={()=>void download("zip")}>Download {ids.length?"selected":"matching"} ZIP ({ids.length||total})</button>
         <button type="button" disabled={blocked||!total} onClick={()=>void download("csv")}>Export {ids.length?"selected":"matching"} CSV ({ids.length||total})</button>
         <button type="button" onClick={()=>void reload()}>Refresh applications</button>
-        <button type="button" onClick={()=>{const next=new URLSearchParams();if(jobId)next.set("jobId",jobId);if(!inTrash)next.set("trash","true");applyView(next.toString());}}>{inTrash?"Back to applications":"View Trash"}</button>
+        <button type="button" onClick={()=>{const next=new URLSearchParams();for(const key of ["jobId","jobGroupId","openPostings"])if(val(key))next.set(key,val(key));if(!inTrash)next.set("trash","true");applyView(next.toString());}}>{inTrash?"Back to applications":"View Trash"}</button>
       </JobActionMenu></div>
-    <ApplicantCollections filter={filter} onApply={applyView} selectedIds={ids} selectionId={snapshotId || undefined} allMatching={isAll && ids.length>100} disabled={blocked} onChanged={()=>void reload()}/>
-    <div className="aq-controls"><label className="aq-search">Search applicants<input type="search" value={search} placeholder="Name or email" maxLength={200} onChange={e=>setSearch(e.target.value)}/></label>
-      <label>Role or posting<select aria-label="Role or posting" value={jobId?"job:"+jobId:groupId?"group:"+groupId:""} onChange={e=>{
+    {(!roleQueue||showCollections||ids.length>0) && <ApplicantCollections filter={filter} onApply={applyView} selectedIds={ids} selectionId={snapshotId || undefined} allMatching={isAll && ids.length>100} disabled={blocked} onChanged={()=>void reload()}/>}
+    <div className={"aq-controls"+(roleQueue?" aq-role-controls":"")}><label className="aq-search">Search applicants<input type="search" value={search} placeholder="Name or email" maxLength={200} onChange={e=>setSearch(e.target.value)}/></label>
+      {roleQueue ? stageSelector : <label>Role or posting<select aria-label="Role or posting" value={jobId?"job:"+jobId:groupId?"group:"+groupId:""} onChange={e=>{
         const value=e.target.value;update({jobId:value.startsWith("job:")?value.slice(4):null,jobGroupId:value.startsWith("group:")?value.slice(6):null,grade:null,top:null});
       }}><option value="">All roles</option>{jobId&&!selectedJob&&<option value={"job:"+jobId}>Unavailable posting</option>}{!!groups.data?.groups?.length&&<optgroup label="Job groups">{groups.data.groups.map(g=><option value={"group:"+g.id} key={g.id}>{g.name}</option>)}</optgroup>}
-      <optgroup label="Individual postings">{sortHubJobs(jobs).map(j=><option value={"job:"+j.id} key={j.id}>{j.title} · {jobLocation(j)}</option>)}</optgroup></select></label>
+      <optgroup label="Individual postings">{sortHubJobs(jobs).map(j=><option value={"job:"+j.id} key={j.id}>{j.title} · {jobLocation(j)}</option>)}</optgroup></select></label>}
       <button type="button" className="hub-button secondary aq-filter-toggle" aria-expanded={showFilters} aria-controls="aq-filters" onClick={()=>setShowFilters(v=>!v)}>Filters &amp; order</button>
     </div>
     <div className="aq-filter-panel" id="aq-filters" data-open={showFilters}>
-      <label>Stage<select aria-label="Stage" disabled={inTrash} value={stageChoice} onChange={e=>{const next=new URLSearchParams(filter);applyApplicantStageChoice(next,e.target.value);applyView(next.toString());}}>
-        <option value="active">In progress</option><option value="all">All stages</option><option value="active:exclude:Screening">In progress — not shortlisted</option>
-        {val("excludeStage")&&stageChoice!=="active:exclude:Screening"&&<option value={stageChoice}>Excluding {stageLabel(val("excludeStage"))}</option>}
-        {stages.map(s=><option key={s} value={"stage:"+s}>{stageLabel(s)}</option>)}</select></label>
+      {!roleQueue && stageSelector}
       <label>Screening<select aria-label="Screening" value={val("qualification")} onChange={e=>update({qualification:e.target.value})}><option value="">All screening results</option><option value="pass">Requirements met</option><option value="fail">Requirement not met</option><option value="review">No automatic decision</option></select></label>
       <label>Interview<select aria-label="Interview" value={val("interviewProgress")} onChange={e=>update({interviewProgress:e.target.value})}><option value="">Any interview status</option><optgroup label="Schedule">{Object.entries(INTERVIEW_VIEW_LABELS).map(([k,v])=><option key={k} value={k}>{v}</option>)}</optgroup><optgroup label="Progress">{Object.entries(interviewProgressLabels).map(([k,v])=><option key={k} value={k}>{v}</option>)}</optgroup></select></label>
       <label>Owner<select aria-label="Owner" value={val("assignee")} onChange={e=>update({assignee:e.target.value})}><option value="">All owners</option><option value="unassigned">Unassigned</option>{ownerChoices.map(email=><option key={email} value={email}>{email===reviewerEmail?"Me · ":""}{email}</option>)}</select></label>
@@ -383,7 +403,7 @@ export function Candidates({jobs,refresh,changed,reviewerEmail,initialStage="",i
         {jobId&&!inTrash&&<button type="button" className="hub-text-button" onClick={()=>update({sort:"ai_match_desc",top:"10"})}>Top 10 AI matches</button>}
       </div></details>
     </div>
-    {chips.length>0&&<div className="aq-chips" aria-label="Applied filters">{chips.map(c=><button key={c.key} type="button" aria-label={"Remove filter: "+c.label} onClick={()=>update(c.changes)}>{c.label} <span aria-hidden="true">×</span></button>)}<button type="button" className="aq-clear" onClick={resetFilters}>Clear filters</button></div>}
+    {chips.length>0&&<div className="aq-chips" aria-label="Applied filters">{chips.map(c=><button key={c.key} type="button" aria-label={"Remove filter: "+c.label} onClick={()=>update(c.changes)}>{c.label} <span aria-hidden="true">×</span></button>)}<button type="button" className="aq-clear" onClick={()=>resetFilters()}>Clear filters</button></div>}
     <Feedback error={error} success={notice}/>
     <ResourceState loading={loading&&!resource.error} error={resource.error} retry={()=>void reload()}/>
     {data&&<>
@@ -407,7 +427,7 @@ export function Candidates({jobs,refresh,changed,reviewerEmail,initialStage="",i
         selected={ids} togglePage={()=>toggle(data.items)} toggle={id=>{const item=data.items.find(r=>r.id===id);if(item)toggle([item]);}}
         sort={val("sort")} onSort={order=>update({sort:order,top:null})} allowAiSort={!!jobId} busy={blocked}
         screeningConfigured={selectedJob?.rules?.some(rule=>rule.enabled)} shortlist={row=>void setApplicationStage(row,"Screening")} unshortlist={row=>void setApplicationStage(row,"Application Review")}/>
-        :<EmptyState title="No applications in this view"><button className="hub-text-button" type="button" onClick={resetFilters}>Reset filters</button></EmptyState>}
+        :<EmptyState title={initialReview && !chips.length ? "No applicants awaiting initial review" : "No applications in this view"}><button className="hub-text-button" type="button" onClick={()=>resetFilters(initialReview && !chips.length)}>{initialReview && !chips.length ? "View all stages for this role" : "Reset filters"}</button></EmptyState>}
       {total>0&&<div className="hub-pagination"><button type="button" className="hub-button secondary" disabled={page<=1||blocked} onClick={()=>turnPage(page-1)}>Previous</button>
         <span>Page {page} of {Math.max(1,Math.ceil(total/(data.pageSize||30)))} · {total} matching applicants</span>
         <button type="button" className="hub-button secondary" disabled={blocked||page*(data.pageSize||30)>=total} onClick={()=>turnPage(page+1)}>Next</button></div>}

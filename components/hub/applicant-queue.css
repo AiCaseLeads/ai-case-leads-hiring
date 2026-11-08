@@ -58,3 +58,27 @@
 @media (max-width:960px) {
   .hiring-hub .applicant-queue td.hub-optional-owner { overflow-wrap:anywhere; white-space:normal; }
 }
+
+.applicant-role-directory {max-width:68rem; min-width:0;}
+.ard-heading {display:flex; align-items:start; justify-content:space-between; gap:.5rem 1rem; flex-wrap:wrap;}
+.ard-heading h2 {margin:0; color:#173c43; font-size:1.5rem; font-weight:700;}
+.ard-heading p {margin:.2rem 0 .7rem; color:#466169; font-size:.94rem;}
+.ard-search {display:block; max-width:24rem; margin:.2rem 0 .8rem;}
+.ard-search input {width:100%; padding:.5rem .7rem; border:1px solid #b8ceca; border-radius:5px; background:#fff; color:#183b41; font:inherit;}
+.ard-list {padding:0; margin:0; list-style:none; border-block:1px solid #cddbd8;}
+.ard-list li+li {border-top:1px solid #dce5e3;}
+.ard-role {display:grid; grid-template-columns:minmax(0,1fr) auto 1rem; gap:.6rem; align-items:center; padding:.6rem .35rem; line-height:1.35; color:#20454a; text-decoration:none;}
+.ard-role:hover {background:#ebf3ef;}
+.ard-role:focus-visible,.ard-search input:focus-visible {outline:2px solid #237966;outline-offset:1px;}
+.ard-identity {min-width:0; overflow-wrap:anywhere;}
+.ard-identity strong {display:block; font-weight:650;}
+.ard-identity small {display:block; margin-top:.12rem; color:#49636a;}
+.ard-count {color:#19614d; font-weight:650; font-size:.875rem; font-variant-numeric:tabular-nums;}
+.ard-count-empty {color:#50676b; font-weight:450;}
+.applicant-queue .aq-role-back {display:inline-flex; align-items:center; gap:.3rem; margin-bottom:.3rem;}
+@media(max-width:640px) {
+  .ard-heading .hub-text-button, .applicant-queue .aq-role-back {min-height:44px;}
+  .ard-search input {font-size:16px; min-height:44px;}
+  .ard-role {column-gap:.3rem; padding-block:.65rem;}
+  .applicant-queue .aq-controls.aq-role-controls {grid-template-columns:minmax(0,1fr) auto;}
+}

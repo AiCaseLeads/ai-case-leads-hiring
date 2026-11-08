@@ -134,14 +134,14 @@ try{
  const mismatch=await fetch(origin+'/api/ai/resume-text',{method:'POST',headers:{Origin:origin,Cookie:ownerCookie,'Content-Type':'application/json'},body:JSON.stringify({...pdfRequest,applicationId:another.id})});assert.equal(mismatch.status,404);
  // Real browser history on the built server, without changing applicant data.
  const nav=team.getByRole('navigation',{name:'Hiring workspace'});
- await nav.getByRole('button',{name:'Applicants',exact:true}).click();await team.getByRole('heading',{name:'Applicants',exact:true}).waitFor();
+ await nav.getByRole('button',{name:'Applicants',exact:true}).click();await team.getByRole('heading',{name:'Active roles',exact:true}).waitFor();
  const applicationListUrl=team.url();
  await nav.getByRole('button',{name:'Jobs',exact:true}).click();await team.getByRole('heading',{name:'Jobs',exact:true}).waitFor();
- await team.goBack();await team.getByRole('heading',{name:'Applicants',exact:true}).waitFor();assert.equal(team.url(),applicationListUrl);
+ await team.goBack();await team.getByRole('heading',{name:'Active roles',exact:true}).waitFor();assert.equal(team.url(),applicationListUrl);
  await team.goForward();await team.getByRole('heading',{name:'Jobs',exact:true}).waitFor().catch(async error=>{throw new Error(error.message+'\nURL: '+team.url()+'\n'+(await team.locator('body').innerText()).slice(0,1500)+'\nBrowser errors: '+JSON.stringify({errors,consoleErrors})+'\nServer logs: '+logs.slice(-1500));});
- await nav.getByRole('button',{name:'Applicants',exact:true}).click();await team.getByRole('heading',{name:'Applicants',exact:true}).waitFor();
+ await nav.getByRole('button',{name:'Applicants',exact:true}).click();await team.getByRole('heading',{name:'Active roles',exact:true}).waitFor();
  const chosenJob=[engineer,creative].find(job=>job.id===detail.jobId);assert.ok(chosenJob);
- await team.getByLabel('Role or posting',{exact:true}).selectOption('job:'+chosenJob.id);await team.getByRole('heading',{name:chosenJob.title,exact:true}).waitFor();
+ await team.getByRole('link').filter({hasText:chosenJob.title}).click();await team.getByRole('heading',{name:chosenJob.title,exact:true}).waitFor();
  const jobApplicationsUrl=team.url();
  // Real browser exports retain answers and original files, with job scope made explicit.
  await team.getByLabel('Application options',{exact:true}).click();
@@ -160,6 +160,7 @@ try{
  await team.getByRole('button',{name:'Shortlist',exact:true}).click();await team.getByText('Added to the shortlist. No email sent.',{exact:true}).waitFor();
  assert.equal((await api('/api/hub/applications/'+firstId)).stage,'Screening');
  await team.getByRole('heading',{name:chosenJob.title,exact:true}).waitFor();
+ await team.getByLabel('Stage',{exact:true}).selectOption('all');
  await team.getByRole('link',{name:detail.name,exact:true}).click();
  await team.getByLabel('More applicant actions',{exact:true}).click();await team.locator('.hub-job-menu[open]').getByRole('button',{name:'Request interview',exact:true}).click();await team.getByRole('button',{name:'Send booking link',exact:true}).waitFor();
  assert.equal(await team.getByRole('button',{name:'Send booking link',exact:true}).isDisabled(),true,'Disconnected Gmail/Calendar cannot send an interview invitation');
