@@ -151,9 +151,11 @@ test("logout is an explicit POST with trusted-origin CSRF protection; GET does n
   try {
     const auth = await flow(f.config), signedIn = await completeStaffSignIn(auth.callback(), f.config, auth.fetcher, NOW), session = responseCookie(signedIn, staffCookieNames(f.config).session);
     const get = new Request(`${ORIGIN}/api/auth/logout?return_to=//attacker.invalid`, { headers: { Cookie: session } });
-    assert.match(await logoutConfirmation(get, f.config).text(), /method="post"/);
+    const confirmation = logoutConfirmation(get, f.config);
+    assert.equal(confirmation.headers.get("referrer-policy"), "same-origin");
+    assert.match(await confirmation.text(), /method="post"/);
     assert.equal(f.database.prepare("SELECT COUNT(*) count FROM staff_sessions").get()!.count, 1);
-    const invalidHeaders: Record<string, string>[] = [{ Cookie: session }, { Cookie: session, Origin: "https://attacker.invalid" }, { Cookie: session, Origin: ORIGIN, "sec-fetch-site": "cross-site" }];
+    const invalidHeaders: Record<string, string>[] = [{ Cookie: session }, { Cookie: session, Origin: "null" }, { Cookie: session, Origin: "https://attacker.invalid" }, { Cookie: session, Origin: ORIGIN, "sec-fetch-site": "cross-site" }];
     for (const headers of invalidHeaders) await assert.rejects(logoutStaff(new Request(get.url, { method: "POST", headers }), f.config), { code: "invalid_origin" });
     assert.equal(f.database.prepare("SELECT COUNT(*) count FROM staff_sessions").get()!.count, 1);
     const response = await logoutStaff(new Request(get.url, { method: "POST", headers: { Cookie: session, Origin: ORIGIN } }), f.config);
