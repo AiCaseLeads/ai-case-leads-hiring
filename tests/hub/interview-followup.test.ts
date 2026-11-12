@@ -75,11 +75,11 @@ test('uncertain and stale invitations never trigger a follow-up, and an explicit
   }
 });
 
-test('the worker sends one due follow-up with the interviewer as Reply-To and original sender in CC', async t => {
+test('the worker sends the follow-up from the selected interviewer with matching Reply-To and CC', async t => {
   const { store, database, db, original, lease } = await makeInvitation();
   t.after(()=>database.close());
   const interviewer = 'recruiter@example.invalid';
-  const envelope = {sender: MANAGER.email, to: original.payload.to, cc:[MANAGER.email], replyTo:[interviewer]};
+  const envelope = {sender: interviewer, to: original.payload.to, cc:[interviewer], replyTo:[interviewer]};
   database.prepare("INSERT INTO hub_members(id,email,role,active,created_at,updated_at) VALUES ('second',?,'recruiter',1,0,0)").run(interviewer);
   database.prepare("UPDATE hub_tasks SET payload_json=? WHERE id=?").run(JSON.stringify({
     ...original.payload, approvedEnvelope:envelope, interviewerEmail:interviewer,
