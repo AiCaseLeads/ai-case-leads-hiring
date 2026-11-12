@@ -222,3 +222,24 @@ test('legacy follow-up still fails closed when the approved envelope no longer m
   await processHubTasks(store,db,undefined,undefined,1,[MANAGER.email],async()=>client);
   assert.equal(sends,0);const task=(await store.tasks()).find(item=>item.id===message.id)!;assert.equal(task.status,'failed');assert.equal(task.lastError,'interview_sender_changed');
 });
+
+test('unversioned follow-up can use a previously approved selected interviewer sender', async t => {
+  const {store,database,db,original,lease}=await makeInvitation();
+  t.after(()=>database.close());
+  const interviewer='legacy-interviewer@example.invalid';
+  database.prepare("INSERT INTO hub_members(id,email,role,active,created_at,updated_at) VALUES ('legacy-interviewer',?,'recruiter',1,0,0)").run(interviewer);
+  const envelope={sender:interviewer,to:original.payload.to,cc:[interviewer],replyTo:[interviewer]};
+  const legacy:Record<string,unknown>={...original.payload,approvedEnvelope:envelope,interviewerEmail:interviewer};
+  delete legacy.interviewRoutingVersion;
+  database.prepare('UPDATE hub_tasks SET payload_json=? WHERE id=?').run(JSON.stringify(legacy),original.id);
+  await store.finishTask(original.id,lease,{status:'done',result:{id:'legacy-provider-id'}});
+  const message=(await store.tasks()).find(task=>task.payload.bookingFollowup)!;
+  database.prepare("UPDATE hub_tasks SET status='done' WHERE id<>?").run(message.id);
+  t.mock.timers.enable({apis:['Date'],now:message.runAfter});
+  const {processHubTasks}=await import('../../lib/task-runner');
+  const mail:import('../../lib/google/workspace').MailInput[]=[];
+  const client={sendMail:async (input:import('../../lib/google/workspace').MailInput)=>{mail.push(input);return{id:'legacy-followup',threadId:'legacy-thread'}}} as import('../../lib/google/workspace').GoogleWorkspace;
+  await processHubTasks(store,db,undefined,undefined,1,[MANAGER.email],async()=>client);
+  assert.equal(mail.length,1);assert.equal(mail[0].sender,envelope.sender);assert.deepEqual(mail[0].cc,envelope.cc);assert.deepEqual(mail[0].replyTo,envelope.replyTo);
+});
+

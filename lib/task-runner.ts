@@ -6,7 +6,7 @@ import { candidateTaskMailMode, isInterviewInvitationTask, isRejectionTask, isMa
 import { processStaffInvites } from "./staff/service";
 import { interviewCalendar } from "./personal-calendar/service";
 import { personalCalendarEffect } from "./personal-calendar/client";
-import { jobNotificationMail,candidateMail,CANDIDATE_SENDER } from "./job-team/service";
+import { jobNotificationMail,approvedCandidateMail,CANDIDATE_SENDER } from "./job-team/service";
 import { HubStore } from "./hub/store";
 import type { Task } from "./hub/types";
 import type { GoogleWorkspace, OriginalFileSource, InterviewInput, MailInput } from "./google/workspace";
@@ -131,7 +131,7 @@ async function taskEffect(task:Task,store:HubStore,db:D1Database,bucket:R2Bucket
       const link=linkHash?await db.prepare("SELECT expires_at,used_at FROM hub_links WHERE token_hash=? AND application_id=? AND kind=?").bind(linkHash,task.applicationId,linkKind).first<{expires_at:number;used_at:number|null}>():null;
       if(!link||link.used_at!==null||link.expires_at<=Date.now())return {stale:true,expiredInvitation:true};
     }
-    const mail=await candidateMail(store,task.payload as unknown as MailInput,owners,{mailMode:candidateTaskMailMode(task.id,task.applicationId,task.payload),actor:task.payload.actor,applicationId:task.applicationId,rejection:isRejectionTask(task.id,task.applicationId),interview:isInterviewInvitationTask(task.id,task.applicationId) || task.payload.bookingFollowup === true,interviewerEmail:task.payload.interviewerEmail,legacyInterviewSender:!!task.payload.approvedEnvelope && task.payload.interviewRoutingVersion!==2});
+    const mail=await approvedCandidateMail(store,task.payload as unknown as MailInput,owners,{mailMode:candidateTaskMailMode(task.id,task.applicationId,task.payload),actor:task.payload.actor,applicationId:task.applicationId,rejection:isRejectionTask(task.id,task.applicationId),interview:isInterviewInvitationTask(task.id,task.applicationId) || task.payload.bookingFollowup === true,interviewerEmail:task.payload.interviewerEmail},task.payload.approvedEnvelope,task.payload.interviewRoutingVersion);
     if(task.payload.approvedEnvelope && JSON.stringify(task.payload.approvedEnvelope)!==JSON.stringify({sender:mail.sender,to:mail.to,cc:mail.cc||[],replyTo:mail.replyTo||[]}))throw {code:'interview_sender_changed'};
     if(mail.sender===CANDIDATE_SENDER)return sendAutomaticTask(task,mail,store,db,deadline,automaticResolver);
     const transport=await candidateTransport(store,mail.candidateAccount,resolver);

@@ -5,7 +5,7 @@ import type { HubMember } from "./auth";
 import type { HubStore } from "./store";
 import type { Task } from "./types";
 import { applicationTrash } from "./application-lifecycle";
-import { candidateMail, CANDIDATE_SENDER, jobNotificationMail } from "../job-team/service";
+import { approvedCandidateMail, CANDIDATE_SENDER, jobNotificationMail } from "../job-team/service";
 import { bookingConfirmationIsCurrent, bookedReminderIsCurrent, bookingFollowupIsCurrent } from "./interview-reminders";
 import { reviewReminderMail } from "../review-reminders/service";
 import { personalMailWorkspace, type PersonalMailEnv } from "../personal-mail/service";
@@ -83,7 +83,7 @@ async function envelope(store: HubStore, row: Row, env: PersonalMailEnv, now: nu
     else if (messageKind === "Review reminder") mail = await reviewReminderMail(task(row, payload), store, owners);
     else {
       if (typeof payload.to !== "string" || payload.to.toLowerCase() !== row.app_email.toLowerCase() || !["subject", "body", "messageId"].every(key => typeof payload[key] === "string")) return { reason: "Recipient or original message identity needs individual review" };
-      mail = await candidateMail(store, payload as unknown as MailInput, owners, { mailMode: candidateTaskMailMode(row.id, row.application_id, payload), actor: payload.actor, applicationId: row.application_id, rejection:isRejectionTask(row.id,row.application_id),interview:messageKind === "Booking follow-up" || isInterviewInvitationTask(row.id,row.application_id),interviewerEmail:payload.interviewerEmail,legacyInterviewSender:!!payload.approvedEnvelope && payload.interviewRoutingVersion!==2 });
+      mail = await approvedCandidateMail(store, payload as unknown as MailInput, owners, { mailMode: candidateTaskMailMode(row.id, row.application_id, payload), actor: payload.actor, applicationId: row.application_id, rejection:isRejectionTask(row.id,row.application_id),interview:messageKind === "Booking follow-up" || isInterviewInvitationTask(row.id,row.application_id),interviewerEmail:payload.interviewerEmail },payload.approvedEnvelope,payload.interviewRoutingVersion);
     }
     if (mail && payload.approvedEnvelope && JSON.stringify(payload.approvedEnvelope)!==JSON.stringify({sender:mail.sender,to:mail.to,cc:mail.cc||[],replyTo:mail.replyTo||[]})) throw {code:'interview_sender_changed'};
     if (!mail || mail.to.toLowerCase() === "sales@aicaseleads.com") return { reason: "Notification is no longer current or owner notifications are disabled" };

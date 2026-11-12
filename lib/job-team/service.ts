@@ -102,3 +102,14 @@ export async function candidateMail(store:HubStore,input:MailInput,owners:string
  const notice=context?.rejection?shortNotice:replyTo===AUTOMATIC_REPLY_TO?AUTOMATED_MAIL_NOTICE:"You can reply to this email to contact the hiring team. For application help or privacy requests, visit https://jobs.aicaseleads.com/help.";
  return {to:input.to,subject:input.subject,body:body.includes(notice)?body:`${body}\n\n${notice}`,messageId:input.messageId,sender:replyTo===AUTOMATIC_REPLY_TO?CANDIDATE_SENDER:replyTo,replyTo:interviewReplyTo?[interviewReplyTo]:[...new Set([replyTo,...(cc||[])])],...(cc?{cc}:{}),candidateMail:true,candidateAccount:replyTo===AUTOMATIC_REPLY_TO?undefined:replyTo};
 }
+
+/** Reconstruct exactly the approved routing for historical unversioned invitations.
+ * Current and legacy candidates are both derived from active staff, never copied
+ * from the stored envelope. The caller must still verify the returned envelope. */
+export async function approvedCandidateMail(store:HubStore,input:MailInput,owners:string[],context:NonNullable<Parameters<typeof candidateMail>[3]>,approvedEnvelope:unknown,routingVersion:unknown):Promise<MailInput>{
+ const current=await candidateMail(store,input,owners,context);
+ const envelope=(mail:MailInput)=>JSON.stringify({sender:mail.sender,to:mail.to,cc:mail.cc||[],replyTo:mail.replyTo||[]});
+ if(!context.interview||!approvedEnvelope||routingVersion===2||envelope(current)===JSON.stringify(approvedEnvelope))return current;
+ const legacy=await candidateMail(store,input,owners,{...context,legacyInterviewSender:true});
+ return envelope(legacy)===JSON.stringify(approvedEnvelope)?legacy:current;
+}
