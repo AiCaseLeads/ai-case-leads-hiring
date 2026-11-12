@@ -116,7 +116,7 @@ async function taskEffect(task:Task,store:HubStore,db:D1Database,bucket:R2Bucket
     if (task.payload.reminder === true && !await bookedReminderIsCurrent(store, task, Date.now())) return {stale:true};
     if (task.payload.bookingFollowup === true && !await bookingFollowupIsCurrent(store, task, Date.now())) return {stale:true};
     if (task.payload.bookingFollowup === true) {
-      const retryAt = bookingFollowupWeekendRetryAt(Date.now());
+      const retryAt = bookingFollowupWeekendRetryAt(Date.now(), Number(task.payload.dueAt));
       if (retryAt !== null) throw {code:'booking_followup_weekend',retryAt};
     }
     if(task.id===`gmail:${task.applicationId}:rejection`||task.id.startsWith(`gmail:${task.applicationId}:rejection:`)) {
@@ -138,7 +138,7 @@ async function taskEffect(task:Task,store:HubStore,db:D1Database,bucket:R2Bucket
     transport.setDeadline?.(deadline);
     if (task.payload.bookingFollowup === true && !await bookingFollowupIsCurrent(store, task, Date.now())) return {stale:true};
     if (task.payload.bookingFollowup === true) {
-      const retryAt = bookingFollowupWeekendRetryAt(Date.now());
+      const retryAt = bookingFollowupWeekendRetryAt(Date.now(), Number(task.payload.dueAt));
       if (retryAt !== null) throw {code:'booking_followup_weekend',retryAt};
     }
     // Pin transport before the irreversible send so an uncertain response is reconciled in the same mailbox.

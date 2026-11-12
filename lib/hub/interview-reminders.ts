@@ -36,9 +36,17 @@ export function bookingFollowupDueAt(sentAt: number, days = 1) {
 
 // Late tasks must still send only Monday–Friday in Eastern time. Keep them
 // pending until the next weekday instead of marking them stale on weekends.
-export function bookingFollowupWeekendRetryAt(now: number) {
-  const weekday = new Date(easternWallTime(now)).getUTCDay();
-  return weekday === 0 || weekday === 6 ? bookingFollowupDueAt(now, 1) : null;
+export function bookingFollowupWeekendRetryAt(now: number, dueAt: number) {
+  const wallNow = easternWallTime(now);
+  const weekday = new Date(wallNow).getUTCDay();
+  if (weekday !== 0 && weekday !== 6) return null;
+  // Resume on Monday at the original reminder's Eastern time of day, rather
+  // than inheriting an arbitrary overnight worker-restart time.
+  const wallDue = Number.isFinite(dueAt) ? easternWallTime(dueAt) : NaN;
+  const timeOfDay = Number.isFinite(wallDue) ? ((wallDue % DAY) + DAY) % DAY : 9 * 60 * MINUTE;
+  const mondayWall = Math.floor(wallNow / DAY) * DAY + (weekday === 6 ? 2 : 1) * DAY + timeOfDay;
+  const estimate = now + mondayWall - wallNow;
+  return estimate + mondayWall - easternWallTime(estimate);
 }
 
 // Invitations created before the follow-up feature have no opt-in marker.

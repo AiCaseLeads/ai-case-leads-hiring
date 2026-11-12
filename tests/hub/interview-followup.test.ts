@@ -160,9 +160,10 @@ test('overdue follow-ups wait until Monday rather than being sent or discarded o
   t.after(() => database.close());
   await store.finishTask(original.id,lease,{status:'done',result:{id:'invitation-provider'}});
   const message = (await store.tasks()).find(task=>task.payload.bookingFollowup)!;
-  const saturday = Date.parse('2026-11-14T15:30:00Z');
+  await store.setSetting("interview_email_backfill_v2", -1);
+  const saturday = Date.parse('2026-11-15T04:30:00Z'); // Saturday 11:30 PM Eastern
   const monday = Date.parse('2026-11-16T15:30:00Z');
-  database.prepare("UPDATE hub_tasks SET run_after=?, payload_json=json_set(payload_json,'$.dueAt',?) WHERE id=?").run(saturday-1,saturday-1,message.id);
+  database.prepare("UPDATE hub_tasks SET run_after=?, payload_json=json_set(payload_json,'$.dueAt',?) WHERE id=?").run(saturday-1,Date.parse('2026-11-13T15:30:00Z'),message.id);
   database.prepare("UPDATE hub_tasks SET status='done' WHERE id<>?").run(message.id);
   t.mock.timers.enable({apis:['Date'],now:saturday});
   const {processHubTasks}=await import('../../lib/task-runner');
