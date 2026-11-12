@@ -38,3 +38,16 @@ test('interview uses connected staff mailbox, records agent and prevents duplica
  assert.equal((await requestAgentInterview(f.store,req(access.token),input,env)).alreadyInvited,true);assert.equal(f.database.prepare("SELECT count(*) n FROM hub_interviews WHERE application_id=?").get(app.id)?.n,1);
  }finally{f.database.close()}
 });
+test('revoking access before commit prevents interview and email',async(t)=>{
+ const previous=process.env.ADMIN_EMAILS;process.env.ADMIN_EMAILS=owner;t.after(()=>{if(previous===undefined)delete process.env.ADMIN_EMAILS;else process.env.ADMIN_EMAILS=previous});
+ const f=createStore();try{
+ const job=await f.store.saveJob(jobInput()),app=await f.store.acceptApplication(applicationInput(job.id)),fingerprint=await configurationFingerprint(env);
+ await f.store.setSetting(grantKey(owner),{email:owner,calendarId:owner,sealedToken:'calendar-separate',revision:0,fingerprint,connectedAt:1});await f.store.setSetting(availabilityKey(owner),defaultAvailability);
+ await f.store.setSetting(mailGrantKey(owner),{email:owner,sealedToken:await sealToken('synthetic-refresh',env.GOOGLE_TOKEN_KEY),revision:0,fingerprint,connectedAt:1});
+ const access=await issueAccess(f.store,'writer',['applicants:read','applicants:interview'],owner),record=await f.store.setting<Record<string,unknown>>('agent_access_'+access.id,{}),batch=f.store.db.batch.bind(f.store.db);
+ f.store.db.batch=async statements=>{f.database.prepare('UPDATE hub_settings SET value=? WHERE key=?').run(JSON.stringify({...record,revoked:true}),'agent_access_'+access.id);return batch(statements)};
+ await assert.rejects(requestAgentInterview(f.store,req(access.token),{applicationId:app.id,expectedRevision:(await f.store.applicationRow(app.id)).revision,interviewerEmail:owner,confirm:true},env),{code:'agent_access_changed'});
+ assert.equal(f.database.prepare('SELECT count(*) n FROM hub_interviews WHERE application_id=?').get(app.id)?.n,0);
+ assert.equal(f.database.prepare("SELECT count(*) n FROM hub_tasks WHERE id LIKE ?").get(`gmail:${app.id}:interview:%`)?.n,0);
+ }finally{f.database.close()}
+});
