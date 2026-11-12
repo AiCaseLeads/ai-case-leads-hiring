@@ -24,7 +24,7 @@ test('revoking a connection during rejection prevents the transaction and email'
  const job=await store.saveJob(jobInput()),app=await store.acceptApplication(applicationInput(job.id)),access=await issueAccess(store,'writer',['applicants:read','applicants:reject'],'owner');
  const record=await store.setting<Record<string,unknown>>('agent_access_'+access.id,{}),original=store.db.batch.bind(store.db);
  store.db.batch=async statements=>{database.prepare('UPDATE hub_settings SET value=? WHERE key=?').run(JSON.stringify({...record,revoked:true}),'agent_access_'+access.id);return original(statements)};
- await assert.rejects(rejectApplicant(store,req(access.token),{applicationId:app.id,expectedRevision:(await store.applicationRow(app.id)).revision,reason:'Private',confirm:true}));
+ await assert.rejects(rejectApplicant(store,req(access.token),{applicationId:app.id,expectedRevision:(await store.applicationRow(app.id)).revision,reason:'Private',confirm:true}),{code:'agent_access_changed'});
  assert.notEqual((await store.applicationRow(app.id)).stage,'Rejected');assert.equal(database.prepare("SELECT count(*) n FROM hub_tasks WHERE id LIKE ?").get(`gmail:${app.id}:rejection:%`)?.n,0);
  }finally{database.close()}
 });
@@ -38,5 +38,14 @@ test('agent cannot reject applications beyond initial review or with interview h
  database.prepare("INSERT INTO hub_interviews(id,application_id,status,revision,created_at,updated_at) VALUES(?,?,'invited',1,0,0)").run('i-test',app.id);
  await assert.rejects(rejectApplicant(store,req(access.token),input),{code:'application_interview_requires_review'});
  assert.equal(database.prepare("SELECT count(*) n FROM hub_tasks WHERE id LIKE ?").get(`gmail:${app.id}:rejection:%`)?.n,0);
+ }finally{database.close()}
+});
+
+test('rejection write limit returns actionable retry metadata without a decision',async()=>{
+ const {sha256}=await import('../../lib/hiring/crypto');const {store,database}=createStore();try{
+ const job=await store.saveJob(jobInput()),app=await store.acceptApplication(applicationInput(job.id)),access=await issueAccess(store,'writer',['applicants:read','applicants:reject'],'owner');
+ const now=Date.now(),key=await sha256('agent-reject:'+access.id+':minute:'+(Math.floor(now/60000)%10));database.prepare('INSERT INTO hiring_rate_limits(key_hash,window,attempts) VALUES(?,?,20)').run(key,Math.floor(now/600000));
+ await assert.rejects(rejectApplicant(store,req(access.token),{applicationId:app.id,expectedRevision:(await store.applicationRow(app.id)).revision,reason:'Private',confirm:true}),(error:any)=>error.code==='agent_reject_rate_limited'&&error.retryAfterSeconds>0&&error.limit.requests===20);
+ assert.notEqual((await store.applicationRow(app.id)).stage,'Rejected');
  }finally{database.close()}
 });
