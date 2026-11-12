@@ -3,8 +3,8 @@ import {interviewCalendar} from '../personal-calendar/service';
 import {activeJobStaff} from '../job-team/service';
 import {HiringError} from '../hiring/errors';
 
-/** Personal invitations keep the same organizer when replaced. The sending
- * mailbox remains the acting recruiter's Gmail; only candidate replies route here. */
+/** Personal invitations keep the same organizer when replaced. The selected
+ * interviewer's connected Gmail sends the invitation and receives replies. */
 export async function interviewReplyContact(store:HubStore,applicationId:string,input:{interviewerEmail?:string},owners:string[]){
  const current=await store.currentInterviewForInvitation(applicationId);
  const pinned=current&&current.status!=='cancelled'?await interviewCalendar(store,current.id):null;

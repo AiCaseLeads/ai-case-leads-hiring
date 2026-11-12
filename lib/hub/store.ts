@@ -581,10 +581,10 @@ export class HubStore {
   }
   async bookingFollowupStatements(
     input: { app: { id: string; email: string; name: string; job_title: string }; invitationTaskId: string;
-      invitationPayload: Record<string, unknown>; sentAt: number; now: number },
+      invitationPayload: Record<string, unknown>; sentAt: number; now: number; followupNumber?: 1 | 2 },
     guard?: { sql: string; values: Bind[] },
   ): Promise<D1PreparedStatement[]> {
-    const { app, invitationTaskId, invitationPayload: payload, sentAt, now } = input;
+    const { app, invitationTaskId, invitationPayload: payload, sentAt, now, followupNumber = 1 } = input;
     if (!isInterviewInvitationTask(invitationTaskId, app.id) || typeof payload.body !== 'string' ||
         typeof payload.invitationHash !== 'string' || !this.options.origin || !Number.isFinite(sentAt) ||
         sentAt > now || payload.to !== app.email) return [];
@@ -600,19 +600,19 @@ export class HubStore {
       }
     }
     if (!bookingUrl) return [];
-    const dueAt = bookingFollowupDueAt(sentAt);
+    const dueAt = bookingFollowupDueAt(sentAt, followupNumber === 1 ? 1 : 2);
     const link = await this.stmt("SELECT expires_at FROM hub_links WHERE token_hash=? AND application_id=? AND kind='interview'",
       payload.invitationHash, app.id).first<{ expires_at: number }>();
     if (!link || link.expires_at <= Math.max(now, dueAt)) return [];
     const subject = `Choose your interview time: ${app.job_title}`;
     const body = `Hi ${app.name},\n\nWe’d still like to meet with you about the ${app.job_title} role. Please choose a time using your private booking link:\n${bookingUrl}\n\nIf you have questions, reply to this email.\n\nAI Case Leads Hiring Team`;
     return this.mailStatements(
-      `gmail:${app.id}:booking-followup:${interviewId}:${version}`, app, subject, body, now,
+      `gmail:${app.id}:booking-followup:${interviewId}:${version}${followupNumber === 2 ? ":second" : ""}`, app, subject, body, now,
       'Follow-up with a private interview booking link.', {
         runAfter: dueAt,
         metadata: {
-          bookingFollowup: true, dueAt, expiresAt: link.expires_at, invitationHash: payload.invitationHash,
-          interviewId, invitationTaskId, mailMode: 'recruiter', actor: payload.actor,
+          bookingFollowup: true, followupNumber, dueAt, expiresAt: link.expires_at, invitationHash: payload.invitationHash,
+          interviewId, invitationTaskId, followupOnDelivery: payload.followupOnDelivery, mailMode: 'recruiter', actor: payload.actor,
           interviewerEmail: payload.interviewerEmail, approvedEnvelope: payload.approvedEnvelope,
         },
         guard: {
@@ -1927,7 +1927,7 @@ export class HubStore {
     id: string,
     input: ActionInput,
     member: HubMember,
-    agentGuard?: { key: string; value: string; name: string },
+    agentGuard?: { key: string; value: string; name: string; kind?: "interview" },
   ): Promise<ApplicationDetail> {
     const app = await this.applicationRow(id);
     const statements = await this.actionStatements(app, input, member);
@@ -1935,7 +1935,7 @@ export class HubStore {
       if (agentGuard) {
         const guardKey = `agent_action_guard:${crypto.randomUUID()}`;
         statements.unshift(this.stmt("INSERT INTO hub_settings(key,value,updated_at) SELECT ?, CASE WHEN EXISTS(SELECT 1 FROM hub_settings WHERE key=? AND value=? AND (json_extract(value,'$.expiresAt') IS NULL OR json_extract(value,'$.expiresAt')>?)) AND NOT EXISTS(SELECT 1 FROM hub_interviews WHERE application_id=?) AND NOT EXISTS(SELECT 1 FROM hub_links WHERE application_id=? AND used_at IS NULL) THEN 'true' ELSE NULL END, ?", guardKey, agentGuard.key, agentGuard.value, Date.now(), id, id, Date.now()));
-        statements.push(this.stmt("INSERT INTO hub_audit(id,type,actor,before_json,after_json,created_at) VALUES(?,?,?,?,?,?)", crypto.randomUUID(), "agent_applicant_reject", member.email, JSON.stringify({applicationId:id,revision:app.revision,stage:app.stage}), JSON.stringify({applicationId:id,stage:"Rejected",connection:agentGuard.name}), Date.now()));
+        statements.push(this.stmt("INSERT INTO hub_audit(id,type,actor,before_json,after_json,created_at) VALUES(?,?,?,?,?,?)", crypto.randomUUID(), agentGuard.kind === "interview" ? "agent_interview_invitation" : "agent_applicant_reject", agentGuard.kind === "interview" ? member.userId : member.email, JSON.stringify({applicationId:id,revision:app.revision,stage:app.stage}), JSON.stringify({applicationId:id,stage:agentGuard.kind === "interview" ? "Interview" : "Rejected",connection:agentGuard.name,...(agentGuard.kind === "interview" ? {sender:member.email} : {})}), Date.now()));
         statements.push(this.stmt("DELETE FROM hub_settings WHERE key=?", guardKey));
       }
       try {
@@ -2148,7 +2148,8 @@ export class HubStore {
         "Choose a finished or retryable task state.",
       );
     if (result.continuation && (current.kind !== "drive" || result.status !== "pending")) throw new HiringError("invalid_task_continuation",422,"Only Drive archival can continue as pending work.");
-    if(result.mailDeferred&&(current.kind!=='gmail'||result.status!=='pending'||!['transactional_mail_daily_limit','transactional_mail_rate_limited','transactional_mail_quota_exhausted','transactional_mail_dns_check_failed'].includes(result.error||'')))throw new HiringError('invalid_mail_deferral',422,'Only rate-limited automatic mail can be deferred.');
+    if(result.mailDeferred&&(current.kind!=='gmail'||result.status!=='pending'||!['transactional_mail_daily_limit','transactional_mail_rate_limited','transactional_mail_quota_exhausted','transactional_mail_dns_check_failed','booking_followup_weekend'].includes(result.error||'')))throw new HiringError('invalid_mail_deferral',422,'This mail task cannot be deferred.');
+    if(result.mailDeferred && result.error === 'booking_followup_weekend' && decode<Record<string,unknown>>(current.payload_json, {}).bookingFollowup !== true) throw new HiringError('invalid_mail_deferral',422,'Only booking follow-ups can be deferred for the weekend.');
     const statements = [
       this.stmt(
         "UPDATE hub_tasks SET run_after=CASE WHEN lease_token=? AND status='running' AND lease_until>? THEN ? ELSE NULL END,status=?,result_json=?,last_error=?,attempts=MAX(0,attempts-?),lease_until=NULL,updated_at=? WHERE id=?",
@@ -2272,6 +2273,16 @@ export class HubStore {
           interviewId: String(payload.interviewId), revision: Number(payload.revision), start: String(payload.start),
           timeZone: String(payload.timeZone), meetUrl: String(result.result?.meetUrl || ''), now,
           confirmation: payload.operation === 'create' ? 'create' : 'update',
+        }, guard));
+      }
+      // Schedule the second reminder only after the first was actually sent. This
+      // preserves two business days between messages even after a worker outage.
+      if (current.kind === 'gmail' && payload.bookingFollowup === true &&
+          payload.followupNumber !== 2 && typeof result.result?.id === 'string' && result.result.id) {
+        statements.push(...await this.bookingFollowupStatements({
+          app: await this.applicationRow(current.application_id),
+          invitationTaskId: String(payload.invitationTaskId), invitationPayload: payload,
+          sentAt: now, now, followupNumber: 2,
         }, guard));
       }
       // Direct delivery and reconciliation both supply the confirmed provider ID.

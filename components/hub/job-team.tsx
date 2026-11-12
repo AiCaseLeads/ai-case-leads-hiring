@@ -85,7 +85,7 @@ export function JobTeamFields({ data, value, change, readOnly = false }: {
     </details>
     <details>
       <summary>How candidate replies work</summary>
-      <p className="hub-muted">Automatic receipts and screening rejections use no-reply. Manual messages direct replies to the sender. Interview invitations copy the requester and include them in Reply-To, so replies arrive in Gmail. Interview organizers appear on calendar invitations.</p>
+      <p className="hub-muted">Automatic receipts and screening rejections use no-reply. Manual messages direct replies to the sender. Interview invitations use the selected interviewer's connected Gmail for the sender, CC and Reply-To.</p>
     </details>
   </div>;
 }

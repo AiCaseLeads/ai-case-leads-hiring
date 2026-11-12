@@ -86,7 +86,11 @@ export async function candidateMail(store:HubStore,input:MailInput,owners:string
  if(context?.mailMode==='recruiter'&&context.interview&&context.interviewerEmail!==undefined){
   const selected=typeof context.interviewerEmail==='string'?context.interviewerEmail.trim().toLowerCase():'';
   if(!email.safeParse(selected).success||!(await activeJobStaff(store,owners)).some(person=>person.email===selected))throw new HiringError('interviewer_not_active',422,'Choose an active interviewer before sending.');
+  // The chosen interviewer owns this invitation and receives replies. Use
+  // their connected mailbox throughout the preview, worker and follow-ups.
   interviewReplyTo=selected;
+  replyTo=selected;
+  cc=selected===input.to.trim().toLowerCase()?undefined:[selected];
  }
  const addresses=`${input.subject} ${input.body}`.match(/[A-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi)||[];
  if(addresses.some(address=>address.toLowerCase()!==CANDIDATE_SENDER&&address.toLowerCase()!==replyTo&&address.toLowerCase()!==interviewReplyTo&&privateAddresses.has(address.toLowerCase())))throw new HiringError("candidate_mail_exposes_staff_address",422,"Remove staff email addresses from the applicant email template before retrying.");

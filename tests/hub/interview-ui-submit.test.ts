@@ -28,7 +28,7 @@ for(const changeTiming of ['before-preview','after-preview'])test(`full applican
   await f.store.setSetting(grantKey(email),{email,calendarId:email,sealedToken:'synthetic-calendar',revision:0,fingerprint,connectedAt:1});
   await f.store.setSetting(availabilityKey(email),defaultAvailability);
  }
- await f.store.setSetting(mailGrantKey(owner.email),{email:owner.email,sealedToken:'synthetic-mail',revision:0,fingerprint,connectedAt:1});
+ await f.store.setSetting(mailGrantKey(interviewer),{email:interviewer,sealedToken:'synthetic-mail',revision:0,fingerprint,connectedAt:1});
  f.database.prepare("UPDATE hub_tasks SET status='done'").run();
  const deliveries:{body:string;cc?:string[]}[]=[];
  const runtime=globalThis as typeof globalThis & {__interviewFixture?:unknown};runtime.__interviewFixture={store:f.store,owner,env,hiringErrors,
@@ -94,11 +94,11 @@ for(const changeTiming of ['before-preview','after-preview'])test(`full applican
  const submitted=page.waitForResponse(response=>response.url().endsWith('/api/interview-invitations'));
  await send.click();
  const response=await submitted;assert.equal(response.status(),200,JSON.stringify(await response.json()));
- await page.getByRole('status').filter({hasText:'Interview invitation sent. CC: '+owner.email}).waitFor();
+ await page.getByRole('status').filter({hasText:'Interview invitation sent. CC: '+interviewer}).waitFor();
  const submit=writes.find(item=>item.path==='/api/interview-invitations'&&item.status===200);assert.ok(submit);assert.equal(submit.status,200);
  assert.equal(submit.body.action,'interview');assert.equal(submit.body.interviewerEmail,interviewer);assert.equal(submit.body.renew,false);assert.equal(submit.body.expectedRevision,revisionBeforeSend);assert.equal(submit.body.internalNote,'Synthetic private note');assert.match(String(submit.body.previewFingerprint),/^[a-f0-9]{64}$/);
- const queued=(await f.store.tasks()).find(task=>task.id.includes(':interview:'));assert.ok(queued);assert.equal(queued.status,'done');assert.equal(deliveries.length,1);assert.deepEqual(deliveries[0].cc,[owner.email]);assert.ok(deliveries[0].body.includes(displayedUrl));assert.ok(!String(queued.payload.body).includes('Synthetic private note'));
- assert.deepEqual(queued.payload.approvedEnvelope,{sender:owner.email,to:(await f.store.applicationRow(app.id)).email,cc:[owner.email],replyTo:[interviewer]});
+ const queued=(await f.store.tasks()).find(task=>task.id.includes(':interview:'));assert.ok(queued);assert.equal(queued.status,'done');assert.equal(deliveries.length,1);assert.deepEqual(deliveries[0].cc,[interviewer]);assert.ok(deliveries[0].body.includes(displayedUrl));assert.ok(!String(queued.payload.body).includes('Synthetic private note'));
+ assert.deepEqual(queued.payload.approvedEnvelope,{sender:interviewer,to:(await f.store.applicationRow(app.id)).email,cc:[interviewer],replyTo:[interviewer]});
  const token=deliveries[0].body.match(/\/interview\/([a-f0-9]{64})/)![1];assert.ok(await f.store.stmt('SELECT 1 FROM hub_links WHERE token_hash=?',await sha256(token)).first());
  const sentLink=new URL('/api/interview-sent-link',displayedUrl);sentLink.searchParams.set('applicationId',app.id);sentLink.searchParams.set('interviewId',(await f.store.latestInterview(app.id))!.id);
  const redirect=await handlers.sentLinkGET(new Request(sentLink));assert.equal(redirect.status,302);assert.equal(redirect.headers.get('Location'),new URL(displayedUrl).pathname);

@@ -22,16 +22,23 @@ function easternWallTime(timestamp: number) {
   const p = Object.fromEntries(eastern.formatToParts(timestamp).map(part => [part.type, part.value]));
   return Date.UTC(+p.year, +p.month - 1, +p.day, +p.hour, +p.minute, +p.second, timestamp % 1000);
 }
-export function bookingFollowupDueAt(sentAt: number) {
+export function bookingFollowupDueAt(sentAt: number, days = 1) {
   let wall = easternWallTime(sentAt);
   let businessDays = 0;
-  while (businessDays < 2) {
+  while (businessDays < days) {
     wall += DAY;
     const weekday = new Date(wall).getUTCDay();
     if (weekday > 0 && weekday < 6) businessDays++;
   }
   const estimated = sentAt + wall - easternWallTime(sentAt);
   return estimated + wall - easternWallTime(estimated);
+}
+
+// Late tasks must still send only Monday–Friday in Eastern time. Keep them
+// pending until the next weekday instead of marking them stale on weekends.
+export function bookingFollowupWeekendRetryAt(now: number) {
+  const weekday = new Date(easternWallTime(now)).getUTCDay();
+  return weekday === 0 || weekday === 6 ? bookingFollowupDueAt(now, 1) : null;
 }
 
 // Invitations created before the follow-up feature have no opt-in marker.

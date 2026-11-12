@@ -113,3 +113,9 @@ node --test tests/mcp/hiring-adapter.test.mjs
 The adapter suite uses process-backed synthetic HTTP responses. It checks tool discovery and read-only annotations, repeated job IDs and cursor routing, preserved scope failures, rate-limit and timeout metadata, bounded file responses, and credential redaction. Backend tests separately verify authorization, candidate grouping, cursor paging, cache identity and extraction/backfill behavior.
 
 Execution errors follow the [MCP tool error format](https://modelcontextprotocol.io/specification/2025-06-18/server/tools#error-handling). API credentials stay in the process environment and Authorization header, never in URLs, logs or tool output.
+
+## Interview invitations
+
+The owner may separately grant `applicants:interview` (which requires `applicants:read`). This permission lets the assistant send first interview invitations from an explicitly selected active staff member's connected Gmail account, using that member's connected interview calendar; grant it only to assistants authorized to use those mailboxes. The agent connection and selected sender are recorded in the audit log. Existing scopes do not grant this ability.
+
+Use `request_interview` with an exact application ID, its current revision, `interviewerEmail`, and `confirm:true` only after the user requests that invitation. Existing interview history is skipped, not renewed. Missing Gmail, calendar, or scheduling connections return actionable setup errors. The operation uses the saved company template and normal booking/readiness safeguards. A response distinguishes `sent`, `queued`, `failed`, or `uncertain`; do not claim that a queued or uncertain message was delivered. The endpoint permits 20 requests per minute per connection and returns retry metadata when limited.
