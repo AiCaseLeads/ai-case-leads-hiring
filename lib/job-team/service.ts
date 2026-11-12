@@ -59,7 +59,7 @@ export async function candidateReplyTo(_store:HubStore,_applicationId:string,_ow
  void _store; void _applicationId; void _owners;
  return [AUTOMATIC_REPLY_TO];
 }
-export async function candidateMail(store:HubStore,input:MailInput,owners:string[]=[],context?:{mailMode?:unknown;actor?:unknown;applicationId:string;rejection?:boolean;interview?:boolean;interviewerEmail?:unknown}):Promise<MailInput>{
+export async function candidateMail(store:HubStore,input:MailInput,owners:string[]=[],context?:{mailMode?:unknown;actor?:unknown;applicationId:string;rejection?:boolean;interview?:boolean;interviewerEmail?:unknown;legacyInterviewSender?:boolean}):Promise<MailInput>{
  const staff=await store.rows<{email:string;active:number;role:string}>("SELECT lower(trim(email)) AS email,active,role FROM hub_members");
  const connected=await store.setting<string>("google_sender","");
  const privateAddresses=new Set([...staff.map(person=>person.email),...owners,connected].filter(Boolean).map(value=>value.toLowerCase()));
@@ -89,8 +89,10 @@ export async function candidateMail(store:HubStore,input:MailInput,owners:string
   // The chosen interviewer owns this invitation and receives replies. Use
   // their connected mailbox throughout the preview, worker and follow-ups.
   interviewReplyTo=selected;
-  replyTo=selected;
-  cc=selected===input.to.trim().toLowerCase()?undefined:[selected];
+  if(!context.legacyInterviewSender){
+   replyTo=selected;
+   cc=selected===input.to.trim().toLowerCase()?undefined:[selected];
+  }
  }
  const addresses=`${input.subject} ${input.body}`.match(/[A-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi)||[];
  if(addresses.some(address=>address.toLowerCase()!==CANDIDATE_SENDER&&address.toLowerCase()!==replyTo&&address.toLowerCase()!==interviewReplyTo&&privateAddresses.has(address.toLowerCase())))throw new HiringError("candidate_mail_exposes_staff_address",422,"Remove staff email addresses from the applicant email template before retrying.");
@@ -99,4 +101,15 @@ export async function candidateMail(store:HubStore,input:MailInput,owners:string
  const body=context?.rejection?input.body.replaceAll(AUTOMATED_MAIL_NOTICE,shortNotice):input.body;
  const notice=context?.rejection?shortNotice:replyTo===AUTOMATIC_REPLY_TO?AUTOMATED_MAIL_NOTICE:"You can reply to this email to contact the hiring team. For application help or privacy requests, visit https://jobs.aicaseleads.com/help.";
  return {to:input.to,subject:input.subject,body:body.includes(notice)?body:`${body}\n\n${notice}`,messageId:input.messageId,sender:replyTo===AUTOMATIC_REPLY_TO?CANDIDATE_SENDER:replyTo,replyTo:interviewReplyTo?[interviewReplyTo]:[...new Set([replyTo,...(cc||[])])],...(cc?{cc}:{}),candidateMail:true,candidateAccount:replyTo===AUTOMATIC_REPLY_TO?undefined:replyTo};
+}
+
+/** Reconstruct exactly the approved routing for historical unversioned invitations.
+ * Current and legacy candidates are both derived from active staff, never copied
+ * from the stored envelope. The caller must still verify the returned envelope. */
+export async function approvedCandidateMail(store:HubStore,input:MailInput,owners:string[],context:NonNullable<Parameters<typeof candidateMail>[3]>,approvedEnvelope:unknown,routingVersion:unknown):Promise<MailInput>{
+ const current=await candidateMail(store,input,owners,context);
+ const envelope=(mail:MailInput)=>JSON.stringify({sender:mail.sender,to:mail.to,cc:mail.cc||[],replyTo:mail.replyTo||[]});
+ if(!context.interview||!approvedEnvelope||routingVersion===2||envelope(current)===JSON.stringify(approvedEnvelope))return current;
+ const legacy=await candidateMail(store,input,owners,{...context,legacyInterviewSender:true});
+ return envelope(legacy)===JSON.stringify(approvedEnvelope)?legacy:current;
 }

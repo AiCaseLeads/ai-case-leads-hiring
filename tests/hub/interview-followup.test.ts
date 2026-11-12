@@ -160,9 +160,10 @@ test('overdue follow-ups wait until Monday rather than being sent or discarded o
   t.after(() => database.close());
   await store.finishTask(original.id,lease,{status:'done',result:{id:'invitation-provider'}});
   const message = (await store.tasks()).find(task=>task.payload.bookingFollowup)!;
-  const saturday = Date.parse('2026-11-14T15:30:00Z');
+  await store.setSetting("interview_email_backfill_v2", -1);
+  const saturday = Date.parse('2026-11-15T04:30:00Z'); // Saturday 11:30 PM Eastern
   const monday = Date.parse('2026-11-16T15:30:00Z');
-  database.prepare("UPDATE hub_tasks SET run_after=?, payload_json=json_set(payload_json,'$.dueAt',?) WHERE id=?").run(saturday-1,saturday-1,message.id);
+  database.prepare("UPDATE hub_tasks SET run_after=?, payload_json=json_set(payload_json,'$.dueAt',?) WHERE id=?").run(saturday-1,Date.parse('2026-11-13T15:30:00Z'),message.id);
   database.prepare("UPDATE hub_tasks SET status='done' WHERE id<>?").run(message.id);
   t.mock.timers.enable({apis:['Date'],now:saturday});
   const {processHubTasks}=await import('../../lib/task-runner');
@@ -183,3 +184,62 @@ test('overdue follow-ups wait until Monday rather than being sent or discarded o
   row = database.prepare('SELECT status FROM hub_tasks WHERE id=?').get(message.id)!;
   assert.equal(row.status,'done');
 });
+
+test('legacy approved follow-up keeps its exact original sender', async t => {
+  const {store,database,db,original,lease}=await makeInvitation();
+  t.after(()=>database.close());
+  const interviewer='legacy-interviewer@example.invalid';
+  database.prepare("INSERT INTO hub_members(id,email,role,active,created_at,updated_at) VALUES ('legacy-interviewer',?,'recruiter',1,0,0)").run(interviewer);
+  const envelope={sender:MANAGER.email,to:original.payload.to,cc:[MANAGER.email],replyTo:[interviewer]};
+  const legacy:Record<string,unknown>={...original.payload,approvedEnvelope:envelope,interviewerEmail:interviewer};
+  delete legacy.interviewRoutingVersion;
+  database.prepare('UPDATE hub_tasks SET payload_json=? WHERE id=?').run(JSON.stringify(legacy),original.id);
+  await store.finishTask(original.id,lease,{status:'done',result:{id:'legacy-provider-id'}});
+  const message=(await store.tasks()).find(task=>task.payload.bookingFollowup)!;
+  database.prepare("UPDATE hub_tasks SET status='done' WHERE id<>?").run(message.id);
+  t.mock.timers.enable({apis:['Date'],now:message.runAfter});
+  const {processHubTasks}=await import('../../lib/task-runner');
+  const mail:import('../../lib/google/workspace').MailInput[]=[];
+  const client={sendMail:async (input:import('../../lib/google/workspace').MailInput)=>{mail.push(input);return{id:'legacy-followup',threadId:'legacy-thread'}}} as import('../../lib/google/workspace').GoogleWorkspace;
+  await processHubTasks(store,db,undefined,undefined,1,[MANAGER.email],async()=>client);
+  assert.equal(mail.length,1);assert.equal(mail[0].sender,envelope.sender);assert.deepEqual(mail[0].cc,envelope.cc);assert.deepEqual(mail[0].replyTo,envelope.replyTo);
+});
+
+test('legacy follow-up still fails closed when the approved envelope no longer matches', async t => {
+  const {store,database,db,original,lease}=await makeInvitation();
+  t.after(()=>database.close());
+  const interviewer='legacy-interviewer@example.invalid';
+  database.prepare("INSERT INTO hub_members(id,email,role,active,created_at,updated_at) VALUES ('legacy-interviewer',?,'recruiter',1,0,0)").run(interviewer);
+  const legacy:Record<string,unknown>={...original.payload,approvedEnvelope:{sender:'different@example.invalid',to:original.payload.to,cc:[MANAGER.email],replyTo:[interviewer]},interviewerEmail:interviewer};
+  delete legacy.interviewRoutingVersion;
+  database.prepare('UPDATE hub_tasks SET payload_json=? WHERE id=?').run(JSON.stringify(legacy),original.id);
+  await store.finishTask(original.id,lease,{status:'done',result:{id:'legacy-provider-id'}});
+  const message=(await store.tasks()).find(task=>task.payload.bookingFollowup)!;
+  database.prepare("UPDATE hub_tasks SET status='done' WHERE id<>?").run(message.id);
+  t.mock.timers.enable({apis:['Date'],now:message.runAfter});
+  const {processHubTasks}=await import('../../lib/task-runner');let sends=0;
+  const client={sendMail:async()=>{sends++;return{id:'must-not-send'}}} as unknown as import('../../lib/google/workspace').GoogleWorkspace;
+  await processHubTasks(store,db,undefined,undefined,1,[MANAGER.email],async()=>client);
+  assert.equal(sends,0);const task=(await store.tasks()).find(item=>item.id===message.id)!;assert.equal(task.status,'failed');assert.equal(task.lastError,'interview_sender_changed');
+});
+
+test('unversioned follow-up can use a previously approved selected interviewer sender', async t => {
+  const {store,database,db,original,lease}=await makeInvitation();
+  t.after(()=>database.close());
+  const interviewer='legacy-interviewer@example.invalid';
+  database.prepare("INSERT INTO hub_members(id,email,role,active,created_at,updated_at) VALUES ('legacy-interviewer',?,'recruiter',1,0,0)").run(interviewer);
+  const envelope={sender:interviewer,to:original.payload.to,cc:[interviewer],replyTo:[interviewer]};
+  const legacy:Record<string,unknown>={...original.payload,approvedEnvelope:envelope,interviewerEmail:interviewer};
+  delete legacy.interviewRoutingVersion;
+  database.prepare('UPDATE hub_tasks SET payload_json=? WHERE id=?').run(JSON.stringify(legacy),original.id);
+  await store.finishTask(original.id,lease,{status:'done',result:{id:'legacy-provider-id'}});
+  const message=(await store.tasks()).find(task=>task.payload.bookingFollowup)!;
+  database.prepare("UPDATE hub_tasks SET status='done' WHERE id<>?").run(message.id);
+  t.mock.timers.enable({apis:['Date'],now:message.runAfter});
+  const {processHubTasks}=await import('../../lib/task-runner');
+  const mail:import('../../lib/google/workspace').MailInput[]=[];
+  const client={sendMail:async (input:import('../../lib/google/workspace').MailInput)=>{mail.push(input);return{id:'legacy-followup',threadId:'legacy-thread'}}} as import('../../lib/google/workspace').GoogleWorkspace;
+  await processHubTasks(store,db,undefined,undefined,1,[MANAGER.email],async()=>client);
+  assert.equal(mail.length,1);assert.equal(mail[0].sender,envelope.sender);assert.deepEqual(mail[0].cc,envelope.cc);assert.deepEqual(mail[0].replyTo,envelope.replyTo);
+});
+

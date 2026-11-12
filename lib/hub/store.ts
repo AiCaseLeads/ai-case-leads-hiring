@@ -613,7 +613,7 @@ export class HubStore {
         metadata: {
           bookingFollowup: true, followupNumber, dueAt, expiresAt: link.expires_at, invitationHash: payload.invitationHash,
           interviewId, invitationTaskId, followupOnDelivery: payload.followupOnDelivery, mailMode: 'recruiter', actor: payload.actor,
-          interviewerEmail: payload.interviewerEmail, approvedEnvelope: payload.approvedEnvelope,
+          interviewerEmail: payload.interviewerEmail, approvedEnvelope: payload.approvedEnvelope, interviewRoutingVersion: payload.interviewRoutingVersion,
         },
         guard: {
           sql: `${interviewRemindersEnabledSql} AND ${viableBookingInvitationSql}${guard ? ' AND ' + guard.sql : ''}`,
@@ -1829,7 +1829,7 @@ export class HubStore {
             message.body,
             now,
             "Interview invitation with a private candidate link.",
-            {metadata:{mailMode:"recruiter",actor:member.email,followupOnDelivery:true,invitationHash:hash,...(message.interviewerEmail?{interviewerEmail:message.interviewerEmail}:{}),...(preview?{templateVersion:message.templateVersion,approvedEnvelope:message.envelope}:{})}},
+            {metadata:{mailMode:"recruiter",actor:member.email,followupOnDelivery:true,invitationHash:hash,interviewRoutingVersion:2,...(message.interviewerEmail?{interviewerEmail:message.interviewerEmail}:{}),...(preview?{templateVersion:message.templateVersion,approvedEnvelope:message.envelope}:{})}},
           ),
         );
         stage = renewing || app.stage==="Second Round Interview" ? app.stage : "Interview";
@@ -1934,7 +1934,7 @@ export class HubStore {
     if (statements.length) {
       if (agentGuard) {
         const guardKey = `agent_action_guard:${crypto.randomUUID()}`;
-        statements.unshift(this.stmt("INSERT INTO hub_settings(key,value,updated_at) SELECT ?, CASE WHEN EXISTS(SELECT 1 FROM hub_settings WHERE key=? AND value=? AND (json_extract(value,'$.expiresAt') IS NULL OR json_extract(value,'$.expiresAt')>?)) AND NOT EXISTS(SELECT 1 FROM hub_interviews WHERE application_id=?) AND NOT EXISTS(SELECT 1 FROM hub_links WHERE application_id=? AND used_at IS NULL) THEN 'true' ELSE NULL END, ?", guardKey, agentGuard.key, agentGuard.value, Date.now(), id, id, Date.now()));
+        statements.unshift(this.stmt("INSERT INTO hub_settings(key,value,updated_at) SELECT ?, CASE WHEN EXISTS(SELECT 1 FROM hub_settings WHERE key=? AND value=? AND (json_extract(value,'$.expiresAt') IS NULL OR json_extract(value,'$.expiresAt')>?)) AND NOT EXISTS(SELECT 1 FROM hub_interviews WHERE application_id=?) AND NOT EXISTS(SELECT 1 FROM hub_links WHERE application_id=? AND used_at IS NULL AND (? IS NULL OR kind=?)) THEN 'true' ELSE NULL END, ?", guardKey, agentGuard.key, agentGuard.value, Date.now(), id, id, agentGuard.kind ?? null, agentGuard.kind ?? null, Date.now()));
         statements.push(this.stmt("INSERT INTO hub_audit(id,type,actor,before_json,after_json,created_at) VALUES(?,?,?,?,?,?)", crypto.randomUUID(), agentGuard.kind === "interview" ? "agent_interview_invitation" : "agent_applicant_reject", agentGuard.kind === "interview" ? member.userId : member.email, JSON.stringify({applicationId:id,revision:app.revision,stage:app.stage}), JSON.stringify({applicationId:id,stage:agentGuard.kind === "interview" ? "Interview" : "Rejected",connection:agentGuard.name,...(agentGuard.kind === "interview" ? {sender:member.email} : {})}), Date.now()));
         statements.push(this.stmt("DELETE FROM hub_settings WHERE key=?", guardKey));
       }
