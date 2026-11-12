@@ -45,7 +45,7 @@ test('rejection write limit returns actionable retry metadata without a decision
  const {sha256}=await import('../../lib/hiring/crypto');const {store,database}=createStore();try{
  const job=await store.saveJob(jobInput()),app=await store.acceptApplication(applicationInput(job.id)),access=await issueAccess(store,'writer',['applicants:read','applicants:reject'],'owner');
  const now=Date.now(),key=await sha256('agent-reject:'+access.id+':minute:'+(Math.floor(now/60000)%10));database.prepare('INSERT INTO hiring_rate_limits(key_hash,window,attempts) VALUES(?,?,20)').run(key,Math.floor(now/600000));
- await assert.rejects(rejectApplicant(store,req(access.token),{applicationId:app.id,expectedRevision:(await store.applicationRow(app.id)).revision,reason:'Private',confirm:true}),(error:any)=>error.code==='agent_reject_rate_limited'&&error.retryAfterSeconds>0&&error.limit.requests===20);
+ await assert.rejects(rejectApplicant(store,req(access.token),{applicationId:app.id,expectedRevision:(await store.applicationRow(app.id)).revision,reason:'Private',confirm:true}),(error:unknown)=>{const e=error as {code?:string;retryAfterSeconds?:number;limit?:{requests?:number}};return e.code==='agent_reject_rate_limited'&&(e.retryAfterSeconds??0)>0&&e.limit?.requests===20});
  assert.notEqual((await store.applicationRow(app.id)).stage,'Rejected');
  }finally{database.close()}
 });
