@@ -3,14 +3,18 @@ import test from 'node:test';
 import { bookingFollowupDueAt, bookingFollowupIsCurrent } from '../../lib/hub/interview-reminders';
 import { approveScheduling, applicationInput, createStore, currentAction, jobInput, MANAGER } from './fixtures';
 
-test('two business days preserves the Eastern wall time through weekends and both clock changes', () => {
+test('business days preserves the Eastern wall time through weekends and both clock changes', () => {
   const dates = [
     ['2026-10-28T14:30:05.123Z', '2026-10-30T14:30:05.123Z'],
     ['2026-10-30T14:30:05.123Z', '2026-11-03T15:30:05.123Z'],
     ['2026-03-06T15:30:00.000Z', '2026-03-10T14:30:00.000Z'],
     ['2026-11-01T16:00:00.000Z', '2026-11-03T16:00:00.000Z'],
   ];
-  for (const [sent, expected] of dates) assert.equal(new Date(bookingFollowupDueAt(Date.parse(sent))).toISOString(), expected);
+  for (const [sent, expected] of dates) assert.equal(new Date(bookingFollowupDueAt(Date.parse(sent), 2)).toISOString(), expected);
+});
+
+test('first reminder is one business day later, including across the weekend', () => {
+  assert.equal(new Date(bookingFollowupDueAt(Date.parse('2026-10-30T14:30:05.123Z'))).toISOString(), '2026-11-02T15:30:05.123Z');
 });
 
 async function makeInvitation() {
@@ -26,7 +30,7 @@ async function makeInvitation() {
   return { ...fixture, id, original, lease: delivery.leaseToken };
 }
 
-test('a provider-confirmed invitation schedules just one follow-up with the same booking link; revalidate before delivery', async t => {
+test('a provider-confirmed invitation schedules the first follow-up with the same booking link; revalidate before delivery', async t => {
   const { store, database, id, original, lease } = await makeInvitation();
   t.after(()=>database.close());
   assert.equal((await store.tasks()).filter(t => t.payload.bookingFollowup).length, 0);
@@ -97,7 +101,11 @@ test('the worker sends one due follow-up with the interviewer as Reply-To and or
   assert.deepEqual(mail[0].replyTo,envelope.replyTo);
   assert.equal(mail[0].to,envelope.to);
   assert.equal(database.prepare('SELECT status FROM hub_communications WHERE task_id=?').get(message.id)!.status,'sent');
-  assert.equal(database.prepare('SELECT COUNT(*) AS n FROM hub_tasks WHERE json_extract(payload_json,\'$.bookingFollowup\')=1').get()!.n,1);
+  const second = (await store.tasks()).find(task => task.payload.followupNumber === 2)!;
+  assert.ok(second);
+  assert.equal(second.runAfter, bookingFollowupDueAt(message.runAfter, 2));
+  assert.ok(second.runAfter > message.runAfter);
+  assert.equal(database.prepare('SELECT COUNT(*) AS n FROM hub_tasks WHERE json_extract(payload_json,\'$.bookingFollowup\')=1').get()!.n,2);
 });
 
 test('a pre-release invitation finishing after backfill gets a follow-up only with its approved envelope', async t => {
@@ -114,5 +122,34 @@ test('a pre-release invitation finishing after backfill gets a follow-up only wi
     // The scan already passed the row; later confirmation must schedule on its own.
     await store.finishTask(original.id,lease,{status:'done',result:{id:'provider-confirmed-later'}});
     assert.equal((await store.tasks()).filter(task=>task.payload.bookingFollowup).length,approved ? 1 : 0);
+  }
+});
+
+test('backfill updates a legacy pending reminder without duplicates; a delivered one schedules only the second', async t => {
+  const {backfillInterviewEmails} = await import('../../lib/hub/interview-email-backfill');
+  for (const delivered of [false, true]) {
+    const {store,database,original,lease} = await makeInvitation();
+    t.after(() => database.close());
+    await store.finishTask(original.id,lease,{status:'done',result:{id:'invitation-provider'}});
+    const first = (await store.tasks()).find(task => task.payload.bookingFollowup)!;
+    const firstSent = Date.now() - 86400_000;
+    if (delivered) {
+      database.prepare("UPDATE hub_tasks SET status='done' WHERE id=?").run(first.id);
+      database.prepare("UPDATE hub_communications SET status='sent',provider_id='first-provider',updated_at=? WHERE task_id=?").run(firstSent,first.id);
+    } else {
+      database.prepare("UPDATE hub_tasks SET run_after=run_after+86400000,payload_json=json_remove(payload_json,'$.followupNumber') WHERE id=?").run(first.id);
+    }
+    await backfillInterviewEmails(store);
+    await backfillInterviewEmails(store);
+    const followups = (await store.tasks()).filter(task => task.payload.bookingFollowup);
+    assert.equal(followups.length, delivered ? 2 : 1);
+    if (delivered) {
+      const second = followups.find(task => task.payload.followupNumber === 2)!;
+      assert.equal(second.runAfter,bookingFollowupDueAt(firstSent,2));
+    } else {
+      const invitationSentAt = database.prepare('SELECT updated_at FROM hub_communications WHERE task_id=?').get(original.id)!.updated_at as number;
+      assert.equal(followups[0].runAfter,bookingFollowupDueAt(invitationSentAt));
+      assert.equal(followups[0].payload.followupNumber,1);
+    }
   }
 });

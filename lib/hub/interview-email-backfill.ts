@@ -1,7 +1,8 @@
 import { linkedSlotSql } from "./interview-progress";
+import { bookingFollowupDueAt } from "./interview-reminders";
 import type { HubStore } from "./store";
 
-const cursorKey = "interview_email_backfill_v1";
+const cursorKey = "interview_email_backfill_v2";
 const batchSize = 8;
 const finished = -1;
 
@@ -57,10 +58,27 @@ export async function backfillInterviewEmails(store: HubStore, now = Date.now())
     if (!payload || typeof payload !== 'object') continue;
     // The same final insert guard used by live invitations verifies a sent
     // communication with provider ID and a still-unused link for this exact round.
-    statements.push(...await store.bookingFollowupStatements({
-      app: booking, invitationTaskId: invitation.taskId, invitationPayload: payload,
-      sentAt: invitation.sentAt, now,
-    }, {sql: "EXISTS (SELECT 1 FROM hub_tasks WHERE id=? AND status='done')", values: [invitation.taskId]}));
+    const version = invitation.taskId.slice(prefix.length);
+    const firstId = `gmail:${booking.id}:booking-followup:${booking.interviewId}:${version}`;
+    const previous = await store.stmt(`SELECT t.status,c.status AS communicationStatus,c.updated_at AS sentAt,c.provider_id AS providerId
+      FROM hub_tasks t LEFT JOIN hub_communications c ON c.task_id=t.id WHERE t.id=?`, firstId)
+      .first<{status: string; communicationStatus: string | null; sentAt: number | null; providerId: string | null}>();
+    if (previous?.status === 'done' && previous.communicationStatus === 'sent' && previous.sentAt && previous.providerId) {
+      // Legacy reminders already delivered count as the first; never send them again.
+      statements.push(...await store.bookingFollowupStatements({
+        app: booking, invitationTaskId: invitation.taskId, invitationPayload: payload,
+        sentAt: previous.sentAt, now, followupNumber: 2,
+      }, {sql: "EXISTS (SELECT 1 FROM hub_tasks WHERE id=? AND status='done')", values: [firstId]}));
+    } else {
+      const due = bookingFollowupDueAt(invitation.sentAt);
+      // Keep the legacy deterministic ID and move only unclaimed pending tasks.
+      statements.push(store.stmt(`UPDATE hub_tasks SET run_after=?,payload_json=json_set(payload_json,'$.dueAt',?,'$.followupNumber',1),updated_at=?
+        WHERE id=? AND status='pending' AND json_extract(payload_json,'$.bookingFollowup')=1`, due, due, now, firstId));
+      statements.push(...await store.bookingFollowupStatements({
+        app: booking, invitationTaskId: invitation.taskId, invitationPayload: payload,
+        sentAt: invitation.sentAt, now,
+      }, {sql: "EXISTS (SELECT 1 FROM hub_tasks WHERE id=? AND status='done')", values: [invitation.taskId]}));
+    }
   }
   const next = bookings.length < batchSize ? finished : bookings[bookings.length - 1].cursor;
   // A second worker can replay a batch safely. Only its current cursor may advance.

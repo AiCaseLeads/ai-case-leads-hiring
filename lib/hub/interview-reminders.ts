@@ -22,10 +22,10 @@ function easternWallTime(timestamp: number) {
   const p = Object.fromEntries(eastern.formatToParts(timestamp).map(part => [part.type, part.value]));
   return Date.UTC(+p.year, +p.month - 1, +p.day, +p.hour, +p.minute, +p.second, timestamp % 1000);
 }
-export function bookingFollowupDueAt(sentAt: number) {
+export function bookingFollowupDueAt(sentAt: number, days = 1) {
   let wall = easternWallTime(sentAt);
   let businessDays = 0;
-  while (businessDays < 2) {
+  while (businessDays < days) {
     wall += DAY;
     const weekday = new Date(wall).getUTCDay();
     if (weekday > 0 && weekday < 6) businessDays++;

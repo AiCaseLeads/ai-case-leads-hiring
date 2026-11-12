@@ -213,7 +213,7 @@ function SettingsForm({
             <input type="checkbox" checked={remindersEnabled} onChange={e => setRemindersEnabled(e.target.checked)} />
             Send booking follow-ups and interview reminders
           </label>
-          <p className="hub-muted"><strong>Awaiting booking</strong> · One follow-up if the candidate hasn’t booked after two business days.</p>
+          <p className="hub-muted"><strong>Awaiting booking</strong> · Follow-ups after one business day and two business days after the first, if the candidate hasn’t booked.</p>
           <p className="hub-muted"><strong>Confirmed</strong> · Reminders 24 hours, 1 hour, and 5 minutes before the interview.</p>
         </section>
       </>}
