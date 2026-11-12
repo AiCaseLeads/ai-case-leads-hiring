@@ -1927,10 +1927,16 @@ export class HubStore {
     id: string,
     input: ActionInput,
     member: HubMember,
+    agentGuard?: { key: string; value: string },
   ): Promise<ApplicationDetail> {
     const app = await this.applicationRow(id);
     const statements = await this.actionStatements(app, input, member);
     if (statements.length) {
+      if (agentGuard) {
+        const guardKey = `agent_action_guard:${crypto.randomUUID()}`;
+        statements.unshift(this.stmt("INSERT INTO hub_settings(key,value,updated_at) SELECT ?, CASE WHEN EXISTS(SELECT 1 FROM hub_settings WHERE key=? AND value=? AND (json_extract(value,'$.expiresAt') IS NULL OR json_extract(value,'$.expiresAt')>?)) THEN 'true' ELSE NULL END, ?", guardKey, agentGuard.key, agentGuard.value, Date.now(), Date.now()));
+        statements.push(this.stmt("DELETE FROM hub_settings WHERE key=?", guardKey));
+      }
       try {
         await this.db.batch(statements);
       } catch (error) {

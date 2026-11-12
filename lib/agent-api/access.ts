@@ -1,7 +1,7 @@
 import { privateToken, sha256 } from '../hiring/crypto';
 import { HiringError } from '../hiring/errors';
 import type { HubStore } from '../hub/store';
-export type AgentScope='jobs:draft'|'jobs:publish'|'jobs:read'|'applicants:read'|'files:read';
+export type AgentScope='jobs:draft'|'jobs:publish'|'jobs:read'|'applicants:read'|'files:read'|'applicants:reject';
 type Access={id:string;hash:string;name:string;scopes:AgentScope[];createdBy:string;expiresAt:number|null;revoked:boolean};
 export async function issueAccess(store:HubStore,name:string,scopes:AgentScope[],actor:string,noExpiry=true){
  const id=crypto.randomUUID(),secret=privateToken(),token=`hiring_${id}_${secret}`;
@@ -18,9 +18,10 @@ export async function authorizeAgent(store:HubStore,request:Request,scope:AgentS
  // Tokens never impersonate staff; every capability requires its explicit scope.
  return record;
 }
-export const AGENT_SCOPES:AgentScope[]=['jobs:read','jobs:draft','jobs:publish','applicants:read','files:read'];
+export const AGENT_SCOPES:AgentScope[]=['jobs:read','jobs:draft','jobs:publish','applicants:read','files:read','applicants:reject'];
 export function validateAccessScopes(value:unknown):AgentScope[]{
  if(!Array.isArray(value)||!value.length||value.some(scope=>typeof scope!=='string'||!AGENT_SCOPES.includes(scope as AgentScope)))throw new HiringError('invalid_access',422,'Choose valid connection permissions.');
+ if(value.includes('applicants:reject')&&!value.includes('applicants:read'))throw new HiringError('invalid_access',422,'Applicant read access is required to reject applicants.');
  if(value.includes('files:read')&&!value.includes('applicants:read'))throw new HiringError('invalid_access',422,'Applicant access is required for résumé and file access.');
  return [...new Set(value)] as AgentScope[];
 }
