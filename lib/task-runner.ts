@@ -1,4 +1,4 @@
-import { bookingConfirmationIsCurrent, bookedReminderIsCurrent, bookingFollowupIsCurrent } from './hub/interview-reminders';
+import { bookingConfirmationIsCurrent, bookedReminderIsCurrent, bookingFollowupIsCurrent, bookingFollowupWeekendRetryAt } from './hub/interview-reminders';
 import {workflowNotificationMail} from "./hub/recruiting-workflow";
 import { AUTOMATIC_REPLY_TO } from './email/contracts';
 import { automaticMailTransport, reserveAutomaticMail, isAutomaticMailDeferred, type AutomaticMailResolver } from './email/service';
@@ -115,6 +115,10 @@ async function taskEffect(task:Task,store:HubStore,db:D1Database,bucket:R2Bucket
     if (task.payload.bookingConfirmation === true && !await bookingConfirmationIsCurrent(store, task, Date.now())) return {stale:true};
     if (task.payload.reminder === true && !await bookedReminderIsCurrent(store, task, Date.now())) return {stale:true};
     if (task.payload.bookingFollowup === true && !await bookingFollowupIsCurrent(store, task, Date.now())) return {stale:true};
+    if (task.payload.bookingFollowup === true) {
+      const retryAt = bookingFollowupWeekendRetryAt(Date.now());
+      if (retryAt !== null) throw {code:'booking_followup_weekend',retryAt};
+    }
     if(task.id===`gmail:${task.applicationId}:rejection`||task.id.startsWith(`gmail:${task.applicationId}:rejection:`)) {
       const decision=await store.applicationRow(task.applicationId);
       if(decision.stage!=="Rejected"||task.createdAt<decision.stage_entered_at)return {stale:true,supersededRejection:true};
@@ -133,6 +137,10 @@ async function taskEffect(task:Task,store:HubStore,db:D1Database,bucket:R2Bucket
     const transport=await candidateTransport(store,mail.candidateAccount,resolver);
     transport.setDeadline?.(deadline);
     if (task.payload.bookingFollowup === true && !await bookingFollowupIsCurrent(store, task, Date.now())) return {stale:true};
+    if (task.payload.bookingFollowup === true) {
+      const retryAt = bookingFollowupWeekendRetryAt(Date.now());
+      if (retryAt !== null) throw {code:'booking_followup_weekend',retryAt};
+    }
     // Pin transport before the irreversible send so an uncertain response is reconciled in the same mailbox.
     const pinned=await db.prepare("UPDATE hub_tasks SET payload_json=? WHERE id=? AND lease_token=? AND status='running' RETURNING id").bind(JSON.stringify({...task.payload,deliveryProvider:"gmail",deliveryAccount:mail.candidateAccount,deliveryEnvelope:{sender:mail.sender,to:[mail.to],cc:mail.cc||[],replyTo:mail.replyTo||[]}}),task.id,task.leaseToken).first();
     if(!pinned)throw {code:"task_lease_expired"};
@@ -200,6 +208,12 @@ async function runClaimedTask(task:Task,store:HubStore,db:D1Database,bucket:R2Bu
     }
     const ambiguous=["gmail","calendar"].includes(task.kind)&&(providerCompleted||!!(error&&typeof error==="object"&&"uncertain"in error&&error.uncertain));
     const code=safeCode(error);
+    if (task.kind === 'gmail' && !ambiguous && code === 'booking_followup_weekend' && task.payload.bookingFollowup === true) {
+      const retryAt = error && typeof error === 'object' && 'retryAt' in error ? Number(error.retryAt) : NaN;
+      if (!Number.isFinite(retryAt) || retryAt <= Date.now()) throw error;
+      await store.finishTask(task.id,task.leaseToken,{status:'pending',error:code,runAfter:retryAt,mailDeferred:true});
+      return 'deferred';
+    }
     if(task.kind==='gmail'&&!ambiguous&&isAutomaticMailDeferred(code)){
       const requested=error&&typeof error==='object'&&'retryAt'in error?Number(error.retryAt):0;
       const retryAt=Number.isFinite(requested)&&requested>Date.now()?Math.min(requested,Date.now()+25*3600_000):Date.now()+3600_000;

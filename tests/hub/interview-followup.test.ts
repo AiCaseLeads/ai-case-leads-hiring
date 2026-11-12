@@ -95,6 +95,7 @@ test('the worker sends one due follow-up with the interviewer as Reply-To and or
     mail.push(payload);return {id:'followup-provider-id',threadId:'followup-thread'};
   }} as import('../../lib/google/workspace').GoogleWorkspace;
   await processHubTasks(store,db,undefined,undefined,1,[MANAGER.email],async()=>client);
+
   assert.equal(mail.length,1);
   assert.equal(mail[0].sender,envelope.sender);
   assert.deepEqual(mail[0].cc,envelope.cc);
@@ -152,4 +153,33 @@ test('backfill updates a legacy pending reminder without duplicates; a delivered
       assert.equal(followups[0].payload.followupNumber,1);
     }
   }
+});
+
+test('overdue follow-ups wait until Monday rather than being sent or discarded on a weekend', async t => {
+  const {store,database,db,original,lease} = await makeInvitation();
+  t.after(() => database.close());
+  await store.finishTask(original.id,lease,{status:'done',result:{id:'invitation-provider'}});
+  const message = (await store.tasks()).find(task=>task.payload.bookingFollowup)!;
+  const saturday = Date.parse('2026-11-14T15:30:00Z');
+  const monday = Date.parse('2026-11-16T15:30:00Z');
+  database.prepare("UPDATE hub_tasks SET run_after=?, payload_json=json_set(payload_json,'$.dueAt',?) WHERE id=?").run(saturday-1,saturday-1,message.id);
+  database.prepare("UPDATE hub_tasks SET status='done' WHERE id<>?").run(message.id);
+  t.mock.timers.enable({apis:['Date'],now:saturday});
+  const {processHubTasks}=await import('../../lib/task-runner');
+  const mail: import('../../lib/google/workspace').MailInput[]=[];
+  const client={sendMail: async (payload:import('../../lib/google/workspace').MailInput) => {
+    mail.push(payload); return {id:'followup-provider-id'};
+  }} as import('../../lib/google/workspace').GoogleWorkspace;
+  await processHubTasks(store,db,undefined,undefined,1,[MANAGER.email],async()=>client);
+  assert.equal(mail.length,0);
+  let row = database.prepare('SELECT status,run_after FROM hub_tasks WHERE id=?').get(message.id)!;
+  assert.equal(row.status,'pending');
+  assert.equal(row.run_after,monday);
+  t.mock.timers.setTime(monday);
+  database.prepare("UPDATE hub_tasks SET status='done' WHERE id<>?").run(message.id);
+  await processHubTasks(store,db,undefined,undefined,1,[MANAGER.email],async()=>client);
+
+  assert.equal(mail.length,1);
+  row = database.prepare('SELECT status FROM hub_tasks WHERE id=?').get(message.id)!;
+  assert.equal(row.status,'done');
 });

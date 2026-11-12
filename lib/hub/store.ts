@@ -2148,7 +2148,8 @@ export class HubStore {
         "Choose a finished or retryable task state.",
       );
     if (result.continuation && (current.kind !== "drive" || result.status !== "pending")) throw new HiringError("invalid_task_continuation",422,"Only Drive archival can continue as pending work.");
-    if(result.mailDeferred&&(current.kind!=='gmail'||result.status!=='pending'||!['transactional_mail_daily_limit','transactional_mail_rate_limited','transactional_mail_quota_exhausted','transactional_mail_dns_check_failed'].includes(result.error||'')))throw new HiringError('invalid_mail_deferral',422,'Only rate-limited automatic mail can be deferred.');
+    if(result.mailDeferred&&(current.kind!=='gmail'||result.status!=='pending'||!['transactional_mail_daily_limit','transactional_mail_rate_limited','transactional_mail_quota_exhausted','transactional_mail_dns_check_failed','booking_followup_weekend'].includes(result.error||'')))throw new HiringError('invalid_mail_deferral',422,'This mail task cannot be deferred.');
+    if(result.mailDeferred && result.error === 'booking_followup_weekend' && decode<Record<string,unknown>>(current.payload_json, {}).bookingFollowup !== true) throw new HiringError('invalid_mail_deferral',422,'Only booking follow-ups can be deferred for the weekend.');
     const statements = [
       this.stmt(
         "UPDATE hub_tasks SET run_after=CASE WHEN lease_token=? AND status='running' AND lease_until>? THEN ? ELSE NULL END,status=?,result_json=?,last_error=?,attempts=MAX(0,attempts-?),lease_until=NULL,updated_at=? WHERE id=?",

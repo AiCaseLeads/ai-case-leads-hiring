@@ -34,6 +34,13 @@ export function bookingFollowupDueAt(sentAt: number, days = 1) {
   return estimated + wall - easternWallTime(estimated);
 }
 
+// Late tasks must still send only Monday–Friday in Eastern time. Keep them
+// pending until the next weekday instead of marking them stale on weekends.
+export function bookingFollowupWeekendRetryAt(now: number) {
+  const weekday = new Date(easternWallTime(now)).getUTCDay();
+  return weekday === 0 || weekday === 6 ? bookingFollowupDueAt(now, 1) : null;
+}
+
 // Invitations created before the follow-up feature have no opt-in marker.
 export function hasApprovedBookingEnvelope(payload: Record<string, unknown>, candidateEmail: string) {
   const envelope = payload.approvedEnvelope as Record<string, unknown> | null;
