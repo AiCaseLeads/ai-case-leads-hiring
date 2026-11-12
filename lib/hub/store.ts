@@ -1934,7 +1934,8 @@ export class HubStore {
     if (statements.length) {
       if (agentGuard) {
         const guardKey = `agent_action_guard:${crypto.randomUUID()}`;
-        statements.unshift(this.stmt("INSERT INTO hub_settings(key,value,updated_at) SELECT ?, CASE WHEN EXISTS(SELECT 1 FROM hub_settings WHERE key=? AND value=? AND (json_extract(value,'$.expiresAt') IS NULL OR json_extract(value,'$.expiresAt')>?)) THEN 'true' ELSE NULL END, ?", guardKey, agentGuard.key, agentGuard.value, Date.now(), Date.now()));
+        statements.unshift(this.stmt("INSERT INTO hub_settings(key,value,updated_at) SELECT ?, CASE WHEN EXISTS(SELECT 1 FROM hub_settings WHERE key=? AND value=? AND (json_extract(value,'$.expiresAt') IS NULL OR json_extract(value,'$.expiresAt')>?)) AND NOT EXISTS(SELECT 1 FROM hub_interviews WHERE application_id=?) AND NOT EXISTS(SELECT 1 FROM hub_links WHERE application_id=? AND used_at IS NULL) THEN 'true' ELSE NULL END, ?", guardKey, agentGuard.key, agentGuard.value, Date.now(), id, id, Date.now()));
+        statements.push(this.stmt("INSERT INTO hub_audit(id,type,actor,before_json,after_json,created_at) VALUES(?,?,?,?,?,?)", crypto.randomUUID(), "agent_applicant_reject", member.email, JSON.stringify({applicationId:id,revision:app.revision,stage:app.stage}), JSON.stringify({applicationId:id,stage:"Rejected"}), Date.now()));
         statements.push(this.stmt("DELETE FROM hub_settings WHERE key=?", guardKey));
       }
       try {

@@ -13,7 +13,8 @@ export async function rejectApplicant(store:HubStore,request:Request,input:unkno
  if(await applicationTrash(store,applicationId))throw new HiringError('application_unavailable',404,'This application is unavailable.');
  const app=await store.applicationRow(applicationId);
  if(app.stage==='Rejected')return {applicationId,stage:'Rejected',alreadyRejected:true,email:'unchanged'};
- if(['Offer','Hired','Withdrawn'].includes(app.stage))throw new HiringError('application_stage_requires_review',409,'This application is in an offer or closed stage; handle it in the hiring workspace.');
+ if(await store.stmt("SELECT 1 FROM hub_interviews WHERE application_id=? UNION ALL SELECT 1 FROM hub_links WHERE application_id=? AND used_at IS NULL LIMIT 1",applicationId,applicationId).first())throw new HiringError('application_interview_requires_review',409,'This applicant has an interview or active link; handle the decision in the hiring workspace.');
+ if(app.stage!=='Application Review')throw new HiringError('application_stage_requires_review',409,'Only applications awaiting initial review can be rejected through this connection; handle later stages in the hiring workspace.');
  await store.action(applicationId,{action:'reject',expectedRevision,reason},{userId:'agent:'+access.id,email:'agent:'+access.id,role:'recruiter'},{key:'agent_access_'+access.id,value:JSON.stringify(access)});
  return {applicationId,stage:'Rejected',alreadyRejected:false,email:'queued'};
 }

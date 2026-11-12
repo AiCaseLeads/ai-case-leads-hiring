@@ -28,3 +28,15 @@ test('revoking a connection during rejection prevents the transaction and email'
  assert.notEqual((await store.applicationRow(app.id)).stage,'Rejected');assert.equal(database.prepare("SELECT count(*) n FROM hub_tasks WHERE id LIKE ?").get(`gmail:${app.id}:rejection:%`)?.n,0);
  }finally{database.close()}
 });
+
+test('agent cannot reject applications beyond initial review or with interview history',async()=>{
+ const {store,database}=createStore();try{
+ const job=await store.saveJob(jobInput()),app=await store.acceptApplication(applicationInput(job.id)),access=await issueAccess(store,'writer',['applicants:read','applicants:reject'],'owner');
+ const input={applicationId:app.id,expectedRevision:(await store.applicationRow(app.id)).revision,reason:'Private',confirm:true};
+ for(const stage of ['Screening','Offer','Hired','Withdrawn']){database.prepare('UPDATE hub_applications SET stage=? WHERE id=?').run(stage,app.id);await assert.rejects(rejectApplicant(store,req(access.token),input),{code:'application_stage_requires_review'});}
+ database.prepare('UPDATE hub_applications SET stage=? WHERE id=?').run('Application Review',app.id);
+ database.prepare("INSERT INTO hub_interviews(id,application_id,status,revision,created_at,updated_at) VALUES(?,?,'invited',1,0,0)").run('i-test',app.id);
+ await assert.rejects(rejectApplicant(store,req(access.token),input),{code:'application_interview_requires_review'});
+ assert.equal(database.prepare("SELECT count(*) n FROM hub_tasks WHERE id LIKE ?").get(`gmail:${app.id}:rejection:%`)?.n,0);
+ }finally{database.close()}
+});
