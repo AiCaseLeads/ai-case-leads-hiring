@@ -13,14 +13,14 @@ async function run(messages,mode='normal',token='test-secret'){
 const call=(name,args={})=>({jsonrpc:'2.0',id:1,method:'tools/call',params:{name,arguments:args}});
 test('stdio initialization discovery and existing draft/publish tools remain compatible',async()=>{
  const results=await run([{id:1,method:'initialize'},{method:'notifications/initialized'},{id:2,method:'tools/list'},call('draft_jobs',{text:'Engineer',countries:['India']}),call('publish_jobs',{jobs:[],confirm:false})]);
- assert.equal(results.length,4);assert.equal(results[0].result.protocolVersion,'2024-11-05');assert.equal(results[1].result.tools.length,12);assert.ok(results[1].result.tools.some(t=>t.name==='get_resume_text'));
+ assert.equal(results.length,4);assert.equal(results[0].result.protocolVersion,'2024-11-05');assert.equal(results[1].result.tools.length,13);assert.ok(results[1].result.tools.some(t=>t.name==='get_resume_text'));
  const draft=JSON.parse(results[2].result.content[0].text);assert.equal(draft.data.path,'/api/agent-jobs');assert.equal(draft.data.body.action,'draft');assert.equal(results[3].error.message,'Publishing requires confirm=true after explicit user approval.');
 });
 test('bulk tools are read-only, bounded and route grouped pages without caller action overrides',async()=>{
  const [listed]=await run([{id:1,method:'tools/list'}]);
  const bulk=listed.result.tools.filter(tool=>['export_applicants','search_applicants'].includes(tool.name));assert.equal(bulk.length,2);
  for(const tool of bulk){assert.match(tool.description,/applicants:read only/);assert.deepEqual(tool.annotations,{readOnlyHint:true,destructiveHint:false,idempotentHint:true,openWorldHint:false});assert.equal(tool.inputSchema.properties.pageSize.maximum,30);assert.equal(tool.inputSchema.properties.jobIds.maxItems,50);assert.equal(tool.inputSchema.properties.jobId.maxLength,128);assert.equal(tool.inputSchema.properties.jobIds.items.maxLength,128);assert.equal(tool.inputSchema.properties.cursor.maxLength,2048);assert.equal(tool.inputSchema.additionalProperties,false);for(const key of ['oneOf','anyOf','allOf','not'])assert.equal(tool.inputSchema[key],undefined);}
- assert.ok(!listed.result.tools.some(tool=>/reject|shortlist|move_applicant|update_applicant|delete_applicant/.test(tool.name)));
+ assert.ok(!listed.result.tools.some(tool=>/shortlist|move_applicant|update_applicant|delete_applicant/.test(tool.name)));
  const [exported,searched]=await run([call('export_applicants',{jobIds:['job-a','job-b'],pageSize:30,cursor:'opaque-next',action:'publish'}),call('search_applicants',{query:'offline conversion',jobId:'job-a',pageSize:2,cursor:'search-next',action:'reject'})]);
  const first=JSON.parse(exported.result.content[0].text).data,second=JSON.parse(searched.result.content[0].text).data;
  assert.equal(first.path,'/api/agent-read');assert.equal(first.method,'GET');assert.equal(first.body,null);assert.equal(first.query.action,'export_applicants');assert.deepEqual(first.allJobIds,['job-a','job-b']);assert.equal(first.query.pageSize,'30');assert.equal(first.query.cursor,'opaque-next');
@@ -67,4 +67,10 @@ test('single multi-country mode is forwarded by draft and validate, and full job
  const jobs=[{title:'Written title',status:'open',fields:[{path:'country_of_residence',type:'ValueSelect'}],rules:[{operator:'in',value:['US','IN']}]}];
  const [d,v,p]=await run([call('draft_jobs',{text:'Supplied complete job description.',countries:['US','IN'],countryMode:'single'}),call('validate_jobs',{draft,countries:['US','IN'],countryMode:'single'}),call('publish_jobs',{jobs,confirm:true,replaceExisting:true})]);
  assert.equal(JSON.parse(d.result.content[0].text).data.body.input.countryMode,'single');assert.equal(JSON.parse(v.result.content[0].text).data.body.countryMode,'single');assert.deepEqual(JSON.parse(v.result.content[0].text).data.body.draft,draft);assert.deepEqual(JSON.parse(p.result.content[0].text).data.body.jobs,jobs);assert.equal(JSON.parse(p.result.content[0].text).data.body.replaceExisting,true);
+});
+
+test('reject tool uses a distinct write endpoint and requires confirmation',async()=>{
+ const args={applicationId:'app_'+ 'a'.repeat(64),expectedRevision:2,reason:'private',confirm:true};
+ const [accepted,unconfirmed]=await run([call('reject_applicant',args),call('reject_applicant',{...args,confirm:false})]);
+ const data=JSON.parse(accepted.result.content[0].text).data;assert.equal(data.path,'/api/agent-applicants');assert.equal(data.method,'POST');assert.deepEqual(data.body,args);assert.match(unconfirmed.error.message,/requires confirm=true/);
 });

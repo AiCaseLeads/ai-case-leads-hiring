@@ -18,6 +18,7 @@ const tools = [
  {name:'draft_jobs', description:'Prepare job drafts from supplied text; does not publish. Use countryMode=single for one job accepting multiple countries, or separate for country versions.', inputSchema:schema({text:string,countries:{type:'array',items:string,minItems:1,maxItems:20},countryMode},['text','countries'])},
  {name:'validate_jobs', description:'Validate a structured draft without publishing. Questions support Boolean, Number, LongText, String, Url, File, ValueSelect and MultiValueSelect; LongText supports optional minWords; selects need options [{value,label}] and can use rules [{operator:equals|not_equals,value}]. countryMode=single creates one role with an allowed-country rule.', inputSchema:schema({draft:{type:'object'},countries:{type:'array',items:string,minItems:1,maxItems:20},countryMode},['draft','countries'])},
  {name:'publish_jobs', description:'Publish explicitly reviewed jobs. Requires publish scope and explicit user approval.', inputSchema:schema({jobs:{type:'array',items:{type:'object'}},replaceExisting:{type:'boolean',description:'Explicitly replace jobs with matching slugs, preserving their URLs and applicants. Only use when the user requested these job updates.'},confirm:{type:'boolean',const:true}},['jobs','confirm'])},
+ {name:'reject_applicant',description:'Reject an explicitly identified application awaiting initial review, record a private reason, and queue the job’s rejection email. Only applications without interviews or active links are eligible. Requires applicants:reject and explicit user instruction. Confirm means the user already requested this decision. Queued does not mean delivered.',inputSchema:schema({applicationId:string,expectedRevision:{type:'integer',minimum:1},reason:{type:'string',minLength:1,maxLength:2000},confirm:{type:'boolean',const:true}},['applicationId','expectedRevision','reason','confirm']),annotations:{readOnlyHint:false,destructiveHint:true,idempotentHint:false,openWorldHint:false}},
  {name:'list_jobs', description:'List a bounded page of roles. Read-only; requires jobs:read.', inputSchema:schema({page,pageSize:limit,status:string,search:string})},
  {name:'list_applicants', description:'List a bounded page of applicants, optionally filtered by role, stage or search. Requires applicants:read.',inputSchema:schema(filters)},
  {name:'export_applicants',description:'Read up to 30 candidates with all matching applications grouped by normalized email, screening answers, LinkedIn, duplicate-email information and cached résumé text. Requires applicants:read only. Supply one jobId or jobIds, never both. Follow nextCursor; cache status explicitly identifies pending or partial text.',inputSchema:schema({...jobs,...bulkPage}),annotations:readOnly},
@@ -28,7 +29,7 @@ const tools = [
  {name:'list_applicant_files',description:'List uploaded file metadata for one applicant. Requires applicants:read; original content needs files:read separately.',inputSchema:applicant},
  {name:'get_applicant_file',description:'Read one original uploaded file as bounded base64. Use only when original content is necessary; requires files:read.',inputSchema:schema({applicationId:string,fileId:string},['applicationId','fileId'])},
 ];
-const readTools = new Set(tools.slice(3).map(t=>t.name));
+const readTools = new Set(['list_jobs','list_applicants','export_applicants','search_applicants','get_applicant','get_interview_evidence','get_resume_text','list_applicant_files','get_applicant_file']);
 const MAX_RESPONSE = 3 * 1024 * 1024;
 const REQUEST_TIMEOUT_MS = 100000;
 const FALLBACK_RETRY_SECONDS = 5;
@@ -73,6 +74,7 @@ async function boundedJson(response) {
 async function callTool(name,args) {
  if(!tools.some(t=>t.name===name))throw Error('Unknown tool');
  if(!args || typeof args!=='object' || Array.isArray(args))throw Error('Tool arguments must be an object.');
+ if(name==='reject_applicant' && args.confirm!==true)throw Error('Rejection requires confirm=true after explicit user instruction.');
  if(name==='publish_jobs' && args.confirm!==true)throw Error('Publishing requires confirm=true after explicit user approval.');
  const token=process.env.HIRING_API_TOKEN;
  if(!token)throw Error('Set HIRING_API_TOKEN in the MCP server environment.');
@@ -86,6 +88,8 @@ async function callTool(name,args) {
   for(const key of allowed){if(args[key]!==undefined){const target=key==='search'||key==='query'?'q':key;if(key==='jobIds'&&Array.isArray(args[key]))for(const jobId of args[key])params.append(target,String(jobId));else params.set(target,String(args[key]));}}
   url=site.origin+'/api/agent-read?'+params;
   options={...options,method:'GET'};
+ }else if(name==='reject_applicant'){
+  url=site.origin+'/api/agent-applicants';options={...options,body:JSON.stringify(args)};
  }else{
   const body=name==='draft_jobs'?{action:'draft',input:{...args,mode:'ai'}}:name==='validate_jobs'?{...args,action:'validate'}:{...args,action:'publish'};
   options={...options,body:JSON.stringify(body)};
@@ -122,7 +126,7 @@ for await(const line of rl){
   process.stdout.write(JSON.stringify({jsonrpc:'2.0',id:m.id,result})+'\n');
  }catch(e){
   // Transport errors can contain URLs or headers; never echo provider exception strings.
-  const safe=e instanceof Error && /^(Unknown tool|Tool arguments|Publishing requires|Set HIRING_API_TOKEN|Response exceeds|The hiring API)/.test(e.message)?safeMessage(e.message,'The hiring connection could not complete this request.'):'The hiring connection could not complete this request.';
+  const safe=e instanceof Error && /^(Unknown tool|Tool arguments|Publishing requires|Rejection requires|Set HIRING_API_TOKEN|Response exceeds|The hiring API)/.test(e.message)?safeMessage(e.message,'The hiring connection could not complete this request.'):'The hiring connection could not complete this request.';
   process.stdout.write(JSON.stringify({jsonrpc:'2.0',id:m?.id??null,error:{code:m?-32603:-32700,message:safe}})+'\n');
  }
 }
