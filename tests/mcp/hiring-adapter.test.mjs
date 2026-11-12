@@ -13,7 +13,7 @@ async function run(messages,mode='normal',token='test-secret'){
 const call=(name,args={})=>({jsonrpc:'2.0',id:1,method:'tools/call',params:{name,arguments:args}});
 test('stdio initialization discovery and existing draft/publish tools remain compatible',async()=>{
  const results=await run([{id:1,method:'initialize'},{method:'notifications/initialized'},{id:2,method:'tools/list'},call('draft_jobs',{text:'Engineer',countries:['India']}),call('publish_jobs',{jobs:[],confirm:false})]);
- assert.equal(results.length,4);assert.equal(results[0].result.protocolVersion,'2024-11-05');assert.equal(results[1].result.tools.length,13);assert.ok(results[1].result.tools.some(t=>t.name==='get_resume_text'));
+ assert.equal(results.length,4);assert.equal(results[0].result.protocolVersion,'2024-11-05');assert.equal(results[1].result.tools.length,14);assert.ok(results[1].result.tools.some(t=>t.name==='get_resume_text'));
  const draft=JSON.parse(results[2].result.content[0].text);assert.equal(draft.data.path,'/api/agent-jobs');assert.equal(draft.data.body.action,'draft');assert.equal(results[3].error.message,'Publishing requires confirm=true after explicit user approval.');
 });
 test('bulk tools are read-only, bounded and route grouped pages without caller action overrides',async()=>{
@@ -72,5 +72,11 @@ test('single multi-country mode is forwarded by draft and validate, and full job
 test('reject tool uses a distinct write endpoint and requires confirmation',async()=>{
  const args={applicationId:'app_'+ 'a'.repeat(64),expectedRevision:2,reason:'private',confirm:true};
  const [accepted,unconfirmed]=await run([call('reject_applicant',args),call('reject_applicant',{...args,confirm:false})]);
- const data=JSON.parse(accepted.result.content[0].text).data;assert.equal(data.path,'/api/agent-applicants');assert.equal(data.method,'POST');assert.deepEqual(data.body,args);assert.match(unconfirmed.error.message,/requires confirm=true/);
+ const data=JSON.parse(accepted.result.content[0].text).data;assert.equal(data.path,'/api/agent-applicants');assert.equal(data.method,'POST');assert.deepEqual(data.body,args);assert.match(unconfirmed.error.message,/require[s]* confirm=true/);
+});
+
+test('interview request is scoped write endpoint requiring confirmation',async()=>{
+ const args={applicationId:'app_'+ 'a'.repeat(64),expectedRevision:2,interviewerEmail:'owner@example.com',confirm:true};
+ const [accepted,unconfirmed]=await run([call('request_interview',args),call('request_interview',{...args,confirm:false})]);
+ const data=JSON.parse(accepted.result.content[0].text).data;assert.equal(data.path,'/api/agent-interviews');assert.equal(data.method,'POST');assert.deepEqual(data.body,args);assert.match(unconfirmed.error.message,/require[s]* confirm=true/);
 });

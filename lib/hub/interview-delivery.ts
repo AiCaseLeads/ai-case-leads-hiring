@@ -5,8 +5,8 @@ import type { HubMember } from './auth';
 import type { HubStore } from './store';
 import type { ActionInput } from './validation';
 
-export async function sendInterviewInvitation(store:HubStore, member:HubMember, applicationId:string, input:ActionInput, env:PersonalMailEnv, resolver?:CandidateMailResolver) {
-  const detail = await submitInterviewInvitation(store, member, applicationId, input, env);
+export async function sendInterviewInvitation(store:HubStore, member:HubMember, applicationId:string, input:ActionInput, env:PersonalMailEnv, resolver?:CandidateMailResolver, agentGuard?:{key:string;value:string;name:string;kind?:"interview"}) {
+  const detail = await submitInterviewInvitation(store, member, applicationId, input, env, agentGuard);
   // Look up this action's task by revision, even if another reviewer has since
   // opened or replaced the invitation. Never dispatch a different invitation.
   const prefix = `gmail:${applicationId}:interview:`;

@@ -1927,7 +1927,7 @@ export class HubStore {
     id: string,
     input: ActionInput,
     member: HubMember,
-    agentGuard?: { key: string; value: string; name: string },
+    agentGuard?: { key: string; value: string; name: string; kind?: "interview" },
   ): Promise<ApplicationDetail> {
     const app = await this.applicationRow(id);
     const statements = await this.actionStatements(app, input, member);
@@ -1935,7 +1935,7 @@ export class HubStore {
       if (agentGuard) {
         const guardKey = `agent_action_guard:${crypto.randomUUID()}`;
         statements.unshift(this.stmt("INSERT INTO hub_settings(key,value,updated_at) SELECT ?, CASE WHEN EXISTS(SELECT 1 FROM hub_settings WHERE key=? AND value=? AND (json_extract(value,'$.expiresAt') IS NULL OR json_extract(value,'$.expiresAt')>?)) AND NOT EXISTS(SELECT 1 FROM hub_interviews WHERE application_id=?) AND NOT EXISTS(SELECT 1 FROM hub_links WHERE application_id=? AND used_at IS NULL) THEN 'true' ELSE NULL END, ?", guardKey, agentGuard.key, agentGuard.value, Date.now(), id, id, Date.now()));
-        statements.push(this.stmt("INSERT INTO hub_audit(id,type,actor,before_json,after_json,created_at) VALUES(?,?,?,?,?,?)", crypto.randomUUID(), "agent_applicant_reject", member.email, JSON.stringify({applicationId:id,revision:app.revision,stage:app.stage}), JSON.stringify({applicationId:id,stage:"Rejected",connection:agentGuard.name}), Date.now()));
+        statements.push(this.stmt("INSERT INTO hub_audit(id,type,actor,before_json,after_json,created_at) VALUES(?,?,?,?,?,?)", crypto.randomUUID(), agentGuard.kind === "interview" ? "agent_interview_invitation" : "agent_applicant_reject", agentGuard.kind === "interview" ? member.userId : member.email, JSON.stringify({applicationId:id,revision:app.revision,stage:app.stage}), JSON.stringify({applicationId:id,stage:agentGuard.kind === "interview" ? "Interview" : "Rejected",connection:agentGuard.name,...(agentGuard.kind === "interview" ? {sender:member.email} : {})}), Date.now()));
         statements.push(this.stmt("DELETE FROM hub_settings WHERE key=?", guardKey));
       }
       try {

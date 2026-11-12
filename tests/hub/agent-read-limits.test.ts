@@ -25,7 +25,7 @@ test('new read tools use only applicants:read and cannot mutate applicants or to
   }
   assert.deepEqual(database.prepare('SELECT * FROM hub_applications WHERE id=?').get(app.id),before);
   assert.deepEqual(await store.setting('agent_access_'+allowed.id,null),accessBefore);
-  assert.deepEqual(AGENT_SCOPES,['jobs:read','jobs:draft','jobs:publish','applicants:read','files:read','applicants:reject']);
+  assert.deepEqual(AGENT_SCOPES,['jobs:read','jobs:draft','jobs:publish','applicants:read','files:read','applicants:reject','applicants:interview']);
   assert.equal(database.prepare('SELECT count(*) n FROM hub_file_text').get()?.n,0);
   assert.equal(database.prepare('SELECT count(*) n FROM hub_tasks').get()?.n,taskCount);
  }finally{database.close()}
