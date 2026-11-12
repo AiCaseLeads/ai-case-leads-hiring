@@ -49,3 +49,14 @@ test('rejection write limit returns actionable retry metadata without a decision
  assert.notEqual((await store.applicationRow(app.id)).stage,'Rejected');
  }finally{database.close()}
 });
+
+test('trashed and missing applications cannot be rejected',async()=>{
+ const {store,database}=createStore();try{
+ const job=await store.saveJob(jobInput()),app=await store.acceptApplication(applicationInput(job.id)),access=await issueAccess(store,'writer',['applicants:read','applicants:reject'],'owner');
+ const input={applicationId:app.id,expectedRevision:(await store.applicationRow(app.id)).revision,reason:'Private',confirm:true};
+ await store.setSetting('application_trash:'+app.id,{deletedAt:Date.now()});
+ await assert.rejects(rejectApplicant(store,req(access.token),input),{code:'application_unavailable'});
+ await assert.rejects(rejectApplicant(store,req(access.token),{...input,applicationId:'app_'+'b'.repeat(64)}));
+ assert.equal(database.prepare("SELECT count(*) n FROM hub_tasks WHERE id LIKE ?").get(`gmail:${app.id}:rejection:%`)?.n,0);
+ }finally{database.close()}
+});
