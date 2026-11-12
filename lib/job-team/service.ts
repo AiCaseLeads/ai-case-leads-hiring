@@ -59,7 +59,7 @@ export async function candidateReplyTo(_store:HubStore,_applicationId:string,_ow
  void _store; void _applicationId; void _owners;
  return [AUTOMATIC_REPLY_TO];
 }
-export async function candidateMail(store:HubStore,input:MailInput,owners:string[]=[],context?:{mailMode?:unknown;actor?:unknown;applicationId:string;rejection?:boolean;interview?:boolean;interviewerEmail?:unknown}):Promise<MailInput>{
+export async function candidateMail(store:HubStore,input:MailInput,owners:string[]=[],context?:{mailMode?:unknown;actor?:unknown;applicationId:string;rejection?:boolean;interview?:boolean;interviewerEmail?:unknown;legacyInterviewSender?:boolean}):Promise<MailInput>{
  const staff=await store.rows<{email:string;active:number;role:string}>("SELECT lower(trim(email)) AS email,active,role FROM hub_members");
  const connected=await store.setting<string>("google_sender","");
  const privateAddresses=new Set([...staff.map(person=>person.email),...owners,connected].filter(Boolean).map(value=>value.toLowerCase()));
@@ -89,8 +89,10 @@ export async function candidateMail(store:HubStore,input:MailInput,owners:string
   // The chosen interviewer owns this invitation and receives replies. Use
   // their connected mailbox throughout the preview, worker and follow-ups.
   interviewReplyTo=selected;
-  replyTo=selected;
-  cc=selected===input.to.trim().toLowerCase()?undefined:[selected];
+  if(!context.legacyInterviewSender){
+   replyTo=selected;
+   cc=selected===input.to.trim().toLowerCase()?undefined:[selected];
+  }
  }
  const addresses=`${input.subject} ${input.body}`.match(/[A-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi)||[];
  if(addresses.some(address=>address.toLowerCase()!==CANDIDATE_SENDER&&address.toLowerCase()!==replyTo&&address.toLowerCase()!==interviewReplyTo&&privateAddresses.has(address.toLowerCase())))throw new HiringError("candidate_mail_exposes_staff_address",422,"Remove staff email addresses from the applicant email template before retrying.");

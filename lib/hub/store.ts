@@ -613,7 +613,7 @@ export class HubStore {
         metadata: {
           bookingFollowup: true, followupNumber, dueAt, expiresAt: link.expires_at, invitationHash: payload.invitationHash,
           interviewId, invitationTaskId, followupOnDelivery: payload.followupOnDelivery, mailMode: 'recruiter', actor: payload.actor,
-          interviewerEmail: payload.interviewerEmail, approvedEnvelope: payload.approvedEnvelope,
+          interviewerEmail: payload.interviewerEmail, approvedEnvelope: payload.approvedEnvelope, interviewRoutingVersion: payload.interviewRoutingVersion,
         },
         guard: {
           sql: `${interviewRemindersEnabledSql} AND ${viableBookingInvitationSql}${guard ? ' AND ' + guard.sql : ''}`,
@@ -1829,7 +1829,7 @@ export class HubStore {
             message.body,
             now,
             "Interview invitation with a private candidate link.",
-            {metadata:{mailMode:"recruiter",actor:member.email,followupOnDelivery:true,invitationHash:hash,...(message.interviewerEmail?{interviewerEmail:message.interviewerEmail}:{}),...(preview?{templateVersion:message.templateVersion,approvedEnvelope:message.envelope}:{})}},
+            {metadata:{mailMode:"recruiter",actor:member.email,followupOnDelivery:true,invitationHash:hash,interviewRoutingVersion:2,...(message.interviewerEmail?{interviewerEmail:message.interviewerEmail}:{}),...(preview?{templateVersion:message.templateVersion,approvedEnvelope:message.envelope}:{})}},
           ),
         );
         stage = renewing || app.stage==="Second Round Interview" ? app.stage : "Interview";
