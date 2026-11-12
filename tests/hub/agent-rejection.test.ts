@@ -60,3 +60,13 @@ test('trashed and missing applications cannot be rejected',async()=>{
  assert.equal(database.prepare("SELECT count(*) n FROM hub_tasks WHERE id LIKE ?").get(`gmail:${app.id}:rejection:%`)?.n,0);
  }finally{database.close()}
 });
+
+test('a guessed future revision cannot reject after a concurrent stage change',async()=>{
+ const {store,database}=createStore();try{
+ const job=await store.saveJob(jobInput()),app=await store.acceptApplication(applicationInput(job.id)),access=await issueAccess(store,'writer',['applicants:read','applicants:reject'],'owner');
+ const rev=(await store.applicationRow(app.id)).revision,original=store.action.bind(store);let called=false;
+ store.action=async (...args)=>{called=true;database.prepare("UPDATE hub_applications SET stage='Offer', revision=revision+1 WHERE id=?").run(app.id);return original(...args)};
+ await assert.rejects(rejectApplicant(store,req(access.token),{applicationId:app.id,expectedRevision:rev+1,reason:'Private',confirm:true}),{code:'record_changed'});
+ assert.equal(called,false);assert.equal((await store.applicationRow(app.id)).stage,'Application Review');
+ }finally{database.close()}
+});
