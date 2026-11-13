@@ -14,7 +14,7 @@ test("robots asks identified AI crawlers not to crawl while allowing Google sear
   }));
   assert.ok(groups.some(group => group.agents.includes("*") && group.allow && !group.disallow));
   assert.ok(!groups.some(group => group.agents.some(agent => agent.toLowerCase() === "googlebot") && group.disallow));
-  for (const agent of ["GPTBot", "OAI-SearchBot", "ChatGPT-User", "ClaudeBot", "Claude-SearchBot", "Claude-User", "PerplexityBot", "Perplexity-User", "Google-Extended", "CCBot"]) {
+  for (const agent of ["GPTBot", "OAI-SearchBot", "ChatGPT-User", "ClaudeBot", "Claude-SearchBot", "Claude-User", "PerplexityBot", "Perplexity-User", "Google-Extended", "Applebot-Extended", "Meta-ExternalAgent", "Amazonbot", "Amzn-SearchBot", "CCBot"]) {
     assert.ok(groups.some(group => group.agents.includes(agent) && group.disallow), `${agent} must be disallowed`);
   }
 });
