@@ -59,12 +59,14 @@ export function ApplicationForm({
   enabled,
   mode,
   formVersion,
+  initialVerification,
 }: {
   job: CareerJob;
   fields: CareerField[];
   enabled: boolean;
   mode?: string;
   formVersion?: number;
+  initialVerification?: {submissionKey:string;grant:string;expiresAt:number};
 }) {
   const [values, setValues] = useState<Record<string, Value>>({}),
     [files, setFiles] = useState<Record<string, File>>({}),
@@ -76,7 +78,7 @@ export function ApplicationForm({
     [recoverable, setRecoverable] = useState(false),
     [restored, setRestored] = useState(false),
     [recoveryUnavailable, setRecoveryUnavailable] = useState(false);
-  const submissionKey = useRef<string>(""),
+  const submissionKey = useRef<string>(initialVerification?.submissionKey || ""),
     pendingPayload = useRef<Payload | null>(null),
     inFlight = useRef(false);
   const formRef = useRef<HTMLFormElement>(null);
@@ -108,7 +110,14 @@ export function ApplicationForm({
   }, [job.id]);
   const [securityToken, setSecurityToken] = useState("");
   const [securityRefresh, setSecurityRefresh] = useState(0);
-  const verification = useRef<{grant:string;expiresAt:number}|null>(null);
+  const [needsSecurity, setNeedsSecurity] = useState(!initialVerification || initialVerification.expiresAt <= Date.now()+180000);
+  const verification = useRef<{grant:string;expiresAt:number}|null>(initialVerification || null);
+  useEffect(() => {
+    if (!initialVerification || initialVerification.expiresAt <= Date.now()+180000) return;
+    const timer = setTimeout(() => setNeedsSecurity(true), initialVerification.expiresAt - Date.now()-180000);
+    return () => clearTimeout(timer);
+  }, [initialVerification]);
+  useEffect(() => { if(initialVerification) formRef.current?.focus({preventScroll:true}); }, [initialVerification]);
   const recoveryKey = `aicl:submission:${job.id}`;
   // Restore UI from an external browser recovery journal before enabling writes.
   /* eslint-disable react-hooks/set-state-in-effect */
@@ -236,15 +245,15 @@ export function ApplicationForm({
     let attemptedSubmission = false;
     try {
       if (!submissionKey.current) submissionKey.current = crypto.randomUUID();
-      if (!uncertain && (!verification.current || verification.current.expiresAt < Date.now())) {
-        if (!securityToken) throw new Error("Please complete the security check before continuing.");
+      if ((!uncertain || !verification.current) && (!verification.current || verification.current.expiresAt < Date.now()+180000)) {
+        if (!securityToken) { setNeedsSecurity(true); throw new Error("Please complete the security check before continuing."); }
         if (securityToken === "disabled") verification.current = {grant:"",expiresAt:Date.now()+60000};
         else {
           const check = await fetch("/api/application-verification",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({token:securityToken,submissionKey:submissionKey.current,jobId:job.id})});
-          const checked = await check.json() as {grant:string;expiresAt:number};
+          const checked = await check.json().catch(()=>({})) as {grant?:string;expiresAt?:number};
           setSecurityToken(""); setSecurityRefresh(value=>value+1);
-          if(!check.ok) throw new Error(readMessage(checked,"Security verification failed. Please try again."));
-          verification.current = checked;
+          if(!check.ok || typeof checked.grant!=='string' || typeof checked.expiresAt!=='number') throw new Error(readMessage(checked,"Security verification failed. Please try again."));
+          verification.current = {grant:checked.grant,expiresAt:checked.expiresAt};
         }
       }
       let payload = pendingPayload.current;
@@ -360,8 +369,13 @@ export function ApplicationForm({
       if (!response.ok) {
         if (response.status === 403) {
           verification.current = null;
+          setNeedsSecurity(true);
           setSecurityToken(""); setSecurityRefresh(value=>value+1);
-          attemptedSubmission = false; setUncertain(false);
+          // The submitted payload is already frozen in the recovery journal.
+          // Keep it frozen until the same request is confirmed or rejected;
+          // otherwise edits could be displayed while a retry sends old values.
+          setUncertain(true);
+          attemptedSubmission = false;
         }
         // Only a confirmed validation rejection is safe to edit and retry with a new key.
         if ([400, 404, 413, 422].includes(response.status)) {
@@ -369,6 +383,8 @@ export function ApplicationForm({
           pendingPayload.current = null;
           setRecoverable(false);
           submissionKey.current = "";
+          verification.current = null;
+          setNeedsSecurity(true);
           sessionStorage.removeItem(recoveryKey);
           setUncertain(false);
           attemptedSubmission = false;
@@ -412,7 +428,7 @@ export function ApplicationForm({
     }
   }
   return (
-    <form ref={formRef} className="application-form" onSubmit={submit} noValidate
+    <form ref={formRef} tabIndex={-1} className="application-form" onSubmit={submit} noValidate
       onChangeCapture={(event) => {
         // Some mobile editors report an insertion only after the value has changed.
         const field = event.target;
@@ -753,7 +769,7 @@ export function ApplicationForm({
           </div>
         ))}
       </fieldset>
-      {(enabled || uncertain) && <SecurityCheck onToken={setSecurityToken} refresh={securityRefresh} />}
+      {(enabled || uncertain) && needsSecurity && <SecurityCheck onToken={setSecurityToken} refresh={securityRefresh} />}
       {error && (
         <div className="submit-error" role="alert">
           <AlertCircle size={18} />

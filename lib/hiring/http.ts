@@ -77,8 +77,27 @@ export async function getJob(request: Request, slug: string, deps: HiringDepende
     const job = jobs.find(j => j.slug === slug);
     if (!job) throw new HiringError("job_closed", 404, "This job is no longer accepting applications.");
     const detail = deps.provider ? await deps.provider.jobInfo(job.id) : { job, fields: previewFields };
-    return withSession(jsonResponse({ ...detail, mode: deps.provider ? "live" : "preview", submissionEnabled: !!deps.provider && !!deps.store && deps.applicationsEnabled && !detail.formUnavailable }), request);
+    return withSession(jsonResponse({ job:detail.job, formUnavailable:detail.formUnavailable, mode: deps.provider ? "live" : "preview", submissionEnabled: !!deps.provider && !!deps.store && deps.applicationsEnabled && !detail.formUnavailable }), request);
   } catch (error) { return errorResponse(error); }
+}
+export async function postJobForm(request:Request, slug:string, deps:HiringDependencies):Promise<Response> {
+  try {
+    assertSameOrigin(request);
+    const session=readSession(request);
+    if(!session) throw new HiringError('session_required',409,'Refresh the application page before continuing.');
+    await rateLimit(request,deps,session,'form');
+    const body=await readJson(request) as {submissionKey?:unknown;grant?:unknown};
+    if(typeof body.submissionKey!=='string'||!/^[a-zA-Z0-9_-]{16,128}$/.test(body.submissionKey)||typeof body.grant!=='string')throw new HiringError('invalid_request',400,'Reload the application and try again.');
+    const jobs=deps.provider?await deps.provider.listJobs():previewJobs;
+    const job=jobs.find(item=>item.slug===slug);
+    if(!job)throw new HiringError('job_closed',404,'This job is no longer accepting applications.');
+    if(deps.provider && (!deps.store || !deps.applicationsEnabled))throw new HiringError('applications_disabled',503,'Applications are temporarily unavailable. Please try again later.');
+    if(!spamStatus().required && deps.provider)throw new HiringError('verification_unavailable',503,'Application verification is temporarily unavailable. Please try again later.');
+    await requireGrant(body.grant,session,body.submissionKey,job.id);
+    const detail=deps.provider?await deps.provider.jobInfo(job.id):{job,fields:previewFields};
+    if(detail.formUnavailable)throw new HiringError('form_unavailable',503,'Application questions are temporarily unavailable. Please try again later.');
+    return jsonResponse({fields:detail.fields,formVersion:detail.formVersion,formUnavailable:detail.formUnavailable});
+  } catch(error){return errorResponse(error);}
 }
 export async function postUpload(request: Request, deps: HiringDependencies): Promise<Response> {
   try {

@@ -26,12 +26,24 @@ jobs:
         run: >-
           node --test --test-concurrency=1
           tests/hub/interview-calendar-ui.spec.mjs
+          tests/hub/application-gate-ui.spec.mjs
+          tests/public-mobile.spec.mjs
           tests/hub/applications-job-first-ui.spec.mjs
           tests/hub/decision-queue-mobile.spec.mjs
           tests/hub/applicant-collections-ui.spec.mjs
           tests/hub/job-directory-ui.spec.mjs
           tests/hub/candidate-navigation.spec.mjs
       - run: npm run test:mcp
+      - name: Test public application recovery against built server
+        run: |
+          npm run build:railway
+          test_data=$(mktemp -d)
+          NODE_ENV=development DATA_DIR="$test_data" RAILWAY_DEPLOYMENT_ID=synthetic RAILWAY_VOLUME_MOUNT_PATH="$test_data" PUBLIC_SITE_ORIGIN=http://127.0.0.1:5173 PORT=5173 ADMIN_EMAILS=owner@example.invalid GOOGLE_CLIENT_ID=synthetic GOOGLE_CLIENT_SECRET=synthetic GOOGLE_TOKEN_KEY=1111111111111111111111111111111111111111111111111111111111111111 BACKGROUND_ENABLED=false APPLICATIONS_ENABLED=false node scripts/start-railway.mjs > /tmp/hiring-test-server.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true; rm -rf "$test_data"' EXIT
+          for attempt in $(seq 1 100); do if curl -fsS http://127.0.0.1:5173/api/health >/dev/null; then break; fi; sleep 1; done
+          curl -fsS http://127.0.0.1:5173/api/health >/dev/null
+          TEST_HOSTING_PLATFORM=railway TEST_BASE_URL=http://127.0.0.1:5173 node --test tests/ui-flow.spec.mjs
       - run: npm run test:railway
       - run: node --test tests/public-written-paste.spec.mjs tests/hub/response-check-report-ui.spec.mjs
       - run: python3 -m py_compile scripts/aws/deploy-hiring.py

@@ -5,7 +5,7 @@ import type { Payload } from "./form";
 type Journal = { key: string; jobTitle?: string; jobSlug?: string; payload?: Payload; receipt?: string };
 
 /** Only replays an existing frozen browser journal. It never creates a key or uploads a file. */
-export function SubmissionRecovery({ slug }: { slug: string }) {
+export function SubmissionRecovery({ slug, canVerify=false }: { slug: string; canVerify?: boolean }) {
   const [journals, setJournals] = useState<Journal[]>([]),
     [message, setMessage] = useState(""),
     [busyKey, setBusyKey] = useState<string | null>(null);
@@ -50,7 +50,7 @@ export function SubmissionRecovery({ slug }: { slug: string }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(journal.payload),
       });
-      const body = await response.json() as { status?: string; receipt?: string };
+      const body = await response.json().catch(()=>({})) as { status?: string; receipt?: string; error?:{code?:string} };
       if (response.ok && body.status === "accepted" && typeof body.receipt === "string" && body.receipt) {
         try {
           sessionStorage.setItem(journal.key, JSON.stringify({ receipt: body.receipt, jobTitle: journal.jobTitle, jobSlug: journal.jobSlug }));
@@ -59,7 +59,9 @@ export function SubmissionRecovery({ slug }: { slug: string }) {
         window.location.assign(`/applications/${encodeURIComponent(body.receipt)}`);
         return;
       }
-      setMessage("We could not confirm this earlier application yet. Its saved answers remain in this browser. Try checking again or contact the hiring team; do not start a duplicate application.");
+      if(response.status===403 && body.error?.code==='verification_required') {
+        setMessage(canVerify ? "Your saved application may need a new security check. Complete the check and choose Continue to application, then retry your saved submission. Your answers remain in this browser." : "Your saved application needs a security check, but this role is not open. Your answers remain in this browser; contact the hiring team for help.");
+      } else setMessage("We could not confirm this earlier application yet. Its saved answers remain in this browser. Try checking again or contact the hiring team before starting another application.");
     } catch {
       setMessage("We could not reach the hiring system or confirm its response. Your earlier submission is still saved here. Try checking again before applying elsewhere on this site.");
     } finally { active.current = false; setBusyKey(null); }
@@ -67,7 +69,7 @@ export function SubmissionRecovery({ slug }: { slug: string }) {
   if (!journals.length && !message) return null;
   return <section className="application-form" aria-labelledby="submission-recovery-title">
     <h2 id="submission-recovery-title">Check an earlier submission</h2>
-    <p>This role could not be loaded. If you submitted before it closed or became unavailable, you can check the original request below. This does not start a new application.</p>
+    <p>If you submitted an application earlier, you can check the original request below. This does not start a new application.</p>
     {journals.map((journal, index) => <div key={journal.key}>
       <p><strong>{journal.jobTitle || `Earlier application ${index + 1}`}</strong>{!journal.jobSlug && " · legacy browser record; its role could not be matched to this page."}</p>
       <button type="button" className="button ink" disabled={busyKey !== null} onClick={() => void recover(journal)}>{busyKey === journal.key ? "Checking submission…" : journal.receipt ? "View saved confirmation" : "Check earlier application status"}</button>
