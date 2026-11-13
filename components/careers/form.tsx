@@ -110,7 +110,13 @@ export function ApplicationForm({
   }, [job.id]);
   const [securityToken, setSecurityToken] = useState("");
   const [securityRefresh, setSecurityRefresh] = useState(0);
+  const [needsSecurity, setNeedsSecurity] = useState(!initialVerification || initialVerification.expiresAt <= Date.now());
   const verification = useRef<{grant:string;expiresAt:number}|null>(initialVerification || null);
+  useEffect(() => {
+    if (!initialVerification || initialVerification.expiresAt <= Date.now()) return;
+    const timer = setTimeout(() => setNeedsSecurity(true), initialVerification.expiresAt - Date.now());
+    return () => clearTimeout(timer);
+  }, [initialVerification]);
   const recoveryKey = `aicl:submission:${job.id}`;
   // Restore UI from an external browser recovery journal before enabling writes.
   /* eslint-disable react-hooks/set-state-in-effect */
@@ -362,6 +368,7 @@ export function ApplicationForm({
       if (!response.ok) {
         if (response.status === 403) {
           verification.current = null;
+          setNeedsSecurity(true);
           setSecurityToken(""); setSecurityRefresh(value=>value+1);
           attemptedSubmission = false; setUncertain(false);
         }
@@ -372,6 +379,7 @@ export function ApplicationForm({
           setRecoverable(false);
           submissionKey.current = "";
           verification.current = null;
+          setNeedsSecurity(true);
           sessionStorage.removeItem(recoveryKey);
           setUncertain(false);
           attemptedSubmission = false;
@@ -756,7 +764,7 @@ export function ApplicationForm({
           </div>
         ))}
       </fieldset>
-      {(enabled || uncertain) && <SecurityCheck onToken={setSecurityToken} refresh={securityRefresh} />}
+      {(enabled || uncertain) && needsSecurity && <SecurityCheck onToken={setSecurityToken} refresh={securityRefresh} />}
       {error && (
         <div className="submit-error" role="alert">
           <AlertCircle size={18} />

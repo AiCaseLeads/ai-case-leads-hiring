@@ -26,6 +26,7 @@ jobs:
         run: >-
           node --test --test-concurrency=1
           tests/hub/interview-calendar-ui.spec.mjs
+          tests/hub/application-gate-ui.spec.mjs
           tests/hub/applications-job-first-ui.spec.mjs
           tests/hub/decision-queue-mobile.spec.mjs
           tests/hub/applicant-collections-ui.spec.mjs

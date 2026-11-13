@@ -32,7 +32,9 @@ async function browserPage(viewport = { width: 1440, height: 1000 }) {
 async function mockLiveApi(page, slug, submissionResponse, formFields = fields) {
   const submissions = [], uploads = [];
   await page.route("**/api/jobs", route => route.fulfill({ json: { jobs: Object.keys(jobIds).map(job), mode: "live", submissionEnabled: true } }));
-  await page.route("**/api/jobs/*", route => route.fulfill({ json: { job: job(slug), fields: formFields, formVersion: 1, mode: "live", submissionEnabled: true } }));
+  await page.route("**/api/jobs/*", route => route.fulfill({ json: { job: job(slug), mode: "live", submissionEnabled: true } }));
+  await page.route("**/api/jobs/*/form", route => route.fulfill({ json: { fields: formFields, formVersion: 1 } }));
+  await page.route("**/api/application-verification", route => route.fulfill({ json: { required: false, configured: false } }));
   await page.route("**/api/uploads", async route => {
     uploads.push(route.request().postDataJSON());
     await route.fulfill({ json: { url: "https://upload.invalid/verification", fields: { key: "synthetic-resume" }, handle: "synthetic-upload-handle" } });
@@ -45,7 +47,14 @@ async function mockLiveApi(page, slug, submissionResponse, formFields = fields) 
   await page.route("**/api/applications/*", route => route.fulfill({ json: { status: "accepted" } }));
   return { submissions, uploads };
 }
+async function openApplication(page) {
+  const open = page.getByRole("button", { name: "Continue to application", exact: true });
+  if (await page.getByLabel("Full name", { exact: false }).count()) return;
+  await open.waitFor();
+  await open.click();
+}
 async function fillApplication(page) {
+  await openApplication(page);
   await page.getByLabel("Full name", { exact: false }).fill("Synthetic Candidate");
   await page.getByLabel("Email address", { exact: false }).fill("candidate@example.test");
   await page.locator('input[type="file"]').setInputFiles(resume);
@@ -154,6 +163,7 @@ for (const slug of Object.keys(jobIds)) {
     try {
       const { submissions, uploads } = await mockLiveApi(page, slug, route => route.fulfill({ status: 201, json: { status: "accepted", receipt: "verified-receipt" } }));
       await page.goto(`${baseUrl}/jobs/${slug}?utm_source=verification&utm_campaign=role-test`);
+      await openApplication(page);
       await page.getByText(fieldHelp, { exact: true }).waitFor();
       assert.equal(await page.locator('[id="portfolio-help"] script').count(), 0);
       assert.equal(await page.evaluate(() => window.__FORM_HELP_INJECTION__), undefined);
@@ -208,6 +218,7 @@ test("invalid files stay local and upload failures retain all entered answers", 
   try {
     const { submissions } = await mockLiveApi(page, "creative-strategist", route => route.fulfill({ status: 201, json: { status: "accepted", receipt: "unused" } }));
     await page.goto(`${baseUrl}/jobs/creative-strategist`);
+    await openApplication(page);
     await page.getByLabel("Full name", { exact: false }).fill("Synthetic Candidate");
     await page.locator('input[type="file"]').setInputFiles({ name: "unsafe.exe", mimeType: "application/octet-stream", buffer: Buffer.from("synthetic") });
     await page.getByText("Please upload a PDF, DOC, or DOCX file.", { exact: true }).waitFor();
@@ -256,6 +267,7 @@ test("reload after an uncertain write restores the frozen payload and the same s
     await page.getByRole("button", { name: "Submit application", exact: true }).click();
     await page.getByRole("button", { name: "Check submission status", exact: true }).waitFor();
     await page.reload();
+    await openApplication(page);
     await page.getByRole("button", { name: "Check submission status", exact: true }).waitFor();
     assert.equal(await page.getByLabel("Full name", { exact: false }).isDisabled(), true);
     await page.getByRole("button", { name: "Check submission status", exact: true }).click();
@@ -299,10 +311,10 @@ test("paused intake still recovers an earlier uncertain write with its original 
     await page.getByRole("button", { name: "Check submission status", exact: true }).waitFor();
     await page.route("**/api/jobs/*", route => route.fulfill({ json: { job: job("full-stack-engineer"), fields, formVersion:1, mode:"live", submissionEnabled:false } }));
     await page.reload();
-    const check = page.getByRole("button", { name:"Check submission status",exact:true });
+    const check = page.getByRole("button", { name:"Check earlier application status",exact:true });
     await check.waitFor();
     assert.equal(await check.isEnabled(), true);
-    assert.equal(await page.getByLabel("Full name", { exact:false }).isDisabled(), true);
+    assert.equal(await page.getByLabel("Full name", { exact:false }).count(), 0);
     await check.click();
     await page.waitForURL("**/applications/paused-recovery-receipt");
     assert.equal(uploads.length, 1); assert.equal(submissions.length, 2);
@@ -316,8 +328,8 @@ test("paused intake never enables a new application when no recovery journal exi
     const { submissions, uploads } = await mockLiveApi(page, "full-stack-engineer", route => route.fulfill({json:{status:"accepted",receipt:"must-not-appear"}}));
     await page.route("**/api/jobs/*", route => route.fulfill({json:{job:job("full-stack-engineer"),fields,formVersion:1,mode:"live",submissionEnabled:false}}));
     await page.goto(`${baseUrl}/jobs/full-stack-engineer`);
-    const button = page.getByRole("button", {name:"Applications are paused",exact:true});
-    await button.waitFor(); assert.equal(await button.isDisabled(), true);
+    await page.getByText("Applications are currently closed.", {exact:true}).waitFor();
+    assert.equal(await page.getByRole("button", {name:"Continue to application",exact:true}).count(), 0);
     assert.equal(submissions.length,0); assert.equal(uploads.length,0);
   } finally { await close(); }
 });
@@ -400,7 +412,7 @@ test("unsupported provider form is visible but cannot collect applications", asy
     await page.route("**/api/applications", route => { submitted = true; return route.fulfill({ status: 503, json: { error: { code: "form_unavailable" } } }); });
     await page.goto(`${baseUrl}/jobs/full-stack-engineer`);
     await page.getByRole("heading", { name: "Full-stack Engineer", exact: true }).waitFor();
-    assert.equal(await page.getByRole("button", { name: "Applications are paused", exact: true }).isDisabled(), true);
+    assert.equal(await page.getByRole("button", { name: "Continue to application", exact: true }).count(), 0);
     assert.equal(submitted, false);
   } finally { await close(); }
 });
@@ -424,6 +436,7 @@ test("corrupted recovery journal fails closed instead of creating a fresh submis
     const { submissions, uploads } = await mockLiveApi(page, "full-stack-engineer", route => route.fulfill({ status: 201, json: { status: "accepted", receipt: "unused" } }));
     await page.addInitScript(({ id }) => sessionStorage.setItem(`aicl:submission:${id}`, "{corrupted"), { id: jobIds["full-stack-engineer"] });
     await page.goto(`${baseUrl}/jobs/full-stack-engineer`);
+    await openApplication(page);
     await page.getByRole("alert").filter({ hasText: "Your browser couldn’t recover submission status." }).waitFor();
     assert.equal(await page.getByRole("button", { name: "Submit application", exact: true }).isDisabled(), true);
     assert.equal(submissions.length, 0);

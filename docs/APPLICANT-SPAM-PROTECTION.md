@@ -9,3 +9,9 @@ Server validation checks Cloudflare success, hostname, `application` action and 
 Durable database limits restrict each session to 20 upload requests and 30 application/verification requests per ten minutes, each actual client IP to 150 of each per ten minutes, and each normalized email to ten new application attempts per hour. Railway normalizes proxy IP headers before request handling. Existing same-session submission recovery does not consume the email limit. Shared IP limits intentionally allow ordinary office traffic. CAPTCHA and limits reduce abuse; they cannot guarantee every human submission is genuine.
 
 References: https://developers.cloudflare.com/turnstile/get-started/server-side-validation/ and https://developers.cloudflare.com/turnstile/get-started/client-side-rendering/
+
+### Application question access
+
+`GET /api/jobs/{slug}` returns public job details and availability, but no application questions or form version. After the applicant completes Turnstile, the browser exchanges the token for the existing session-, job-, and submission-key-bound verification grant. `POST /api/jobs/{slug}/form` accepts that grant and submission key and returns the current form fields with `Cache-Control: no-store`. The same grant is used for upload and submission. If verification expires while a candidate is writing, the form keeps the answers and selected files and requests a fresh check. Existing submission recovery remains available before opening the form.
+
+This is an intentional public API contract change: clients that previously read fields directly from the job-detail response must use the verified form flow. The authenticated hiring MCP continues to use its agent API. Turnstile is a friction and abuse-control measure; it cannot prevent a person from copying or photographing visible questions or using AI after verification.

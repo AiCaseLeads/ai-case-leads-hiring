@@ -67,7 +67,7 @@ export function SubmissionRecovery({ slug }: { slug: string }) {
   if (!journals.length && !message) return null;
   return <section className="application-form" aria-labelledby="submission-recovery-title">
     <h2 id="submission-recovery-title">Check an earlier submission</h2>
-    <p>This role could not be loaded. If you submitted before it closed or became unavailable, you can check the original request below. This does not start a new application.</p>
+    <p>If you submitted an application earlier, you can check the original request below. This does not start a new application.</p>
     {journals.map((journal, index) => <div key={journal.key}>
       <p><strong>{journal.jobTitle || `Earlier application ${index + 1}`}</strong>{!journal.jobSlug && " · legacy browser record; its role could not be matched to this page."}</p>
       <button type="button" className="button ink" disabled={busyKey !== null} onClick={() => void recover(journal)}>{busyKey === journal.key ? "Checking submission…" : journal.receipt ? "View saved confirmation" : "Check earlier application status"}</button>

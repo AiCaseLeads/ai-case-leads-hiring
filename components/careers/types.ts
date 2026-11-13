@@ -25,9 +25,7 @@ export type JobsResponse = {
   submissionEnabled: boolean;
 };
 export type JobResponse = {
-  formVersion?: number;
   job: CareerJob;
-  fields: CareerField[];
   submissionEnabled: boolean;
   mode?: string;
   formUnavailable?: string;
