@@ -371,6 +371,10 @@ export function ApplicationForm({
           verification.current = null;
           setNeedsSecurity(true);
           setSecurityToken(""); setSecurityRefresh(value=>value+1);
+          // The submitted payload is already frozen in the recovery journal.
+          // Keep it frozen until the same request is confirmed or rejected;
+          // otherwise edits could be displayed while a retry sends old values.
+          setUncertain(true);
           attemptedSubmission = false;
         }
         // Only a confirmed validation rejection is safe to edit and retry with a new key.

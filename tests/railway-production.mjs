@@ -7,7 +7,7 @@ import path from 'node:path';
 import {spawn,execFile} from 'node:child_process';
 import {promisify} from 'node:util';
 import {createServer} from 'node:net';
-import {randomBytes,createHash} from 'node:crypto';
+import {randomBytes,createHash,createHmac} from 'node:crypto';
 import {performance} from 'node:perf_hooks';
 import {DatabaseSync} from 'node:sqlite';
 import {chromium} from 'playwright';
@@ -22,13 +22,15 @@ const reservation=createServer();await new Promise(resolve=>reservation.listen(0
 const port=reservation.address().port;await new Promise(resolve=>reservation.close(resolve));
 const origin=`http://127.0.0.1:${port}`,rawSession=randomBytes(32).toString('hex');
 const ownerCookie=`aicl_staff_session=${rawSession}`;
+const testTurnstileSecret='isolated-test-secret';
+function testGrant(session,key,jobId){const expires=Date.now()+1800000;const hash=createHash('sha256').update(`${session}:${key}:${jobId}`).digest('hex');const payload=`${expires}.${hash}`;return `${payload}.${createHmac('sha256',testTurnstileSecret).update(payload).digest('hex')}`;}
 const sqlite=new SQLiteD1Database(path.join(dataDir,'hiring.sqlite'));sqlite.migrate(path.resolve('drizzle'));
 sqlite.connection.prepare('INSERT INTO staff_sessions(token_hash,user_id,email,full_name,created_at,expires_at) VALUES(?,?,?,?,?,?)').run(createHash('sha256').update(rawSession).digest('hex'),'isolated-test-owner','sales@aicaseleads.com','Isolated test owner',Date.now(),Date.now()+3600_000);
 for(const name of ['maria','alex','sam'])sqlite.connection.prepare('INSERT INTO hub_members(id,email,role,active,created_at,updated_at) VALUES(?,?,?,1,?,?)').run(`synthetic-${name}`,`${name}@example.invalid`,'recruiter',Date.now(),Date.now());
 sqlite.close();
 let child,logs='',browser;
 async function start(enabled){
- logs='';child=spawn(process.execPath,['scripts/start-railway.mjs'],{env:{...process.env,NODE_ENV:'development',DATA_DIR:dataDir,RAILWAY_DEPLOYMENT_ID:'synthetic-isolated',RAILWAY_VOLUME_MOUNT_PATH:dataDir,PUBLIC_SITE_ORIGIN:origin,PORT:String(port),ADMIN_EMAILS:'sales@aicaseleads.com',GOOGLE_CLIENT_ID:'synthetic.apps.googleusercontent.com',GOOGLE_CLIENT_SECRET:'synthetic-only',GOOGLE_TOKEN_KEY:'1'.repeat(64),EXPECTED_RECRUITING_EMAIL:'mariam@aicaseleads.com',BACKGROUND_ENABLED:'false',APPLICATIONS_ENABLED:String(enabled)},stdio:['ignore','pipe','pipe']});
+ logs='';child=spawn(process.execPath,['scripts/start-railway.mjs'],{env:{...process.env,NODE_ENV:'development',DATA_DIR:dataDir,RAILWAY_DEPLOYMENT_ID:'synthetic-isolated',RAILWAY_VOLUME_MOUNT_PATH:dataDir,PUBLIC_SITE_ORIGIN:origin,PORT:String(port),ADMIN_EMAILS:'sales@aicaseleads.com',GOOGLE_CLIENT_ID:'synthetic.apps.googleusercontent.com',GOOGLE_CLIENT_SECRET:'synthetic-only',GOOGLE_TOKEN_KEY:'1'.repeat(64),EXPECTED_RECRUITING_EMAIL:'mariam@aicaseleads.com',BACKGROUND_ENABLED:'false',APPLICATIONS_ENABLED:String(enabled),...(enabled?{TURNSTILE_REQUIRED:'true',TURNSTILE_SITE_KEY:'synthetic-site',TURNSTILE_SECRET_KEY:testTurnstileSecret}:{})},stdio:['ignore','pipe','pipe']});
  child.stdout.on('data',value=>{logs+=value;});child.stderr.on('data',value=>{logs+=value;});
  const began=Date.now();while(!logs.includes('[railway] http_ready')){assert.ok(Date.now()-began<30000&&child.exitCode===null,`Node server failed: ${logs.slice(-2500)}`);await new Promise(resolve=>setTimeout(resolve,100));}
  assert.equal((await fetch(origin+'/api/health')).status,200);
@@ -117,7 +119,10 @@ try{
  let firstId,firstFile;
  for(const [index,job] of [engineer,creative].entries()){
   const applicant=await browser.newContext({viewport:index?{width:390,height:844}:{width:1440,height:1000}}),page=await applicant.newPage();page.on('pageerror',error=>errors.push(error.message));
-  await page.goto(origin+`/jobs/${job.slug}?utm_source=railway-verified`);await page.getByLabel('First name',{exact:false}).fill('Isolated Browser');await page.getByLabel('Last name',{exact:false}).fill(`Candidate ${index}`);await page.getByLabel('Email address',{exact:false}).fill(`isolated-browser-${index}@example.invalid`);await page.getByLabel('Phone number',{exact:false}).fill('+1 305 555 0123');await page.getByLabel('LinkedIn profile',{exact:false}).fill(`https://www.linkedin.com/in/isolated-browser-${index}`);await page.locator('input[type=file]').setInputFiles({name:'isolated-resume.pdf',mimeType:'application/pdf',buffer:sample});
+  await page.addInitScript(()=>{window.turnstile={render:(_el,options)=>{setTimeout(()=>options.callback('synthetic-token'),0);return 'widget'},remove:()=>{}}});
+  await page.route('https://challenges.cloudflare.com/**',route=>route.fulfill({body:''}));
+  await page.route('**/api/application-verification',async route=>{if(route.request().method()==='GET')return route.fulfill({json:{required:true,configured:true,siteKey:'synthetic-site'}});const body=route.request().postDataJSON(),session=(await applicant.cookies()).find(cookie=>cookie.name==='hiring_session')?.value;assert.ok(session);return route.fulfill({json:{grant:testGrant(session,body.submissionKey,body.jobId),expiresAt:Date.now()+1800000}})});
+  await page.goto(origin+`/jobs/${job.slug}?utm_source=railway-verified`);await page.getByRole('button',{name:'Continue to application'}).click();await page.getByLabel('First name',{exact:false}).fill('Isolated Browser');await page.getByLabel('Last name',{exact:false}).fill(`Candidate ${index}`);await page.getByLabel('Email address',{exact:false}).fill(`isolated-browser-${index}@example.invalid`);await page.getByLabel('Phone number',{exact:false}).fill('+1 305 555 0123');await page.getByLabel('LinkedIn profile',{exact:false}).fill(`https://www.linkedin.com/in/isolated-browser-${index}`);await page.locator('input[type=file]').setInputFiles({name:'isolated-resume.pdf',mimeType:'application/pdf',buffer:sample});
   await page.getByRole('button',{name:'Submit application',exact:false}).click();await page.waitForURL(/\/applications\/[a-f0-9]{64}$/, {timeout:15000}).catch(async error=>{throw new Error(`${error.message}\n${(await page.locator('body').innerText()).slice(-2000)}`);});
   assert.equal((await fetch(origin+'/api'+new URL(page.url()).pathname)).status,200);await applicant.close();
  }
@@ -189,7 +194,7 @@ try{
  let localConnectRetries=0;
  const submit=async(job,seq,input,session)=>{
   const began=performance.now();
-  const request={method:'POST',headers:{'Content-Type':'application/json',Origin:origin,Cookie:`hiring_session=${session}`,'x-real-ip':`198.18.${(seq>>8)&255}.${seq&255}`},body:JSON.stringify(input)};
+  const request={method:'POST',headers:{'Content-Type':'application/json',Origin:origin,Cookie:`hiring_session=${session}`,'x-real-ip':`198.18.${(seq>>8)&255}.${seq&255}`,'x-application-verification':testGrant(session,input.submissionKey,job.id)},body:JSON.stringify(input)};
   const url=origin+'/api/applications';
   let response;
   try { response=await fetch(url,request); } catch(error) {
@@ -209,7 +214,7 @@ try{
   const headers={Origin:origin,Cookie:`hiring_session=${session}`,'x-real-ip':`198.18.${(seq>>8)&255}.${seq&255}`};
   const fileField=job.fields.find(f=>f.type==='File').path;
   const filename=seq<1000?`synthetic-${seq}.pdf`:`load-resume-${seq}.pdf`;
-  const upload=await fetch(origin+'/api/uploads',{method:'POST',headers:{...headers,'Content-Type':'application/json'},body:JSON.stringify({jobPostingId:job.id,fieldPath:fileField,filename,contentType:'application/pdf',contentLength:bytes.length})});
+  const upload=await fetch(origin+'/api/uploads',{method:'POST',headers:{...headers,'Content-Type':'application/json','x-application-verification':testGrant(session,input.submissionKey,job.id),'x-submission-key':input.submissionKey},body:JSON.stringify({jobPostingId:job.id,fieldPath:fileField,filename,contentType:'application/pdf',contentLength:bytes.length})});
   const slot=await upload.json();assert.equal(upload.status,200,JSON.stringify(slot));
   const form=new FormData();form.append('file',new File([bytes],filename,{type:'application/pdf'}));
   const stored=await fetch(slot.url,{method:'POST',headers,body:form});assert.equal(stored.status,204,await stored.text());
