@@ -91,9 +91,11 @@ export async function postJobForm(request:Request, slug:string, deps:HiringDepen
     const jobs=deps.provider?await deps.provider.listJobs():previewJobs;
     const job=jobs.find(item=>item.slug===slug);
     if(!job)throw new HiringError('job_closed',404,'This job is no longer accepting applications.');
+    if(deps.provider && (!deps.store || !deps.applicationsEnabled))throw new HiringError('applications_disabled',503,'Applications are temporarily unavailable. Please try again later.');
     if(!spamStatus().required && deps.provider)throw new HiringError('verification_unavailable',503,'Application verification is temporarily unavailable. Please try again later.');
     await requireGrant(body.grant,session,body.submissionKey,job.id);
     const detail=deps.provider?await deps.provider.jobInfo(job.id):{job,fields:previewFields};
+    if(detail.formUnavailable)throw new HiringError('form_unavailable',503,'Application questions are temporarily unavailable. Please try again later.');
     return jsonResponse({fields:detail.fields,formVersion:detail.formVersion,formUnavailable:detail.formUnavailable});
   } catch(error){return errorResponse(error);}
 }

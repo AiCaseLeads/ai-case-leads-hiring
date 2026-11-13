@@ -15,9 +15,14 @@ test('public role hides questions; only the verified session and job can load th
  const request=(grant:string,session=SESSION,submissionKey=key)=>new Request(`https://jobs.example.invalid/api/jobs/${job.slug}/form`,{method:'POST',headers:{origin:'https://jobs.example.invalid','content-type':'application/json',cookie:`hiring_session=${session}`},body:JSON.stringify({grant,submissionKey})});
  assert.equal((await postJobForm(request(''),job.slug,deps)).status,403);
  const grant=await verifyChallenge('token',SESSION,key,JOB_ID,'jobs.example.invalid',{siteKey:'synthetic',secret:'synthetic-secret',hostname:'jobs.example.invalid'},async()=>Response.json({success:true,hostname:'jobs.example.invalid',action:'application',challenge_ts:new Date().toISOString()}));
+ const paused=await postJobForm(request(grant.grant),job.slug,{...deps,applicationsEnabled:false});assert.equal(paused.status,503);
+ delete process.env.TURNSTILE_REQUIRED;delete process.env.TURNSTILE_SITE_KEY;delete process.env.TURNSTILE_SECRET_KEY;assert.equal((await postJobForm(request(grant.grant),job.slug,deps)).status,503);
+ process.env.TURNSTILE_REQUIRED='true';process.env.TURNSTILE_SITE_KEY='synthetic';process.env.TURNSTILE_SECRET_KEY='synthetic-secret';
  const result=await postJobForm(request(grant.grant),job.slug,deps);assert.equal(result.status,200);assert.equal(result.headers.get('cache-control'),'no-store');assert.ok(Array.isArray(((await result.json()) as {fields?:unknown}).fields));
  assert.equal((await postJobForm(request(grant.grant,'b'.repeat(64)),job.slug,deps)).status,403);
  assert.equal((await postJobForm(request(grant.grant,SESSION,'different-submission-key-123'),job.slug,deps)).status,403);
+ const originalInfo=provider.jobInfo.bind(provider);provider.jobInfo=async()=>({...await originalInfo(),formVersion:2});assert.equal(((await (await postJobForm(request(grant.grant),job.slug,deps)).json()) as {formVersion:number}).formVersion,2);
+ provider.jobInfo=async()=>({...await originalInfo(),formUnavailable:'Synthetic unsupported form'});assert.equal((await postJobForm(request(grant.grant),job.slug,deps)).status,503);provider.jobInfo=originalInfo;
  provider.jobs=[{...job,id:'different-job'}];assert.equal((await postJobForm(request(grant.grant),job.slug,deps)).status,403);
  provider.jobs=[];assert.equal((await postJobForm(request(grant.grant),job.slug,deps)).status,404);
 });
