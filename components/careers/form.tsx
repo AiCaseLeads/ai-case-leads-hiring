@@ -59,12 +59,14 @@ export function ApplicationForm({
   enabled,
   mode,
   formVersion,
+  initialVerification,
 }: {
   job: CareerJob;
   fields: CareerField[];
   enabled: boolean;
   mode?: string;
   formVersion?: number;
+  initialVerification?: {submissionKey:string;grant:string;expiresAt:number};
 }) {
   const [values, setValues] = useState<Record<string, Value>>({}),
     [files, setFiles] = useState<Record<string, File>>({}),
@@ -76,7 +78,7 @@ export function ApplicationForm({
     [recoverable, setRecoverable] = useState(false),
     [restored, setRestored] = useState(false),
     [recoveryUnavailable, setRecoveryUnavailable] = useState(false);
-  const submissionKey = useRef<string>(""),
+  const submissionKey = useRef<string>(initialVerification?.submissionKey || ""),
     pendingPayload = useRef<Payload | null>(null),
     inFlight = useRef(false);
   const formRef = useRef<HTMLFormElement>(null);
@@ -108,7 +110,7 @@ export function ApplicationForm({
   }, [job.id]);
   const [securityToken, setSecurityToken] = useState("");
   const [securityRefresh, setSecurityRefresh] = useState(0);
-  const verification = useRef<{grant:string;expiresAt:number}|null>(null);
+  const verification = useRef<{grant:string;expiresAt:number}|null>(initialVerification || null);
   const recoveryKey = `aicl:submission:${job.id}`;
   // Restore UI from an external browser recovery journal before enabling writes.
   /* eslint-disable react-hooks/set-state-in-effect */
@@ -369,6 +371,7 @@ export function ApplicationForm({
           pendingPayload.current = null;
           setRecoverable(false);
           submissionKey.current = "";
+          verification.current = null;
           sessionStorage.removeItem(recoveryKey);
           setUncertain(false);
           attemptedSubmission = false;

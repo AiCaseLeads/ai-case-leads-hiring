@@ -27,7 +27,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { PageChrome } from "./chrome";
 import type { CareerJob, JobsResponse, JobResponse } from "./types";
-import { ApplicationForm } from "./form";
+import { ApplicationGate } from "./application-gate";
 import { SubmissionRecovery } from "./recovery";
 import { captureAttribution } from "./attribution";
 
@@ -433,13 +433,7 @@ export function CareerDetail({ slug }: { slug: string }) {
                   </aside>
                 </div>
                 <div className="application-panel" id="job-application" role="region" aria-label="Job application" tabIndex={0}>
-                  <ApplicationForm
-                    job={data.job}
-                    fields={data.fields || []}
-                    enabled={data.submissionEnabled}
-                    mode={data.mode}
-                    formVersion={data.formVersion}
-                  />
+                  <ApplicationGate job={data.job} enabled={data.submissionEnabled} mode={data.mode}/>
                 </div>
               </div>
             </>
