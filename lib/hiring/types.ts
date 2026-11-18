@@ -10,6 +10,8 @@ export type ApplicationField = {
   minWords?: number;
   numberFormat?: "number" | "currency";
   currency?: "USD";
+  /** Built-in LinkedIn and résumé fields only: a job owner made this field optional for this job. */
+  ownerOptional?: true;
 };
 export type Job = { eligibleCountries?: string[] | "worldwide"; id: string; slug: string; title: string; department: string; descriptionHtml: string; location?: string };
 export type JobDefinition = { job: Job; fields: ApplicationField[]; formUnavailable?: string; formVersion?: number };
