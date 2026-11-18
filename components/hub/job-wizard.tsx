@@ -23,7 +23,7 @@ import { ArrowLeft, ArrowUp, ArrowDown, Plus, Trash2, Copy, FileText, ClipboardL
 import { hubRequest, useHubMutation } from "./api";
 import { parseFormattedNumber } from "@/lib/hiring/number-format";
 import { FormattedNumberInput } from "@/components/forms/formatted-number-input";
-import { withRequiredResume, resumePath, withRequiredLinkedIn, isLinkedInProfile } from "@/lib/hiring/contact-fields";
+import { withRequiredResume, resumePath, withRequiredLinkedIn, isLinkedInProfile, isOptionalSystemField, setSystemFieldRequired } from "@/lib/hiring/contact-fields";
 import { Badge, Feedback, Field, ResourceState } from "./shared";
 import { JobTeamFields, useJobTeam } from "./job-team";
 import type { HubJob, Rule } from "./types";
@@ -1116,8 +1116,19 @@ function Editor({
             <h3>What should applicants send?</h3>
             <div className="hub-required-contacts">
               <strong>Contact details included</strong>
-              <span>First name · Last name · Email · Phone number · LinkedIn profile · Résumé / CV</span>
+              <span>First name · Last name · Email · Phone number</span>
               <span className="hub-muted">Required on every application.</span>
+              <div className="hub-optional-contacts">
+              {([["linkedin","LinkedIn profile"],["resume","Résumé / CV"]] as const).map(([which,label]) => {
+                const field = fields.find(f => isOptionalSystemField(f, which));
+                return <label key={which} className="hub-checkbox">
+                  <input type="checkbox" checked={field?.required !== false} disabled={!field || mutation.busy || !recovery.ready}
+                    onChange={(e) => setFields(current => setSystemFieldRequired(current, which, e.target.checked))} />
+                  <span><strong>Require {label}</strong></span>
+                </label>;
+              })}
+                <span className="hub-muted">Turn off to make it optional for this job. Applicants can still add it.</span>
+              </div>
             </div>
             {fields.some(field => field.type === "Phone" && !contactPaths.includes(field.path)) && <p className="hub-muted">This form also has an extra phone question. The required Phone number field already collects it; you can remove the extra question below if it is a duplicate. Existing application answers are kept.</p>}
             <p className="hub-muted hub-question-order-help">Drag to reorder. Select a question to edit.</p>

@@ -5,6 +5,7 @@ import { countryOptions, isCountryResidence, residencePath } from "../countries"
 import { hasDescriptionText } from "../job-description";
 import { z } from "zod";
 import { HiringError } from "../hiring/errors";
+import { isLinkedInProfile, resumePath } from "../hiring/contact-fields";
 import type { ApplicationField, FieldSubmission } from "../hiring/types";
 import { STAGES, type Rule, type QualificationEvidence } from "./types";
 const field = z
@@ -42,6 +43,7 @@ const field = z
       .max(300)
       .optional(),
     description: z.string().max(2000).optional(),
+    ownerOptional: z.literal(true).optional(),
   })
   .strict();
 const rule = z
@@ -209,6 +211,7 @@ export function validateJob(input: JobInput): void {
         "Select fields need unique answer options.",
       );
   for (const field of input.fields) {
+    if (field.ownerOptional && (field.required || !(field.path === resumePath || isLinkedInProfile(field)))) throw new HiringError("invalid_job",422,"Only the built-in LinkedIn and résumé fields can be marked optional this way.");
     if (field.minWords !== undefined && field.type !== "LongText") {
       throw new HiringError("invalid_job", 422, "Minimum words can only be set on a long written answer.");
     }

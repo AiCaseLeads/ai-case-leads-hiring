@@ -28,12 +28,20 @@ export function withRequiredPhone(fields: ApplicationField[]): ApplicationField[
   const result=[...fields];result.splice(position<0?0:position+1,0,phone);return result;
 }
 
+/**
+ * LinkedIn and résumé stay required unless a job owner explicitly marked them optional with
+ * `ownerOptional: true`. Legacy or hand-edited fields with only `required: false` stay required.
+ */
+function ownerChoice(field: ApplicationField | undefined): Pick<ApplicationField, "required" | "ownerOptional"> {
+  return field?.ownerOptional === true ? { required: false, ownerOptional: true } : { required: true };
+}
+
 /** Fixed upload field for all new public applications, including legacy postings. */
 export const resumePath = "_systemfield_resume";
 export function withRequiredResume(fields: ApplicationField[]): ApplicationField[] {
-  const resume: ApplicationField = { path: resumePath, title: "Résumé / CV", type: "File", required: true };
-  if (fields.some(field => field.path === resumePath)) return fields.map(field => field.path === resumePath ? resume : field);
-  return [...fields, resume];
+  const resume = (field?: ApplicationField): ApplicationField => ({ path: resumePath, title: "Résumé / CV", type: "File", ...ownerChoice(field) });
+  if (fields.some(field => field.path === resumePath)) return fields.map(field => field.path === resumePath ? resume(field) : field);
+  return [...fields, resume()];
 }
 export function withRequiredApplicationFields(fields: ApplicationField[]): ApplicationField[] {
   return withRequiredLinkedIn(withRequiredResume(withRequiredPhone(fields)));
@@ -45,7 +53,28 @@ export function isLinkedInProfile(field: ApplicationField): boolean {
   return field.path === linkedInPath || ((field.type === "Url" || field.type === "SocialLink") && /linkedin/i.test(`${field.path} ${field.title}`));
 }
 export function withRequiredLinkedIn(fields: ApplicationField[]): ApplicationField[] {
-  const canonical = (path: string): ApplicationField => ({path, title:"LinkedIn profile",type:"SocialLink",required:true,description:"Enter your LinkedIn profile URL, for example https://www.linkedin.com/in/your-name."});
-  if (fields.some(isLinkedInProfile)) return fields.map(field => isLinkedInProfile(field) ? {...field,...canonical(field.path)} : field);
+  const canonical = (path: string, field?: ApplicationField): ApplicationField => ({path, title:"LinkedIn profile",type:"SocialLink",...ownerChoice(field),description:"Enter your LinkedIn profile URL, for example https://www.linkedin.com/in/your-name."});
+  if (fields.some(isLinkedInProfile)) return fields.map(field => {
+    if (!isLinkedInProfile(field)) return field;
+    return { ...withoutOwnerChoice(field), ...canonical(field.path, field) };
+  });
   return [...fields, canonical(linkedInPath)];
+}
+
+/** Job-owner switch for the built-in LinkedIn and résumé fields. Other fields are unchanged. */
+export type OptionalSystemField = "linkedin" | "resume";
+export function isOptionalSystemField(field: ApplicationField, which: OptionalSystemField): boolean {
+  return which === "resume" ? field.path === resumePath : isLinkedInProfile(field);
+}
+export function setSystemFieldRequired(fields: ApplicationField[], which: OptionalSystemField, required: boolean): ApplicationField[] {
+  return fields.map(field => {
+    if (!isOptionalSystemField(field, which)) return field;
+    const rest = withoutOwnerChoice(field);
+    return required ? { ...rest, required: true } : { ...rest, required: false, ownerOptional: true };
+  });
+}
+function withoutOwnerChoice(field: ApplicationField): ApplicationField {
+  const copy = { ...field };
+  delete copy.ownerOptional;
+  return copy;
 }
